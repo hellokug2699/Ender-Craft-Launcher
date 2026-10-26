@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Ecl.Tests</RootNamespace>
+    <AssemblyName>Ecl.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ECL.Core\ECL.Core.csproj" />
+    <ProjectReference Include="..\..\src\ECL.Configuration\ECL.Configuration.csproj" />
+    <ProjectReference Include="..\..\src\ECL.Auth\ECL.Auth.csproj" />
+    <ProjectReference Include="..\..\src\ECL.Java\ECL.Java.csproj" />
+    <ProjectReference Include="..\..\src\ECL.Minecraft\ECL.Minecraft.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>
