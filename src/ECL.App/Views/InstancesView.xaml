@@ -130,6 +130,90 @@
                                 Style="{StaticResource PrimaryButton}"
                                 VerticalAlignment="Bottom" />
                     </Grid>
+
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="{loc:Loc Key=instances.loader.title}" Style="{StaticResource LabelText}" />
+                            <ComboBox ItemsSource="{Binding LoaderChoices}"
+                                      SelectedItem="{Binding SelectedNewLoader, Mode=TwoWay}"
+                                      DisplayMemberPath="DisplayName" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="{loc:Loc Key=instances.loader.version}" Style="{StaticResource LabelText}" />
+                            <ComboBox ItemsSource="{Binding LoaderVersions}"
+                                      SelectedItem="{Binding SelectedLoaderVersion, Mode=TwoWay}"
+                                      DisplayMemberPath="DisplayName" />
+                        </StackPanel>
+                        <Button Grid.Column="4"
+                                Content="{loc:Loc Key=instances.loader.refresh}"
+                                Command="{Binding RefreshComponentsCommand}"
+                                Style="{StaticResource GhostButton}"
+                                VerticalAlignment="Bottom" />
+                    </Grid>
+
+                    <TextBlock Text="{loc:Loc Key=instances.fabricApi.notice}"
+                               Foreground="{StaticResource AccentBrush}"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Margin="0,12,0,0"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding ShowFabricApiNotice, Converter={StaticResource BoolToVisibility}}" />
+
+                    <Grid Margin="0,10,0,0"
+                          Visibility="{Binding ShowFabricApiNotice, Converter={StaticResource BoolToVisibility}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{loc:Loc Key=instances.fabricApi.title}"
+                                   Style="{StaticResource LabelText}"
+                                   VerticalAlignment="Center" />
+                        <ComboBox Grid.Column="2"
+                                  ItemsSource="{Binding FabricApiVersions}"
+                                  SelectedItem="{Binding SelectedFabricApiVersion, Mode=TwoWay}"
+                                  DisplayMemberPath="DisplayName" />
+                    </Grid>
+
+                    <Grid Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{loc:Loc Key=instances.optifine.title}"
+                                   Style="{StaticResource LabelText}"
+                                   VerticalAlignment="Center" />
+                        <ComboBox Grid.Column="2"
+                                  ItemsSource="{Binding OptiFineVersions}"
+                                  SelectedItem="{Binding SelectedOptiFineVersion, Mode=TwoWay}"
+                                  DisplayMemberPath="DisplayName"
+                                  IsEnabled="{Binding OptiFineEnabled}" />
+                    </Grid>
+                    <TextBlock Text="{loc:Loc Key=instances.optifine.disabled}"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               FontSize="10"
+                               Margin="0,6,0,0"
+                               TextWrapping="Wrap" />
+
+                    <ProgressBar Height="4"
+                                 Margin="0,10,0,0"
+                                 Minimum="0"
+                                 Maximum="100"
+                                 IsIndeterminate="True"
+                                 Visibility="{Binding IsLoadingComponents, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Text="{Binding ComponentStatus}"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="11"
+                               Margin="0,6,0,0"
+                               TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
 
@@ -185,6 +269,11 @@
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    FontSize="11"
                                    Margin="0,4,0,0" />
+                        <TextBlock Text="{Binding SelectedInstanceComponents}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   Margin="0,4,0,0"
+                                   TextWrapping="Wrap" />
                         <TextBlock Text="{Binding SelectedInstanceCreated}"
                                    Foreground="{StaticResource TextMutedBrush}"
                                    FontSize="10"

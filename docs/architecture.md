@@ -11,7 +11,7 @@ ECL 是一个 Windows 优先的 Minecraft 启动器，目标能力对齐 HMCL / 
 
 同时保留自己的设计空间：配置项由元数据驱动、启动流程分阶段可观测、模块边界清晰、UI 只是薄壳。
 
-当前版本（v0.4）已完成原版安装与 Java 管理：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查与 Mojang Java 运行时自动下载。v0.3 账户体系因 Microsoft OAuth 审核限制暂缓；加载器与 Mod 管理是下一阶段。
+当前版本（v0.5）已完成原版安装、Java 管理与加载器安装：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查、Mojang Java 运行时自动下载、Fabric（含 Fabric API）与 Cleanroom 安装、OptiFine 显式安装。v0.3 账户体系因 Microsoft OAuth 审核限制暂缓；Mod 与整合包管理是下一阶段。
 
 ## 2. 设计原则
 
@@ -79,7 +79,7 @@ flowchart TD
 | `ECL.Download` | 下载源策略、官方↔BMCLAPI 映射、并发/重试/续传、哈希校验 | `DownloadSourceResolver`, `IDownloadService`, `DownloadRequest` |
 | `ECL.Auth` | 账户模型、离线 UUID、账户文件 | `Account`, `IAccountService`, `OfflineUuid` |
 | `ECL.Java` | Java 版本解析、运行时探测、需求/兼容性、Mojang 运行时下载 | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `IJavaInstallService` |
-| `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版安装、Java 选择、启动上下文与步骤、进程启动 | `GameInstance`, `VanillaInstallService`, `IJavaSelectionService`, `ILaunchStep` |
+| `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动 | `GameInstance`, `VanillaInstallService`, `ILoaderCatalog`, `IJavaSelectionService`, `ILaunchStep` |
 | `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框 | `MainViewModel`, `InstancesViewModel`, `SettingsViewModel` |
 | `ECL.Cli` | 无 GUI 管理、调试启动链路 | `CliApplication`, `ParsedCommandLine` |
 | `ECL.Tests` | 单元测试与临时数据目录 | `TestEnvironment`, `FakeProcessLauncher` |
@@ -121,7 +121,7 @@ services.AddEclMinecraft();
 │  └─ accounts.json                # 账户与默认账户
 ├─ instances/
 │  └─ <instance-id>/
-│     ├─ instance.json             # 实例元数据
+│     ├─ instance.json             # 实例元数据（含加载器、Fabric API、OptiFine 版本）
 │     ├─ settings.json             # 实例作用域配置（按需创建）
 │     ├─ logs/
 │     └─ minecraft/                # 游戏工作目录
@@ -137,6 +137,7 @@ services.AddEclMinecraft();
 ├─ assets/                         # 共享资源
 ├─ java/                           # 启动器托管的 Java 运行时（java/<component>）
 ├─ cache/
+│  └─ cleanroom/                   # Cleanroom 安装器缓存
 └─ logs/                           # ecl-YYYYMMDD.log
 ```
 
@@ -181,7 +182,16 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 
 详见 [java.md](java.md)。
 
-### 7.5 配置解析
+### 7.5 加载器与组件
+
+1. `ILoaderCatalog` 统一读取 Fabric Loader、Cleanroom、Fabric API、OptiFine 的可用版本，并附带能获取到的更新时间。
+2. Fabric 使用 Meta 的 profile JSON 生成版本 JSON；Cleanroom 从官方安装器 zip 提取 `version.json` 并补全仓库 URL，不执行安装器进程。
+3. Fabric 实例强制安装 Fabric API；OptiFine 仅在用户显式选择且加载器为 Cleanroom 时下载到实例 `mods/`。
+4. 启动时补充 Fabric 的 `arguments.jvm` 与 Cleanroom 旧式 `--tweakClass`；版本 ID 形如 `<游戏版本>-<加载器>-<加载器版本>`。
+
+详见 [loaders.md](loaders.md) 与 [ADR 0007](adr/0007-loaders-and-components.md)。
+
+### 7.6 配置解析
 
 详见 [configuration.md](configuration.md)。概要：
 
@@ -270,4 +280,4 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 
 ## 11. 下一步
 
-按 [roadmap.md](roadmap.md) 推进：v0.3 账户体系暂缓，下一步优先做 v0.5 加载器安装；启动流水线、配置框架、下载层、Java 管理和实例模型已经为这些能力预留了接入点。
+按 [roadmap.md](roadmap.md) 推进：v0.3 账户体系暂缓，v0.5 加载器安装已完成；下一步进入 v0.6 Mod 与整合包管理。

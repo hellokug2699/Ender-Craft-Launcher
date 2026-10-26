@@ -7,6 +7,7 @@ using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Launch;
 using Ecl.Minecraft.Launch.Steps;
+using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Versions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -21,6 +22,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IInstanceService, InstanceService>();
         services.AddSingleton<IVersionResolver, VersionResolver>();
         services.AddSingleton<IProcessLauncher, SystemProcessLauncher>();
+        services.AddSingleton<ILoaderCatalog, LoaderCatalog>();
         services.AddSingleton<IVersionInstallService, VanillaInstallService>();
         services.AddSingleton<IJavaSelectionService, JavaSelectionService>();
         services.AddSingleton<IEulaService, FileEulaService>();

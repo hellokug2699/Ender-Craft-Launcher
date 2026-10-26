@@ -61,9 +61,12 @@ internal static class Program
           version                         显示版本、运行时与数据目录
           instance list [--json]          列出实例
           instance create <名称> --version <版本> [--loader <加载器>] [--loader-version <版本>]
-                                          创建实例
+                           [--fabric-api-version <版本>] [--optifine-version <type:patch>]
+                                          创建实例；加载器支持 vanilla、fabric、cleanroom
           instance delete <实例ID> --force 删除实例
-          install <实例ID>                下载/补全原版版本文件
+          loader list --version <版本> [--type fabric|cleanroom|fabric-api|optifine] [--json]
+                                          列出加载器/组件版本与更新时间
+          install <实例ID>                下载/补全版本文件、加载器与组件
           launch <实例ID> [--dry-run] [--accept-eula] [--json]
                                           启动实例；--dry-run 仅生成命令，
                                           --accept-eula 首次启动时同意 EULA

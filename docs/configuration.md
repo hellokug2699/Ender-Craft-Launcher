@@ -114,14 +114,25 @@ UI 在每项下方展示“来源”，实例作用域下 `Default` 显示为“
 - `piston-meta` / `piston-data` / `launchermeta` / `launcher` → `bmclapi2.bangbang93.com` + 原路径。
 - `libraries.minecraft.net/...` → `bmclapi2.bangbang93.com/libraries/...`。
 - `resources.download.minecraft.net/...` → `bmclapi2.bangbang93.com/assets/...`。
+- `repo.maven.apache.org` / `repo1.maven.org` → `maven.aliyun.com/repository/public`（加载器依赖）。
 
-无镜像映射的第三方 URL 在 `mirror-only` 下会被拒绝，避免静默回退到官方。
+BMCLAPI 未覆盖的第三方地址（Modrinth、Fabric/Cleanroom Maven、BMCLAPI OptiFine）在安装时直接使用原始地址，避免镜像模式下无法安装组件。
 
 ### EULA
 
 EULA 不再是一个普通配置项。首次真实启动时，WPF 会弹窗要求同意 Minecraft EULA（链接到官方 EULA），同意后额外弹出多人联机免责声明；同意记录写入 `<data>/config/eula.json`，之后启动不再重复询问。`eula.txt` 由启动步骤在首次同意后写入。
 
 CLI 使用 `ecl launch <实例ID> --accept-eula` 记录同意；未同意时真实启动会失败并提示该参数。Dry Run 不要求同意。
+
+### 实例组件版本
+
+加载器、Fabric API 与 OptiFine 版本属于实例身份的一部分，不是普通配置项，保存在 `instances/<id>/instance.json`：
+
+- `loader` / `loaderVersion`
+- `fabricApiVersion`（仅 Fabric）
+- `optiFineVersion`（仅 Cleanroom，`type:patch`，可为空表示不安装）
+
+安装时以这些字段为准；修改它们相当于重建实例组件，当前版本不提供在线切换加载器的配置项。
 
 ### Java 相关配置
 

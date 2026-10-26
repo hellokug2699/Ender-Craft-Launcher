@@ -13,6 +13,7 @@ using Ecl.Minecraft.Eula;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Launch;
+using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Versions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -41,6 +42,7 @@ internal sealed class CliApplication
             "instance" => await InstanceCommandAsync(rest).ConfigureAwait(false),
             "install" => await InstallCommandAsync(rest).ConfigureAwait(false),
             "launch" => await LaunchCommandAsync(rest).ConfigureAwait(false),
+            "loader" => await LoaderCommandAsync(rest).ConfigureAwait(false),
             "settings" => SettingsCommand(rest),
             "java" => await JavaCommandAsync(rest).ConfigureAwait(false),
             "account" => await AccountCommandAsync(rest).ConfigureAwait(false),
@@ -85,7 +87,63 @@ internal sealed class CliApplication
 
                     var loader = _commandLine.GetValue("loader") ?? "vanilla";
                     var loaderVersion = _commandLine.GetValue("loader-version");
-                    var result = await instances.CreateAsync(name, version, loader, loaderVersion).ConfigureAwait(false);
+                    var fabricApiVersion = _commandLine.GetValue("fabric-api-version");
+                    var optiFineVersion = _commandLine.GetValue("optifine-version");
+                    var catalog = _provider.GetRequiredService<ILoaderCatalog>();
+
+                    if (!LoaderKinds.TryParse(loader, out var loaderKind))
+                    {
+                        return UsageError($"不支持的加载器：{loader}");
+                    }
+
+                    if (loaderKind == LoaderKind.Cleanroom &&
+                        !string.Equals(version, "1.12.2", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return UsageError("Cleanroom 仅支持 Minecraft 1.12.2。");
+                    }
+
+                    if (loaderKind != LoaderKind.Vanilla && string.IsNullOrWhiteSpace(loaderVersion))
+                    {
+                        var versions = loaderKind == LoaderKind.Fabric
+                            ? await catalog.GetFabricLoadersAsync(version).ConfigureAwait(false)
+                            : await catalog.GetCleanroomVersionsAsync(version).ConfigureAwait(false);
+
+                        if (!versions.IsSuccess)
+                        {
+                            return WriteError(versions.Error);
+                        }
+
+                        loaderVersion = versions.Value!.FirstOrDefault()?.Version;
+                        if (string.IsNullOrWhiteSpace(loaderVersion))
+                        {
+                            return WriteError(new EclError("loader.no_versions", $"没有可用的 {loader} 加载器版本。"));
+                        }
+
+                        Console.WriteLine($"未指定加载器版本，使用最新版 {loaderVersion}");
+                    }
+
+                    if (loaderKind == LoaderKind.Fabric && string.IsNullOrWhiteSpace(fabricApiVersion))
+                    {
+                        var apiVersions = await catalog.GetFabricApiVersionsAsync(version).ConfigureAwait(false);
+                        if (!apiVersions.IsSuccess)
+                        {
+                            return WriteError(apiVersions.Error);
+                        }
+
+                        fabricApiVersion = apiVersions.Value!.FirstOrDefault()?.Version;
+                        if (string.IsNullOrWhiteSpace(fabricApiVersion))
+                        {
+                            return WriteError(new EclError(
+                                "loader.fabric_api_missing",
+                                $"游戏版本 {version} 没有可用的 Fabric API。"));
+                        }
+
+                        Console.WriteLine($"将自动安装 Fabric API {fabricApiVersion}");
+                    }
+
+                    var result = await instances
+                        .CreateAsync(name, version, loader, loaderVersion, fabricApiVersion, optiFineVersion)
+                        .ConfigureAwait(false);
                     if (!result.IsSuccess)
                     {
                         return WriteError(result.Error);
@@ -95,6 +153,16 @@ internal sealed class CliApplication
                     Console.WriteLine($"已创建实例 {instance.Name}");
                     Console.WriteLine($"  ID      : {instance.Id}");
                     Console.WriteLine($"  Version : {instance.VersionId}");
+                    if (!string.IsNullOrWhiteSpace(instance.FabricApiVersion))
+                    {
+                        Console.WriteLine($"  API     : {instance.FabricApiVersion}");
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(instance.OptiFineVersion))
+                    {
+                        Console.WriteLine($"  OptiFine: {instance.OptiFineVersion}");
+                    }
+
                     return 0;
                 }
 
@@ -154,6 +222,151 @@ internal sealed class CliApplication
         return 0;
     }
 
+    private async Task<int> LoaderCommandAsync(string[] args)
+    {
+        if (args.Length == 0 || !string.Equals(args[0], "list", StringComparison.OrdinalIgnoreCase))
+        {
+            return UsageError("loader 支持 list。");
+        }
+
+        var gameVersion = _commandLine.GetValue("version");
+        if (string.IsNullOrWhiteSpace(gameVersion))
+        {
+            return UsageError("loader list 需要 --version <游戏版本>。");
+        }
+
+        gameVersion = gameVersion.Trim();
+        var type = (_commandLine.GetValue("type") ?? "fabric").ToLowerInvariant();
+        var catalog = _provider.GetRequiredService<ILoaderCatalog>();
+        var json = _commandLine.HasFlag("json");
+
+        switch (type)
+        {
+            case "fabric":
+            case "cleanroom":
+                {
+                    var result = type == "fabric"
+                        ? await catalog.GetFabricLoadersAsync(gameVersion).ConfigureAwait(false)
+                        : await catalog.GetCleanroomVersionsAsync(gameVersion).ConfigureAwait(false);
+
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    if (json)
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(
+                            result.Value!.Select(item => new
+                            {
+                                type,
+                                gameVersion,
+                                version = item.Version,
+                                item.Stable,
+                                releasedAt = item.ReleasedAt,
+                            }),
+                            EclJson.Indented));
+                        return 0;
+                    }
+
+                    Console.WriteLine($"{type} 加载器版本（Minecraft {gameVersion}）：");
+                    foreach (var item in result.Value!)
+                    {
+                        var stable = item.Stable ? "稳定" : "测试";
+                        Console.WriteLine($"  {item.Version} · {FormatReleasedAt(item.ReleasedAt)} · {stable}");
+                    }
+
+                    if (result.Value!.Count == 0)
+                    {
+                        Console.WriteLine("  没有可用版本。");
+                    }
+
+                    return 0;
+                }
+
+            case "fabric-api":
+                {
+                    var result = await catalog.GetFabricApiVersionsAsync(gameVersion).ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    if (json)
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(
+                            result.Value!.Select(item => new
+                            {
+                                type,
+                                gameVersion,
+                                version = item.Version,
+                                releasedAt = item.ReleasedAt,
+                                item.FileName,
+                                url = item.DownloadUrl,
+                            }),
+                            EclJson.Indented));
+                        return 0;
+                    }
+
+                    Console.WriteLine($"Fabric API 版本（Minecraft {gameVersion}）：");
+                    foreach (var item in result.Value!)
+                    {
+                        Console.WriteLine($"  {item.Version} · {FormatReleasedAt(item.ReleasedAt)} · {item.FileName}");
+                    }
+
+                    if (result.Value!.Count == 0)
+                    {
+                        Console.WriteLine("  没有可用版本。");
+                    }
+
+                    return 0;
+                }
+
+            case "optifine":
+                {
+                    var result = await catalog.GetOptiFineVersionsAsync(gameVersion).ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    if (json)
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(
+                            result.Value!.Select(item => new
+                            {
+                                type,
+                                gameVersion,
+                                version = item.Key,
+                                releasedAt = item.ReleasedAt,
+                                item.FileName,
+                            }),
+                            EclJson.Indented));
+                        return 0;
+                    }
+
+                    Console.WriteLine($"OptiFine 版本（Minecraft {gameVersion}）：");
+                    foreach (var item in result.Value!)
+                    {
+                        Console.WriteLine($"  {item.Key} · {FormatReleasedAt(item.ReleasedAt)} · {item.FileName}");
+                    }
+
+                    if (result.Value!.Count == 0)
+                    {
+                        Console.WriteLine("  没有可用版本。");
+                    }
+
+                    return 0;
+                }
+
+            default:
+                return UsageError("--type 支持 fabric、cleanroom、fabric-api、optifine。");
+        }
+    }
+
+    private static string FormatReleasedAt(DateTimeOffset? releasedAt) =>
+        releasedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "更新时间未知";
+
     private async Task<int> InstallCommandAsync(string[] args)
     {
         var instanceId = args.ElementAtOrDefault(0);
@@ -195,6 +408,11 @@ internal sealed class CliApplication
         Console.WriteLine($"  Skipped   : {report.SkippedFiles}");
         Console.WriteLine($"  Bytes     : {report.Bytes}");
         Console.WriteLine($"  Duration  : {report.Duration.TotalSeconds:F1}s");
+        if (report.Components is { Count: > 0 })
+        {
+            Console.WriteLine($"  Components: {string.Join(", ", report.Components)}");
+        }
+
         return 0;
     }
 

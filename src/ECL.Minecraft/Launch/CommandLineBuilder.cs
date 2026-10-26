@@ -28,6 +28,11 @@ public static class CommandLineBuilder
         var globalJvmArguments = context.Settings.Get<string>("java.extraArguments");
         arguments.AddRange(SplitArguments(instanceJvmArguments ?? globalJvmArguments));
 
+        string ReplacePlaceholders(string value) => ReplaceVersionPlaceholders(value, context);
+        arguments.AddRange(VersionArgumentResolver.ResolveJvmArguments(
+            context.Version?.Arguments,
+            ReplacePlaceholders));
+
         arguments.Add("-cp");
         arguments.Add(BuildClasspath(context));
         arguments.Add(context.Version?.MainClass ?? "net.minecraft.client.main.Main");
@@ -58,6 +63,10 @@ public static class CommandLineBuilder
         var instanceGameArguments = context.GetInstanceSetting<string?>("instance.game.extraArguments");
         var globalGameArguments = context.Settings.Get<string>("game.extraArguments");
         arguments.AddRange(SplitArguments(instanceGameArguments ?? globalGameArguments));
+
+        arguments.AddRange(VersionArgumentResolver.ResolveExtraMinecraftArguments(
+            context.Version?.MinecraftArguments,
+            ReplacePlaceholders));
 
         var display = BuildDisplay(context.JavaExecutable, arguments);
         return new LaunchCommand(context.JavaExecutable, arguments, display);
@@ -122,6 +131,24 @@ public static class CommandLineBuilder
 
     public static string BuildDisplay(string executable, IReadOnlyList<string> arguments) =>
         string.Join(' ', new[] { executable }.Concat(arguments).Select(Quote));
+
+    private static string ReplaceVersionPlaceholders(string value, LaunchContext context)
+    {
+        var assetsIndex = context.Version?.AssetIndex?.Id ?? context.Version?.Assets ?? "legacy";
+        return value
+            .Replace("${auth_player_name}", context.Account.Name, StringComparison.OrdinalIgnoreCase)
+            .Replace("${version_name}", context.Instance.VersionId, StringComparison.OrdinalIgnoreCase)
+            .Replace("${game_directory}", context.GameDirectory, StringComparison.OrdinalIgnoreCase)
+            .Replace("${assets_root}", context.Paths.AssetsDirectory, StringComparison.OrdinalIgnoreCase)
+            .Replace("${assets_index_name}", assetsIndex, StringComparison.OrdinalIgnoreCase)
+            .Replace("${auth_uuid}", context.Account.Uuid, StringComparison.OrdinalIgnoreCase)
+            .Replace("${auth_access_token}", "0", StringComparison.OrdinalIgnoreCase)
+            .Replace("${user_type}", "legacy", StringComparison.OrdinalIgnoreCase)
+            .Replace("${version_type}", context.Version?.Type ?? "release", StringComparison.OrdinalIgnoreCase)
+            .Replace("${natives_directory}", context.NativesDirectory, StringComparison.OrdinalIgnoreCase)
+            .Replace("${launcher_name}", "EnderCraftLauncher", StringComparison.OrdinalIgnoreCase)
+            .Replace("${launcher_version}", LauncherVersion, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string BuildClasspath(LaunchContext context)
     {

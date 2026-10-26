@@ -24,6 +24,8 @@ public static class VersionMerger
             MainClass = child.MainClass ?? parent.MainClass,
             InheritsFrom = null,
             Assets = child.Assets ?? parent.Assets,
+            MinecraftArguments = child.MinecraftArguments ?? parent.MinecraftArguments,
+            Arguments = child.Arguments ?? parent.Arguments,
             AssetIndex = child.AssetIndex ?? parent.AssetIndex,
             JavaVersion = child.JavaVersion ?? parent.JavaVersion,
             Downloads = child.Downloads ?? parent.Downloads,

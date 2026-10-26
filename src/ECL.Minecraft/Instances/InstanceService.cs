@@ -12,10 +12,8 @@ public sealed partial class InstanceService : IInstanceService
     private static readonly HashSet<string> SupportedLoaders = new(StringComparer.OrdinalIgnoreCase)
     {
         "vanilla",
-        "forge",
-        "neoforge",
         "fabric",
-        "quilt",
+        "cleanroom",
     };
 
     private readonly IInstanceStore _store;
@@ -38,11 +36,16 @@ public sealed partial class InstanceService : IInstanceService
         string gameVersion,
         string loader = "vanilla",
         string? loaderVersion = null,
+        string? fabricApiVersion = null,
+        string? optiFineVersion = null,
         CancellationToken cancellationToken = default)
     {
         name = name.Trim();
         gameVersion = gameVersion.Trim();
         loader = loader.Trim();
+        loaderVersion = string.IsNullOrWhiteSpace(loaderVersion) ? null : loaderVersion.Trim();
+        fabricApiVersion = string.IsNullOrWhiteSpace(fabricApiVersion) ? null : fabricApiVersion.Trim();
+        optiFineVersion = string.IsNullOrWhiteSpace(optiFineVersion) ? null : optiFineVersion.Trim();
 
         if (name.Length is < 1 or > 48)
         {
@@ -59,9 +62,42 @@ public sealed partial class InstanceService : IInstanceService
             return Result<GameInstance>.Fail("instance.invalid_loader", $"不支持的加载器：{loader}");
         }
 
-        if (!string.IsNullOrWhiteSpace(loaderVersion) && !VersionRegex().IsMatch(loaderVersion.Trim()))
+        if (!string.Equals(loader, "vanilla", StringComparison.OrdinalIgnoreCase) && loaderVersion is null)
+        {
+            return Result<GameInstance>.Fail("instance.loader_version_required", "请选择加载器版本。");
+        }
+
+        if (string.Equals(loader, "cleanroom", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(gameVersion, "1.12.2", StringComparison.Ordinal))
+        {
+            return Result<GameInstance>.Fail("instance.cleanroom_version", "Cleanroom 仅支持 Minecraft 1.12.2。");
+        }
+
+        if (loaderVersion is not null && !LoaderVersionRegex().IsMatch(loaderVersion))
         {
             return Result<GameInstance>.Fail("instance.invalid_loader_version", "加载器版本格式不正确。");
+        }
+
+        if (fabricApiVersion is not null &&
+            (!string.Equals(loader, "fabric", StringComparison.OrdinalIgnoreCase) ||
+             !LoaderVersionRegex().IsMatch(fabricApiVersion)))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_fabric_api", "Fabric API 版本无效。");
+        }
+
+        if (optiFineVersion is not null)
+        {
+            if (!string.Equals(loader, "cleanroom", StringComparison.OrdinalIgnoreCase))
+            {
+                return Result<GameInstance>.Fail(
+                    "instance.optifine_requires_cleanroom",
+                    "OptiFine 仅在 Cleanroom 加载器下可选。");
+            }
+
+            if (!OptiFineKeyRegex().IsMatch(optiFineVersion))
+            {
+                return Result<GameInstance>.Fail("instance.invalid_optifine", "OptiFine 版本格式不正确。");
+            }
         }
 
         var existing = await _store.ListAsync(cancellationToken).ConfigureAwait(false);
@@ -80,7 +116,11 @@ public sealed partial class InstanceService : IInstanceService
             GameVersion = gameVersion,
             VersionId = versionId,
             Loader = loader.ToLowerInvariant(),
-            LoaderVersion = string.IsNullOrWhiteSpace(loaderVersion) ? null : loaderVersion.Trim(),
+            LoaderVersion = loaderVersion,
+            FabricApiVersion = string.Equals(loader, "fabric", StringComparison.OrdinalIgnoreCase)
+                ? fabricApiVersion
+                : null,
+            OptiFineVersion = optiFineVersion,
             CreatedAt = DateTimeOffset.UtcNow,
         };
 
@@ -162,6 +202,12 @@ public sealed partial class InstanceService : IInstanceService
 
     [GeneratedRegex("^[0-9A-Za-z._-]{1,64}$", RegexOptions.CultureInvariant)]
     private static partial Regex VersionRegex();
+
+    [GeneratedRegex("^[0-9A-Za-z._+-]{1,64}$", RegexOptions.CultureInvariant)]
+    private static partial Regex LoaderVersionRegex();
+
+    [GeneratedRegex("^[0-9A-Za-z._-]{1,32}:[0-9A-Za-z._-]{1,32}$", RegexOptions.CultureInvariant)]
+    private static partial Regex OptiFineKeyRegex();
 
     [GeneratedRegex("[^a-z0-9]+", RegexOptions.CultureInvariant)]
     private static partial Regex SlugRegex();

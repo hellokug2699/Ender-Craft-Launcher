@@ -57,6 +57,11 @@ public sealed class DownloadSourceResolverTests
         Assert.Equal(
             "https://bmclapi2.bangbang93.com/v1/objects/abc/client.jar",
             resolver.MapToMirror(new Uri("https://piston-data.mojang.com/v1/objects/abc/client.jar"))?.ToString());
+
+        Assert.Equal(
+            "https://maven.aliyun.com/repository/public/org/ow2/asm/asm/9.10.1/asm-9.10.1.jar",
+            resolver.MapToMirror(new Uri(
+                "https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.10.1/asm-9.10.1.jar"))?.ToString());
     }
 
     [Fact]

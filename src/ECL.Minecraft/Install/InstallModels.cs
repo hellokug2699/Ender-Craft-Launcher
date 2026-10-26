@@ -8,10 +8,13 @@ public enum InstallStage
 {
     Manifest,
     Version,
+    Loader,
     Client,
     Libraries,
     Assets,
     Logging,
+    FabricApi,
+    OptiFine,
     Completed,
 }
 
@@ -36,7 +39,8 @@ public sealed record InstallReport(
     int DownloadedFiles,
     int SkippedFiles,
     long Bytes,
-    TimeSpan Duration);
+    TimeSpan Duration,
+    IReadOnlyList<string>? Components = null);
 
 public interface IVersionInstallService
 {

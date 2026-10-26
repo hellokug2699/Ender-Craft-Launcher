@@ -33,6 +33,8 @@ Minecraft 对 Java 版本的要求随版本变化：1.16 及以下通常需要 J
    - 快照：`24w+` → 21，`26w+` → 25，更早按年份推断。
    - 无法识别的自定义版本回退到 21。
 
+Cleanroom 的 `version.json` 声明 `javaVersion.majorVersion = 25`，因此 1.12.2 Cleanroom 实例会被要求使用 Java 25，而不是原版 1.12.2 的 Java 8。
+
 ## 3. 兼容性检查
 
 `JavaCompatibility` 返回三种状态：
