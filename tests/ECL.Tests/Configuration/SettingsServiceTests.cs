@@ -18,7 +18,7 @@ public sealed class SettingsServiceTests
 
         Assert.Equal(4096, settings.Get<int>("java.defaultMemoryMb"));
         Assert.Equal(8, settings.Get<int>("network.maxConcurrentDownloads"));
-        Assert.Equal("official", settings.Get<string>("network.downloadSource"));
+        Assert.Equal("official-first", settings.Get<string>("network.downloadSource"));
         Assert.Contains(settings.Get<string>("launcher.language"), new[] { "zh-CN", "en-US" });
         Assert.Equal(SettingsValueSource.Default, settings.GetSource("java.defaultMemoryMb"));
     }

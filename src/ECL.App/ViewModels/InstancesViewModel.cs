@@ -8,6 +8,7 @@ using Ecl.Auth;
 using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Localization;
+using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Launch;
 
@@ -18,6 +19,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IInstanceService _instances;
     private readonly IAccountService _accounts;
     private readonly ILaunchService _launchService;
+    private readonly IVersionInstallService _installService;
     private readonly ISettingsService _settings;
     private readonly IDialogService _dialogs;
     private readonly ILocalizer _localizer;
@@ -58,6 +60,18 @@ public sealed partial class InstancesViewModel : ObservableObject
     [ObservableProperty]
     private bool _isBusy;
 
+    [ObservableProperty]
+    private bool _isInstalling;
+
+    [ObservableProperty]
+    private bool _installIndeterminate;
+
+    [ObservableProperty]
+    private double _installProgressValue;
+
+    [ObservableProperty]
+    private string _installStatus = string.Empty;
+
     public bool HasSelection => SelectedInstance is not null;
 
     public bool IsEmpty => Instances.Count == 0;
@@ -80,6 +94,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         IInstanceService instances,
         IAccountService accounts,
         ILaunchService launchService,
+        IVersionInstallService installService,
         ISettingsService settings,
         IDialogService dialogs,
         ILocalizer localizer,
@@ -88,6 +103,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         _instances = instances;
         _accounts = accounts;
         _launchService = launchService;
+        _installService = installService;
         _settings = settings;
         _dialogs = dialogs;
         _localizer = localizer;
@@ -199,6 +215,65 @@ public sealed partial class InstancesViewModel : ObservableObject
     private Task DryRunAsync() => RunLaunchAsync(dryRun: true);
 
     [RelayCommand]
+    private async Task InstallAsync()
+    {
+        if (SelectedInstance is null)
+        {
+            StatusMessage = _localizer.Get("instances.selectFirst");
+            return;
+        }
+
+        if (IsBusy)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        IsInstalling = true;
+        InstallIndeterminate = true;
+        InstallProgressValue = 0;
+        InstallStatus = _localizer.Get("instances.installing");
+
+        var progress = new Progress<InstallProgress>(update =>
+        {
+            InstallIndeterminate = update.IsIndeterminate;
+            InstallProgressValue = update.Percent;
+            InstallStatus = update.TotalFiles > 0
+                ? $"{update.Message} ({update.CompletedFiles}/{update.TotalFiles})"
+                : update.Message;
+        });
+
+        try
+        {
+            var result = await _installService
+                .InstallAsync(SelectedInstance.Model.Id, progress)
+                .ConfigureAwait(true);
+
+            if (!result.IsSuccess)
+            {
+                InstallStatus = result.Error?.Message ?? _localizer.Get("instances.installFailed");
+                StatusMessage = InstallStatus;
+                return;
+            }
+
+            InstallIndeterminate = false;
+            InstallProgressValue = 100;
+            InstallStatus = _localizer.Get("instances.installSucceeded");
+            StatusMessage = InstallStatus;
+        }
+        catch (Exception exception)
+        {
+            InstallStatus = _localizer.Get("instances.installFailed");
+            StatusMessage = _localizer.Get("install.failed", exception.Message);
+        }
+        finally
+        {
+            IsInstalling = false;
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
     private async Task AddAccountAsync()
     {
         var name = NewAccountName.Trim();
@@ -236,6 +311,9 @@ public sealed partial class InstancesViewModel : ObservableObject
         LaunchSteps.Clear();
         LaunchStatus = string.Empty;
         LaunchCommandPreview = string.Empty;
+        InstallStatus = string.Empty;
+        InstallProgressValue = 0;
+        InstallIndeterminate = false;
     }
 
     partial void OnSelectedAccountChanged(AccountItemViewModel? value)

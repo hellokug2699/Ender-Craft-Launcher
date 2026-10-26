@@ -9,6 +9,7 @@ using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Core.Localization;
 using Ecl.Java;
+using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Launch;
 using Microsoft.Extensions.DependencyInjection;
@@ -36,6 +37,7 @@ internal sealed class CliApplication
         {
             "version" => PrintVersion(),
             "instance" => await InstanceCommandAsync(rest).ConfigureAwait(false),
+            "install" => await InstallCommandAsync(rest).ConfigureAwait(false),
             "launch" => await LaunchCommandAsync(rest).ConfigureAwait(false),
             "settings" => SettingsCommand(rest),
             "java" => await JavaCommandAsync(rest).ConfigureAwait(false),
@@ -147,6 +149,50 @@ internal sealed class CliApplication
             Console.WriteLine($"  {instance.Name} · {instance.VersionId} · {instance.Loader} · {lastPlayed}");
         }
 
+        return 0;
+    }
+
+    private async Task<int> InstallCommandAsync(string[] args)
+    {
+        var instanceId = args.ElementAtOrDefault(0);
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            return UsageError("install 需要实例 ID。");
+        }
+
+        var installService = _provider.GetRequiredService<IVersionInstallService>();
+        var localizer = _provider.GetRequiredService<ILocalizer>();
+        var lastStage = (InstallStage?)null;
+
+        var progress = new InlineProgress<InstallProgress>(update =>
+        {
+            if (lastStage != update.Stage)
+            {
+                Console.WriteLine(update.Message);
+                lastStage = update.Stage;
+            }
+
+            if (update.TotalFiles > 0 &&
+                (update.CompletedFiles == update.TotalFiles || update.CompletedFiles % 200 == 0))
+            {
+                Console.WriteLine(
+                    $"  {update.CompletedFiles}/{update.TotalFiles} · {update.CompletedBytes / 1024 / 1024} MB");
+            }
+        });
+
+        var result = await installService.InstallAsync(instanceId, progress).ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return WriteError(result.Error);
+        }
+
+        var report = result.Value!;
+        Console.WriteLine(localizer.Get("cli.install.success"));
+        Console.WriteLine($"  Version   : {report.VersionId}");
+        Console.WriteLine($"  Downloaded: {report.DownloadedFiles}");
+        Console.WriteLine($"  Skipped   : {report.SkippedFiles}");
+        Console.WriteLine($"  Bytes     : {report.Bytes}");
+        Console.WriteLine($"  Duration  : {report.Duration.TotalSeconds:F1}s");
         return 0;
     }
 
@@ -486,5 +532,10 @@ internal sealed class CliApplication
         }
 
         return exitCode;
+    }
+
+    private sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>
+    {
+        public void Report(T value) => callback(value);
     }
 }

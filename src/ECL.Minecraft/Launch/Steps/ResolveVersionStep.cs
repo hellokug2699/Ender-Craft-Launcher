@@ -28,14 +28,6 @@ internal sealed class ResolveVersionStep(IVersionResolver versionResolver, ILoca
 
         context.Version = result.Value;
 
-        if (!string.IsNullOrWhiteSpace(context.Version?.InheritsFrom))
-        {
-            return new LaunchStepResult(
-                Id,
-                LaunchStepStatus.Warning,
-                localizer.Get("launch.version.inherits", context.Instance.VersionId, context.Version.InheritsFrom));
-        }
-
         return new LaunchStepResult(
             Id,
             LaunchStepStatus.Success,

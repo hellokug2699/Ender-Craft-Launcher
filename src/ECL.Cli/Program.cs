@@ -10,6 +10,7 @@ using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Core.Localization;
 using Ecl.Core.Logging;
+using Ecl.Download;
 using Ecl.Java;
 using Ecl.Minecraft;
 using Microsoft.Extensions.DependencyInjection;
@@ -40,6 +41,7 @@ internal static class Program
         services.AddEclLogging(paths, console: true, consoleMinimumLevel: Serilog.Events.LogEventLevel.Warning);
         services.AddEclCore(paths, culture);
         services.AddEclConfiguration();
+        services.AddEclDownload();
         services.AddEclAuth();
         services.AddEclJava();
         services.AddEclMinecraft();
@@ -61,6 +63,7 @@ internal static class Program
           instance create <名称> --version <版本> [--loader <加载器>] [--loader-version <版本>]
                                           创建实例
           instance delete <实例ID> --force 删除实例
+          install <实例ID>                下载/补全原版版本文件
           launch <实例ID> [--dry-run] [--json]
                                           启动实例；--dry-run 仅生成命令
           settings list [--instance <实例ID>] [--json]
@@ -86,6 +89,7 @@ internal static class Program
         示例:
           ecl account add-offline Steve --default
           ecl instance create "生存" --version 1.21.1
+          ecl install 生存-a1b2c3
           ecl launch 生存-a1b2c3 --dry-run
           ecl settings set java.defaultMemoryMb 8192
         """;

@@ -20,6 +20,10 @@ public sealed partial class MinecraftVersion
 
     public VersionJavaRequirement? JavaVersion { get; set; }
 
+    public VersionDownloads? Downloads { get; set; }
+
+    public VersionLogging? Logging { get; set; }
+
     public List<VersionLibrary> Libraries { get; set; } = [];
 
     public static bool IsValidVersionId(string? versionId) =>
@@ -32,6 +36,14 @@ public sealed partial class MinecraftVersion
 public sealed class VersionAssetIndex
 {
     public string Id { get; set; } = string.Empty;
+
+    public string? Url { get; set; }
+
+    public string? Sha1 { get; set; }
+
+    public long? Size { get; set; }
+
+    public long? TotalSize { get; set; }
 }
 
 public sealed class VersionJavaRequirement
@@ -41,7 +53,103 @@ public sealed class VersionJavaRequirement
     public int MajorVersion { get; set; }
 }
 
+public sealed class VersionDownloads
+{
+    public VersionDownload? Client { get; set; }
+
+    public VersionDownload? Server { get; set; }
+}
+
+public sealed class VersionDownload
+{
+    public string? Url { get; set; }
+
+    public string? Sha1 { get; set; }
+
+    public long? Size { get; set; }
+}
+
+public sealed class VersionLogging
+{
+    public VersionLoggingClient? Client { get; set; }
+}
+
+public sealed class VersionLoggingClient
+{
+    public string? Argument { get; set; }
+
+    public string? Type { get; set; }
+
+    public VersionLoggingFile? File { get; set; }
+}
+
+public sealed class VersionLoggingFile
+{
+    public string Id { get; set; } = string.Empty;
+
+    public string? Url { get; set; }
+
+    public string? Sha1 { get; set; }
+
+    public long? Size { get; set; }
+}
+
 public sealed class VersionLibrary
 {
     public string Name { get; set; } = string.Empty;
+
+    public string? Url { get; set; }
+
+    public string? Sha1 { get; set; }
+
+    public long? Size { get; set; }
+
+    public VersionLibraryDownloads? Downloads { get; set; }
+
+    public Dictionary<string, string>? Natives { get; set; }
+
+    public VersionLibraryExtract? Extract { get; set; }
+
+    public List<VersionRule>? Rules { get; set; }
+}
+
+public sealed class VersionLibraryDownloads
+{
+    public VersionLibraryArtifact? Artifact { get; set; }
+
+    public Dictionary<string, VersionLibraryArtifact>? Classifiers { get; set; }
+}
+
+public sealed class VersionLibraryArtifact
+{
+    public string? Path { get; set; }
+
+    public string? Url { get; set; }
+
+    public string? Sha1 { get; set; }
+
+    public long? Size { get; set; }
+}
+
+public sealed class VersionLibraryExtract
+{
+    public List<string>? Exclude { get; set; }
+}
+
+public sealed class VersionRule
+{
+    public string Action { get; set; } = "allow";
+
+    public VersionRuleOs? Os { get; set; }
+
+    public Dictionary<string, bool>? Features { get; set; }
+}
+
+public sealed class VersionRuleOs
+{
+    public string? Name { get; set; }
+
+    public string? Arch { get; set; }
+
+    public string? Version { get; set; }
 }
