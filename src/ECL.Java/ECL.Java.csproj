@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ECL.Core\ECL.Core.csproj" />
+    <ProjectReference Include="..\ECL.Download\ECL.Download.csproj" />
   </ItemGroup>
 
   <ItemGroup>

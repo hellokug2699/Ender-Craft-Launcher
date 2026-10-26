@@ -11,8 +11,8 @@
 | Order | StepId | 实现 | 职责 |
 | --- | --- | --- | --- |
 | 100 | `validate` | `ValidateInstanceStep` | 实例目录、账户名、基础前提 |
-| 200 | `java` | `ResolveJavaStep` | 实例/全局 Java 路径、自动探测、内存计算 |
-| 300 | `version` | `ResolveVersionStep` | 读取本地版本 JSON 并合并 `inheritsFrom` |
+| 150 | `version` | `ResolveVersionStep` | 读取本地版本 JSON 并合并 `inheritsFrom` |
+| 200 | `java` | `ResolveJavaStep` | 实例/全局路径、自动选择、兼容性检查、内存计算 |
 | 350 | `files` | `ValidateGameFilesStep` | 检查 client、库、natives、资源索引、日志配置 |
 | 360 | `natives` | `ExtractNativesStep` | 清理并解压实例隔离的 natives |
 | 370 | `eula` | `EnsureEulaStep` | 检查/写入 `eula.txt`，未同意则阻止真实启动 |
@@ -43,7 +43,7 @@
 
 - 用于 UI 的“预览命令”和 CLI 的 `launch --dry-run`。
 - 缺少版本文件时降级为 `Warning`，使用占位 `mainClass` 继续构建命令。
-- 缺少 Java 时降级为 `Warning`，使用 `java` 作为可执行文件。
+- 缺少 Java 时降级为 `Warning`，使用 `java` 作为可执行文件；Java 版本不匹配也降级为 `Warning`。
 - 缺少游戏关键文件时降级为 `Warning`，仍生成预期命令。
 - `natives` 返回 `Skipped`；`eula` 在未同意时返回 `Warning`。
 - `start` 步骤返回 `Skipped`，不启动进程。
@@ -52,6 +52,7 @@
 ### 真实启动
 
 - 缺少 Java、版本或关键文件时直接 `Failed`，不会执行后续步骤。
+- Java 版本与游戏版本不匹配时默认只 `Warning`，UI 会在启动前弹窗确认；实例设置可关闭兼容性检验。
 - 未同意 EULA 时 `eula` 步骤 `Failed`；用户显式勾选后写入 `eula=true`。
 - 所有步骤成功后，`StartGameStep` 通过 `IProcessLauncher` 启动进程。
 - 启动成功后更新实例的 `LastPlayedAt`。

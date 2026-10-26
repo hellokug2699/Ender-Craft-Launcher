@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-using Ecl.Configuration.Settings;
 using Ecl.Core.Localization;
 using Ecl.Java;
+using Ecl.Minecraft.Java;
 
 namespace Ecl.Minecraft.Launch.Steps;
 
-internal sealed class ResolveJavaStep(IJavaLocator javaLocator, ILocalizer localizer) : ILaunchStep
+internal sealed class ResolveJavaStep(IJavaSelectionService selection, ILocalizer localizer) : ILaunchStep
 {
     public string Id => "java";
 
@@ -14,65 +14,71 @@ internal sealed class ResolveJavaStep(IJavaLocator javaLocator, ILocalizer local
 
     public async Task<LaunchStepResult> ExecuteAsync(LaunchContext context, CancellationToken cancellationToken = default)
     {
-        var warnings = new List<string>();
-        var instanceJavaPath = context.GetInstanceSetting<string?>("instance.java.executablePath");
-        var globalJavaPath = context.Settings.Get<string>("java.defaultPath");
-
-        JavaRuntime? runtime = null;
-        foreach (var configuredPath in new[] { instanceJavaPath, globalJavaPath })
-        {
-            if (string.IsNullOrWhiteSpace(configuredPath))
-            {
-                continue;
-            }
-
-            runtime = javaLocator.FromPath(configuredPath);
-            if (runtime is null)
-            {
-                warnings.Add(localizer.Get("launch.java.configuredInvalid", configuredPath));
-                continue;
-            }
-
-            break;
-        }
-
-        runtime ??= (await javaLocator.FindAllAsync(cancellationToken).ConfigureAwait(false))
-            .OrderByDescending(item => item.Version)
-            .FirstOrDefault();
+        var result = await selection
+            .ResolveAsync(context.Instance, context.Version, cancellationToken)
+            .ConfigureAwait(false);
 
         var instanceMemory = context.GetInstanceSetting<int?>("instance.java.memoryMb");
         var globalMemory = context.Settings.Get<int>("java.defaultMemoryMb");
         context.MemoryMb = Math.Clamp(instanceMemory ?? globalMemory, 1024, 65536);
 
-        if (runtime is null)
+        if (result.Runtime is null)
         {
             context.JavaExecutable = "java";
-            var message = localizer.Get(
-                context.DryRun ? "launch.java.notFound.preview" : "launch.java.notFound",
-                context.MemoryMb);
-            if (warnings.Count > 0)
-            {
-                message = $"{message} {string.Join(' ', warnings)}";
-            }
+            var missingMessage = localizer.Get(
+                context.DryRun ? "launch.java.missing.preview" : "launch.java.missing");
+            missingMessage = AppendWarnings(missingMessage, result.Warnings);
 
             return new LaunchStepResult(
                 Id,
                 context.DryRun ? LaunchStepStatus.Warning : LaunchStepStatus.Failed,
-                message);
+                missingMessage);
         }
 
-        context.Java = runtime;
-        context.JavaExecutable = runtime.ExecutablePath;
+        context.Java = result.Runtime;
+        context.JavaExecutable = result.Runtime.ExecutablePath;
 
-        var foundMessage = localizer.Get("launch.java.found", runtime.DisplayName, context.MemoryMb);
-        if (warnings.Count > 0)
+        if (!result.CompatibilityCheckEnabled && result.Compatibility is { IsCompatible: false })
         {
-            foundMessage = $"{foundMessage} {string.Join(' ', warnings)}";
+            return new LaunchStepResult(
+                Id,
+                LaunchStepStatus.Success,
+                AppendWarnings(
+                    localizer.Get("launch.java.checkDisabled", result.Runtime.DisplayName),
+                    result.Warnings));
         }
 
+        if (result.Compatibility is { Status: JavaCompatibilityStatus.Unknown })
+        {
+            return new LaunchStepResult(
+                Id,
+                LaunchStepStatus.Warning,
+                AppendWarnings(
+                    localizer.Get("launch.java.unknownVersion", result.Runtime.DisplayName),
+                    result.Warnings));
+        }
+
+        if (result.Compatibility is { IsCompatible: false })
+        {
+            var required = result.Requirement?.Describe() ?? "Java";
+            return new LaunchStepResult(
+                Id,
+                LaunchStepStatus.Warning,
+                AppendWarnings(
+                    localizer.Get(
+                        "launch.java.incompatible",
+                        result.Runtime.Version?.Raw ?? result.Runtime.DisplayName,
+                        required),
+                    result.Warnings));
+        }
+
+        var foundMessage = localizer.Get("launch.java.found", result.Runtime.DisplayName, context.MemoryMb);
         return new LaunchStepResult(
             Id,
-            warnings.Count > 0 ? LaunchStepStatus.Warning : LaunchStepStatus.Success,
-            foundMessage);
+            result.Warnings.Count > 0 ? LaunchStepStatus.Warning : LaunchStepStatus.Success,
+            AppendWarnings(foundMessage, result.Warnings));
     }
+
+    private static string AppendWarnings(string message, IReadOnlyList<string> warnings) =>
+        warnings.Count == 0 ? message : $"{message} {string.Join(' ', warnings)}";
 }

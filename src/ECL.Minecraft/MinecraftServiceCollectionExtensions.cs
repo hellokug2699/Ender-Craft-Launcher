@@ -3,6 +3,7 @@
 using Ecl.Configuration;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
+using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Launch;
 using Ecl.Minecraft.Launch.Steps;
 using Ecl.Minecraft.Versions;
@@ -20,6 +21,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IVersionResolver, VersionResolver>();
         services.AddSingleton<IProcessLauncher, SystemProcessLauncher>();
         services.AddSingleton<IVersionInstallService, VanillaInstallService>();
+        services.AddSingleton<IJavaSelectionService, JavaSelectionService>();
 
         services.AddSingleton<ILaunchStep, ValidateInstanceStep>();
         services.AddSingleton<ILaunchStep, ResolveJavaStep>();

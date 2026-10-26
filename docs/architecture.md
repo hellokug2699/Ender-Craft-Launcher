@@ -11,7 +11,7 @@ ECL 是一个 Windows 优先的 Minecraft 启动器，目标能力对齐 HMCL / 
 
 同时保留自己的设计空间：配置项由元数据驱动、启动流程分阶段可观测、模块边界清晰、UI 只是薄壳。
 
-当前版本（v0.2）已完成原版安装闭环：版本清单、版本 JSON 与继承链、客户端、依赖库、资源、日志配置下载，natives 解压、EULA 处理以及真实进程启动。加载器、账户体系与 Java 管理是下一阶段的主要工作。
+当前版本（v0.4）已完成原版安装与 Java 管理：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查与 Mojang Java 运行时自动下载。v0.3 账户体系因 Microsoft OAuth 审核限制暂缓；加载器与 Mod 管理是下一阶段。
 
 ## 2. 设计原则
 
@@ -42,6 +42,7 @@ flowchart TD
     Download --> Config
     Auth --> Core
     Java --> Core
+    Java --> Download
     MC --> Core
     MC --> Config
     MC --> Download
@@ -51,11 +52,13 @@ flowchart TD
     App --> Config
     App --> Auth
     App --> Java
+    App --> Download
     App --> Core
     Cli --> MC
     Cli --> Config
     Cli --> Auth
     Cli --> Java
+    Cli --> Download
     Cli --> Core
     Tests --> MC
     Tests --> Config
@@ -75,8 +78,8 @@ flowchart TD
 | `ECL.Configuration` | 配置定义、注册表、全局/实例作用域、持久化、可见性 | `OptionDefinition<T>`, `OptionRegistry`, `ISettingsService` |
 | `ECL.Download` | 下载源策略、官方↔BMCLAPI 映射、并发/重试/续传、哈希校验 | `DownloadSourceResolver`, `IDownloadService`, `DownloadRequest` |
 | `ECL.Auth` | 账户模型、离线 UUID、账户文件 | `Account`, `IAccountService`, `OfflineUuid` |
-| `ECL.Java` | Java 版本解析、运行时探测 | `JavaVersion`, `IJavaLocator` |
-| `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版安装、启动上下文与步骤、进程启动 | `GameInstance`, `VanillaInstallService`, `ILaunchStep`, `ILaunchService` |
+| `ECL.Java` | Java 版本解析、运行时探测、需求/兼容性、Mojang 运行时下载 | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `IJavaInstallService` |
+| `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版安装、Java 选择、启动上下文与步骤、进程启动 | `GameInstance`, `VanillaInstallService`, `IJavaSelectionService`, `ILaunchStep` |
 | `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框 | `MainViewModel`, `InstancesViewModel`, `SettingsViewModel` |
 | `ECL.Cli` | 无 GUI 管理、调试启动链路 | `CliApplication`, `ParsedCommandLine` |
 | `ECL.Tests` | 单元测试与临时数据目录 | `TestEnvironment`, `FakeProcessLauncher` |
@@ -131,7 +134,7 @@ services.AddEclMinecraft();
 ├─ versions/<version-id>/          # 共享版本 JSON 与 jar
 ├─ libraries/                      # 共享 Maven 库
 ├─ assets/                         # 共享资源
-├─ java/                           # 启动器托管的 Java 运行时
+├─ java/                           # 启动器托管的 Java 运行时（java/<component>）
 ├─ cache/
 └─ logs/                           # ecl-YYYYMMDD.log
 ```
@@ -160,7 +163,7 @@ services.AddEclMinecraft();
 详见 [launch-pipeline.md](launch-pipeline.md)。概要：
 
 ```text
-Validate(100) → ResolveJava(200) → ResolveVersion(300) → CheckFiles(350)
+Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 → ExtractNatives(360) → EnsureEula(370) → BuildCommand(400) → Start(500)
 ```
 
@@ -168,7 +171,16 @@ Validate(100) → ResolveJava(200) → ResolveVersion(300) → CheckFiles(350)
 - 真实启动缺少 Java、关键文件或 EULA 同意时直接失败，并停在对应步骤。
 - 每个步骤返回 `Success / Warning / Skipped / Failed`，UI 与 CLI 展示同一份报告。
 
-### 7.4 配置解析
+### 7.4 Java 管理
+
+1. 读取版本 JSON 的 `javaVersion`；缺失时按游戏版本推断最低主版本（1.16 及以下限制 Java 8）。
+2. 按“实例指定 → 全局指定 → 自动选择 → 最高版本兜底”的顺序解析 Java。
+3. `JavaCompatibility` 判断过旧/过新/未知；UI 弹窗提示，实例可关闭检查。
+4. 没有可用 Java 时，`IJavaInstallService` 从 Mojang Java 运行时索引下载对应 component 到 `<data>/java/<component>`，校验 SHA-1，处理目录、符号链接与执行位。
+
+详见 [java.md](java.md)。
+
+### 7.5 配置解析
 
 详见 [configuration.md](configuration.md)。概要：
 
@@ -246,15 +258,15 @@ Validate(100) → ResolveJava(200) → ResolveVersion(300) → CheckFiles(350)
 
 ## 10. 当前边界与已知缺口
 
-- 已实现原版安装、资源/库补全、natives 解压与 EULA 流程；加载器安装尚未实现。
+- 已实现原版安装、资源/库补全、natives 解压、EULA、Java 选择/兼容性检查/Mojang 运行时下载；加载器安装尚未实现。
 - `inheritsFrom` 已在本地版本 JSON 层面合并；加载器生成的继承链仍需专用安装器。
 - 已处理 library `rules`、natives classifier、日志配置路径；尚未使用版本 JSON 的 `arguments` 占位符体系（当前由启动器自建命令，原版可用）。
-- Java 仍使用本机探测到的最高版本，未按 Minecraft 版本自动匹配/下载；旧版本可能需要手动指定 Java 8。
-- 未实现 Microsoft OAuth、authlib-injector、令牌加密。
+- Java 自动下载目前仅支持 Mojang 运行时；Adoptium/Zulu/Liberica、32/64 位与内存匹配、JVM 预设未实现。
+- 未实现 Microsoft OAuth、authlib-injector、令牌加密（v0.3 暂缓）。
 - 未实现更新器与签名验证；签名脚本已预留。
 - 未实现下载限速；并发、重试、续传已生效。
 - 主题固定深色；主题切换、托盘、崩溃分析在路线图中。
 
 ## 11. 下一步
 
-按 [roadmap.md](roadmap.md) 推进：先完成 Java 版本匹配与账户体系，再扩展加载器。启动流水线、配置框架、下载层和实例模型已经为这些能力预留了接入点。
+按 [roadmap.md](roadmap.md) 推进：v0.3 账户体系暂缓，下一步优先做 v0.5 加载器安装；启动流水线、配置框架、下载层、Java 管理和实例模型已经为这些能力预留了接入点。

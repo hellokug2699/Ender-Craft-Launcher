@@ -29,7 +29,7 @@
 - [~] 真实启动冒烟测试：Linux 下已完成安装、Dry Run 与进程拉起；Windows + 兼容 Java 的手动验证待做。
 - [ ] 版本 JSON `arguments` 占位符完整替换（当前启动器自建参数，原版可用；加载器阶段需要）。
 
-## v0.3 账户体系
+## v0.3 账户体系（暂缓：Microsoft OAuth 审核限制）
 
 - [ ] Microsoft OAuth 设备码/授权码流程。
 - [ ] Xbox Live → XSTS → Minecraft Services 链路。
@@ -38,12 +38,16 @@
 - [ ] authlib-injector 第三方认证。
 - [ ] 账户管理 UI。
 
-## v0.4 Java 管理
+## v0.4 Java 管理（已完成）
 
-- [ ] 按 Minecraft 版本推荐 Java 主版本。
-- [ ] 下载 Mojang / Adoptium / 其他发行版运行时。
-- [ ] 校验、解压、版本目录管理。
-- [ ] 每实例 Java 选择 UI。
+- [x] 按 Minecraft 版本推荐 Java 主版本（版本 JSON + 版本号推断）。
+- [x] 下载 Mojang Java 运行时（官方/镜像，四档下载源策略）。
+- [x] SHA-1 校验、续传、并发、链接与可执行位处理。
+- [x] 每实例 Java 选择器 + 自动选择。
+- [x] Java 兼容性检查、启动前弹窗、实例级关闭开关。
+- [x] 无 Java 时提示并支持一键下载。
+- [ ] Adoptium / Zulu / Liberica 等第三方运行时。
+- [ ] 32/64 位与内存需求校验。
 - [ ] JVM 参数预设（G1、ZGC、Aikar flags）。
 
 ## v0.5 模组加载器

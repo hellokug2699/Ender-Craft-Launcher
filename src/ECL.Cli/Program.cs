@@ -75,6 +75,7 @@ internal static class Program
           settings clear <键> [--instance <实例ID>]
                                           清除配置项
           java list [--json]              列出发现的 Java 运行时
+          java install <实例ID>           自动下载该版本需要的 Java 运行时
           account list [--json]           列出账户
           account add-offline <名称> [--default]
                                           添加离线账户
