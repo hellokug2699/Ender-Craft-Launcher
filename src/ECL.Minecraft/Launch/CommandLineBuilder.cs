@@ -1,0 +1,179 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+using System.Text;
+
+namespace Ecl.Minecraft.Launch;
+
+public static class CommandLineBuilder
+{
+    public static LaunchCommand Build(LaunchContext context)
+    {
+        var arguments = new List<string>();
+
+        arguments.Add($"-Xmx{context.MemoryMb}M");
+        arguments.Add($"-Xms{Math.Min(1024, context.MemoryMb)}M");
+        arguments.Add($"-Djava.library.path={context.NativesDirectory}");
+        arguments.Add("-Dminecraft.launcher.brand=EnderCraftLauncher");
+        arguments.Add($"-Dminecraft.launcher.version={LauncherVersion}");
+
+        var instanceJvmArguments = context.GetInstanceSetting<string?>("instance.java.extraArguments");
+        var globalJvmArguments = context.Settings.Get<string>("java.extraArguments");
+        arguments.AddRange(SplitArguments(instanceJvmArguments ?? globalJvmArguments));
+
+        arguments.Add("-cp");
+        arguments.Add(BuildClasspath(context));
+        arguments.Add(context.Version?.MainClass ?? "net.minecraft.client.main.Main");
+
+        arguments.Add("--username");
+        arguments.Add(context.Account.Name);
+        arguments.Add("--version");
+        arguments.Add(context.Instance.VersionId);
+        arguments.Add("--gameDir");
+        arguments.Add(context.GameDirectory);
+        arguments.Add("--assetsDir");
+        arguments.Add(context.Paths.AssetsDirectory);
+        arguments.Add("--assetIndex");
+        arguments.Add(context.Version?.AssetIndex?.Id ?? context.Version?.Assets ?? "legacy");
+        arguments.Add("--uuid");
+        arguments.Add(context.Account.Uuid);
+        arguments.Add("--accessToken");
+        arguments.Add("0");
+        arguments.Add("--userType");
+        arguments.Add("legacy");
+        arguments.Add("--versionType");
+        arguments.Add(context.Version?.Type ?? "release");
+        arguments.Add("--width");
+        arguments.Add(context.Settings.Get<int>("game.windowWidth").ToString());
+        arguments.Add("--height");
+        arguments.Add(context.Settings.Get<int>("game.windowHeight").ToString());
+
+        var instanceGameArguments = context.GetInstanceSetting<string?>("instance.game.extraArguments");
+        var globalGameArguments = context.Settings.Get<string>("game.extraArguments");
+        arguments.AddRange(SplitArguments(instanceGameArguments ?? globalGameArguments));
+
+        var display = BuildDisplay(context.JavaExecutable, arguments);
+        return new LaunchCommand(context.JavaExecutable, arguments, display);
+    }
+
+    public static IReadOnlyList<string> SplitArguments(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return [];
+        }
+
+        var result = new List<string>();
+        var builder = new StringBuilder();
+        var inQuotes = false;
+        var quote = '"';
+
+        foreach (var character in raw)
+        {
+            if (inQuotes)
+            {
+                if (character == quote)
+                {
+                    inQuotes = false;
+                }
+                else
+                {
+                    builder.Append(character);
+                }
+
+                continue;
+            }
+
+            if (character is '"' or '\'')
+            {
+                inQuotes = true;
+                quote = character;
+                continue;
+            }
+
+            if (char.IsWhiteSpace(character))
+            {
+                if (builder.Length > 0)
+                {
+                    result.Add(builder.ToString());
+                    builder.Clear();
+                }
+
+                continue;
+            }
+
+            builder.Append(character);
+        }
+
+        if (builder.Length > 0)
+        {
+            result.Add(builder.ToString());
+        }
+
+        return result;
+    }
+
+    public static string BuildDisplay(string executable, IReadOnlyList<string> arguments) =>
+        string.Join(' ', new[] { executable }.Concat(arguments).Select(Quote));
+
+    private static string BuildClasspath(LaunchContext context)
+    {
+        if (context.Version is null)
+        {
+            return "<classpath>";
+        }
+
+        var entries = new List<string>();
+        foreach (var library in context.Version.Libraries)
+        {
+            var relativePath = ToMavenPath(library.Name);
+            if (relativePath is null)
+            {
+                continue;
+            }
+
+            entries.Add(Path.Combine(context.Paths.LibrariesDirectory, relativePath));
+        }
+
+        entries.Add(Path.Combine(context.VersionDirectory, $"{context.Instance.VersionId}.jar"));
+        return string.Join(Path.PathSeparator, entries);
+    }
+
+    private static string? ToMavenPath(string coordinates)
+    {
+        var parts = coordinates.Split(':');
+        if (parts.Length < 3)
+        {
+            return null;
+        }
+
+        if (parts.Length >= 4 && parts[3].StartsWith("natives", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var group = parts[0].Replace('.', Path.DirectorySeparatorChar);
+        var artifact = parts[1];
+        var version = parts[2];
+        var classifier = parts.Length >= 4 ? $"-{parts[3]}" : string.Empty;
+        var fileName = $"{artifact}-{version}{classifier}.jar";
+        return Path.Combine(group, artifact, version, fileName);
+    }
+
+    private static string Quote(string value)
+    {
+        if (value.Length == 0)
+        {
+            return "\"\"";
+        }
+
+        if (!value.Any(character => char.IsWhiteSpace(character) || character == '"'))
+        {
+            return value;
+        }
+
+        return $"\"{value.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";
+    }
+
+    private static string LauncherVersion =>
+        typeof(CommandLineBuilder).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+}

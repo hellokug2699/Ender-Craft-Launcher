@@ -1,0 +1,66 @@
+<Window x:Class="Ecl.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:Ecl.App.Localization"
+        Title="{loc:Loc Key=app.name}"
+        Width="1180"
+        Height="760"
+        MinWidth="980"
+        MinHeight="640"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BackgroundBrush}"
+        FontFamily="Segoe UI">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="232" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0"
+                Background="{StaticResource SidebarBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,0,1,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Margin="22,26,22,24">
+                    <TextBlock Text="ECL"
+                               FontSize="26"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource AccentBrush}" />
+                    <TextBlock Text="{loc:Loc Key=app.tagline}"
+                               Margin="0,4,0,0"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="12"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <ListBox DockPanel.Dock="Top"
+                         ItemsSource="{Binding NavItems}"
+                         SelectedItem="{Binding SelectedNavItem, Mode=TwoWay}"
+                         ItemContainerStyle="{StaticResource NavItemStyle}"
+                         Margin="12,0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Title}" FontSize="13" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <StackPanel DockPanel.Dock="Bottom" Margin="22,0,22,22">
+                    <TextBlock Text="{Binding VersionText}"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               FontSize="11"
+                               Margin="0,0,0,4" />
+                    <TextBlock Text="{Binding DataDirectory}"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               FontSize="10"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding DataDirectory}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <ContentControl Grid.Column="1"
+                        Content="{Binding SelectedNavItem.Page}"
+                        Margin="32,26,32,26" />
+    </Grid>
+</Window>

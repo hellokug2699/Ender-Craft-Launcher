@@ -1,0 +1,38 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+*.user
+*.suo
+.vs/
+.idea/
+.vscode/
+
+# Test / coverage
+TestResults/
+coverage/
+*.coverage
+*.trx
+
+# Local runtime data
+data/
+logs/
+portable.flag
+
+# Secrets — these live in the private Core repository, never here
+*.pfx
+*.p12
+*.snk
+*.key
+*.pem
+secrets/
+secrets.json
+appsettings.local.json
+.env
+.env.*
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
