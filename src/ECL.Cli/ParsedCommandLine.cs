@@ -12,6 +12,7 @@ public sealed class ParsedCommandLine
         "force",
         "default",
         "dry-run",
+        "accept-eula",
         "verbose",
     };
 

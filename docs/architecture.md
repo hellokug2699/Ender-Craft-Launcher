@@ -115,7 +115,8 @@ services.AddEclMinecraft();
 ```text
 <data>/
 ├─ config/
-│  └─ global.json                  # 全局配置
+│  ├─ global.json                  # 全局配置
+│  └─ eula.json                    # EULA 同意记录
 ├─ accounts/
 │  └─ accounts.json                # 账户与默认账户
 ├─ instances/
@@ -173,9 +174,9 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 
 ### 7.4 Java 管理
 
-1. 读取版本 JSON 的 `javaVersion`；缺失时按游戏版本推断最低主版本（1.16 及以下限制 Java 8）。
+1. 读取版本 JSON 的 `javaVersion`（权威来源）；缺失时按游戏版本推断最低主版本（1.16 及以下建议 Java 8，26.x 建议 Java 25）。
 2. 按“实例指定 → 全局指定 → 自动选择 → 最高版本兜底”的顺序解析 Java。
-3. `JavaCompatibility` 判断过旧/过新/未知；UI 弹窗提示，实例可关闭检查。
+3. `JavaCompatibility` 只判断“低于最低版本 / 未知 / 兼容”，不限制最高版本；UI 弹窗提示，实例可关闭检查。
 4. 没有可用 Java 时，`IJavaInstallService` 从 Mojang Java 运行时索引下载对应 component 到 `<data>/java/<component>`，校验 SHA-1，处理目录、符号链接与执行位。
 
 详见 [java.md](java.md)。

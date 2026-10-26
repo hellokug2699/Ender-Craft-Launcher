@@ -9,53 +9,57 @@ namespace Ecl.Tests.Java;
 public sealed class JavaRequirementTests
 {
     [Theory]
-    [InlineData("1.16.5", 8, 8)]
-    [InlineData("1.17.1", 16, null)]
-    [InlineData("1.20.1", 17, null)]
-    [InlineData("1.20.5", 21, null)]
-    [InlineData("1.21.1", 21, null)]
-    public void InfersJavaRequirementFromGameVersion(string gameVersion, int minimum, int? maximum)
+    [InlineData("1.16.5", 8)]
+    [InlineData("1.17.1", 16)]
+    [InlineData("1.20.1", 17)]
+    [InlineData("1.20.5", 21)]
+    [InlineData("1.21.1", 21)]
+    [InlineData("26.1", 25)]
+    [InlineData("26.2.1", 25)]
+    [InlineData("26w01a", 25)]
+    public void InfersMinimumJavaFromGameVersion(string gameVersion, int minimum)
     {
         var requirement = JavaRequirements.Resolve(new MinecraftVersion { Id = gameVersion }, gameVersion);
 
         Assert.Equal(minimum, requirement.MinimumMajor);
-        Assert.Equal(maximum, requirement.MaximumMajor);
     }
 
     [Fact]
-    public void PrefersDeclaredJavaVersion()
+    public void PrefersDeclaredJavaVersionForFutureVersions()
     {
         var version = new MinecraftVersion
         {
-            Id = "test",
+            Id = "future",
             JavaVersion = new VersionJavaRequirement
             {
-                Component = "java-runtime-gamma",
-                MajorVersion = 17,
+                Component = "java-runtime-epsilon",
+                MajorVersion = 26,
             },
         };
 
-        var requirement = JavaRequirements.Resolve(version, "1.0");
+        var requirement = JavaRequirements.Resolve(version, "26.1");
 
-        Assert.Equal(17, requirement.MinimumMajor);
-        Assert.Null(requirement.MaximumMajor);
-        Assert.Equal("java-runtime-gamma", requirement.Component);
+        Assert.Equal(26, requirement.MinimumMajor);
+        Assert.Equal("java-runtime-epsilon", requirement.Component);
     }
 
     [Fact]
-    public void DetectsTooOldAndTooNew()
+    public void OnlyChecksMinimumVersion()
     {
-        var requirement = new JavaRequirement(17, "java-runtime-gamma", null);
+        var requirement = new JavaRequirement(17, "java-runtime-gamma");
         var java8 = Runtime("8.0.412");
         var java17 = Runtime("17.0.15");
         var java21 = Runtime("21.0.7");
+        var java26 = Runtime("26.0.1");
 
         Assert.Equal(JavaCompatibilityStatus.TooOld, JavaCompatibility.Evaluate(requirement, java8).Status);
         Assert.Equal(JavaCompatibilityStatus.Compatible, JavaCompatibility.Evaluate(requirement, java17).Status);
         Assert.Equal(JavaCompatibilityStatus.Compatible, JavaCompatibility.Evaluate(requirement, java21).Status);
+        Assert.Equal(JavaCompatibilityStatus.Compatible, JavaCompatibility.Evaluate(requirement, java26).Status);
 
-        var legacy = new JavaRequirement(8, null, 8);
-        Assert.Equal(JavaCompatibilityStatus.TooNew, JavaCompatibility.Evaluate(legacy, java17).Status);
+        var legacy = new JavaRequirement(8);
+        Assert.Equal(JavaCompatibilityStatus.Compatible, JavaCompatibility.Evaluate(legacy, java17).Status);
+        Assert.Equal(JavaCompatibilityStatus.Compatible, JavaCompatibility.Evaluate(legacy, java26).Status);
     }
 
     [Fact]
@@ -64,9 +68,10 @@ public sealed class JavaRequirementTests
         var runtimes = new[] { Runtime("8.0.412"), Runtime("17.0.15"), Runtime("21.0.7") };
 
         Assert.Equal(17, JavaSelector.Select(runtimes, new JavaRequirement(17))?.Version?.Major);
-        Assert.Equal(8, JavaSelector.Select(runtimes, new JavaRequirement(8, null, 8))?.Version?.Major);
+        Assert.Equal(8, JavaSelector.Select(runtimes, new JavaRequirement(8))?.Version?.Major);
         Assert.Equal(21, JavaSelector.Select(runtimes, new JavaRequirement(21))?.Version?.Major);
-        Assert.Null(JavaSelector.Select(runtimes, new JavaRequirement(11, null, 11)));
+        Assert.Equal(17, JavaSelector.Select(runtimes, new JavaRequirement(11))?.Version?.Major);
+        Assert.Null(JavaSelector.Select(runtimes, new JavaRequirement(25)));
     }
 
     private static JavaRuntime Runtime(string version)

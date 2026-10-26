@@ -9,6 +9,7 @@ using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Core.Localization;
 using Ecl.Java;
+using Ecl.Minecraft.Eula;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Launch;
@@ -206,6 +207,31 @@ internal sealed class CliApplication
         }
 
         var dryRun = _commandLine.HasFlag("dry-run");
+        var localizer = _provider.GetRequiredService<ILocalizer>();
+
+        if (!dryRun)
+        {
+            var eula = _provider.GetRequiredService<IEulaService>();
+            if (!eula.HasAccepted)
+            {
+                if (!_commandLine.HasFlag("accept-eula"))
+                {
+                    Console.Error.WriteLine(localizer.Get("eula.prompt"));
+                    return WriteError(new EclError("eula.required", localizer.Get("eula.cliRequired")));
+                }
+
+                Console.WriteLine(localizer.Get("eula.prompt"));
+                var accepted = eula.Accept();
+                if (!accepted.IsSuccess)
+                {
+                    return WriteError(accepted.Error);
+                }
+
+                Console.WriteLine(localizer.Get("eula.multiplayerNotice"));
+                Console.WriteLine(localizer.Get("eula.accepted"));
+            }
+        }
+
         var launchService = _provider.GetRequiredService<ILaunchService>();
         var report = await launchService.LaunchAsync(instanceId, dryRun).ConfigureAwait(false);
 

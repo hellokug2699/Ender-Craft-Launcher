@@ -64,8 +64,9 @@ internal static class Program
                                           创建实例
           instance delete <实例ID> --force 删除实例
           install <实例ID>                下载/补全原版版本文件
-          launch <实例ID> [--dry-run] [--json]
-                                          启动实例；--dry-run 仅生成命令
+          launch <实例ID> [--dry-run] [--accept-eula] [--json]
+                                          启动实例；--dry-run 仅生成命令，
+                                          --accept-eula 首次启动时同意 EULA
           settings list [--instance <实例ID>] [--json]
                                           列出配置项
           settings get <键> [--instance <实例ID>]

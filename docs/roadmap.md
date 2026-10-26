@@ -24,7 +24,7 @@
 - [x] SHA-1 校验、断点续传、并发下载、失败重试。
 - [x] natives 解压、library rules 按 OS/架构过滤。
 - [x] 四档下载源策略（只官方 / 优先官方 / 优先镜像 / 只镜像）。
-- [x] `eula.txt` 流程与启动前检查。
+- [x] `eula.txt` 流程与首次启动 EULA 弹窗、多人联机免责声明。
 - [x] CLI `install`、UI“安装/补全”、安装进度。
 - [~] 真实启动冒烟测试：Linux 下已完成安装、Dry Run 与进程拉起；Windows + 兼容 Java 的手动验证待做。
 - [ ] 版本 JSON `arguments` 占位符完整替换（当前启动器自建参数，原版可用；加载器阶段需要）。

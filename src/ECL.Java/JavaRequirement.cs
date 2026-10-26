@@ -3,31 +3,23 @@
 namespace Ecl.Java;
 
 /// <summary>
-/// 一个 Minecraft 版本对 Java 的最低要求。MaximumMajor 用于旧版本：例如 1.16 及以下通常只适合 Java 8。
+/// 一个 Minecraft 版本对 Java 的最低要求。ECL 只检查最低主版本，不限制最高版本：
+/// 较新的 Java 通常可以运行较新的游戏，也允许用户自行承担更高版本的风险。
 /// </summary>
 public sealed record JavaRequirement(
     int MinimumMajor,
-    string? Component = null,
-    int? MaximumMajor = null)
+    string? Component = null)
 {
     public bool IsCompatible(JavaVersion? version) =>
-        version is not null &&
-        version.Major >= MinimumMajor &&
-        (MaximumMajor is null || version.Major <= MaximumMajor);
+        version is not null && version.Major >= MinimumMajor;
 
-    public string Describe() => MaximumMajor switch
-    {
-        int maximum when maximum == MinimumMajor => $"Java {MinimumMajor}",
-        int maximum => $"Java {MinimumMajor}-{maximum}",
-        _ => $"Java {MinimumMajor}+",
-    };
+    public string Describe() => $"Java {MinimumMajor}+";
 }
 
 public enum JavaCompatibilityStatus
 {
     Compatible,
     TooOld,
-    TooNew,
     Unknown,
 }
 
@@ -56,17 +48,9 @@ public static class JavaCompatibility
             return new JavaCompatibilityResult(JavaCompatibilityStatus.Unknown, requirement, null);
         }
 
-        if (runtime.Version.Major < requirement.MinimumMajor)
-        {
-            return new JavaCompatibilityResult(JavaCompatibilityStatus.TooOld, requirement, runtime.Version);
-        }
-
-        if (requirement.MaximumMajor is int maximum && runtime.Version.Major > maximum)
-        {
-            return new JavaCompatibilityResult(JavaCompatibilityStatus.TooNew, requirement, runtime.Version);
-        }
-
-        return new JavaCompatibilityResult(JavaCompatibilityStatus.Compatible, requirement, runtime.Version);
+        return runtime.Version.Major < requirement.MinimumMajor
+            ? new JavaCompatibilityResult(JavaCompatibilityStatus.TooOld, requirement, runtime.Version)
+            : new JavaCompatibilityResult(JavaCompatibilityStatus.Compatible, requirement, runtime.Version);
     }
 }
 
@@ -95,6 +79,7 @@ public static class JavaSelector
             return null;
         }
 
+        // 优先选择与最低要求相同的主版本，避免不必要的“越新越好”。
         return compatible
             .OrderBy(runtime => runtime.Version!.Major == requirement.MinimumMajor ? 0 : 1)
             .ThenBy(runtime => runtime.Version!.Major)
