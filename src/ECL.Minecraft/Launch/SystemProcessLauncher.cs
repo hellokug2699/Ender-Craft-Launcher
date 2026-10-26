@@ -30,18 +30,6 @@ internal sealed class SystemProcessLauncher(ILogger<SystemProcessLauncher> logge
         var process = new Process
         {
             StartInfo = startInfo,
-            EnableRaisingEvents = true,
-        };
-
-        process.Exited += (_, _) =>
-        {
-            logger.LogInformation(
-                "实例 {InstanceId} 的游戏进程已退出，PID {Pid}，退出码 {ExitCode}。",
-                instanceId,
-                process.Id,
-                process.ExitCode);
-            _processes.TryRemove(process.Id, out _);
-            process.Dispose();
         };
 
         if (!showConsole)
@@ -74,7 +62,31 @@ internal sealed class SystemProcessLauncher(ILogger<SystemProcessLauncher> logge
         }
 
         _processes[process.Id] = process;
+        _ = MonitorAsync(process, instanceId);
         logger.LogInformation("已启动实例 {InstanceId} 的游戏进程，PID {Pid}。", instanceId, process.Id);
         return process.Id;
+    }
+
+    private async Task MonitorAsync(Process process, string instanceId)
+    {
+        try
+        {
+            await process.WaitForExitAsync().ConfigureAwait(false);
+            process.WaitForExit();
+            logger.LogInformation(
+                "实例 {InstanceId} 的游戏进程已结束，PID {Pid}，退出码 {ExitCode}。",
+                instanceId,
+                process.Id,
+                process.ExitCode);
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(exception, "监控游戏进程失败。");
+        }
+        finally
+        {
+            _processes.TryRemove(process.Id, out _);
+            process.Dispose();
+        }
     }
 }

@@ -12,7 +12,10 @@
 | --- | --- | --- | --- |
 | 100 | `validate` | `ValidateInstanceStep` | 实例目录、账户名、基础前提 |
 | 200 | `java` | `ResolveJavaStep` | 实例/全局 Java 路径、自动探测、内存计算 |
-| 300 | `version` | `ResolveVersionStep` | 读取 `versions/<id>/<id>.json` |
+| 300 | `version` | `ResolveVersionStep` | 读取本地版本 JSON 并合并 `inheritsFrom` |
+| 350 | `files` | `ValidateGameFilesStep` | 检查 client、库、natives、资源索引、日志配置 |
+| 360 | `natives` | `ExtractNativesStep` | 清理并解压实例隔离的 natives |
+| 370 | `eula` | `EnsureEulaStep` | 检查/写入 `eula.txt`，未同意则阻止真实启动 |
 | 400 | `command` | `BuildCommandStep` | 构建 JVM/游戏参数与可读命令 |
 | 500 | `start` | `StartGameStep` | Dry Run 跳过；真实启动时拉起进程 |
 
@@ -41,12 +44,15 @@
 - 用于 UI 的“预览命令”和 CLI 的 `launch --dry-run`。
 - 缺少版本文件时降级为 `Warning`，使用占位 `mainClass` 继续构建命令。
 - 缺少 Java 时降级为 `Warning`，使用 `java` 作为可执行文件。
+- 缺少游戏关键文件时降级为 `Warning`，仍生成预期命令。
+- `natives` 返回 `Skipped`；`eula` 在未同意时返回 `Warning`。
 - `start` 步骤返回 `Skipped`，不启动进程。
 - 仍然完整走完流水线，因此能验证路径、参数与内存配置。
 
 ### 真实启动
 
-- 缺少 Java 或版本文件时直接 `Failed`，不会执行后续步骤。
+- 缺少 Java、版本或关键文件时直接 `Failed`，不会执行后续步骤。
+- 未同意 EULA 时 `eula` 步骤 `Failed`；用户显式勾选后写入 `eula=true`。
 - 所有步骤成功后，`StartGameStep` 通过 `IProcessLauncher` 启动进程。
 - 启动成功后更新实例的 `LastPlayedAt`。
 - 进程输出在无控制台模式下重定向到日志（前缀 `[MC]`）。
@@ -73,6 +79,7 @@ public sealed record LaunchCommand(
 -Djava.library.path=<instance>/minecraft/natives
 -Dminecraft.launcher.brand=EnderCraftLauncher
 -Dminecraft.launcher.version=<launcher version>
+-Dlog4j.configurationFile=<data>/assets/logging/<file id>   （版本 JSON 提供 logging 时）
 <instance/global extra JVM arguments>
 ```
 
@@ -103,8 +110,10 @@ public sealed record LaunchCommand(
 
 ### 类路径
 
-- 根据版本 JSON 的 `libraries[].name`（Maven 坐标）映射到 `<data>/libraries/...`。
-- 跳过 `natives-*` classifier。
+- 通过 `PlatformLibrarySelector` 按当前 OS/架构与 library `rules` 过滤。
+- 现代版本的 natives 以 `natives-<os>[-arch]` classifier 形式出现在 `name` 中；每组按架构选择唯一变体。
+- 类路径只包含主 artifact；natives classifier 与 legacy `Natives` 的 native jar 不进入类路径。
+- 库路径来自 `downloads.artifact.path`，缺失时按 Maven 坐标推导。
 - 追加 `<data>/versions/<versionId>/<versionId>.jar`。
 - 版本 JSON 缺失时使用 `<classpath>` 占位（仅 Dry Run）。
 
@@ -131,32 +140,27 @@ UI 与 CLI 使用同一份报告，只是渲染方式不同。
 
 ## 7. 当前缺口
 
-真实原版启动还缺以下能力，属于安装/版本解析阶段：
+原版安装与启动闭环已完成，仍缺以下能力：
 
-1. 版本继承链合并（`inheritsFrom`），包括 `libraries`、`arguments`、`mainClass`。
-2. 下载并校验 client jar、libraries、assets、logging config。
-3. natives 解压与 `-Djava.library.path` 指向真实目录。
-4. library `rules`（按 OS/arch/features 过滤）。
-5. 参数占位符替换（`${auth_player_name}`、`${version_name}` 等）。
-6. 资产索引与资源对象校验。
-7. 启动前 EULA 提示与 `eula.txt` 处理。
-8. 游戏日志单独落盘与崩溃报告解析。
-
-在这些能力完成前，`launch` 只对“版本文件与库已就绪”的环境有效；否则会明确失败，不会伪造成功。
+1. Java 运行时按 Minecraft 版本自动匹配/下载（v0.4）；当前选择本机最高版本。
+2. 版本 JSON `arguments` 体系的占位符替换；当前由启动器自建参数，原版可用，加载器阶段需要完整支持。
+3. 游戏日志单独落盘、崩溃报告解析与 Mod 嫌疑排序。
+4. 加载器/整合包安装与继承链生成。
+5. 下载限速（并发、重试、续传已实现）。
 
 ## 8. 扩展方式
 
 ### 新增步骤
 
 ```csharp
-internal sealed class EnsureEulaStep : ILaunchStep
+internal sealed class CheckModConflictsStep : ILaunchStep
 {
-    public string Id => "eula";
-    public int Order => 350;
+    public string Id => "mods";
+    public int Order => 340;
 
     public Task<LaunchStepResult> ExecuteAsync(LaunchContext context, CancellationToken ct)
     {
-        // 检查/写入 eula.txt，返回 Success / Warning / Failed
+        // 检查 Mod 依赖/冲突，返回 Success / Warning / Failed
     }
 }
 ```
@@ -164,10 +168,10 @@ internal sealed class EnsureEulaStep : ILaunchStep
 在 `AddEclMinecraft` 注册：
 
 ```csharp
-services.AddSingleton<ILaunchStep, EnsureEulaStep>();
+services.AddSingleton<ILaunchStep, CheckModConflictsStep>();
 ```
 
-并补充 `launch.step.eula` 与相关消息的本地化键。
+并补充 `launch.step.mods` 与相关消息的本地化键。
 
 ### 新增账户类型
 

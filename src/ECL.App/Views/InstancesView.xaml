@@ -144,9 +144,13 @@
                                    ToolTip="{Binding SelectedInstancePath}" />
 
                         <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                            <Button Content="{loc:Loc Key=instances.install}"
+                                    Command="{Binding InstallCommand}"
+                                    Style="{StaticResource PrimaryButton}" />
                             <Button Content="{loc:Loc Key=instances.launch}"
                                     Command="{Binding LaunchCommand}"
-                                    Style="{StaticResource PrimaryButton}" />
+                                    Style="{StaticResource GhostButton}"
+                                    Margin="8,0,0,0" />
                             <Button Content="{loc:Loc Key=instances.dryRun}"
                                     Command="{Binding DryRunCommand}"
                                     Style="{StaticResource GhostButton}"
@@ -156,6 +160,19 @@
                                     Style="{StaticResource DangerButton}"
                                     Margin="8,0,0,0" />
                         </StackPanel>
+
+                        <ProgressBar Height="4"
+                                     Margin="0,12,0,0"
+                                     Minimum="0"
+                                     Maximum="100"
+                                     Value="{Binding InstallProgressValue}"
+                                     IsIndeterminate="{Binding InstallIndeterminate}"
+                                     Visibility="{Binding IsInstalling, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Text="{Binding InstallStatus}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   Margin="0,8,0,0"
+                                   TextWrapping="Wrap" />
 
                         <TextBlock Text="{Binding LaunchStatus}"
                                    Foreground="{StaticResource TextSecondaryBrush}"

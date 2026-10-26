@@ -9,7 +9,7 @@
 
 ## 决策
 
-1. 启动拆分为 `ILaunchStep` 有序流水线：Validate → ResolveJava → ResolveVersion → BuildCommand → Start。
+1. 启动拆分为 `ILaunchStep` 有序流水线：Validate → ResolveJava → ResolveVersion → CheckFiles → ExtractNatives → EnsureEula → BuildCommand → Start。
 2. 步骤通过 `LaunchContext` 共享状态，返回 `LaunchStepResult`（Success/Warning/Skipped/Failed + 消息 + 耗时）。
 3. 提供 Dry Run：生成命令但不启动进程；缺失版本/Java 降级为警告。
 4. 真实启动时缺失关键输入即失败，不伪造成功。

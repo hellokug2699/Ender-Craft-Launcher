@@ -16,6 +16,14 @@ public static class CommandLineBuilder
         arguments.Add("-Dminecraft.launcher.brand=EnderCraftLauncher");
         arguments.Add($"-Dminecraft.launcher.version={LauncherVersion}");
 
+        var loggingFile = context.Version?.Logging?.Client?.File;
+        var loggingArgument = context.Version?.Logging?.Client?.Argument;
+        if (loggingFile is { Id.Length: > 0 } && !string.IsNullOrWhiteSpace(loggingArgument))
+        {
+            var loggingPath = Versions.VersionFilePlanner.GetLoggingFilePath(context.Paths, loggingFile.Id);
+            arguments.Add(loggingArgument.Replace("${path}", loggingPath, StringComparison.OrdinalIgnoreCase));
+        }
+
         var instanceJvmArguments = context.GetInstanceSetting<string?>("instance.java.extraArguments");
         var globalJvmArguments = context.Settings.Get<string>("java.extraArguments");
         arguments.AddRange(SplitArguments(instanceJvmArguments ?? globalJvmArguments));
@@ -122,41 +130,17 @@ public static class CommandLineBuilder
             return "<classpath>";
         }
 
-        var entries = new List<string>();
-        foreach (var library in context.Version.Libraries)
-        {
-            var relativePath = ToMavenPath(library.Name);
-            if (relativePath is null)
-            {
-                continue;
-            }
+        var plan = Versions.PlatformLibrarySelector.Plan(
+            context.Version.Libraries,
+            Versions.LibraryRules.CurrentOsName,
+            Versions.LibraryRules.CurrentArch);
 
-            entries.Add(Path.Combine(context.Paths.LibrariesDirectory, relativePath));
-        }
+        var entries = Versions.PlatformLibrarySelector.GetClasspathArtifacts(plan)
+            .Select(artifact => Versions.VersionFilePlanner.GetLibraryPath(context.Paths, artifact))
+            .ToList();
 
-        entries.Add(Path.Combine(context.VersionDirectory, $"{context.Instance.VersionId}.jar"));
+        entries.Add(Versions.VersionFilePlanner.GetClientJarPath(context.Paths, context.Instance.VersionId));
         return string.Join(Path.PathSeparator, entries);
-    }
-
-    private static string? ToMavenPath(string coordinates)
-    {
-        var parts = coordinates.Split(':');
-        if (parts.Length < 3)
-        {
-            return null;
-        }
-
-        if (parts.Length >= 4 && parts[3].StartsWith("natives", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        var group = parts[0].Replace('.', Path.DirectorySeparatorChar);
-        var artifact = parts[1];
-        var version = parts[2];
-        var classifier = parts.Length >= 4 ? $"-{parts[3]}" : string.Empty;
-        var fileName = $"{artifact}-{version}{classifier}.jar";
-        return Path.Combine(group, artifact, version, fileName);
     }
 
     private static string Quote(string value)

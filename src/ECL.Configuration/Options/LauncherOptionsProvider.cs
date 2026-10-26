@@ -80,12 +80,14 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             CategoryKey = "category.network",
             DisplayNameKey = "option.network.downloadSource.name",
             DescriptionKey = "option.network.downloadSource.desc",
-            Default = "official",
+            Default = "official-first",
             Order = 10,
             Choices =
             [
-                new OptionChoice("official", "option.network.downloadSource.official"),
-                new OptionChoice("bmclapi", "option.network.downloadSource.bmclapi"),
+                new OptionChoice("official-only", "option.network.downloadSource.officialOnly"),
+                new OptionChoice("official-first", "option.network.downloadSource.officialFirst"),
+                new OptionChoice("mirror-first", "option.network.downloadSource.mirrorFirst"),
+                new OptionChoice("mirror-only", "option.network.downloadSource.mirrorOnly"),
             ],
         };
 
@@ -234,6 +236,18 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             Order = 40,
         };
 
+        yield return new OptionDefinition<bool>
+        {
+            Key = "game.acceptEula",
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.game",
+            DisplayNameKey = "option.game.acceptEula.name",
+            DescriptionKey = "option.game.acceptEula.desc",
+            Default = false,
+            Order = 50,
+        };
+
         yield return new OptionDefinition<string>
         {
             Key = "game.extraArguments",
@@ -243,7 +257,7 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             DisplayNameKey = "option.game.extraArguments.name",
             DescriptionKey = "option.game.extraArguments.desc",
             Default = string.Empty,
-            Order = 50,
+            Order = 60,
         };
     }
 }

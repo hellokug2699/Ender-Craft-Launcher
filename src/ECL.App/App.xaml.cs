@@ -12,6 +12,7 @@ using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Core.Logging;
+using Ecl.Download;
 using Ecl.Java;
 using Ecl.Minecraft;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,6 +43,7 @@ public partial class App : Application
             services.AddEclLogging(paths, console: false);
             services.AddEclCore(paths, culture);
             services.AddEclConfiguration();
+            services.AddEclDownload();
             services.AddEclAuth();
             services.AddEclJava();
             services.AddEclMinecraft();

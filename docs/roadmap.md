@@ -2,7 +2,7 @@
 
 状态说明：`[x]` 已完成，`[ ]` 未开始，`[~]` 进行中。
 
-## v0.1 架构骨架（当前）
+## v0.1 架构骨架（已完成）
 
 - [x] .NET 10 + WPF + 模块化单体 solution。
 - [x] 应用路径、便携模式、数据目录布局。
@@ -16,16 +16,18 @@
 - [x] 架构、配置、启动、仓库策略文档。
 - [x] 签名脚本与 public/private 仓库分离。
 
-## v0.2 原版安装与真实启动
+## v0.2 原版安装与真实启动（已完成，Java 匹配待 v0.4）
 
-- [ ] 版本清单（version_manifest_v2）获取与镜像。
-- [ ] 版本 JSON 下载、继承链合并。
-- [ ] client jar、libraries、assets、logging config 下载。
-- [ ] 哈希校验、断点续传、并发下载、失败重试。
-- [ ] natives 解压、library rules 过滤。
-- [ ] 参数占位符完整替换。
-- [ ] `eula.txt` 流程与启动前检查。
-- [ ] 真实启动冒烟测试（Windows CI + 手动）。
+- [x] 版本清单（version_manifest_v2）获取与镜像。
+- [x] 版本 JSON 下载、继承链合并。
+- [x] client jar、libraries、assets、logging config 下载。
+- [x] SHA-1 校验、断点续传、并发下载、失败重试。
+- [x] natives 解压、library rules 按 OS/架构过滤。
+- [x] 四档下载源策略（只官方 / 优先官方 / 优先镜像 / 只镜像）。
+- [x] `eula.txt` 流程与启动前检查。
+- [x] CLI `install`、UI“安装/补全”、安装进度。
+- [~] 真实启动冒烟测试：Linux 下已完成安装、Dry Run 与进程拉起；Windows + 兼容 Java 的手动验证待做。
+- [ ] 版本 JSON `arguments` 占位符完整替换（当前启动器自建参数，原版可用；加载器阶段需要）。
 
 ## v0.3 账户体系
 

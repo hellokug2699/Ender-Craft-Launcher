@@ -98,6 +98,29 @@ var memory = settings.Get<int?>("instance.java.memoryMb", instance.Id)
 
 UI 在每项下方展示“来源”，实例作用域下 `Default` 显示为“继承全局”，帮助用户理解优先级。
 
+### 下载源策略
+
+`network.downloadSource` 是全局选项，提供四档候选顺序：
+
+| 值 | 行为 |
+| --- | --- |
+| `official-only` | 只使用 Mojang 官方源 |
+| `official-first`（默认） | 优先官方，失败后尝试 BMCLAPI |
+| `mirror-first` | 优先 BMCLAPI，失败后尝试官方 |
+| `mirror-only` | 只使用 BMCLAPI |
+
+`DownloadSourceResolver` 将官方 URL 映射到 BMCLAPI：
+
+- `piston-meta` / `piston-data` / `launchermeta` / `launcher` → `bmclapi2.bangbang93.com` + 原路径。
+- `libraries.minecraft.net/...` → `bmclapi2.bangbang93.com/libraries/...`。
+- `resources.download.minecraft.net/...` → `bmclapi2.bangbang93.com/assets/...`。
+
+无镜像映射的第三方 URL 在 `mirror-only` 下会被拒绝，避免静默回退到官方。
+
+### EULA
+
+`game.acceptEula` 为全局布尔项，默认 `false`。只有用户显式勾选后，启动步骤才会在 `<gameData>/eula.txt` 写入 `eula=true`；否则真实启动会停在 EULA 检查步骤，Dry Run 仅给出警告。选项描述中链接到 Minecraft EULA 原文。
+
 ## 3. 文件格式
 
 `config/global.json`：

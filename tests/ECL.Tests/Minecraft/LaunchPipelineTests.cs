@@ -92,6 +92,7 @@ public sealed class LaunchPipelineTests
 
         var settings = provider.GetRequiredService<ISettingsService>();
         Assert.True(settings.TrySetRaw("java.defaultPath", fakeJava, null, out var javaError), javaError);
+        Assert.True(settings.TrySetRaw("game.acceptEula", "true", null, out var eulaError), eulaError);
 
         var versionDirectory = Path.Combine(environment.Paths.VersionsDirectory, instance.VersionId);
         Directory.CreateDirectory(versionDirectory);
@@ -106,6 +107,13 @@ public sealed class LaunchPipelineTests
               "libraries": []
             }
             """);
+        await File.WriteAllBytesAsync(
+            Path.Combine(versionDirectory, $"{instance.VersionId}.jar"),
+            Array.Empty<byte>());
+
+        var assetIndexDirectory = Path.Combine(environment.Paths.AssetsDirectory, "indexes");
+        Directory.CreateDirectory(assetIndexDirectory);
+        await File.WriteAllTextAsync(Path.Combine(assetIndexDirectory, "1.21.json"), """{ "objects": {} }""");
 
         var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: false);
 

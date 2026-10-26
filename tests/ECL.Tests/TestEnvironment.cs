@@ -4,6 +4,7 @@ using System.Globalization;
 using Ecl.Auth;
 using Ecl.Configuration;
 using Ecl.Core;
+using Ecl.Download;
 using Ecl.Java;
 using Ecl.Minecraft;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,6 +30,7 @@ public sealed class TestEnvironment : IDisposable
         services.AddLogging();
         services.AddEclCore(Paths, CultureInfo.GetCultureInfo("zh-CN"));
         services.AddEclConfiguration();
+        services.AddEclDownload();
         services.AddEclAuth();
         services.AddEclJava();
         services.AddEclMinecraft();

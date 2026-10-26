@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+using Ecl.Core;
+
+namespace Ecl.Minecraft.Install;
+
+public enum InstallStage
+{
+    Manifest,
+    Version,
+    Client,
+    Libraries,
+    Assets,
+    Logging,
+    Completed,
+}
+
+public sealed record InstallProgress(
+    InstallStage Stage,
+    string Message,
+    int CompletedFiles,
+    int TotalFiles,
+    long CompletedBytes,
+    long TotalBytes,
+    string? CurrentFile)
+{
+    public bool IsIndeterminate => TotalFiles == 0;
+
+    public double Percent => TotalFiles > 0
+        ? Math.Clamp(CompletedFiles * 100.0 / TotalFiles, 0, 100)
+        : 0;
+}
+
+public sealed record InstallReport(
+    string VersionId,
+    int DownloadedFiles,
+    int SkippedFiles,
+    long Bytes,
+    TimeSpan Duration);
+
+public interface IVersionInstallService
+{
+    Task<Result<InstallReport>> InstallAsync(
+        string instanceId,
+        IProgress<InstallProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+}
