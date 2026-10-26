@@ -53,7 +53,7 @@
 
 - 缺少 Java、版本或关键文件时直接 `Failed`，不会执行后续步骤。
 - Java 版本与游戏版本不匹配时默认只 `Warning`，UI 会在启动前弹窗确认；实例设置可关闭兼容性检验。
-- 未同意 EULA 时 `eula` 步骤 `Failed`；用户显式勾选后写入 `eula=true`。
+- 未同意 EULA 时 `eula` 步骤 `Failed`；UI 首次真实启动会弹窗要求同意，记录后写入 `eula=true`。
 - 所有步骤成功后，`StartGameStep` 通过 `IProcessLauncher` 启动进程。
 - 启动成功后更新实例的 `LastPlayedAt`。
 - 进程输出在无控制台模式下重定向到日志（前缀 `[MC]`）。

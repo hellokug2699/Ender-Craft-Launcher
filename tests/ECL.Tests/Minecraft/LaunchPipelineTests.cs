@@ -2,6 +2,7 @@
 
 using Ecl.Auth;
 using Ecl.Configuration.Settings;
+using Ecl.Minecraft.Eula;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Launch;
 using Microsoft.Extensions.DependencyInjection;
@@ -92,7 +93,7 @@ public sealed class LaunchPipelineTests
 
         var settings = provider.GetRequiredService<ISettingsService>();
         Assert.True(settings.TrySetRaw("java.defaultPath", fakeJava, null, out var javaError), javaError);
-        Assert.True(settings.TrySetRaw("game.acceptEula", "true", null, out var eulaError), eulaError);
+        Assert.True(provider.GetRequiredService<IEulaService>().Accept().IsSuccess);
 
         var versionDirectory = Path.Combine(environment.Paths.VersionsDirectory, instance.VersionId);
         Directory.CreateDirectory(versionDirectory);

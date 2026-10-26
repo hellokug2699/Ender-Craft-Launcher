@@ -157,8 +157,6 @@
   "option.network.downloadSource.officialFirst": "Official first, then mirror",
   "option.network.downloadSource.mirrorFirst": "Mirror first, then official",
   "option.network.downloadSource.mirrorOnly": "Mirror only",
-  "option.game.acceptEula.name": "Accept Minecraft EULA",
-  "option.game.acceptEula.desc": "Writes eula=true before launch. Read https://aka.ms/minecraftEULA first.",
   "instances.install": "Install / Complete",
   "instances.installing": "Installing…",
   "instances.installSucceeded": "Installation complete. You can launch the game.",
@@ -186,8 +184,8 @@
   "launch.natives.extracted": "Extracted {0} native files.",
   "launch.natives.failed": "Failed to extract natives: {0}",
   "launch.eula.ok": "EULA accepted.",
-  "launch.eula.notAccepted.preview": "Minecraft EULA has not been accepted. Enable \"Accept Minecraft EULA\" in Settings before a real launch.",
-  "launch.eula.notAccepted": "Minecraft EULA has not been accepted. Enable \"Accept Minecraft EULA\" in Settings and try again.",
+  "launch.eula.notAccepted.preview": "Minecraft EULA has not been accepted; a real launch will ask for consent.",
+  "launch.eula.notAccepted": "Minecraft EULA has not been accepted. Accept it on first launch and try again.",
   "launch.eula.willWrite": "Dry Run: eula=true will be written on launch.",
   "launch.eula.written": "Wrote eula=true.",
   "launch.eula.failed": "Failed to write eula.txt: {0}",
@@ -239,5 +237,12 @@
   "launch.java.incompatible": "Current Java is {0}, but this version recommends {1}. It may not start. You can disable the Java compatibility check in the instance settings.",
   "launch.java.unknownVersion": "The version of Java {0} could not be detected; the game may not start.",
   "launch.java.checkDisabled": "Java compatibility check is disabled; using {0}.",
-  "cli.java.success": "Java ready"
+  "cli.java.success": "Java ready",
+  "eula.title": "Minecraft EULA",
+  "eula.prompt": "Starting Minecraft requires accepting the Minecraft End User License Agreement (EULA).\n\nRead it here: https://aka.ms/minecraftEULA\n\nDo you accept and want to continue?",
+  "eula.noticeTitle": "Multiplayer notice",
+  "eula.multiplayerNotice": "You acknowledge and agree that multiplayer functionality is not provided by the launcher, and the launcher is not responsible for any consequences of multiplayer use.",
+  "eula.saveFailedTitle": "Could not save EULA consent",
+  "eula.cliRequired": "The EULA must be accepted before the first launch. Add --accept-eula to the command.",
+  "eula.accepted": "EULA consent recorded."
 }

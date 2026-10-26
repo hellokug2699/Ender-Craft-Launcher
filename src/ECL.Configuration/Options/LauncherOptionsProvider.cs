@@ -236,18 +236,6 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             Order = 40,
         };
 
-        yield return new OptionDefinition<bool>
-        {
-            Key = "game.acceptEula",
-            Kind = OptionKind.Boolean,
-            Scope = OptionScope.Global,
-            CategoryKey = "category.game",
-            DisplayNameKey = "option.game.acceptEula.name",
-            DescriptionKey = "option.game.acceptEula.desc",
-            Default = false,
-            Order = 50,
-        };
-
         yield return new OptionDefinition<string>
         {
             Key = "game.extraArguments",

@@ -157,8 +157,6 @@
   "option.network.downloadSource.officialFirst": "优先官方，其次镜像",
   "option.network.downloadSource.mirrorFirst": "优先镜像，其次官方",
   "option.network.downloadSource.mirrorOnly": "只使用镜像源",
-  "option.game.acceptEula.name": "同意 Minecraft EULA",
-  "option.game.acceptEula.desc": "启动前自动写入 eula=true。请先阅读 https://aka.ms/minecraftEULA 。",
   "instances.install": "安装 / 补全",
   "instances.installing": "正在安装…",
   "instances.installSucceeded": "安装完成，可以启动游戏。",
@@ -186,8 +184,8 @@
   "launch.natives.extracted": "已解压 {0} 个 natives 文件。",
   "launch.natives.failed": "解压 natives 失败：{0}",
   "launch.eula.ok": "EULA 已同意。",
-  "launch.eula.notAccepted.preview": "尚未同意 Minecraft EULA；真实启动前请在设置中勾选“同意 Minecraft EULA”。",
-  "launch.eula.notAccepted": "尚未同意 Minecraft EULA。请在设置中勾选“同意 Minecraft EULA”后重试。",
+  "launch.eula.notAccepted.preview": "尚未同意 Minecraft EULA；真实启动前会要求同意。",
+  "launch.eula.notAccepted": "尚未同意 Minecraft EULA。请在首次启动时同意后重试。",
   "launch.eula.willWrite": "Dry Run：启动时将写入 eula=true。",
   "launch.eula.written": "已写入 eula=true。",
   "launch.eula.failed": "写入 eula.txt 失败：{0}",
@@ -239,5 +237,12 @@
   "launch.java.incompatible": "当前 Java {0}，该版本建议 {1}；可能无法正常启动。可在实例设置中关闭 Java 兼容性检验。",
   "launch.java.unknownVersion": "无法识别 Java {0} 的版本；可能无法正常启动。",
   "launch.java.checkDisabled": "Java 兼容性检验已关闭，使用 {0}。",
-  "cli.java.success": "Java 就绪"
+  "cli.java.success": "Java 就绪",
+  "eula.title": "Minecraft EULA",
+  "eula.prompt": "启动 Minecraft 需要同意 Minecraft 最终用户许可协议（EULA）。\n\n请阅读：https://aka.ms/minecraftEULA\n\n是否同意并继续？",
+  "eula.noticeTitle": "多人联机提示",
+  "eula.multiplayerNotice": "您知悉并同意，多人联机功能并不由启动器提供，启动器不为多人联机造成的一切后果负责。",
+  "eula.saveFailedTitle": "无法保存 EULA 同意记录",
+  "eula.cliRequired": "首次启动需要同意 EULA，请在命令后添加 --accept-eula。",
+  "eula.accepted": "已记录 EULA 同意。"
 }

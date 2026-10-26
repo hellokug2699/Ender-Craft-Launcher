@@ -10,6 +10,7 @@ using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Java;
+using Ecl.Minecraft.Eula;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
@@ -32,6 +33,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IJavaSelectionService _javaSelection;
     private readonly IJavaInstallService _javaInstall;
     private readonly IVersionResolver _versionResolver;
+    private readonly IEulaService _eula;
     private bool _initialized;
     private bool _suppressAccountSelection;
     private bool _suppressJavaSelection;
@@ -135,7 +137,8 @@ public sealed partial class InstancesViewModel : ObservableObject
         IJavaLocator javaLocator,
         IJavaSelectionService javaSelection,
         IJavaInstallService javaInstall,
-        IVersionResolver versionResolver)
+        IVersionResolver versionResolver,
+        IEulaService eula)
     {
         _instances = instances;
         _accounts = accounts;
@@ -149,6 +152,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         _javaSelection = javaSelection;
         _javaInstall = javaInstall;
         _versionResolver = versionResolver;
+        _eula = eula;
     }
 
     public async Task InitializeAsync()
@@ -533,6 +537,36 @@ public sealed partial class InstancesViewModel : ObservableObject
         _ = SetDefaultAccountAsync(value.Id);
     }
 
+    private bool EnsureEulaConsent()
+    {
+        if (_eula.HasAccepted)
+        {
+            return true;
+        }
+
+        if (!_dialogs.Confirm(
+                _localizer.Get("eula.title"),
+                _localizer.Get("eula.prompt")))
+        {
+            return false;
+        }
+
+        var result = _eula.Accept();
+        if (!result.IsSuccess)
+        {
+            _dialogs.ShowError(
+                _localizer.Get("eula.saveFailedTitle"),
+                result.Error?.Message ?? string.Empty);
+            return false;
+        }
+
+        _dialogs.ShowInfo(
+            _localizer.Get("eula.noticeTitle"),
+            _localizer.Get("eula.multiplayerNotice"));
+
+        return true;
+    }
+
     private async Task<bool> ConfirmJavaBeforeLaunchAsync()
     {
         if (SelectedInstance is null)
@@ -695,6 +729,11 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
 
         if (IsBusy)
+        {
+            return;
+        }
+
+        if (!dryRun && !EnsureEulaConsent())
         {
             return;
         }

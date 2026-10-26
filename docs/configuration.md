@@ -119,7 +119,9 @@ UI 在每项下方展示“来源”，实例作用域下 `Default` 显示为“
 
 ### EULA
 
-`game.acceptEula` 为全局布尔项，默认 `false`。只有用户显式勾选后，启动步骤才会在 `<gameData>/eula.txt` 写入 `eula=true`；否则真实启动会停在 EULA 检查步骤，Dry Run 仅给出警告。选项描述中链接到 Minecraft EULA 原文。
+EULA 不再是一个普通配置项。首次真实启动时，WPF 会弹窗要求同意 Minecraft EULA（链接到官方 EULA），同意后额外弹出多人联机免责声明；同意记录写入 `<data>/config/eula.json`，之后启动不再重复询问。`eula.txt` 由启动步骤在首次同意后写入。
+
+CLI 使用 `ecl launch <实例ID> --accept-eula` 记录同意；未同意时真实启动会失败并提示该参数。Dry Run 不要求同意。
 
 ### Java 相关配置
 

@@ -1,13 +1,15 @@
 # Java 管理
 
-Minecraft 对 Java 版本的要求随版本变化：1.16 及以下通常需要 Java 8，1.17 需要 16，1.18–1.20.4 通常需要 17，1.20.5+ 需要 21。Java 管理模块负责“选哪个 Java、能不能用、没有怎么办”。
+Minecraft 对 Java 版本的要求随版本变化：1.16 及以下通常需要 Java 8，1.17 需要 16，1.18–1.20.4 通常需要 17，1.20.5–1.21.x 需要 21；2026 年起的 26.x 需要 Java 25（版本 JSON 可能声明 26）。Java 管理模块负责“选哪个 Java、能不能用、没有怎么办”。
+
+**ECL 只检查最低 Java 主版本，不限制最高版本。** 例如 1.20.1 使用 Java 8 会被判定过低并提示；1.20.1 使用 Java 25 不会被阻止。
 
 ## 1. 选择顺序
 
 1. **实例指定**：`instance.java.executablePath`（实例设置中的 Java 选择器）。
 2. **全局指定**：`java.defaultPath`（设置 → Java → 默认 Java 路径）。
 3. **自动选择**：扫描本机 Java，按版本要求挑选最合适的运行时。
-4. **默认 Java**：若没有完全匹配的运行时，使用探测到的最高版本，并在兼容性检查中提示。
+4. **默认 Java**：若没有满足最低要求的运行时，使用探测到的最高版本，并在兼容性检查中提示。
 5. **未找到**：真实启动失败并提示下载；UI 可直接点击“下载 Java”。
 
 实例页的 Java 选择器包含“自动（默认 Java）”与所有探测到的运行时。选择“自动”会清空实例路径，交由自动逻辑决定。
@@ -17,34 +19,36 @@ Minecraft 对 Java 版本的要求随版本变化：1.16 及以下通常需要 J
 `JavaRequirement` 包含：
 
 - `MinimumMajor`：最低 Java 主版本。
-- `MaximumMajor`：仅旧版本使用，例如 1.16 及以下限制为 Java 8。
 - `Component`：Mojang 运行时组件名，例如 `java-runtime-gamma`。
 
 来源优先级：
 
-1. 版本 JSON 的 `javaVersion.majorVersion` / `javaVersion.component`。
-2. 无该字段时，根据游戏版本推断：
-   - `1.0`–`1.16.x` → Java 8（最高 8）。
+1. **版本 JSON 的 `javaVersion.majorVersion` / `javaVersion.component` 是唯一权威来源**，覆盖 1.x、26.x 以及未来版本号格式。
+2. 只有旧版本 JSON 缺少该字段时才按版本号推断：
+   - `1.0`–`1.16.x` → Java 8。
    - `1.17.x` → Java 16。
    - `1.18`–`1.20.4` → Java 17。
-   - `1.20.5+`、`1.21.x` → Java 21。
-   - 快照按年份粗略推断。
+   - `1.20.5`–`1.21.x` → Java 21。
+   - `26.x` → Java 25。
+   - 快照：`24w+` → 21，`26w+` → 25，更早按年份推断。
+   - 无法识别的自定义版本回退到 21。
 
 ## 3. 兼容性检查
 
-`JavaCompatibility` 返回四种状态：
+`JavaCompatibility` 返回三种状态：
 
 | 状态 | 含义 |
 | --- | --- |
-| `Compatible` | 满足要求 |
+| `Compatible` | 满足最低要求 |
 | `TooOld` | 低于最低版本，例如 1.20.1 使用 Java 8 |
-| `TooNew` | 高于旧版本上限，例如 1.16.5 使用 Java 21 |
 | `Unknown` | 无法解析 Java 版本 |
+
+**不存在“Java 版本过高”的拦截**：高于最低要求一律视为兼容。
 
 行为：
 
 - UI 在实例页显示“兼容 / 可能不兼容 / 未找到 Java”。
-- 真实启动前，若不兼容且检查开启，弹出确认框；用户仍可选择继续。
+- 真实启动前，若低于最低要求且检查开启，弹出确认框；用户仍可选择继续。
 - 启动流水线的 `ResolveJavaStep` 同时返回 `Warning`，CLI 会看到同样的警告。
 - 实例设置 `instance.java.disableCompatibilityCheck` 可关闭该实例的检查；关闭后 UI 不再弹窗，流水线不再警告（但找不到 Java 仍会失败）。
 - 实例页 Java 卡片也提供同一开关，便于直接操作。
