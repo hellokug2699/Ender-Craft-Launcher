@@ -191,7 +191,10 @@ public sealed class JavaLocator : IJavaLocator
         var vendor = implementor ?? javaVendor;
         if (string.IsNullOrWhiteSpace(vendor))
         {
-            vendor = Path.GetFileName(Path.GetDirectoryName(home));
+            var parentName = Path.GetFileName(Path.GetDirectoryName(home));
+            vendor = string.Equals(parentName, "java", StringComparison.OrdinalIgnoreCase)
+                ? "Mojang"
+                : parentName;
         }
 
         return new JavaRuntime(home, executable, vendor, architecture, version);

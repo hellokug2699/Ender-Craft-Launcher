@@ -121,6 +121,20 @@ UI 在每项下方展示“来源”，实例作用域下 `Default` 显示为“
 
 `game.acceptEula` 为全局布尔项，默认 `false`。只有用户显式勾选后，启动步骤才会在 `<gameData>/eula.txt` 写入 `eula=true`；否则真实启动会停在 EULA 检查步骤，Dry Run 仅给出警告。选项描述中链接到 Minecraft EULA 原文。
 
+### Java 相关配置
+
+| Key | 作用域 | 含义 |
+| --- | --- | --- |
+| `java.defaultPath` | Global | 全局默认 Java 路径；留空自动选择 |
+| `java.defaultMemoryMb` | Global | 默认最大堆内存 |
+| `java.extraArguments` | Global | 全局额外 JVM 参数 |
+| `instance.java.executablePath` | Instance | 实例指定 Java；留空自动选择 |
+| `instance.java.memoryMb` | Instance | 实例内存覆盖；留空继承全局 |
+| `instance.java.extraArguments` | Instance | 实例 JVM 参数覆盖 |
+| `instance.java.disableCompatibilityCheck` | Instance | 关闭该实例的 Java 兼容性检验 |
+
+自动选择与兼容性规则详见 [java.md](java.md)。实例页的 Java 下拉框会写入 `instance.java.executablePath`；“自动”会清空该值。
+
 ## 3. 文件格式
 
 `config/global.json`：

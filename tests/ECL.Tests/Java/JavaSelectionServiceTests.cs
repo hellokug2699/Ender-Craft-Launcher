@@ -1,0 +1,128 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+using Ecl.Configuration.Settings;
+using Ecl.Java;
+using Ecl.Minecraft.Instances;
+using Ecl.Minecraft.Java;
+using Ecl.Minecraft.Versions;
+using Microsoft.Extensions.DependencyInjection;
+using Xunit;
+
+namespace Ecl.Tests.Java;
+
+public sealed class JavaSelectionServiceTests
+{
+    [Fact]
+    public async Task SelectsCompatibleRuntimeAndDetectsExplicitMismatch()
+    {
+        using var environment = new TestEnvironment();
+        var java8 = Runtime(environment, "8.0.412");
+        var java17 = Runtime(environment, "17.0.15");
+        var fakeLocator = new FakeJavaLocator([java8, java17]);
+
+        await using var provider = environment.CreateServices(services =>
+            services.AddSingleton<IJavaLocator>(fakeLocator));
+
+        var instance = await CreateVersionAsync(provider, environment, "1.20.1");
+        var version = (await provider.GetRequiredService<IVersionResolver>().ResolveAsync(instance.VersionId)).Value!;
+        var selection = provider.GetRequiredService<IJavaSelectionService>();
+        var settings = provider.GetRequiredService<ISettingsService>();
+
+        var automatic = await selection.ResolveAsync(instance, version);
+        Assert.Equal(17, automatic.Runtime?.Version?.Major);
+        Assert.True(automatic.Compatibility?.IsCompatible);
+        Assert.True(automatic.CompatibilityCheckEnabled);
+
+        Assert.True(settings.TrySetRaw(
+            "instance.java.executablePath",
+            java8.ExecutablePath,
+            instance.Id,
+            out var pathError), pathError);
+
+        var explicitSelection = await selection.ResolveAsync(instance, version);
+        Assert.Equal(8, explicitSelection.Runtime?.Version?.Major);
+        Assert.Equal(JavaCompatibilityStatus.TooOld, explicitSelection.Compatibility?.Status);
+
+        Assert.True(settings.TrySetRaw(
+            "instance.java.disableCompatibilityCheck",
+            "true",
+            instance.Id,
+            out var checkError), checkError);
+
+        var disabled = await selection.ResolveAsync(instance, version);
+        Assert.False(disabled.CompatibilityCheckEnabled);
+    }
+
+    [Fact]
+    public async Task FallsBackToAutoWhenExplicitPathIsInvalid()
+    {
+        using var environment = new TestEnvironment();
+        var java17 = Runtime(environment, "17.0.15");
+        var fakeLocator = new FakeJavaLocator([java17]);
+
+        await using var provider = environment.CreateServices(services =>
+            services.AddSingleton<IJavaLocator>(fakeLocator));
+
+        var instance = await CreateVersionAsync(provider, environment, "1.20.1");
+        var version = (await provider.GetRequiredService<IVersionResolver>().ResolveAsync(instance.VersionId)).Value!;
+
+        Assert.True(provider.GetRequiredService<ISettingsService>().TrySetRaw(
+            "instance.java.executablePath",
+            Path.Combine(environment.Root, "missing-java"),
+            instance.Id,
+            out var error), error);
+
+        var selection = await provider.GetRequiredService<IJavaSelectionService>()
+            .ResolveAsync(instance, version);
+
+        Assert.Equal(17, selection.Runtime?.Version?.Major);
+        Assert.NotEmpty(selection.Warnings);
+    }
+
+    private static async Task<GameInstance> CreateVersionAsync(
+        IServiceProvider provider,
+        TestEnvironment environment,
+        string gameVersion)
+    {
+        var created = await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Java Test", gameVersion);
+        Assert.True(created.IsSuccess);
+        var instance = created.Value!;
+
+        var path = VersionFilePlanner.GetVersionJsonPath(environment.Paths, instance.VersionId);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllTextAsync(path, """
+            {
+              "id": "1.20.1",
+              "type": "release",
+              "javaVersion": { "component": "java-runtime-gamma", "majorVersion": 17 },
+              "libraries": []
+            }
+            """);
+
+        return instance;
+    }
+
+    private static JavaRuntime Runtime(TestEnvironment environment, string version)
+    {
+        var parsed = JavaVersion.TryParse(version)!;
+        var home = Path.Combine(environment.Root, "java", version);
+        return new JavaRuntime(
+            home,
+            Path.Combine(home, "bin", OperatingSystem.IsWindows() ? "java.exe" : "java"),
+            "Test",
+            "x86_64",
+            parsed);
+    }
+
+    private sealed class FakeJavaLocator(IReadOnlyList<JavaRuntime> runtimes) : IJavaLocator
+    {
+        public Task<IReadOnlyList<JavaRuntime>> FindAllAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(runtimes);
+
+        public JavaRuntime? FromPath(string path) =>
+            runtimes.FirstOrDefault(runtime =>
+                string.Equals(runtime.ExecutablePath, path, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(runtime.HomePath, path, StringComparison.OrdinalIgnoreCase));
+    }
+}

@@ -12,6 +12,7 @@ using Ecl.Java;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Launch;
+using Ecl.Minecraft.Versions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Ecl.Cli;
@@ -372,11 +373,21 @@ internal sealed class CliApplication
 
     private async Task<int> JavaCommandAsync(string[] args)
     {
-        if (args.Length == 0 || !string.Equals(args[0], "list", StringComparison.OrdinalIgnoreCase))
+        if (args.Length == 0 || string.Equals(args[0], "list", StringComparison.OrdinalIgnoreCase))
         {
-            return UsageError("java 目前只支持 list。");
+            return await ListJavaAsync().ConfigureAwait(false);
         }
 
+        if (string.Equals(args[0], "install", StringComparison.OrdinalIgnoreCase))
+        {
+            return await InstallJavaAsync(args).ConfigureAwait(false);
+        }
+
+        return UsageError("java 支持 list 与 install。");
+    }
+
+    private async Task<int> ListJavaAsync()
+    {
         var runtimes = await _provider.GetRequiredService<IJavaLocator>()
             .FindAllAsync()
             .ConfigureAwait(false);
@@ -389,7 +400,7 @@ internal sealed class CliApplication
 
         if (runtimes.Count == 0)
         {
-            Console.WriteLine("未发现 Java 运行时。");
+            Console.WriteLine("未发现 Java 运行时。使用 java install <实例ID> 自动下载。");
             return 0;
         }
 
@@ -400,6 +411,69 @@ internal sealed class CliApplication
             Console.WriteLine($"  exe : {runtime.ExecutablePath}");
         }
 
+        return 0;
+    }
+
+    private async Task<int> InstallJavaAsync(string[] args)
+    {
+        var instanceId = args.ElementAtOrDefault(1);
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            return UsageError("java install 需要实例 ID。");
+        }
+
+        var instance = await _provider.GetRequiredService<IInstanceService>()
+            .GetAsync(instanceId)
+            .ConfigureAwait(false);
+
+        if (instance is null)
+        {
+            return WriteError(new EclError("instance.not_found", $"实例不存在：{instanceId}"));
+        }
+
+        var version = await _provider.GetRequiredService<IVersionResolver>()
+            .ResolveAsync(instance.VersionId)
+            .ConfigureAwait(false);
+
+        if (!version.IsSuccess)
+        {
+            return WriteError(version.Error);
+        }
+
+        var requirement = JavaRequirements.Resolve(version.Value!, instance.GameVersion);
+        var localizer = _provider.GetRequiredService<ILocalizer>();
+        var lastStage = (JavaInstallStage?)null;
+
+        var progress = new InlineProgress<JavaInstallProgress>(update =>
+        {
+            if (lastStage != update.Stage)
+            {
+                Console.WriteLine(update.Message);
+                lastStage = update.Stage;
+            }
+
+            if (update.TotalFiles > 0 &&
+                (update.CompletedFiles == update.TotalFiles || update.CompletedFiles % 100 == 0))
+            {
+                Console.WriteLine(
+                    $"  {update.CompletedFiles}/{update.TotalFiles} · {update.CompletedBytes / 1024 / 1024} MB");
+            }
+        });
+
+        var result = await _provider.GetRequiredService<IJavaInstallService>()
+            .EnsureAsync(requirement, progress)
+            .ConfigureAwait(false);
+
+        if (!result.IsSuccess)
+        {
+            return WriteError(result.Error);
+        }
+
+        var runtime = result.Value!;
+        Console.WriteLine(localizer.Get("cli.java.success"));
+        Console.WriteLine($"  Version: {runtime.Version?.Raw ?? "未知"}");
+        Console.WriteLine($"  Home   : {runtime.HomePath}");
+        Console.WriteLine($"  Exe    : {runtime.ExecutablePath}");
         return 0;
     }
 

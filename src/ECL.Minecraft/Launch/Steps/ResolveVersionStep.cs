@@ -9,7 +9,7 @@ internal sealed class ResolveVersionStep(IVersionResolver versionResolver, ILoca
 {
     public string Id => "version";
 
-    public int Order => 300;
+    public int Order => 150;
 
     public async Task<LaunchStepResult> ExecuteAsync(LaunchContext context, CancellationToken cancellationToken = default)
     {

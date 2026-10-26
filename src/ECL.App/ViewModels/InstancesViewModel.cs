@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Collections.ObjectModel;
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Services;
@@ -8,9 +9,12 @@ using Ecl.Auth;
 using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Localization;
+using Ecl.Java;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
+using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Launch;
+using Ecl.Minecraft.Versions;
 
 namespace Ecl.App.ViewModels;
 
@@ -24,14 +28,22 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IDialogService _dialogs;
     private readonly ILocalizer _localizer;
     private readonly IAppPaths _paths;
+    private readonly IJavaLocator _javaLocator;
+    private readonly IJavaSelectionService _javaSelection;
+    private readonly IJavaInstallService _javaInstall;
+    private readonly IVersionResolver _versionResolver;
     private bool _initialized;
     private bool _suppressAccountSelection;
+    private bool _suppressJavaSelection;
+    private bool _suppressJavaCheck;
 
     public ObservableCollection<InstanceItemViewModel> Instances { get; } = [];
 
     public ObservableCollection<AccountItemViewModel> Accounts { get; } = [];
 
     public ObservableCollection<LaunchStepItemViewModel> LaunchSteps { get; } = [];
+
+    public ObservableCollection<JavaOptionViewModel> JavaOptions { get; } = [];
 
     [ObservableProperty]
     private InstanceItemViewModel? _selectedInstance;
@@ -72,6 +84,27 @@ public sealed partial class InstancesViewModel : ObservableObject
     [ObservableProperty]
     private string _installStatus = string.Empty;
 
+    [ObservableProperty]
+    private JavaOptionViewModel? _selectedJavaOption;
+
+    [ObservableProperty]
+    private string _javaStatus = string.Empty;
+
+    [ObservableProperty]
+    private bool _disableJavaCompatibilityCheck;
+
+    [ObservableProperty]
+    private bool _isDownloadingJava;
+
+    [ObservableProperty]
+    private bool _javaDownloadIndeterminate;
+
+    [ObservableProperty]
+    private double _javaDownloadProgressValue;
+
+    [ObservableProperty]
+    private string _javaDownloadStatus = string.Empty;
+
     public bool HasSelection => SelectedInstance is not null;
 
     public bool IsEmpty => Instances.Count == 0;
@@ -98,7 +131,11 @@ public sealed partial class InstancesViewModel : ObservableObject
         ISettingsService settings,
         IDialogService dialogs,
         ILocalizer localizer,
-        IAppPaths paths)
+        IAppPaths paths,
+        IJavaLocator javaLocator,
+        IJavaSelectionService javaSelection,
+        IJavaInstallService javaInstall,
+        IVersionResolver versionResolver)
     {
         _instances = instances;
         _accounts = accounts;
@@ -108,6 +145,10 @@ public sealed partial class InstancesViewModel : ObservableObject
         _dialogs = dialogs;
         _localizer = localizer;
         _paths = paths;
+        _javaLocator = javaLocator;
+        _javaSelection = javaSelection;
+        _javaInstall = javaInstall;
+        _versionResolver = versionResolver;
     }
 
     public async Task InitializeAsync()
@@ -120,6 +161,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         _initialized = true;
         await RefreshAccountsAsync().ConfigureAwait(true);
         await RefreshInstancesAsync().ConfigureAwait(true);
+        await RefreshJavaAsync().ConfigureAwait(true);
     }
 
     [RelayCommand]
@@ -127,6 +169,126 @@ public sealed partial class InstancesViewModel : ObservableObject
     {
         await RefreshAccountsAsync().ConfigureAwait(true);
         await RefreshInstancesAsync().ConfigureAwait(true);
+        await RefreshJavaAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private async Task RefreshJavaAsync()
+    {
+        _suppressJavaSelection = true;
+        try
+        {
+            var runtimes = await _javaLocator.FindAllAsync().ConfigureAwait(true);
+            JavaOptions.Clear();
+            JavaOptions.Add(new JavaOptionViewModel(null, _localizer.Get("instances.java.auto")));
+
+            foreach (var runtime in runtimes)
+            {
+                JavaOptions.Add(new JavaOptionViewModel(runtime, FormatJava(runtime)));
+            }
+
+            if (SelectedInstance is not null)
+            {
+                var configured = _settings.Get<string?>("instance.java.executablePath", SelectedInstance.Model.Id);
+                SelectedJavaOption = JavaOptions.FirstOrDefault(option =>
+                    option.Runtime is not null &&
+                    string.Equals(option.Runtime.ExecutablePath, configured, StringComparison.OrdinalIgnoreCase))
+                    ?? JavaOptions[0];
+            }
+            else
+            {
+                SelectedJavaOption = JavaOptions[0];
+            }
+        }
+        finally
+        {
+            _suppressJavaSelection = false;
+        }
+
+        await UpdateJavaStatusAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private async Task DownloadJavaAsync()
+    {
+        if (SelectedInstance is null)
+        {
+            StatusMessage = _localizer.Get("instances.selectFirst");
+            return;
+        }
+
+        if (IsBusy)
+        {
+            return;
+        }
+
+        var instance = SelectedInstance.Model;
+        var versionResult = await _versionResolver.ResolveAsync(instance.VersionId).ConfigureAwait(true);
+        if (!versionResult.IsSuccess)
+        {
+            JavaDownloadStatus = _localizer.Get("instances.java.installFirst");
+            return;
+        }
+
+        var requirement = JavaRequirements.Resolve(versionResult.Value!, instance.GameVersion);
+        IsBusy = true;
+        IsDownloadingJava = true;
+        JavaDownloadIndeterminate = true;
+        JavaDownloadProgressValue = 0;
+        JavaDownloadStatus = _localizer.Get("instances.java.downloading");
+
+        var progress = new Progress<JavaInstallProgress>(update =>
+        {
+            JavaDownloadIndeterminate = update.IsIndeterminate;
+            JavaDownloadProgressValue = update.Percent;
+            JavaDownloadStatus = update.TotalFiles > 0
+                ? $"{update.Message} ({update.CompletedFiles}/{update.TotalFiles})"
+                : update.Message;
+        });
+
+        try
+        {
+            var result = await _javaInstall
+                .EnsureAsync(requirement, progress)
+                .ConfigureAwait(true);
+
+            if (!result.IsSuccess)
+            {
+                JavaDownloadStatus = result.Error?.Message ?? _localizer.Get("instances.java.downloadFailed");
+                StatusMessage = JavaDownloadStatus;
+                return;
+            }
+
+            JavaDownloadStatus = _localizer.Get("instances.java.downloadSucceeded");
+            await RefreshJavaAsync().ConfigureAwait(true);
+
+            if (result.Value is not null)
+            {
+                var option = JavaOptions.FirstOrDefault(item =>
+                    item.Runtime is not null &&
+                    string.Equals(item.Runtime.ExecutablePath, result.Value.ExecutablePath, StringComparison.OrdinalIgnoreCase));
+
+                if (option is not null)
+                {
+                    _suppressJavaSelection = true;
+                    SelectedJavaOption = option;
+                    _suppressJavaSelection = false;
+                    _settings.TrySetRaw("instance.java.executablePath", result.Value.ExecutablePath, instance.Id, out _);
+                }
+            }
+
+            await UpdateJavaStatusAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            JavaDownloadStatus = _localizer.Get("instances.java.downloadFailed");
+            StatusMessage = exception.Message;
+        }
+        finally
+        {
+            IsDownloadingJava = false;
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
@@ -260,6 +422,7 @@ public sealed partial class InstancesViewModel : ObservableObject
             InstallProgressValue = 100;
             InstallStatus = _localizer.Get("instances.installSucceeded");
             StatusMessage = InstallStatus;
+            await UpdateJavaStatusAsync().ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -314,6 +477,50 @@ public sealed partial class InstancesViewModel : ObservableObject
         InstallStatus = string.Empty;
         InstallProgressValue = 0;
         InstallIndeterminate = false;
+        JavaDownloadStatus = string.Empty;
+
+        if (JavaOptions.Count > 0)
+        {
+            _ = RefreshJavaSelectionAsync();
+        }
+    }
+
+    partial void OnSelectedJavaOptionChanged(JavaOptionViewModel? value)
+    {
+        if (_suppressJavaSelection || SelectedInstance is null)
+        {
+            return;
+        }
+
+        var path = value?.Runtime?.ExecutablePath ?? string.Empty;
+        if (!_settings.TrySetRaw("instance.java.executablePath", path, SelectedInstance.Model.Id, out var error))
+        {
+            StatusMessage = error ?? string.Empty;
+            return;
+        }
+
+        _ = UpdateJavaStatusAsync();
+    }
+
+    partial void OnDisableJavaCompatibilityCheckChanged(bool value)
+    {
+        if (_suppressJavaCheck || SelectedInstance is null)
+        {
+            return;
+        }
+
+        _settings.TrySetRaw(
+            "instance.java.disableCompatibilityCheck",
+            value ? "true" : "false",
+            SelectedInstance.Model.Id,
+            out var error);
+
+        if (error is not null)
+        {
+            StatusMessage = error;
+        }
+
+        _ = UpdateJavaStatusAsync();
     }
 
     partial void OnSelectedAccountChanged(AccountItemViewModel? value)
@@ -326,6 +533,159 @@ public sealed partial class InstancesViewModel : ObservableObject
         _ = SetDefaultAccountAsync(value.Id);
     }
 
+    private async Task<bool> ConfirmJavaBeforeLaunchAsync()
+    {
+        if (SelectedInstance is null)
+        {
+            return false;
+        }
+
+        var instance = SelectedInstance.Model;
+        var versionResult = await _versionResolver.ResolveAsync(instance.VersionId).ConfigureAwait(true);
+        if (!versionResult.IsSuccess)
+        {
+            return true;
+        }
+
+        var selection = await _javaSelection
+            .ResolveAsync(instance, versionResult.Value)
+            .ConfigureAwait(true);
+
+        if (selection.Runtime is null)
+        {
+            var shouldDownload = _dialogs.Confirm(
+                _localizer.Get("instances.java.downloadTitle"),
+                _localizer.Get("instances.java.downloadPrompt"));
+
+            if (shouldDownload)
+            {
+                await DownloadJavaAsync().ConfigureAwait(true);
+            }
+
+            return false;
+        }
+
+        if (!selection.CompatibilityCheckEnabled ||
+            selection.Compatibility is null ||
+            selection.Compatibility.IsCompatible)
+        {
+            return true;
+        }
+
+        var actual = selection.Runtime.Version?.Raw ?? selection.Runtime.DisplayName;
+        var required = selection.Requirement?.Describe() ?? "Java";
+        return _dialogs.Confirm(
+            _localizer.Get("instances.java.incompatibleTitle"),
+            _localizer.Get("instances.java.incompatiblePrompt", actual, required));
+    }
+
+    private async Task RefreshJavaSelectionAsync()
+    {
+        if (SelectedInstance is null)
+        {
+            JavaStatus = string.Empty;
+            return;
+        }
+
+        try
+        {
+            var instance = SelectedInstance.Model;
+            _suppressJavaSelection = true;
+            var configured = _settings.Get<string?>("instance.java.executablePath", instance.Id);
+            SelectedJavaOption = JavaOptions.FirstOrDefault(option =>
+                option.Runtime is not null &&
+                string.Equals(option.Runtime.ExecutablePath, configured, StringComparison.OrdinalIgnoreCase))
+                ?? JavaOptions.FirstOrDefault();
+            _suppressJavaSelection = false;
+
+            _suppressJavaCheck = true;
+            DisableJavaCompatibilityCheck = _settings.Get<bool>("instance.java.disableCompatibilityCheck", instance.Id);
+            _suppressJavaCheck = false;
+
+            await UpdateJavaStatusAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            JavaStatus = exception.Message;
+        }
+    }
+
+    private async Task UpdateJavaStatusAsync()
+    {
+        if (SelectedInstance is null)
+        {
+            JavaStatus = string.Empty;
+            return;
+        }
+
+        try
+        {
+            var instance = SelectedInstance.Model;
+            var versionResult = await _versionResolver.ResolveAsync(instance.VersionId).ConfigureAwait(true);
+            if (!versionResult.IsSuccess)
+            {
+                JavaStatus = _localizer.Get("instances.java.installFirst");
+                return;
+            }
+
+            var selection = await _javaSelection
+                .ResolveAsync(instance, versionResult.Value)
+                .ConfigureAwait(true);
+
+            _suppressJavaCheck = true;
+            DisableJavaCompatibilityCheck = !selection.CompatibilityCheckEnabled;
+            _suppressJavaCheck = false;
+
+            if (selection.Runtime is null)
+            {
+                JavaStatus = WithWarnings(_localizer.Get("instances.java.notFound"));
+                return;
+            }
+
+            if (!selection.CompatibilityCheckEnabled)
+            {
+                JavaStatus = WithWarnings(
+                    _localizer.Get("instances.java.checkDisabled", selection.Runtime.DisplayName));
+                return;
+            }
+
+            if (selection.Compatibility is null || selection.Compatibility.IsCompatible)
+            {
+                JavaStatus = WithWarnings(
+                    _localizer.Get("instances.java.compatible", selection.Runtime.DisplayName));
+                return;
+            }
+
+            if (selection.Compatibility.Status == JavaCompatibilityStatus.Unknown)
+            {
+                JavaStatus = WithWarnings(
+                    _localizer.Get("instances.java.unknownVersion", selection.Runtime.DisplayName));
+                return;
+            }
+
+            JavaStatus = WithWarnings(_localizer.Get(
+                "instances.java.incompatible",
+                selection.Runtime.Version?.Raw ?? selection.Runtime.DisplayName,
+                selection.Requirement?.Describe() ?? "Java"));
+
+            string WithWarnings(string text) => selection.Warnings.Count == 0
+                ? text
+                : $"{text} {string.Join(' ', selection.Warnings)}";
+        }
+        catch (Exception exception)
+        {
+            JavaStatus = exception.Message;
+        }
+    }
+
+    private static string FormatJava(JavaRuntime runtime)
+    {
+        var version = runtime.Version?.Raw ?? "?";
+        var vendor = runtime.Vendor ?? "Java";
+        var folder = Path.GetFileName(runtime.HomePath);
+        return $"{version} · {vendor} · {folder}";
+    }
+
     private async Task RunLaunchAsync(bool dryRun)
     {
         if (SelectedInstance is null)
@@ -335,6 +695,11 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
 
         if (IsBusy)
+        {
+            return;
+        }
+
+        if (!dryRun && !await ConfirmJavaBeforeLaunchAsync().ConfigureAwait(true))
         {
             return;
         }
@@ -469,6 +834,8 @@ public sealed partial class AccountItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _isDefault;
 }
+
+public sealed record JavaOptionViewModel(JavaRuntime? Runtime, string DisplayName);
 
 public sealed class LaunchStepItemViewModel
 {

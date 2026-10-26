@@ -2,7 +2,7 @@
 
 > 一个面向 Windows 的 Minecraft 启动器，使用 C# / .NET 10 / WPF 构建。
 
-ECL 的目标是达到 HMCL、PCL2 级别的完整度，同时在配置系统、启动流程和交互上做出自己的设计。当前仓库处于 **v0.2 原版安装闭环** 阶段：可编译、可运行，能够下载并补全原版版本、依赖库、资源与日志配置，执行 natives 解压并通过分阶段流水线真实启动游戏（需要本机已有兼容的 Java）。
+ECL 的目标是达到 HMCL、PCL2 级别的完整度，同时在配置系统、启动流程和交互上做出自己的设计。当前仓库处于 **v0.4 Java 管理** 阶段（v0.3 账户体系因 Microsoft OAuth 审核限制暂时跳过）：能够安装原版、下载并选择 Java 运行时、自动检测 Java 与游戏版本的兼容性，并完成真实启动。
 
 ## 现在能做什么
 
@@ -12,18 +12,18 @@ ECL 的目标是达到 HMCL、PCL2 级别的完整度，同时在配置系统、
 - 元数据驱动配置：全局设置与实例覆盖，自动生成设置页，支持校验、可见性依赖、来源标记。
 - **原版安装**：版本清单、版本 JSON、继承链合并、客户端、依赖库、资源索引与资源对象、日志配置下载；SHA-1 校验、断点续传、并发下载、失败重试。
 - **四档下载源策略**：只官方 / 优先官方 / 优先镜像 / 只镜像，默认优先官方、其次 BMCLAPI。
+- **Java 管理**：逐实例选择/自动选择 Java，显示兼容性状态；版本不匹配时弹窗提示，可逐实例关闭兼容性检验；没有 Java 时提示并支持从 Mojang 自动下载 Java 运行时到启动器目录。
 - **真实启动**：检查文件完整性、解压 natives、按规则过滤库、写入 EULA、构建命令并启动进程。
-- Java 探测：扫描 `JAVA_HOME`、`PATH`、启动器托管目录和常见安装目录，解析 `release` 文件。
-- 启动流水线：校验 → 解析 Java → 读取版本 → 检查文件 → 解压 natives → 检查 EULA → 构建命令 → 启动/干跑；失败可定位到具体步骤。
-- CLI：无 GUI 环境下安装、管理实例/账户/配置并预览启动命令。
-- 单元测试：50 个测试覆盖下载源、HTTP 下载、配置、账户、Java、实例、库规则、版本继承、安装与启动流水线。
+- 启动流水线：校验 → 读取版本 → 解析 Java → 检查文件 → 解压 natives → 检查 EULA → 构建命令 → 启动/干跑；失败可定位到具体步骤。
+- CLI：无 GUI 环境下安装游戏、管理 Java/实例/账户/配置并预览启动命令。
+- 单元测试：61 个测试覆盖下载源、HTTP 下载、Java 需求/选择/安装、配置、账户、Java 探测、实例、库规则、版本继承、安装与启动流水线。
 
 ## 尚未实现
 
-- Java 运行时自动下载与按版本匹配（当前使用本机探测到的 Java，旧版本可能需要手动指定 Java 8）。
-- Microsoft 登录 / authlib-injector 第三方认证。
+- Microsoft 登录 / authlib-injector 第三方认证（v0.3，暂时跳过）。
 - Forge / NeoForge / Fabric / Quilt / OptiFine 安装。
 - Mod、整合包、资源包、光影管理。
+- JVM 参数预设（G1/ZGC/Aikar flags）。
 - 启动器自更新、崩溃分析、安装包与签名发布。
 - 浅色主题、托盘、完整 i18n 覆盖等体验项。
 
@@ -53,6 +53,7 @@ dotnet run --project src/ECL.Cli -- version
 dotnet run --project src/ECL.Cli -- account add-offline Steve --default
 dotnet run --project src/ECL.Cli -- instance create "Survival" --version 1.21.1
 dotnet run --project src/ECL.Cli -- install <实例ID>
+dotnet run --project src/ECL.Cli -- java install <实例ID>
 dotnet run --project src/ECL.Cli -- launch <实例ID> --dry-run
 dotnet run --project src/ECL.Cli -- settings list
 ```
@@ -67,8 +68,8 @@ src/
   ECL.Configuration/   元数据驱动配置：定义、注册表、作用域、持久化
   ECL.Download/        HTTP 下载、镜像映射、四档下载源策略、校验与续传
   ECL.Auth/            账户模型、离线 UUID、账户存储
-  ECL.Java/            Java 版本解析与运行时探测
-  ECL.Minecraft/       实例、版本、安装器、启动流水线、进程启动
+  ECL.Java/            Java 版本解析、运行时探测、Java 需求/兼容性、运行时下载
+  ECL.Minecraft/       实例、版本、安装器、Java 选择、启动流水线、进程启动
   ECL.App/             WPF 外壳（MVVM）
   ECL.Cli/             命令行入口
 tests/
@@ -92,6 +93,7 @@ build/                 构建、打包、签名脚本
 
 - [架构总览](docs/architecture.md)
 - [配置系统](docs/configuration.md)
+- [Java 管理](docs/java.md)
 - [启动流水线](docs/launch-pipeline.md)
 - [仓库与保密策略](docs/repository-policy.md)
 - [路线图](docs/roadmap.md)
