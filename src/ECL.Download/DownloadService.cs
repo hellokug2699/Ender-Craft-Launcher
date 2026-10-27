@@ -74,7 +74,7 @@ public sealed class DownloadService(
                 Interlocked.Add(ref completedBytes, request.Size ?? GetFileLength(request.DestinationPath));
                 Report(progress, Volatile.Read(ref completedFiles), totalFiles, Volatile.Read(ref completedBytes), totalBytes, displayName);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
@@ -144,7 +144,7 @@ public sealed class DownloadService(
 
                     return Encoding.UTF8.GetString(bytes);
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
                     throw;
                 }
@@ -194,7 +194,7 @@ public sealed class DownloadService(
                     await DownloadFromUrlAsync(client, url, request, partPath, cancellationToken).ConfigureAwait(false);
                     return;
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
                     throw;
                 }
@@ -359,6 +359,9 @@ public sealed class DownloadService(
                                      http.StatusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests,
         IOException => true,
         InvalidDataException => true,
+        // HttpClient 连接超时会以 TaskCanceledException 形式抛出，用户取消已在上层过滤。
+        OperationCanceledException => true,
+        TimeoutException => true,
         _ => false,
     };
 

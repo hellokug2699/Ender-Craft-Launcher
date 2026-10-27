@@ -13,6 +13,8 @@ public sealed partial class InstanceService : IInstanceService
     {
         "vanilla",
         "fabric",
+        "forge",
+        "neoforge",
         "cleanroom",
     };
 
@@ -87,11 +89,13 @@ public sealed partial class InstanceService : IInstanceService
 
         if (optiFineVersion is not null)
         {
-            if (!string.Equals(loader, "cleanroom", StringComparison.OrdinalIgnoreCase))
+            // OptiFine 以 mod 形式安装：Forge 与 Cleanroom 可用，Fabric/NeoForge/原版不可用。
+            if (!string.Equals(loader, "cleanroom", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(loader, "forge", StringComparison.OrdinalIgnoreCase))
             {
                 return Result<GameInstance>.Fail(
-                    "instance.optifine_requires_cleanroom",
-                    "OptiFine 仅在 Cleanroom 加载器下可选。");
+                    "instance.optifine_requires_forge",
+                    "OptiFine 仅在 Forge 或 Cleanroom 加载器下可选。");
             }
 
             if (!OptiFineKeyRegex().IsMatch(optiFineVersion))

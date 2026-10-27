@@ -21,7 +21,8 @@ v0.5 需要支持 Fabric 与 1.12.2 的 Cleanroom，并处理 Fabric API、OptiF
 
 - Fabric 使用 Meta 的 `profile/json`，直接得到版本 JSON、库与 JVM 参数。
 - Cleanroom 使用安装器 zip 中的 `version.json` 与 `install_profile.json`，补全空 URL 后按普通版本安装。
-- **不执行** Forge/Cleanroom 安装器的 GUI 或 CLI 进程，避免交互、额外目录与不可控副作用。
+- **不执行** Cleanroom 安装器的 GUI 或 CLI 进程，避免交互、额外目录与不可控副作用。
+- Forge/NeoForge 的 processors 属于例外，见 ADR 0008。
 
 ### 2. 加载器版本 ID 与文件布局
 
@@ -56,4 +57,4 @@ v0.5 需要支持 Fabric 与 1.12.2 的 Cleanroom，并处理 Fabric API、OptiF
 - 不依赖安装器进程，安装流程可测试、可重试。
 - 版本列表与安装都依赖第三方公开接口；接口失败时给出明确错误，不回退到自动安装 OptiFine。
 - 旧版本加载器的更新时间可能显示未知，但不影响安装。
-- Quilt、Legacy Fabric、Forge、NeoForge 仍不支持；Forge 系列需要 processors 与补丁逻辑，留待后续 ADR。
+- Forge/NeoForge 的安装器 processors 由 ADR 0008 单独定义；Quilt、Legacy Fabric 仍不支持。

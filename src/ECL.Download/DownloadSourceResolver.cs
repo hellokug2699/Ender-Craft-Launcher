@@ -81,6 +81,20 @@ public sealed class DownloadSourceResolver(ISettingsService settings)
             return new Uri(MavenCentralMirrorRoot + mavenPath);
         }
 
+        if (host == "maven.minecraftforge.net")
+        {
+            return new Uri(root + "/maven" + path);
+        }
+
+        if (host == "maven.neoforged.net")
+        {
+            // BMCLAPI 的 Maven 镜像不带 /releases 前缀。
+            var neoforgePath = path.StartsWith("/releases/", StringComparison.OrdinalIgnoreCase)
+                ? path["/releases".Length..]
+                : path;
+            return new Uri(root + "/maven" + neoforgePath);
+        }
+
         return null;
     }
 }

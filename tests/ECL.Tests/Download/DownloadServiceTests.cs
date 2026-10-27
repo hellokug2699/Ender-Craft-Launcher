@@ -126,6 +126,43 @@ public sealed class DownloadServiceTests
         Assert.Equal("{\"ok\":true}", text);
     }
 
+    [Fact]
+    public async Task FallsBackToNextUrlWhenConnectionTimesOut()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var settings = provider.GetRequiredService<ISettingsService>();
+        var handler = new StubHandler();
+        var service = CreateService(settings, handler);
+
+        var content = Encoding.UTF8.GetBytes("fallback");
+        var hash = Convert.ToHexString(SHA1.HashData(content)).ToLowerInvariant();
+        handler.Respond = request =>
+        {
+            if (request.RequestUri!.Host == "slow.example.com")
+            {
+                // HttpClient 连接超时以 TaskCanceledException 抛出，但不是用户取消。
+                throw new TaskCanceledException("connect timeout", new TimeoutException());
+            }
+
+            return Ok(content);
+        };
+
+        var destination = Path.Combine(environment.Root, "downloads", "fallback.bin");
+        var request = new DownloadRequest(
+            destination,
+            [new Uri("https://slow.example.com/file.bin"), new Uri("https://fast.example.com/file.bin")],
+            hash,
+            HashingAlgorithm.Sha1,
+            content.Length);
+
+        var result = await service.DownloadAsync([request]);
+
+        Assert.Equal(1, result.DownloadedFiles);
+        Assert.True(handler.Calls >= 2);
+        Assert.Equal("fallback", await File.ReadAllTextAsync(destination));
+    }
+
     private static DownloadService CreateService(ISettingsService settings, StubHandler handler) =>
         new(new StubHttpClientProvider(handler), settings, NullLogger<DownloadService>.Instance);
 

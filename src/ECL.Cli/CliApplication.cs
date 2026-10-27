@@ -104,9 +104,13 @@ internal sealed class CliApplication
 
                     if (loaderKind != LoaderKind.Vanilla && string.IsNullOrWhiteSpace(loaderVersion))
                     {
-                        var versions = loaderKind == LoaderKind.Fabric
-                            ? await catalog.GetFabricLoadersAsync(version).ConfigureAwait(false)
-                            : await catalog.GetCleanroomVersionsAsync(version).ConfigureAwait(false);
+                        var versions = loaderKind switch
+                        {
+                            LoaderKind.Fabric => await catalog.GetFabricLoadersAsync(version).ConfigureAwait(false),
+                            LoaderKind.Forge => await catalog.GetForgeVersionsAsync(version).ConfigureAwait(false),
+                            LoaderKind.NeoForge => await catalog.GetNeoForgeVersionsAsync(version).ConfigureAwait(false),
+                            _ => await catalog.GetCleanroomVersionsAsync(version).ConfigureAwait(false),
+                        };
 
                         if (!versions.IsSuccess)
                         {
@@ -243,11 +247,17 @@ internal sealed class CliApplication
         switch (type)
         {
             case "fabric":
+            case "forge":
+            case "neoforge":
             case "cleanroom":
                 {
-                    var result = type == "fabric"
-                        ? await catalog.GetFabricLoadersAsync(gameVersion).ConfigureAwait(false)
-                        : await catalog.GetCleanroomVersionsAsync(gameVersion).ConfigureAwait(false);
+                    var result = type switch
+                    {
+                        "fabric" => await catalog.GetFabricLoadersAsync(gameVersion).ConfigureAwait(false),
+                        "forge" => await catalog.GetForgeVersionsAsync(gameVersion).ConfigureAwait(false),
+                        "neoforge" => await catalog.GetNeoForgeVersionsAsync(gameVersion).ConfigureAwait(false),
+                        _ => await catalog.GetCleanroomVersionsAsync(gameVersion).ConfigureAwait(false),
+                    };
 
                     if (!result.IsSuccess)
                     {
@@ -360,7 +370,7 @@ internal sealed class CliApplication
                 }
 
             default:
-                return UsageError("--type 支持 fabric、cleanroom、fabric-api、optifine。");
+                return UsageError("--type 支持 fabric、forge、neoforge、cleanroom、fabric-api、optifine。");
         }
     }
 

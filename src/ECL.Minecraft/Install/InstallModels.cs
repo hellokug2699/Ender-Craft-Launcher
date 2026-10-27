@@ -9,6 +9,7 @@ public enum InstallStage
     Manifest,
     Version,
     Loader,
+    Processors,
     Client,
     Libraries,
     Assets,

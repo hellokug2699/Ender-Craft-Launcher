@@ -3,6 +3,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Ecl.Core.Json;
 
@@ -13,7 +14,12 @@ namespace Ecl.Minecraft.Loaders;
 /// </summary>
 public static class LoaderCatalogParsers
 {
+    public const string NeoForgeLegacyGameVersion = "1.20.1";
+
     private static readonly XNamespace AtomNamespace = "http://www.w3.org/2005/Atom";
+
+    private static readonly Regex ModernGameVersionRegex =
+        new(@"^1\.(\d+)", RegexOptions.CultureInvariant);
 
     public static IReadOnlyDictionary<string, DateTimeOffset> ParseAtomDates(string xml)
     {
@@ -72,6 +78,114 @@ public static class LoaderCatalogParsers
         }
 
         return result;
+    }
+
+    public static IReadOnlyList<LoaderVersionInfo> ParseForgeVersions(string xml, string gameVersion)
+    {
+        var prefix = gameVersion.Trim() + "-";
+        return ReadMavenVersions(xml)
+            .Where(version => version.StartsWith(prefix, StringComparison.Ordinal))
+            .Select(version => version[prefix.Length..])
+            .Where(version => version.Length > 0)
+            .Reverse()
+            .Select(version => new LoaderVersionInfo(version, true, null))
+            .ToArray();
+    }
+
+    /// <summary>
+    /// NeoForge 的 maven 版本号本身随游戏版本变化：1.20.1 使用 47.1.x，
+    /// 1.20.2+ 使用「去掉 1. 前缀的游戏版本」，26.x 则补足到三段（26.3 → 26.3.0.x）。
+    /// </summary>
+    public static IReadOnlyList<LoaderVersionInfo> ParseNeoForgeVersions(string xml, string gameVersion)
+    {
+        var game = gameVersion.Trim();
+        var prefix = GetNeoForgeVersionPrefix(game);
+        if (prefix is null)
+        {
+            return [];
+        }
+
+        var legacyPrefix = game + "-";
+        var result = new List<LoaderVersionInfo>();
+
+        foreach (var version in ReadMavenVersions(xml).Reverse())
+        {
+            string normalized;
+            if (string.Equals(game, NeoForgeLegacyGameVersion, StringComparison.Ordinal))
+            {
+                // 1.20.1 的 NeoForge 发布在 net.neoforged:forge，版本形如 1.20.1-47.1.106。
+                if (!version.StartsWith(legacyPrefix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                normalized = version[legacyPrefix.Length..];
+            }
+            else
+            {
+                if (!version.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                normalized = version;
+            }
+
+            if (normalized.Length == 0)
+            {
+                continue;
+            }
+
+            result.Add(new LoaderVersionInfo(
+                normalized,
+                !normalized.Contains("-beta", StringComparison.OrdinalIgnoreCase) &&
+                !normalized.Contains("-alpha", StringComparison.OrdinalIgnoreCase),
+                null));
+        }
+
+        return result;
+    }
+
+    public static string? GetNeoForgeVersionPrefix(string gameVersion)
+    {
+        var version = gameVersion.Trim();
+        if (string.Equals(version, NeoForgeLegacyGameVersion, StringComparison.Ordinal))
+        {
+            return "47.1.";
+        }
+
+        if (version.StartsWith("1.", StringComparison.Ordinal))
+        {
+            var match = ModernGameVersionRegex.Match(version);
+            if (!match.Success || !int.TryParse(match.Groups[1].Value, out var minor) || minor < 20)
+            {
+                return null;
+            }
+
+            return version[2..] + ".";
+        }
+
+        var parts = version.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            2 => version + ".0.",
+            >= 3 => string.Join('.', parts.Take(3)) + ".",
+            _ => null,
+        };
+    }
+
+    private static IReadOnlyList<string> ReadMavenVersions(string xml)
+    {
+        var document = XDocument.Parse(xml);
+        var versions = document.Root?
+            .Element("versioning")?
+            .Element("versions")?
+            .Elements("version")
+            .Select(element => element.Value.Trim())
+            .Where(version => version.Length > 0)
+            .ToList();
+
+        return versions ?? [];
     }
 
     public static IReadOnlyList<LoaderVersionInfo> ParseCleanroomVersions(

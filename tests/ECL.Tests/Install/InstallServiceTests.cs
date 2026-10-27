@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Collections.Concurrent;
+using System.IO.Compression;
 using System.Text;
 using Ecl.Core;
 using Ecl.Download;
+using Ecl.Java;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
+using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Versions;
 using Microsoft.Extensions.DependencyInjection;
@@ -108,6 +111,43 @@ public sealed class InstallServiceTests
         Assert.Contains(result.Value!.Components!, component => component.StartsWith("fabric-api:"));
     }
 
+    [Fact]
+    public async Task InstallsForgeLoaderByRunningProcessors()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService();
+        var runner = new FakeForgeProcessorRunner();
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(fake);
+            services.AddSingleton<IJavaSelectionService>(new FakeJavaSelectionService());
+            services.AddSingleton<IForgeProcessorRunner>(runner);
+        });
+
+        var instanceResult = await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Forge", "1.21.1", "forge", "47.4.0");
+        Assert.True(instanceResult.IsSuccess);
+        var instance = instanceResult.Value!;
+
+        var stages = new List<InstallStage>();
+        var result = await provider.GetRequiredService<IVersionInstallService>()
+            .InstallAsync(instance.Id, new InlineProgress<InstallProgress>(update => stages.Add(update.Stage)));
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        Assert.Contains(InstallStage.Loader, stages);
+        Assert.Contains(InstallStage.Processors, stages);
+        Assert.True(runner.Called);
+        Assert.Equal("47.4.0", runner.LoaderVersion);
+        Assert.Contains(fake.Requests, request => request.DisplayName?.EndsWith("-installer.jar", StringComparison.Ordinal) == true);
+
+        var versionPath = VersionFilePlanner.GetVersionJsonPath(environment.Paths, instance.VersionId);
+        Assert.True(File.Exists(versionPath));
+        var written = File.ReadAllText(versionPath);
+        Assert.Contains("cpw.mods.bootstraplauncher.BootstrapLauncher", written, StringComparison.Ordinal);
+        Assert.Contains("1.21.1", written, StringComparison.Ordinal);
+        Assert.Contains(result.Value!.Components!, component => component == "forge:47.4.0");
+    }
+
     private sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>
     {
         public void Report(T value) => callback(value);
@@ -147,6 +187,19 @@ public sealed class InstallServiceTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(Result<IReadOnlyList<LoaderVersionInfo>>.Ok([]));
 
+        public Task<Result<IReadOnlyList<LoaderVersionInfo>>> GetForgeVersionsAsync(
+            string gameVersion,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result<IReadOnlyList<LoaderVersionInfo>>.Ok(
+            [
+                new LoaderVersionInfo("47.4.0", true, null),
+            ]));
+
+        public Task<Result<IReadOnlyList<LoaderVersionInfo>>> GetNeoForgeVersionsAsync(
+            string gameVersion,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result<IReadOnlyList<LoaderVersionInfo>>.Ok([]));
+
         public Task<Result<IReadOnlyList<FabricApiVersionInfo>>> GetFabricApiVersionsAsync(
             string gameVersion,
             CancellationToken cancellationToken = default) =>
@@ -173,6 +226,40 @@ public sealed class InstallServiceTests
             Task.FromResult(Result<string>.Ok(FabricProfile));
     }
 
+    private sealed class FakeJavaSelectionService : IJavaSelectionService
+    {
+        public Task<JavaSelectionResult> ResolveAsync(
+            GameInstance instance,
+            MinecraftVersion? version,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new JavaSelectionResult(
+                new JavaRuntime("/java", "java", "Test", "x86_64", null),
+                null,
+                true,
+                null,
+                true,
+                null,
+                []));
+    }
+
+    private sealed class FakeForgeProcessorRunner : IForgeProcessorRunner
+    {
+        public bool Called { get; private set; }
+
+        public string? LoaderVersion { get; private set; }
+
+        public Task<Result> RunAsync(
+            ForgeProcessorRunRequest request,
+            IProgress<InstallProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            Called = true;
+            LoaderVersion = request.Profile.Version;
+            progress?.Report(new InstallProgress(InstallStage.Processors, "processors", 1, 1, 0, 0, null));
+            return Task.FromResult(Result.Ok());
+        }
+    }
+
     private sealed class FakeDownloadService : IDownloadService
     {
         public ConcurrentBag<DownloadRequest> Requests { get; } = [];
@@ -191,10 +278,76 @@ public sealed class InstallServiceTests
                     Directory.CreateDirectory(directory);
                 }
 
-                File.WriteAllBytes(request.DestinationPath, Encoding.UTF8.GetBytes("x"));
+                if (request.DestinationPath.EndsWith("-installer.jar", StringComparison.OrdinalIgnoreCase))
+                {
+                    WriteInstaller(request.DestinationPath);
+                }
+                else
+                {
+                    File.WriteAllBytes(request.DestinationPath, Encoding.UTF8.GetBytes("x"));
+                }
             }
 
             return Task.FromResult(new DownloadBatchResult(requests.Count, 0, requests.Count));
+        }
+
+        private static void WriteInstaller(string path)
+        {
+            using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+
+            WriteEntry(archive, "install_profile.json", """
+                {
+                  "spec": 1,
+                  "minecraft": "1.21.1",
+                  "version": "47.4.0",
+                  "data": {
+                    "PATCHED": { "client": "[com.example:demo:1.0:client]" }
+                  },
+                  "processors": [
+                    {
+                      "sides": ["client"],
+                      "jar": "com.example:demo:1.0",
+                      "classpath": [],
+                      "args": ["--input", "{MINECRAFT_JAR}", "--output", "{PATCHED}"]
+                    }
+                  ],
+                  "libraries": [
+                    {
+                      "name": "com.example:demo:1.0",
+                      "downloads": {
+                        "artifact": {
+                          "path": "com/example/demo/1.0/demo-1.0.jar",
+                          "url": "https://maven.minecraftforge.net/com/example/demo/1.0/demo-1.0.jar",
+                          "sha1": "0000000000000000000000000000000000000000",
+                          "size": 1
+                        }
+                      }
+                    }
+                  ]
+                }
+                """);
+
+            WriteEntry(archive, "version.json", """
+                {
+                  "id": "1.21.1-forge-47.4.0",
+                  "inheritsFrom": "1.21.1",
+                  "type": "release",
+                  "mainClass": "cpw.mods.bootstraplauncher.BootstrapLauncher",
+                  "arguments": {
+                    "game": ["--launchTarget", "forgeclient", "--fml.forgeVersion", "47.4.0"],
+                    "jvm": ["-DlibraryDirectory=${library_directory}"]
+                  },
+                  "libraries": []
+                }
+                """);
+        }
+
+        private static void WriteEntry(ZipArchive archive, string name, string content)
+        {
+            var entry = archive.CreateEntry(name);
+            using var stream = entry.Open();
+            using var writer = new StreamWriter(stream, Encoding.UTF8);
+            writer.Write(content);
         }
 
         public Task<string> DownloadTextAsync(

@@ -68,6 +68,10 @@ public static class CommandLineBuilder
             context.Version?.MinecraftArguments,
             ReplacePlaceholders));
 
+        arguments.AddRange(VersionArgumentResolver.ResolveLoaderGameArguments(
+            context.Version?.Arguments,
+            ReplacePlaceholders));
+
         var display = BuildDisplay(context.JavaExecutable, arguments);
         return new LaunchCommand(context.JavaExecutable, arguments, display);
     }
@@ -146,6 +150,8 @@ public static class CommandLineBuilder
             .Replace("${user_type}", "legacy", StringComparison.OrdinalIgnoreCase)
             .Replace("${version_type}", context.Version?.Type ?? "release", StringComparison.OrdinalIgnoreCase)
             .Replace("${natives_directory}", context.NativesDirectory, StringComparison.OrdinalIgnoreCase)
+            .Replace("${library_directory}", context.Paths.LibrariesDirectory, StringComparison.OrdinalIgnoreCase)
+            .Replace("${classpath_separator}", Path.PathSeparator.ToString(), StringComparison.OrdinalIgnoreCase)
             .Replace("${launcher_name}", "EnderCraftLauncher", StringComparison.OrdinalIgnoreCase)
             .Replace("${launcher_version}", LauncherVersion, StringComparison.OrdinalIgnoreCase);
     }

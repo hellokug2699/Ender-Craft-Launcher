@@ -2,7 +2,7 @@
 
 > 一个面向 Windows 的 Minecraft 启动器，使用 C# / .NET 10 / WPF 构建。
 
-ECL 的目标是达到 HMCL、PCL2 级别的完整度，同时在配置系统、启动流程和交互上做出自己的设计。当前仓库处于 **v0.5 加载器安装** 阶段（v0.3 账户体系因 Microsoft OAuth 审核限制暂时跳过）：能够安装原版、Fabric（含 Fabric API）与 Cleanroom，下载并选择 Java 运行时，并完成真实启动。
+ECL 的目标是达到 HMCL、PCL2 级别的完整度，同时在配置系统、启动流程和交互上做出自己的设计。当前仓库处于 **v0.5 加载器安装** 阶段（v0.3 账户体系因 Microsoft OAuth 审核限制暂时跳过）：能够安装原版、Fabric（含 Fabric API）、Forge、NeoForge 与 Cleanroom，下载并选择 Java 运行时，并完成真实启动。
 
 ## 现在能做什么
 
@@ -14,17 +14,17 @@ ECL 的目标是达到 HMCL、PCL2 级别的完整度，同时在配置系统、
 - **四档下载源策略**：只官方 / 优先官方 / 优先镜像 / 只镜像，默认优先官方、其次 BMCLAPI。
 - **Java 管理**：逐实例选择/自动选择 Java，显示兼容性状态；只检查最低版本、不限制最高版本；版本过低时弹窗提示，可逐实例关闭兼容性检验；没有 Java 时提示并支持从 Mojang 自动下载 Java 运行时到启动器目录（覆盖 1.x 与 26.x 的需求）。
 - **EULA**：首次真实启动时弹窗要求同意 Minecraft EULA；同意后额外提示“多人联机功能不由启动器提供”的免责声明，并写入 `eula.txt`。
-- **加载器安装**：Fabric（Meta profile JSON，强制安装 Fabric API，默认最新 API）与 Cleanroom（1.12.2，从官方安装器提取版本 JSON，Java 25）；支持选择加载器/Fabric API/OptiFine 版本并显示更新时间。
-- **OptiFine**：仅在 Cleanroom + 用户显式选择时安装，默认不安装，遵守分发限制；Fabric 与原版下禁用。
-- **真实启动**：检查文件完整性、解压 natives、按规则过滤库、构建命令并启动进程；支持 Fabric `arguments.jvm` 与 Cleanroom `--tweakClass`。
+- **加载器安装**：Fabric（Meta profile JSON，强制安装 Fabric API，默认最新 API）、Forge（安装器 spec 0 直接解压，spec 1+ 运行 processors）、NeoForge（1.20.1 旧产物与 1.20.2+/26.x）与 Cleanroom（1.12.2，从官方安装器提取版本 JSON，Java 25）；支持选择加载器/Fabric API/OptiFine 版本并显示更新时间。
+- **OptiFine**：仅在 Forge 或 Cleanroom + 用户显式选择时安装，默认不安装，遵守分发限制；Fabric、NeoForge 与原版下禁用。
+- **真实启动**：检查文件完整性、解压 natives、按规则过滤库、构建命令并启动进程；支持 Fabric `arguments.jvm`、Forge/NeoForge `${library_directory}`/`--launchTarget` 与 Cleanroom `--tweakClass`。
 - 启动流水线：校验 → 读取版本 → 解析 Java → 检查文件 → 解压 natives → 检查 EULA → 构建命令 → 启动/干跑；失败可定位到具体步骤。
 - CLI：无 GUI 环境下安装游戏、管理 Java/实例/账户/配置并预览启动命令。
-- 单元测试：76 个测试覆盖下载源、HTTP 下载、Java 需求/选择/安装、配置、账户、Java 探测、EULA、实例、加载器目录、Cleanroom 安装器解析、库规则、版本继承、安装与启动流水线。
+- 单元测试：92 个测试覆盖下载源、HTTP 下载、Java 需求/选择/安装、配置、账户、Java 探测、EULA、实例、加载器目录、Forge/NeoForge 安装器解析、Cleanroom 安装器解析、库规则、版本继承、安装与启动流水线。
 
 ## 尚未实现
 
 - Microsoft 登录 / authlib-injector 第三方认证（v0.3，暂时跳过）。
-- Forge / NeoForge 安装（installer processors 与库补丁）、Quilt / Legacy Fabric。
+- Quilt / Legacy Fabric。
 - Mod、整合包、资源包、光影管理。
 - JVM 参数预设（G1/ZGC/Aikar flags）。
 - 启动器自更新、崩溃分析、安装包与签名发布。
@@ -56,7 +56,9 @@ dotnet run --project src/ECL.Cli -- version
 dotnet run --project src/ECL.Cli -- account add-offline Steve --default
 dotnet run --project src/ECL.Cli -- instance create "Survival" --version 1.21.1
 dotnet run --project src/ECL.Cli -- instance create "Fabric" --version 1.21.1 --loader fabric
-dotnet run --project src/ECL.Cli -- loader list --version 1.21.1 --type fabric-api
+dotnet run --project src/ECL.Cli -- instance create "Forge" --version 1.20.1 --loader forge
+dotnet run --project src/ECL.Cli -- instance create "NeoForge" --version 1.21.1 --loader neoforge
+dotnet run --project src/ECL.Cli -- loader list --version 1.20.1 --type forge
 dotnet run --project src/ECL.Cli -- install <实例ID>
 dotnet run --project src/ECL.Cli -- java install <实例ID>
 dotnet run --project src/ECL.Cli -- launch <实例ID> --dry-run
