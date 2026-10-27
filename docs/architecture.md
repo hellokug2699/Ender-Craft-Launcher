@@ -78,9 +78,9 @@ flowchart TD
 | `ECL.Configuration` | 配置定义、注册表、全局/实例作用域、持久化、可见性 | `OptionDefinition<T>`, `OptionRegistry`, `ISettingsService` |
 | `ECL.Download` | 下载源策略、官方↔BMCLAPI 映射、并发/重试/续传、哈希校验 | `DownloadSourceResolver`, `IDownloadService`, `DownloadRequest` |
 | `ECL.Auth` | 账户模型、离线 UUID、账户文件 | `Account`, `IAccountService`, `OfflineUuid` |
-| `ECL.Java` | Java 版本解析、运行时探测、需求/兼容性、Mojang 运行时下载 | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `IJavaInstallService` |
-| `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动 | `GameInstance`, `VanillaInstallService`, `ILoaderCatalog`, `IJavaSelectionService`, `ILaunchStep` |
-| `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框 | `MainViewModel`, `InstancesViewModel`, `SettingsViewModel` |
+| `ECL.Java` | Java 版本解析、运行时探测、需求/兼容性/32-64 位与内存校验、JVM 预设、Mojang/Adoptium/Zulu/Liberica 下载与解压 | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `JvmPresets`, `IJavaInstallService` |
+| `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动、Mod/整合包/资源包管理 | `GameInstance`, `VanillaInstallService`, `ILoaderCatalog`, `IJavaSelectionService`, `IModService`, `IModpackService`, `ILaunchStep` |
+| `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框 | `MainViewModel`, `InstancesViewModel`, `ModsViewModel`, `SettingsViewModel` |
 | `ECL.Cli` | 无 GUI 管理、调试启动链路 | `CliApplication`, `ParsedCommandLine` |
 | `ECL.Tests` | 单元测试与临时数据目录 | `TestEnvironment`, `FakeProcessLauncher` |
 
@@ -125,21 +125,23 @@ services.AddEclMinecraft();
 │     ├─ settings.json             # 实例作用域配置（按需创建）
 │     ├─ logs/
 │     └─ minecraft/                # 游戏工作目录
-│        ├─ mods/
+│        ├─ mods/                  # *.jar 启用，*.jar.disabled 禁用
 │        ├─ config/
 │        ├─ saves/
 │        ├─ resourcepacks/
 │        ├─ shaderpacks/
 │        ├─ logs/
-│        └─ natives/
+│        ├─ natives/
+│        └─ .ecl-modpack.json      # 整合包导入标记（按需创建）
 ├─ versions/<version-id>/          # 共享版本 JSON 与 jar
 ├─ libraries/                      # 共享 Maven 库
 ├─ assets/                         # 共享资源
-├─ java/                           # 启动器托管的 Java 运行时（java/<component>）
+├─ java/                           # 启动器托管的 Java 运行时（java/<component> 或 <provider>-<component>）
 ├─ cache/
 │  ├─ cleanroom/                   # Cleanroom 安装器缓存
+│  ├─ java/                        # 第三方 Java 安装包缓存
 │  └─ forge/                       # Forge/NeoForge 安装器与解压的 data 文件
-└─ logs/                           # ecl-YYYYMMDD.log
+└─ logs/                           # ecl-YYYYMMDD.log 与 install/ 安装失败诊断
 ```
 
 实例 ID 采用 `slug-6位十六进制` 形式（例如 `survival-a1b2c3`），只允许小写字母、数字、点、下划线、连字符，避免路径穿越；显示名称与目录名解耦。

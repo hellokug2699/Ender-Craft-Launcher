@@ -8,6 +8,9 @@ public enum JavaInstallStage
 {
     Index,
     Manifest,
+    Provider,
+    Download,
+    Extract,
     Files,
     Completed,
 }
@@ -46,26 +49,60 @@ public static class JavaPlatform
     public const string OfficialRuntimeIndexUrl =
         "https://piston-meta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
 
-    public static string GetIndexPlatformKey()
+    /// <summary>
+    /// 返回 Mojang Java 运行时索引中的平台键。Linux ARM64 等平台没有 Mojang 运行时，返回 false。
+    /// </summary>
+    public static bool TryGetIndexPlatformKey(out string platformKey)
     {
         var arch = RuntimeInformation.ProcessArchitecture switch
         {
             Architecture.X64 => "x64",
             Architecture.X86 => "x86",
             Architecture.Arm64 => "arm64",
-            _ => "x64",
+            _ => "unknown",
         };
 
         if (OperatingSystem.IsWindows())
         {
-            return $"windows-{arch}";
+            platformKey = $"windows-{arch}";
+            return arch is "x64" or "x86" or "arm64";
         }
 
         if (OperatingSystem.IsMacOS())
         {
-            return arch == "arm64" ? "mac-os-arm64" : "mac-os";
+            platformKey = arch == "arm64" ? "mac-os-arm64" : "mac-os";
+            return arch is "x64" or "arm64";
         }
 
-        return arch == "x86" ? "linux-i386" : "linux";
+        if (arch == "x86")
+        {
+            platformKey = "linux-i386";
+            return true;
+        }
+
+        if (arch == "x64")
+        {
+            platformKey = "linux";
+            return true;
+        }
+
+        platformKey = $"linux-{arch}";
+        return false;
+    }
+
+    public static string GetIndexPlatformKey() =>
+        TryGetIndexPlatformKey(out var platformKey)
+            ? platformKey
+            : throw new PlatformNotSupportedException($"Mojang 不提供 {DescribeCurrentPlatform()} 的 Java 运行时。");
+
+    public static string DescribeCurrentPlatform()
+    {
+        var arch = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+        var os = OperatingSystem.IsWindows()
+            ? "windows"
+            : OperatingSystem.IsMacOS()
+                ? "macos"
+                : "linux";
+        return $"{os}-{arch}";
     }
 }

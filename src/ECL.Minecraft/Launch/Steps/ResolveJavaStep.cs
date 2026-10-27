@@ -18,9 +18,7 @@ internal sealed class ResolveJavaStep(IJavaSelectionService selection, ILocalize
             .ResolveAsync(context.Instance, context.Version, cancellationToken)
             .ConfigureAwait(false);
 
-        var instanceMemory = context.GetInstanceSetting<int?>("instance.java.memoryMb");
-        var globalMemory = context.Settings.Get<int>("java.defaultMemoryMb");
-        context.MemoryMb = Math.Clamp(instanceMemory ?? globalMemory, 1024, 65536);
+        context.MemoryMb = Math.Clamp(result.MemoryMb, 1024, 65536);
 
         if (result.Runtime is null)
         {

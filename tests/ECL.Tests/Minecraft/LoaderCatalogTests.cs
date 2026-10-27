@@ -257,6 +257,81 @@ public sealed class LoaderCatalogTests
         }
     }
 
+    [Fact]
+    public void SelectsCleanroomX64NativesFromRealVersionFormat()
+    {
+        var installerPath = Path.Combine(Path.GetTempPath(), $"cleanroom-x64-{Guid.NewGuid():N}.jar");
+        try
+        {
+            using (var archive = ZipFile.Open(installerPath, ZipArchiveMode.Create))
+            {
+                WriteEntry(archive, "version.json", """
+                    {
+                      "id": "Cleanroom-0.7.12-alpha",
+                      "mainClass": "top.outlands.foundation.boot.Foundation",
+                      "javaVersion": { "component": "java-runtime-epsilon", "majorVersion": 25 },
+                      "libraries": [
+                        {
+                          "name": "com.mojang:text2speech:1.10.3",
+                          "downloads": {
+                            "classifiers": {
+                              "natives-windows": {
+                                "url": "https://libraries.minecraft.net/com/mojang/text2speech/1.10.3/text2speech-1.10.3-natives-windows.jar",
+                                "sha1": "84a4b856389cc4f485275b1f63497a95a857a443",
+                                "size": 81217
+                              }
+                            }
+                          },
+                          "natives": { "windows": "natives-windows" },
+                          "extract": { "exclude": ["META-INF/"] },
+                          "side": "client",
+                          "rules": [{ "action": "allow", "os": { "name": "windows", "arch": "x64" } }]
+                        },
+                        {
+                          "name": "org.lwjgl:lwjgl-jemalloc:3.4.3",
+                          "downloads": {
+                            "classifiers": {
+                              "natives-windows": {
+                                "url": "https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl-jemalloc/3.4.3/lwjgl-jemalloc-3.4.3-natives-windows.jar",
+                                "sha1": "d329f1d23bdb18e504f2f5900a93d24b2454bd05",
+                                "size": 184467
+                              }
+                            }
+                          },
+                          "natives": { "windows": "natives-windows" },
+                          "rules": [{ "action": "allow", "os": { "name": "windows", "arch": "x64" } }]
+                        },
+                        {
+                          "name": "org.lwjgl:lwjgl:3.4.3:natives-osx",
+                          "downloads": {
+                            "artifact": {
+                              "path": "org/lwjgl/lwjgl/3.4.3/lwjgl-3.4.3-natives-osx.jar",
+                              "url": "https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl/3.4.3/lwjgl-3.4.3-natives-osx.jar"
+                            }
+                          },
+                          "rules": [{ "action": "allow", "os": { "name": "osx", "arch": "x64" } }]
+                        }
+                      ]
+                    }
+                    """);
+            }
+
+            var content = CleanroomInstallerReader.Read(installerPath);
+            var plan = Ecl.Minecraft.Versions.PlatformLibrarySelector.Plan(
+                content.Version.Libraries,
+                "windows",
+                "x86_64");
+
+            Assert.Equal(2, plan.Count);
+            Assert.All(plan, item => Assert.NotNull(item.NativeArtifact));
+            Assert.DoesNotContain(plan, item => item.Library.Name.Contains("natives-osx", StringComparison.Ordinal));
+        }
+        finally
+        {
+            File.Delete(installerPath);
+        }
+    }
+
     private static void WriteEntry(ZipArchive archive, string name, string content)
     {
         var entry = archive.CreateEntry(name);

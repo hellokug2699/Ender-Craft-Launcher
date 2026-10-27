@@ -59,6 +59,28 @@ public sealed class LaunchPipelineTests
     }
 
     [Fact]
+    public async Task JvmPresetAddsFlagsToCommand()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeProcessLauncher();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IProcessLauncher>(fake));
+
+        var instance = await CreateInstanceAsync(provider);
+        await provider.GetRequiredService<IAccountService>().AddOfflineAsync("Player");
+        ConfigureFakeJava(environment, provider);
+
+        var settings = provider.GetRequiredService<ISettingsService>();
+        Assert.True(settings.TrySetRaw("java.jvmPreset", "aikar", null, out var error), error);
+
+        var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: true);
+
+        Assert.True(report.Success);
+        Assert.NotNull(report.CommandLine);
+        Assert.Contains("-XX:+UseG1GC", report.CommandLine);
+        Assert.Contains("-XX:G1NewSizePercent=30", report.CommandLine);
+    }
+
+    [Fact]
     public async Task RealLaunchFailsBeforeStartWhenVersionIsMissing()
     {
         using var environment = new TestEnvironment();
@@ -230,6 +252,130 @@ public sealed class LaunchPipelineTests
         Assert.Contains("--fml.forgeVersion", report.CommandLine);
         Assert.Contains($"-DlibraryDirectory={environment.Paths.LibrariesDirectory}", report.CommandLine);
         Assert.DoesNotContain("${library_directory}", report.CommandLine);
+    }
+
+    [Fact]
+    public async Task LegacyUserPropertiesAreEmittedWithoutLiteralPlaceholder()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeProcessLauncher();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IProcessLauncher>(fake));
+
+        var instance = await CreateInstanceAsync(provider);
+        await provider.GetRequiredService<IAccountService>().AddOfflineAsync("Player");
+        ConfigureFakeJava(environment, provider);
+
+        WriteVersion(
+            environment,
+            "1.21.1",
+            "1.21.1",
+            "net.minecraft.launchwrapper.Launch",
+            """
+            "minecraftArguments": "--username ${auth_player_name} --userProperties ${user_properties} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker --versionType ${version_type}",
+            """);
+
+        var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: true);
+
+        Assert.True(report.Success);
+        Assert.NotNull(report.CommandLine);
+        Assert.Contains("--userProperties {}", report.CommandLine);
+        Assert.DoesNotContain("${user_properties}", report.CommandLine);
+        Assert.Contains("--tweakClass", report.CommandLine);
+    }
+
+    [Fact]
+    public async Task RealLaunchFailsWhenClientJarHashIsWrong()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeProcessLauncher();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IProcessLauncher>(fake));
+
+        var instance = await CreateInstanceAsync(provider);
+        await provider.GetRequiredService<IAccountService>().AddOfflineAsync("Player");
+        ConfigureFakeJava(environment, provider);
+        Assert.True(provider.GetRequiredService<IEulaService>().Accept().IsSuccess);
+
+        var versionDirectory = Path.Combine(environment.Paths.VersionsDirectory, instance.VersionId);
+        Directory.CreateDirectory(versionDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(versionDirectory, $"{instance.VersionId}.json"),
+            """
+            {
+              "id": "1.21.1",
+              "type": "release",
+              "mainClass": "net.minecraft.client.main.Main",
+              "downloads": {
+                "client": {
+                  "sha1": "0000000000000000000000000000000000000000",
+                  "size": 3
+                }
+              },
+              "libraries": []
+            }
+            """);
+        await File.WriteAllTextAsync(
+            Path.Combine(versionDirectory, $"{instance.VersionId}.jar"),
+            "bad");
+
+        var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: false);
+
+        Assert.False(report.Success);
+        Assert.Equal(0, fake.Calls);
+        Assert.Contains(report.Steps, step =>
+            step.StepId == "files" &&
+            step.Status == LaunchStepStatus.Failed &&
+            step.Message.Contains("损坏", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RealLaunchFailsWhenAssetObjectIsMissing()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeProcessLauncher();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IProcessLauncher>(fake));
+
+        var instance = await CreateInstanceAsync(provider);
+        await provider.GetRequiredService<IAccountService>().AddOfflineAsync("Player");
+        ConfigureFakeJava(environment, provider);
+        Assert.True(provider.GetRequiredService<IEulaService>().Accept().IsSuccess);
+
+        var versionDirectory = Path.Combine(environment.Paths.VersionsDirectory, instance.VersionId);
+        Directory.CreateDirectory(versionDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(versionDirectory, $"{instance.VersionId}.json"),
+            """
+            {
+              "id": "1.21.1",
+              "type": "release",
+              "mainClass": "net.minecraft.client.main.Main",
+              "assetIndex": { "id": "1.21" },
+              "libraries": []
+            }
+            """);
+        await File.WriteAllBytesAsync(
+            Path.Combine(versionDirectory, $"{instance.VersionId}.jar"),
+            Array.Empty<byte>());
+
+        var assetIndexDirectory = Path.Combine(environment.Paths.AssetsDirectory, "indexes");
+        Directory.CreateDirectory(assetIndexDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(assetIndexDirectory, "1.21.json"),
+            """
+            {
+              "objects": {
+                "minecraft/missing.txt": {
+                  "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "size": 1
+                }
+              }
+            }
+            """);
+
+        var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: false);
+
+        Assert.False(report.Success);
+        Assert.Equal(0, fake.Calls);
+        Assert.Contains(report.Steps, step => step.StepId == "files" && step.Status == LaunchStepStatus.Failed);
     }
 
     private static void ConfigureFakeJava(TestEnvironment environment, IServiceProvider provider)

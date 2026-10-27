@@ -25,6 +25,12 @@ public static partial class ForgeProcessorPlanner
                 processor.Sides.Any(item => string.Equals(item, side, StringComparison.OrdinalIgnoreCase)))
             .ToArray();
 
+    /// <summary>
+    /// spec 0 的旧安装器没有 processors，不需要 Java；只有真正要执行 processor 时才要求 Java。
+    /// </summary>
+    public static bool HasClientProcessors(ForgeInstallProfile profile) =>
+        SelectProcessors(profile, ClientSide).Count > 0;
+
     public static IReadOnlyDictionary<string, string> BuildTokens(
         ForgeInstallProfile profile,
         string side,

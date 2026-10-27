@@ -26,8 +26,8 @@
 - [x] 四档下载源策略（只官方 / 优先官方 / 优先镜像 / 只镜像）。
 - [x] `eula.txt` 流程与首次启动 EULA 弹窗、多人联机免责声明。
 - [x] CLI `install`、UI“安装/补全”、安装进度。
-- [~] 真实启动冒烟测试：Linux 下已完成安装、Dry Run 与进程拉起；Windows + 兼容 Java 的手动验证待做。
-- [~] 版本 JSON `arguments` 占位符完整替换（已支持 `arguments.jvm`、加载器专属 `arguments.game` 与旧式 `minecraftArguments` 额外选项；`arguments.game` 规则对象待补）。
+- [x] 真实启动冒烟测试：Linux 与 Windows 下均已完成安装、Dry Run 与进程拉起（Windows 使用 Java 8/21/25 验证）。
+- [x] 版本 JSON `arguments` 规则对象与占位符：`arguments.jvm` / `arguments.game` 均按 OS/架构/feature 过滤，旧式 `minecraftArguments` 的 `${user_properties}` 等占位符已替换；demo/quick play 等未启用的 feature 参数会被安全过滤（对应交互功能仍未实现）。
 
 ## v0.3 账户体系（暂缓：Microsoft OAuth 审核限制）
 
@@ -46,9 +46,9 @@
 - [x] 每实例 Java 选择器 + 自动选择。
 - [x] Java 兼容性检查、启动前弹窗、实例级关闭开关。
 - [x] 无 Java 时提示并支持一键下载。
-- [ ] Adoptium / Zulu / Liberica 等第三方运行时。
-- [ ] 32/64 位与内存需求校验。
-- [ ] JVM 参数预设（G1、ZGC、Aikar flags）。
+- [x] Adoptium / Zulu / Liberica 等第三方运行时（API 解析、zip/tar.gz 解压、SHA 校验）。
+- [x] 32/64 位与内存需求校验（选择/启动警告，不强制阻止）。
+- [x] JVM 参数预设（G1、ZGC、Aikar flags；全局与实例覆盖）。
 
 ## v0.5 模组加载器（已完成）
 
@@ -61,16 +61,18 @@
 - [x] Fabric profile `arguments.jvm`、Forge/NeoForge `library_directory`/`--launchTarget` 与 Cleanroom `--tweakClass` 启动参数。
 - [x] Maven Central → 阿里云公共仓库镜像回退；Forge/NeoForge Maven → BMCLAPI `/maven/`。
 - [ ] Quilt、Legacy Fabric 等加载器（明确不在当前范围）。
-- [ ] 安装失败诊断与回滚。
+- [x] 安装失败诊断与回滚：记录本次安装新建的文件，失败时清理并写入诊断 JSON。
 
-## v0.6 Mod 与整合包
+## v0.6 Mod 与整合包（进行中）
 
-- [ ] `fabric.mod.json`、`mods.toml`、`mcmod.info` 解析。
-- [ ] 依赖/冲突/重复 Mod 检测。
-- [ ] 启用/禁用、批量操作。
-- [ ] CurseForge / Modrinth 整合包导入。
-- [ ] 整合包导出。
-- [ ] 资源包、光影包管理。
+- [x] `fabric.mod.json`、`mods.toml`、`neoforge.mods.toml`、`mcmod.info` 解析。
+- [x] 依赖/冲突/重复 Mod/加载器不匹配检测（版本范围只展示，不做严格语义匹配）。
+- [x] 启用/禁用、批量操作、导入、删除（WPF Mods 页面 + CLI）。
+- [~] CurseForge / Modrinth 整合包导入：Modrinth `.mrpack` 完整下载；CurseForge 仅导入 overrides（远程文件需要 API key）。
+- [x] 整合包导出（Modrinth `.mrpack`，本地 overrides 形式）。
+- [~] 资源包、光影包管理：列表/导入/删除已完成；`options.txt` 启用选择待接入。
+- [ ] CurseForge 远程文件下载（API key 配置与授权）。
+- [ ] Mod 依赖版本范围的严格语义匹配。
 
 ## v0.7 体验与诊断
 
@@ -81,6 +83,7 @@
 - [ ] 日志导出/诊断包（脱敏）。
 - [ ] 下载速度、进度、暂停/恢复 UI。
 - [ ] 键盘导航与无障碍。
+- [ ] 用户自定义 / 导入 JVM 预设。
 
 ## v1.0 分发与更新
 

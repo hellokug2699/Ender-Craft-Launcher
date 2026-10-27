@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Text;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Loaders;
+using Ecl.Minecraft.Versions;
 using Xunit;
 
 namespace Ecl.Tests.Install;
@@ -159,6 +160,78 @@ public sealed class ForgeInstallerTests
             arguments[1]);
         Assert.Equal(tokens["PATCHED"], arguments[3]);
         Assert.Equal("1.21.1", arguments[5]);
+    }
+
+    [Fact]
+    public void ResolvesLegacy1710UrlsFromBaseUrlAndOfficialLibraries()
+    {
+        var installerPath = CreateInstaller("""
+            {
+              "install": { "profileName": "Forge", "minecraft": "1.7.10" },
+              "versionInfo": {
+                "id": "1.7.10-Forge10.13.4.1614-1.7.10",
+                "inheritsFrom": "1.7.10",
+                "mainClass": "net.minecraft.launchwrapper.Launch",
+                "minecraftArguments": "--userProperties ${user_properties}",
+                "libraries": [
+                  {
+                    "name": "net.minecraftforge:forge:1.7.10-10.13.4.1614-1.7.10",
+                    "url": "https://maven.minecraftforge.net/"
+                  },
+                  { "name": "net.minecraft:launchwrapper:1.12" },
+                  {
+                    "name": "org.scala-lang:scala-library:2.11.1",
+                    "url": "https://maven.minecraftforge.net/"
+                  },
+                  { "name": "lzma:lzma:0.0.1" }
+                ]
+              }
+            }
+            """, "{}");
+
+        try
+        {
+            var content = ForgeInstallerReader.Read(installerPath, ForgeInstallers.ForgeMavenRoot);
+
+            var forge = content.Version.Libraries[0];
+            Assert.Equal(
+                "https://maven.minecraftforge.net/net/minecraftforge/forge/1.7.10-10.13.4.1614-1.7.10/forge-1.7.10-10.13.4.1614-1.7.10-universal.jar",
+                LibraryRules.GetPrimaryArtifact(forge)?.Url);
+
+            var launchWrapper = content.Version.Libraries[1];
+            Assert.Equal(
+                "https://libraries.minecraft.net/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar",
+                LibraryRules.GetPrimaryArtifact(launchWrapper)?.Url);
+
+            var scala = content.Version.Libraries[2];
+            Assert.Equal(
+                "https://maven.minecraftforge.net/org/scala-lang/scala-library/2.11.1/scala-library-2.11.1.jar",
+                LibraryRules.GetPrimaryArtifact(scala)?.Url);
+
+            var lzma = content.Version.Libraries[3];
+            Assert.Equal(
+                "https://libraries.minecraft.net/lzma/lzma/0.0.1/lzma-0.0.1.jar",
+                LibraryRules.GetPrimaryArtifact(lzma)?.Url);
+        }
+        finally
+        {
+            File.Delete(installerPath);
+        }
+    }
+
+    [Fact]
+    public void DoesNotDoubleCombineFullFileUrls()
+    {
+        var library = new Ecl.Minecraft.Versions.VersionLibrary
+        {
+            Name = "net.minecraft:launchwrapper:1.12",
+            Url = "https://libraries.minecraft.net/net/minecraft/launchwrapper/1.12/launchwrapper-1.12.jar",
+        };
+
+        var artifact = Ecl.Minecraft.Versions.LibraryRules.GetPrimaryArtifact(library);
+
+        Assert.NotNull(artifact);
+        Assert.Equal(library.Url, artifact!.Url);
     }
 
     private static string CreateInstaller(string installProfile, string versionJson)

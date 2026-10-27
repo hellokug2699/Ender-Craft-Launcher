@@ -50,6 +50,7 @@ public partial class App : Application
 
             services.AddSingleton<IDialogService, DialogService>();
             services.AddSingleton<InstancesViewModel>();
+            services.AddSingleton<ModsViewModel>();
             services.AddSingleton<SettingsViewModel>();
             services.AddSingleton<AboutViewModel>();
             services.AddSingleton<MainViewModel>();

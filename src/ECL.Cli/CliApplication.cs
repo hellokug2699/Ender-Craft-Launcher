@@ -14,6 +14,7 @@ using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Launch;
 using Ecl.Minecraft.Loaders;
+using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.Versions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -43,6 +44,9 @@ internal sealed class CliApplication
             "install" => await InstallCommandAsync(rest).ConfigureAwait(false),
             "launch" => await LaunchCommandAsync(rest).ConfigureAwait(false),
             "loader" => await LoaderCommandAsync(rest).ConfigureAwait(false),
+            "mod" => await ModCommandAsync(rest).ConfigureAwait(false),
+            "modpack" => await ModpackCommandAsync(rest).ConfigureAwait(false),
+            "pack" => await PackCommandAsync(rest).ConfigureAwait(false),
             "settings" => SettingsCommand(rest),
             "java" => await JavaCommandAsync(rest).ConfigureAwait(false),
             "account" => await AccountCommandAsync(rest).ConfigureAwait(false),
@@ -689,13 +693,16 @@ internal sealed class CliApplication
             .ResolveAsync(instance.VersionId)
             .ConfigureAwait(false);
 
+        var localizer = _provider.GetRequiredService<ILocalizer>();
         if (!version.IsSuccess)
         {
-            return WriteError(version.Error);
+            // 新建 Forge/Cleanroom 实例时版本 JSON 可能尚未写入；仍可按 GameVersion 推断 Java 要求。
+            Console.WriteLine(localizer.Get("instances.java.usingGameVersion", instance.GameVersion));
         }
 
-        var requirement = JavaRequirements.Resolve(version.Value!, instance.GameVersion);
-        var localizer = _provider.GetRequiredService<ILocalizer>();
+        var requirement = JavaRequirements.Resolve(
+            version.IsSuccess ? version.Value : null,
+            instance.GameVersion);
         var lastStage = (JavaInstallStage?)null;
 
         var progress = new InlineProgress<JavaInstallProgress>(update =>
@@ -836,6 +843,359 @@ internal sealed class CliApplication
 
         return 0;
     }
+
+    private async Task<int> ModCommandAsync(string[] args)
+    {
+        if (args.Length == 0)
+        {
+            return UsageError("mod 支持 list、check、enable、disable、enable-all、disable-all、import、delete。");
+        }
+
+        var subCommand = args[0].ToLowerInvariant();
+        var instanceId = args.ElementAtOrDefault(1);
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            return UsageError($"mod {subCommand} 需要实例 ID。");
+        }
+
+        var service = _provider.GetRequiredService<IModService>();
+        var localizer = _provider.GetRequiredService<ILocalizer>();
+
+        switch (subCommand)
+        {
+            case "list":
+                {
+                    var result = await service.ScanAsync(instanceId).ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    var report = result.Value!;
+                    if (_commandLine.HasFlag("json"))
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(report, EclJson.Indented));
+                        return 0;
+                    }
+
+                    Console.WriteLine(
+                        $"实例 {instanceId}：{report.EnabledCount} 启用 / {report.DisabledCount} 禁用 / {report.IssueCount} 个问题");
+                    foreach (var mod in report.Mods)
+                    {
+                        var name = mod.Metadata?.Name ?? mod.FileName;
+                        var id = mod.Metadata?.ModId ?? "?";
+                        var version = mod.Metadata?.Version ?? "?";
+                        Console.WriteLine($"  [{(mod.Enabled ? "启用" : "禁用")}] {name} ({id} {version})");
+                        Console.WriteLine($"         file: {mod.FileName}");
+                        foreach (var issue in mod.Issues)
+                        {
+                            Console.WriteLine($"         ! {DescribeModIssue(issue, localizer)}");
+                        }
+                    }
+
+                    return 0;
+                }
+
+            case "check":
+                {
+                    var result = await service.ScanAsync(instanceId).ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    var report = result.Value!;
+                    if (_commandLine.HasFlag("json"))
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(report, EclJson.Indented));
+                        return report.IssueCount == 0 ? 0 : 1;
+                    }
+
+                    if (report.IssueCount == 0)
+                    {
+                        Console.WriteLine("未发现 Mod 依赖、冲突或重复问题。");
+                        return 0;
+                    }
+
+                    foreach (var issue in report.Issues)
+                    {
+                        Console.WriteLine($"{issue.FileName}: {DescribeModIssue(issue, localizer)}");
+                    }
+
+                    return 1;
+                }
+
+            case "enable":
+            case "disable":
+                {
+                    var fileName = args.ElementAtOrDefault(2);
+                    if (string.IsNullOrWhiteSpace(fileName))
+                    {
+                        return UsageError($"mod {subCommand} 需要 Mod 文件名。");
+                    }
+
+                    var result = await service
+                        .SetEnabledAsync(instanceId, fileName, subCommand == "enable")
+                        .ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    Console.WriteLine($"已{(subCommand == "enable" ? "启用" : "禁用")} {fileName}");
+                    return 0;
+                }
+
+            case "enable-all":
+            case "disable-all":
+                {
+                    var result = await service
+                        .SetAllEnabledAsync(instanceId, subCommand == "enable-all")
+                        .ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    var batch = result.Value!;
+                    Console.WriteLine($"已处理 {batch.Succeeded} 个 Mod。");
+                    foreach (var error in batch.Errors)
+                    {
+                        Console.WriteLine($"  ! {error}");
+                    }
+
+                    return batch.Errors.Count == 0 ? 0 : 1;
+                }
+
+            case "import":
+                {
+                    var paths = args.Skip(2).ToArray();
+                    if (paths.Length == 0)
+                    {
+                        return UsageError("mod import 需要至少一个 .jar 文件。");
+                    }
+
+                    var result = await service.ImportAsync(instanceId, paths).ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    var batch = result.Value!;
+                    Console.WriteLine($"已导入 {batch.Succeeded} 个 Mod。");
+                    foreach (var error in batch.Errors)
+                    {
+                        Console.WriteLine($"  ! {error}");
+                    }
+
+                    return batch.Errors.Count == 0 ? 0 : 1;
+                }
+
+            case "delete":
+                {
+                    var fileName = args.ElementAtOrDefault(2);
+                    if (string.IsNullOrWhiteSpace(fileName))
+                    {
+                        return UsageError("mod delete 需要 Mod 文件名。");
+                    }
+
+                    var result = await service.DeleteAsync(instanceId, fileName).ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    Console.WriteLine($"已删除 {fileName}");
+                    return 0;
+                }
+
+            default:
+                return UsageError($"不支持的 mod 子命令：{subCommand}");
+        }
+    }
+
+    private async Task<int> ModpackCommandAsync(string[] args)
+    {
+        if (args.Length < 3)
+        {
+            return UsageError("modpack 支持 import <实例ID> <整合包> 与 export <实例ID> <输出路径>。");
+        }
+
+        var subCommand = args[0].ToLowerInvariant();
+        var instanceId = args[1];
+        var path = args[2];
+        var service = _provider.GetRequiredService<IModpackService>();
+
+        if (subCommand == "import")
+        {
+            var lastStage = string.Empty;
+            var progress = new InlineProgress<ModpackProgress>(update =>
+            {
+                if (!string.Equals(lastStage, update.Stage, StringComparison.Ordinal))
+                {
+                    Console.WriteLine(update.Message);
+                    lastStage = update.Stage;
+                }
+
+                if (update.Total > 0 &&
+                    (update.Completed == update.Total || update.Completed % 100 == 0))
+                {
+                    Console.WriteLine($"  {update.Completed}/{update.Total}");
+                }
+            });
+
+            var result = await service.ImportAsync(instanceId, path, progress).ConfigureAwait(false);
+            if (!result.IsSuccess)
+            {
+                return WriteError(result.Error);
+            }
+
+            var report = result.Value!;
+            Console.WriteLine($"已导入整合包 {report.Name} {report.Version}");
+            Console.WriteLine($"  Downloaded: {report.DownloadedFiles}");
+            Console.WriteLine($"  Skipped   : {report.SkippedFiles}");
+            Console.WriteLine($"  Overrides : {report.OverrideFiles}");
+            foreach (var warning in report.Warnings)
+            {
+                Console.WriteLine($"  ! {warning}");
+            }
+
+            return 0;
+        }
+
+        if (subCommand == "export")
+        {
+            var result = await service.ExportAsync(instanceId, path).ConfigureAwait(false);
+            if (!result.IsSuccess)
+            {
+                return WriteError(result.Error);
+            }
+
+            Console.WriteLine($"已导出整合包到 {result.Value!.OutputPath}（{result.Value.Files} 个文件）");
+            return 0;
+        }
+
+        return UsageError($"不支持的 modpack 子命令：{subCommand}");
+    }
+
+    private async Task<int> PackCommandAsync(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            return UsageError("pack 支持 list、import、delete。");
+        }
+
+        var subCommand = args[0].ToLowerInvariant();
+        var instanceId = args[1];
+        var kind = ParseContentPackKind(_commandLine.GetValue("type"));
+        var service = _provider.GetRequiredService<IContentPackService>();
+
+        if (subCommand == "list")
+        {
+            var result = await service.ListAsync(instanceId, kind).ConfigureAwait(false);
+            if (!result.IsSuccess)
+            {
+                return WriteError(result.Error);
+            }
+
+            if (_commandLine.HasFlag("json"))
+            {
+                Console.WriteLine(JsonSerializer.Serialize(result.Value, EclJson.Indented));
+                return 0;
+            }
+
+            if (result.Value!.Count == 0)
+            {
+                Console.WriteLine("没有找到资源包/光影包。");
+                return 0;
+            }
+
+            foreach (var entry in result.Value)
+            {
+                Console.WriteLine($"{entry.FileName}");
+                Console.WriteLine($"  name: {entry.Name}");
+                if (entry.PackFormat is not null)
+                {
+                    Console.WriteLine($"  pack format: {entry.PackFormat}");
+                }
+            }
+
+            return 0;
+        }
+
+        if (subCommand == "import")
+        {
+            var source = args.ElementAtOrDefault(2);
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return UsageError("pack import 需要 .zip 文件。");
+            }
+
+            var result = await service.ImportAsync(instanceId, kind, source).ConfigureAwait(false);
+            if (!result.IsSuccess)
+            {
+                return WriteError(result.Error);
+            }
+
+            Console.WriteLine($"已导入 {result.Value!.FileName}");
+            return 0;
+        }
+
+        if (subCommand == "delete")
+        {
+            var fileName = args.ElementAtOrDefault(2);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                return UsageError("pack delete 需要文件名。");
+            }
+
+            var result = await service.DeleteAsync(instanceId, kind, fileName).ConfigureAwait(false);
+            if (!result.IsSuccess)
+            {
+                return WriteError(result.Error);
+            }
+
+            Console.WriteLine($"已删除 {fileName}");
+            return 0;
+        }
+
+        return UsageError($"不支持的 pack 子命令：{subCommand}");
+    }
+
+    private static ContentPackKind ParseContentPackKind(string? value) =>
+        string.Equals(value, "shader", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value, "shaders", StringComparison.OrdinalIgnoreCase)
+            ? ContentPackKind.ShaderPack
+            : ContentPackKind.ResourcePack;
+
+    private static string DescribeModIssue(ModIssue issue, ILocalizer localizer) => issue.Kind switch
+    {
+        ModIssueKind.DuplicateModId => localizer.Get(
+            "mod.issue.duplicate",
+            issue.ModId ?? "?",
+            issue.RelatedModId ?? "?"),
+        ModIssueKind.MissingDependency => localizer.Get(
+            "mod.issue.missingDependency",
+            issue.ModId ?? "?",
+            issue.RelatedModId ?? "?"),
+        ModIssueKind.DisabledDependency => localizer.Get(
+            "mod.issue.disabledDependency",
+            issue.ModId ?? "?",
+            issue.RelatedModId ?? "?"),
+        ModIssueKind.Conflict => localizer.Get(
+            "mod.issue.conflict",
+            issue.ModId ?? "?",
+            issue.RelatedModId ?? "?"),
+        ModIssueKind.LoaderMismatch => localizer.Get(
+            "mod.issue.loaderMismatch",
+            issue.ModId ?? "?",
+            issue.Detail ?? "?"),
+        ModIssueKind.InvalidMetadata => localizer.Get(
+            "mod.issue.invalidMetadata",
+            issue.FileName,
+            issue.Detail ?? "?"),
+        _ => issue.Kind.ToString(),
+    };
 
     private int PrintHelp()
     {

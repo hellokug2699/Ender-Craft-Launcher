@@ -80,6 +80,22 @@ internal static class Program
                                           清除配置项
           java list [--json]              列出发现的 Java 运行时
           java install <实例ID>           自动下载该版本需要的 Java 运行时
+          mod list <实例ID> [--json]      列出 Mod、启用状态与问题
+          mod check <实例ID> [--json]     检查依赖/冲突/重复/加载器不匹配
+          mod enable|disable <实例ID> <文件>
+                                          启用/禁用单个 Mod
+          mod enable-all|disable-all <实例ID>
+                                          批量启用/禁用
+          mod import <实例ID> <文件...>   导入 .jar 到实例 mods/
+          mod delete <实例ID> <文件>      删除 Mod
+          modpack import <实例ID> <整合包> 导入 Modrinth .mrpack（CurseForge 仅导入 overrides）
+          modpack export <实例ID> <输出>  导出为 Modrinth .mrpack
+          pack list <实例ID> [--type resource|shader] [--json]
+                                          列出资源包/光影包
+          pack import <实例ID> <文件> [--type resource|shader]
+                                          导入资源包/光影包
+          pack delete <实例ID> <文件> [--type resource|shader]
+                                          删除资源包/光影包
           account list [--json]           列出账户
           account add-offline <名称> [--default]
                                           添加离线账户
@@ -93,9 +109,13 @@ internal static class Program
 
         示例:
           ecl account add-offline Steve --default
-          ecl instance create "生存" --version 1.21.1
-          ecl install 生存-a1b2c3
-          ecl launch 生存-a1b2c3 --dry-run
+          ecl instance create "Survival" --version 1.21.1
+          ecl install survival-a1b2c3
+          ecl launch survival-a1b2c3 --dry-run
+          ecl mod list survival-a1b2c3
+          ecl modpack import survival-a1b2c3 "C:\packs\example.mrpack"
+          ecl settings set java.jvmPreset aikar
+          ecl settings set java.runtimeProvider adoptium
           ecl settings set java.defaultMemoryMb 8192
         """;
 }

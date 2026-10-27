@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Text.Json;
+using Ecl.Core.Json;
 using Ecl.Minecraft.Versions;
 
 namespace Ecl.Minecraft.Launch;
@@ -24,24 +25,70 @@ public static class VersionArgumentResolver
         "--versionType",
         "--width",
         "--height",
+        // 以下选项由启动器按离线账户策略处理；版本 JSON 中的占位符（clientid/xuid）
+        // 在当前账户体系下没有值，不能原样传给游戏。
+        "--userProperties",
+        "--clientId",
+        "--xuid",
     };
+
+    private static readonly HashSet<string> LauncherManagedJvmOptions = new(StringComparer.Ordinal)
+    {
+        "-cp",
+        "-classpath",
+        "--class-path",
+    };
+
+    private static readonly string[] LauncherManagedJvmPrefixes =
+    [
+        "-Djava.library.path=",
+        "-Dminecraft.launcher.brand=",
+        "-Dminecraft.launcher.version=",
+    ];
 
     public static IReadOnlyList<string> ResolveJvmArguments(
         VersionArguments? arguments,
-        Func<string, string> replacePlaceholders)
+        Func<string, string> replacePlaceholders,
+        string? osName = null,
+        string? osArch = null,
+        IReadOnlyDictionary<string, bool>? features = null)
     {
         if (arguments?.Jvm is null || arguments.Jvm.Count == 0)
         {
             return [];
         }
 
-        var result = new List<string>(arguments.Jvm.Count);
-        foreach (var element in arguments.Jvm)
+        var tokens = FlattenArguments(
+            arguments.Jvm,
+            osName ?? LibraryRules.CurrentOsName,
+            osArch ?? LibraryRules.CurrentArch,
+            features);
+
+        var result = new List<string>(tokens.Count);
+        for (var index = 0; index < tokens.Count; index++)
         {
-            var value = ExtractString(element);
-            if (!string.IsNullOrWhiteSpace(value))
+            var token = tokens[index];
+            if (LauncherManagedJvmOptions.Contains(token))
             {
-                result.Add(replacePlaceholders(value));
+                // 类路径由启动器根据 rules/架构与版本文件自行构建，跳过 -cp 及其值。
+                if (index + 1 < tokens.Count)
+                {
+                    index++;
+                }
+
+                continue;
+            }
+
+            if (LauncherManagedJvmPrefixes.Any(prefix =>
+                    token.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            var value = replacePlaceholders(token);
+            if (!HasUnresolvedPlaceholder(value))
+            {
+                result.Add(value);
             }
         }
 
@@ -82,10 +129,21 @@ public static class VersionArgumentResolver
                 continue;
             }
 
-            result.Add(token);
+            string? replacedValue = null;
             if (value is not null)
             {
-                result.Add(replacePlaceholders(value));
+                replacedValue = replacePlaceholders(value);
+                if (HasUnresolvedPlaceholder(replacedValue))
+                {
+                    // 值无法解析时丢弃整个选项，避免给游戏留下缺值的参数。
+                    continue;
+                }
+            }
+
+            result.Add(token);
+            if (replacedValue is not null)
+            {
+                result.Add(replacedValue);
             }
         }
 
@@ -93,61 +151,162 @@ public static class VersionArgumentResolver
     }
 
     /// <summary>
-    /// 新式加载器把启动目标放在 arguments.game 中（--launchTarget forgeclient、--fml.*）。
+    /// 新版加载器把启动目标放在 arguments.game 中（--launchTarget forgeclient、--fml.*）。
     /// 只提取这类加载器专属参数，避免与启动器自行拼装的原版参数重复。
+    /// 规则对象同样按当前 OS/架构/feature 过滤。
     /// </summary>
-    public static IReadOnlyList<string> ResolveLoaderGameArguments(
+    public static IReadOnlyList<string> ResolveGameArguments(
         VersionArguments? arguments,
-        Func<string, string> replacePlaceholders)
+        Func<string, string> replacePlaceholders,
+        string? osName = null,
+        string? osArch = null,
+        IReadOnlyDictionary<string, bool>? features = null)
     {
         if (arguments?.Game is null || arguments.Game.Count == 0)
         {
             return [];
         }
 
-        var tokens = arguments.Game
-            .Select(ExtractString)
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => replacePlaceholders(value!))
-            .ToList();
+        var tokens = FlattenArguments(
+            arguments.Game,
+            osName ?? LibraryRules.CurrentOsName,
+            osArch ?? LibraryRules.CurrentArch,
+            features);
 
         var result = new List<string>();
         for (var index = 0; index < tokens.Count; index++)
         {
             var token = tokens[index];
-            if (!IsLoaderOption(token))
+            if (!token.StartsWith("--", StringComparison.Ordinal))
             {
                 continue;
             }
 
-            result.Add(token);
-            if (index + 1 < tokens.Count && !tokens[index + 1].StartsWith("--", StringComparison.Ordinal))
+            string? value = null;
+            if (index + 1 < tokens.Count &&
+                !tokens[index + 1].StartsWith("--", StringComparison.Ordinal))
             {
-                result.Add(tokens[++index]);
+                value = tokens[++index];
+            }
+
+            if (HandledGameOptions.Contains(token))
+            {
+                continue;
+            }
+
+            var replacedToken = replacePlaceholders(token);
+            if (HasUnresolvedPlaceholder(replacedToken))
+            {
+                continue;
+            }
+
+            string? replacedValue = null;
+            if (value is not null)
+            {
+                replacedValue = replacePlaceholders(value);
+                if (HasUnresolvedPlaceholder(replacedValue))
+                {
+                    continue;
+                }
+            }
+
+            result.Add(replacedToken);
+            if (replacedValue is not null)
+            {
+                result.Add(replacedValue);
             }
         }
 
         return result;
     }
 
-    private static bool IsLoaderOption(string token) =>
-        string.Equals(token, "--launchTarget", StringComparison.OrdinalIgnoreCase) ||
-        token.StartsWith("--fml.", StringComparison.OrdinalIgnoreCase);
+    /// <summary>保留旧方法名，行为与 <see cref="ResolveGameArguments"/> 一致。</summary>
+    public static IReadOnlyList<string> ResolveLoaderGameArguments(
+        VersionArguments? arguments,
+        Func<string, string> replacePlaceholders) =>
+        ResolveGameArguments(arguments, replacePlaceholders);
 
-    private static string? ExtractString(JsonElement element)
+    private static List<string> FlattenArguments(
+        IEnumerable<JsonElement> elements,
+        string osName,
+        string osArch,
+        IReadOnlyDictionary<string, bool>? features)
     {
-        if (element.ValueKind == JsonValueKind.String)
+        var result = new List<string>();
+        foreach (var element in elements)
         {
-            return element.GetString();
+            if (element.ValueKind == JsonValueKind.String)
+            {
+                var value = element.GetString();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    result.Add(value);
+                }
+
+                continue;
+            }
+
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            if (!VersionRuleEvaluator.IsAllowed(ReadRules(element), osName, osArch, features))
+            {
+                continue;
+            }
+
+            if (!element.TryGetProperty("value", out var valueElement))
+            {
+                continue;
+            }
+
+            if (valueElement.ValueKind == JsonValueKind.String)
+            {
+                var value = valueElement.GetString();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    result.Add(value);
+                }
+            }
+            else if (valueElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in valueElement.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.String)
+                    {
+                        var value = item.GetString();
+                        if (!string.IsNullOrWhiteSpace(value))
+                        {
+                            result.Add(value);
+                        }
+                    }
+                }
+            }
         }
 
-        if (element.ValueKind == JsonValueKind.Object &&
-            element.TryGetProperty("value", out var value) &&
-            value.ValueKind == JsonValueKind.String)
-        {
-            return value.GetString();
-        }
-
-        return null;
+        return result;
     }
+
+    private static List<VersionRule>? ReadRules(JsonElement element)
+    {
+        if (!element.TryGetProperty("rules", out var rules) ||
+            rules.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        try
+        {
+            return rules.Deserialize<List<VersionRule>>(EclJson.Default);
+        }
+        catch (JsonException)
+        {
+            // 无法解析的规则按“不允许”处理，避免把平台专属参数注入到错误平台。
+            return [new VersionRule { Action = "disallow" }];
+        }
+    }
+
+    private static bool HasUnresolvedPlaceholder(string value) =>
+        value.Contains("${", StringComparison.Ordinal);
 }

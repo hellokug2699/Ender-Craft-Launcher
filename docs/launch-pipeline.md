@@ -12,14 +12,22 @@
 | --- | --- | --- | --- |
 | 100 | `validate` | `ValidateInstanceStep` | 实例目录、账户名、基础前提 |
 | 150 | `version` | `ResolveVersionStep` | 读取本地版本 JSON 并合并 `inheritsFrom` |
-| 200 | `java` | `ResolveJavaStep` | 实例/全局路径、自动选择、兼容性检查、内存计算 |
-| 350 | `files` | `ValidateGameFilesStep` | 检查 client、库、natives、资源索引、日志配置 |
+| 200 | `java` | `ResolveJavaStep` | 实例/全局路径、自动选择、兼容性/32-64 位/内存警告、内存计算 |
+| 350 | `files` | `ValidateGameFilesStep` | 检查 client、库、资源索引、日志配置与资源对象的存在性、大小与 SHA-1 |
 | 360 | `natives` | `ExtractNativesStep` | 清理并解压实例隔离的 natives |
 | 370 | `eula` | `EnsureEulaStep` | 检查/写入 `eula.txt`，未同意则阻止真实启动 |
 | 400 | `command` | `BuildCommandStep` | 构建 JVM/游戏参数与可读命令 |
 | 500 | `start` | `StartGameStep` | Dry Run 跳过；真实启动时拉起进程 |
 
 步骤按 `Order` 排序，由 `LaunchService` 注入 `IEnumerable<ILaunchStep>`。新增步骤只需实现接口并注册。
+
+`files` 步骤的校验范围：
+
+- client、libraries、asset index、logging 文件：检查存在性、大小与 SHA-1；文件被截断或损坏时在真实启动前失败。
+- 资源对象（`assets/objects/<前两位>/<hash>`）：检查存在性与大小，避免每次启动对数百 MB 资源全量哈希。
+- Dry Run 下缺失/损坏只返回 `Warning`，仍生成预期命令。
+
+安装失败时由 `InstallTransaction` 清理本次新建的文件、恢复被覆盖的版本 JSON，并在 `logs/install/` 写入诊断 JSON。
 
 ## 2. 上下文
 
@@ -82,6 +90,7 @@ public sealed record LaunchCommand(
 -Dminecraft.launcher.version=<launcher version>
 -Dlog4j.configurationFile=<data>/assets/logging/<file id>   （版本 JSON 提供 logging 时）
 <instance/global extra JVM arguments>
+<java.jvmPreset 生成的 G1/ZGC/Aikar 参数>
 <版本 JSON arguments.jvm>                                  （例如 Fabric 的 -DFabricMcEmu、
                                                            Forge/NeoForge 的 -DlibraryDirectory、-p）
 ```
@@ -102,12 +111,13 @@ public sealed record LaunchCommand(
 --versionType <release/snapshot>
 --width <game.windowWidth>
 --height <game.windowHeight>
+--userProperties {}                                      （旧式 minecraftArguments 包含该选项时）
 <instance/global extra game arguments>
 <旧式 minecraftArguments 中未处理的选项>                   （例如 Cleanroom 的 --tweakClass）
 <arguments.game 中的加载器专属参数>                        （例如 --launchTarget forgeclient、--fml.*）
 ```
 
-加载器阶段只补充自定义选项，标准参数仍由启动器生成；`${library_directory}` 与 `${classpath_separator}` 会被替换为实际路径与分隔符，完整 `arguments.game` 规则对象与占位符替换仍在后续计划中。
+加载器阶段只补充自定义选项，标准参数仍由启动器生成。`arguments.jvm` / `arguments.game` 中带 `rules` 的对象会按当前 OS、架构与 feature 过滤：Windows 上不会注入 macOS 的 `-XstartOnFirstThread`，x64 上不会注入 x86 的 `-Xss1M`；未启用的 feature（demo、自定义分辨率、quick play）对应参数会被丢弃。`${library_directory}`、`${classpath}`、`${classpath_separator}`、`${user_properties}`、`${auth_player_name}` 等占位符会被替换；无法解析的占位符所对应的选项会被丢弃，而不是把字面量传给游戏。版本 JSON 中的 `-cp` 由启动器统一接管，避免重复类路径。
 
 ### 额外参数解析
 
@@ -118,6 +128,7 @@ public sealed record LaunchCommand(
 ### 类路径
 
 - 通过 `PlatformLibrarySelector` 按当前 OS/架构与 library `rules` 过滤。
+- 继承链合并时加载器库排在原版库之前（Forge 1.7.10 的 guava 17.0 需要覆盖原版 15.0）。
 - 现代版本的 natives 以 `natives-<os>[-arch]` classifier 形式出现在 `name` 中；每组按架构选择唯一变体。
 - 类路径只包含主 artifact；natives classifier 与 legacy `Natives` 的 native jar 不进入类路径。
 - 库路径来自 `downloads.artifact.path`，缺失时按 Maven 坐标推导。
@@ -147,13 +158,12 @@ UI 与 CLI 使用同一份报告，只是渲染方式不同。
 
 ## 7. 当前缺口
 
-原版安装与启动闭环已完成，仍缺以下能力：
+原版与加载器安装、启动闭环已完成，仍缺以下能力：
 
-1. Java 运行时按 Minecraft 版本自动匹配/下载（v0.4）；当前选择本机最高版本。
-2. 版本 JSON `arguments` 体系的占位符替换；当前由启动器自建参数，原版可用，加载器阶段需要完整支持。
-3. 游戏日志单独落盘、崩溃报告解析与 Mod 嫌疑排序。
-4. 加载器/整合包安装与继承链生成。
-5. 下载限速（并发、重试、续传已实现）。
+1. 游戏日志单独落盘、崩溃报告解析与 Mod 嫌疑排序。
+2. 下载限速（并发、重试、续传已实现）。
+3. 下载速度/暂停恢复 UI 与安装失败后的阶段级修复向导（诊断文件已提供）。
+4. Java 运行时的高级匹配（32/64 位与内存已给出警告；JVM 预设已内置，用户自定义预设待补）。
 
 ## 8. 扩展方式
 

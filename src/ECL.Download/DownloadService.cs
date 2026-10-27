@@ -18,6 +18,8 @@ public sealed class DownloadService(
 {
     private const int BufferSize = 81920;
     private const int MaxAttemptsPerUrl = 3;
+    private static readonly TimeSpan FileDownloadTimeout = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan TextDownloadTimeout = TimeSpan.FromMinutes(2);
 
     public async Task<DownloadBatchResult> DownloadAsync(
         IReadOnlyList<DownloadRequest> requests,
@@ -118,16 +120,21 @@ public sealed class DownloadService(
             for (var attempt = 0; attempt < MaxAttemptsPerUrl; attempt++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                attemptCts.CancelAfter(TextDownloadTimeout);
                 try
                 {
-                    using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                    using var response = await client.GetAsync(
+                            url,
+                            HttpCompletionOption.ResponseHeadersRead,
+                            attemptCts.Token)
                         .ConfigureAwait(false);
                     if (!response.IsSuccessStatusCode)
                     {
                         throw new HttpRequestException($"HTTP {(int)response.StatusCode} {response.ReasonPhrase}");
                     }
 
-                    var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+                    var bytes = await response.Content.ReadAsByteArrayAsync(attemptCts.Token).ConfigureAwait(false);
                     if (expectedSize.HasValue && bytes.Length != expectedSize.Value)
                     {
                         throw new InvalidDataException($"大小校验失败：期望 {expectedSize.Value}，实际 {bytes.Length}。");
@@ -225,6 +232,10 @@ public sealed class DownloadService(
         string partPath,
         CancellationToken cancellationToken)
     {
+        using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        attemptCts.CancelAfter(FileDownloadTimeout);
+        var token = attemptCts.Token;
+
         var existingLength = File.Exists(partPath) ? new FileInfo(partPath).Length : 0;
         if (request.Size.HasValue && existingLength > request.Size.Value)
         {
@@ -238,12 +249,12 @@ public sealed class DownloadService(
             message.Headers.Range = new RangeHeaderValue(existingLength, null);
         }
 
-        using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+        using var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, token)
             .ConfigureAwait(false);
 
         if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable && existingLength > 0)
         {
-            if (await IsValidFileAsync(partPath, request, cancellationToken).ConfigureAwait(false))
+            if (await IsValidFileAsync(partPath, request, token).ConfigureAwait(false))
             {
                 File.Move(partPath, request.DestinationPath, overwrite: true);
                 return;
@@ -259,7 +270,7 @@ public sealed class DownloadService(
         }
 
         var append = response.StatusCode == HttpStatusCode.PartialContent && existingLength > 0;
-        await using (var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
+        await using (var source = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false))
         await using (var destination = new FileStream(
                          partPath,
                          append ? FileMode.Append : FileMode.Create,
@@ -268,11 +279,11 @@ public sealed class DownloadService(
                          BufferSize,
                          FileOptions.Asynchronous | FileOptions.SequentialScan))
         {
-            await source.CopyToAsync(destination, BufferSize, cancellationToken).ConfigureAwait(false);
-            await destination.FlushAsync(cancellationToken).ConfigureAwait(false);
+            await source.CopyToAsync(destination, BufferSize, token).ConfigureAwait(false);
+            await destination.FlushAsync(token).ConfigureAwait(false);
         }
 
-        if (!await IsValidFileAsync(partPath, request, cancellationToken, acceptUnknown: true).ConfigureAwait(false))
+        if (!await IsValidFileAsync(partPath, request, token, acceptUnknown: true).ConfigureAwait(false))
         {
             File.Delete(partPath);
             throw new InvalidDataException("大小或哈希校验失败。");

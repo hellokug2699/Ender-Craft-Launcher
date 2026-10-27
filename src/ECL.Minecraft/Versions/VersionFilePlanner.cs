@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using System.Text.Json;
 using Ecl.Core;
+using Ecl.Core.Json;
 
 namespace Ecl.Minecraft.Versions;
+
+/// <summary>
+/// 启动前需要校验的文件。Size/Sha1 为版本 JSON 中记录的期望值；
+/// VerifyHash 表示该文件较小且关键，值得每次启动计算 SHA-1。
+/// </summary>
+public sealed record VersionFileCheck(string Path, long? Size, string? Sha1, bool VerifyHash);
 
 public static class VersionFilePlanner
 {
@@ -41,28 +49,98 @@ public static class VersionFilePlanner
     public static IReadOnlyList<LibraryPlanItem> PlanLibraries(MinecraftVersion version) =>
         PlatformLibrarySelector.Plan(version.Libraries, LibraryRules.CurrentOsName, LibraryRules.CurrentArch);
 
-    public static IReadOnlyList<string> GetRequiredFiles(MinecraftVersion version, IAppPaths paths, string versionId)
+    public static IReadOnlyList<VersionFileCheck> GetRequiredFileChecks(
+        MinecraftVersion version,
+        IAppPaths paths,
+        string versionId)
     {
-        var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        var checks = new List<VersionFileCheck>
         {
-            GetClientJarPath(paths, versionId),
+            new(
+                GetClientJarPath(paths, versionId),
+                version.Downloads?.Client?.Size,
+                version.Downloads?.Client?.Sha1,
+                VerifyHash: true),
         };
 
         foreach (var artifact in PlatformLibrarySelector.GetDownloadArtifacts(PlanLibraries(version)))
         {
-            files.Add(GetLibraryPath(paths, artifact));
+            checks.Add(new VersionFileCheck(
+                GetLibraryPath(paths, artifact),
+                artifact.Size,
+                artifact.Sha1,
+                VerifyHash: true));
         }
 
         if (version.AssetIndex is not null && !string.IsNullOrWhiteSpace(version.AssetIndex.Id))
         {
-            files.Add(GetAssetIndexPath(paths, version.AssetIndex.Id));
+            checks.Add(new VersionFileCheck(
+                GetAssetIndexPath(paths, version.AssetIndex.Id),
+                version.AssetIndex.Size,
+                version.AssetIndex.Sha1,
+                VerifyHash: true));
+
+            checks.AddRange(GetAssetObjectChecks(paths, version.AssetIndex.Id));
         }
 
         if (version.Logging?.Client?.File is { Id.Length: > 0 } loggingFile)
         {
-            files.Add(GetLoggingFilePath(paths, loggingFile.Id));
+            checks.Add(new VersionFileCheck(
+                GetLoggingFilePath(paths, loggingFile.Id),
+                loggingFile.Size,
+                loggingFile.Sha1,
+                VerifyHash: true));
         }
 
-        return files.ToArray();
+        return checks;
+    }
+
+    /// <summary>保留旧名称，返回需要存在的文件路径。</summary>
+    public static IReadOnlyList<string> GetRequiredFiles(
+        MinecraftVersion version,
+        IAppPaths paths,
+        string versionId) =>
+        GetRequiredFileChecks(version, paths, versionId)
+            .Select(check => check.Path)
+            .ToArray();
+
+    private static IEnumerable<VersionFileCheck> GetAssetObjectChecks(IAppPaths paths, string assetIndexId)
+    {
+        var indexPath = GetAssetIndexPath(paths, assetIndexId);
+        if (!File.Exists(indexPath))
+        {
+            yield break;
+        }
+
+        AssetIndexFile? index;
+        try
+        {
+            index = JsonSerializer.Deserialize<AssetIndexFile>(File.ReadAllText(indexPath), EclJson.Default);
+        }
+        catch (JsonException)
+        {
+            // 索引损坏由资源索引自身的哈希校验负责报告。
+            yield break;
+        }
+
+        if (index is null)
+        {
+            yield break;
+        }
+
+        foreach (var asset in index.Objects.Values)
+        {
+            if (string.IsNullOrWhiteSpace(asset.Hash) || asset.Hash.Length < 2)
+            {
+                continue;
+            }
+
+            // 资源对象数量大、总量高；启动前检查大小与存在性即可，避免每次启动全量哈希。
+            yield return new VersionFileCheck(
+                GetAssetObjectPath(paths, asset.Hash),
+                asset.Size,
+                asset.Hash,
+                VerifyHash: false);
+        }
     }
 }

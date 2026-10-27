@@ -79,6 +79,7 @@ internal sealed class MyOptionsProvider : IOptionProvider
 | `instance.java.memoryMb` | 覆盖全局最大内存；留空继承 |
 | `instance.java.executablePath` | 覆盖全局 Java 路径；留空继承 |
 | `instance.java.extraArguments` | 覆盖全局 JVM 参数；留空继承 |
+| `instance.java.jvmPreset` | 覆盖全局 JVM 预设；留空继承 |
 | `instance.game.extraArguments` | 覆盖全局游戏参数；留空继承 |
 
 启动流水线读取实例值时使用 `ISettingsService.Get<T>(key, instanceId)`，为 `null` 时回退全局值。例如：
@@ -141,9 +142,12 @@ CLI 使用 `ecl launch <实例ID> --accept-eula` 记录同意；未同意时真�
 | `java.defaultPath` | Global | 全局默认 Java 路径；留空自动选择 |
 | `java.defaultMemoryMb` | Global | 默认最大堆内存 |
 | `java.extraArguments` | Global | 全局额外 JVM 参数 |
+| `java.jvmPreset` | Global | JVM 预设：default / g1 / zgc / aikar |
+| `java.runtimeProvider` | Global | Java 下载来源：mojang / adoptium / zulu / liberica |
 | `instance.java.executablePath` | Instance | 实例指定 Java；留空自动选择 |
 | `instance.java.memoryMb` | Instance | 实例内存覆盖；留空继承全局 |
 | `instance.java.extraArguments` | Instance | 实例 JVM 参数覆盖 |
+| `instance.java.jvmPreset` | Instance | 实例 JVM 预设覆盖；留空继承全局 |
 | `instance.java.disableCompatibilityCheck` | Instance | 关闭该实例的 Java 兼容性检验 |
 
 自动选择与兼容性规则详见 [java.md](java.md)。实例页的 Java 下拉框会写入 `instance.java.executablePath`；“自动”会清空该值。

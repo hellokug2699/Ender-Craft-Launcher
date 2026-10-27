@@ -57,37 +57,65 @@ Cleanroom 的 `version.json` 声明 `javaVersion.majorVersion = 25`，因此 1.1
 
 ## 4. 自动下载 Java
 
-当没有可用/兼容的 Java 时，UI“下载 Java”与 CLI `java install <实例ID>` 会调用 `IJavaInstallService`：
+当没有可用/兼容的 Java 时，UI“下载 Java”与 CLI `java install <实例ID>` 会调用 `IJavaInstallService`。
+若实例的版本 JSON 尚未生成（例如刚创建、加载器安装还未完成），会按实例的 `GameVersion`
+推断 Java 要求，避免“先有版本 JSON 才能下载 Java、先有 Java 才能安装加载器”的死循环。
 
-1. 读取 Mojang Java 运行时索引：
-   `https://piston-meta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json`
-   镜像：`https://bmclapi2.bangbang93.com/...`（受下载源四档策略控制）。
-2. 按当前平台选择索引键：
-   - `windows-x64` / `windows-x86` / `windows-arm64`
-   - `linux` / `linux-i386`
-   - `mac-os` / `mac-os-arm64`
-3. 优先使用版本 JSON 指定的 `component`；否则按 `MinimumMajor` 选择匹配组件。
-4. 下载运行时 manifest，再下载全部 `file` 条目，校验 SHA-1、支持续传与并发。
-5. 解压到 `<data>/java/<component>`；创建 `link` 条目（Linux/macOS），设置可执行位。
+1. 读取所选来源的 Java 运行时列表：
+   - `mojang`：`https://piston-meta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json`（镜像受四档下载源策略控制）。
+   - `adoptium`：Adoptium API v3（`api.adoptium.net`，JDK zip）。
+   - `zulu`：Azul Metadata API（`api.azul.com`，JDK zip/tar.gz）。
+   - `liberica`：BellSoft API（`api.bell-sw.com`，JDK zip/tar.gz）。
+   来源由 `java.runtimeProvider` 选择，默认 `mojang`。
+2. 按当前平台选择架构与包类型：Windows zip，Linux/macOS tar.gz；支持 x64、x86（有构建时）与 arm64。
+3. Mojang 优先使用版本 JSON 指定的 `component`；第三方按 `MinimumMajor` 选择对应 feature 版本。
+4. 第三方下载到 `<data>/cache/java/`，校验 SHA-1/SHA-256（提供方给出时），再解压到 `<data>/java/<provider>-<component>/`；解压后会重新探测 `bin/java`，找不到可执行文件则判定失败。
+5. Mojang 仍走 manifest + `file` 条目流程，创建 `link` 条目（Linux/macOS），设置可执行位。
 6. 用 `IJavaLocator` 重新探测，返回可用的 `JavaRuntime`。
 
-当前只支持 Mojang 提供的 Java 运行时；Adoptium/其他发行版的下载将在后续扩展。Linux ARM64 等没有 Mojang 运行时的平台会返回“平台不支持”。
+Linux ARM64 在 Mojang 来源下会返回“平台不支持”；切换到 Adoptium/Zulu/Liberica 可以下载 ARM64 构建。
 
-## 5. 数据目录
+## 5. 32/64 位与内存校验
+
+`JavaPlatformAdvisor` 在 Java 选择后给出警告（不直接阻止启动）：
+
+- 64 位系统 + 32 位 Java：提示改用 64 位 Java。
+- 32 位系统 + 64 位 Java：提示很可能无法启动。
+- ARM64 系统 + x64 Java：提示可能需要模拟层。
+- 32 位 Java + 内存 > 1024 MB：提示超出 32 位 Java 的实用上限。
+- 分配内存 > 系统可用内存：提示可能卡顿或启动失败。
+
+警告会出现在实例页 Java 状态和启动流水线的 `java` 步骤中。
+
+## 6. JVM 参数预设
+
+`java.jvmPreset`（全局）与 `instance.java.jvmPreset`（实例覆盖）支持：
+
+| 预设 | 内容 |
+| --- | --- |
+| `default` | 不额外注入 |
+| `g1` | G1 GC + 基础停顿/引用处理参数 |
+| `zgc` | ZGC；Java 21+ 追加 `-XX:+ZGenerational` |
+| `aikar` | Aikar's flags（G1 大堆调优） |
+
+预设只包含 GC/堆行为参数，`-Xms`/`-Xmx` 仍由内存设置统一生成。
+
+## 7. 数据目录
 
 ```text
 <data>/java/
-  java-runtime-delta/        # 组件名
+  java-runtime-delta/          # Mojang 组件名
     bin/java(.exe)
     release
     ...
-  jre-legacy/
-  ...
+  adoptium-java-runtime-delta/ # 第三方运行时：<provider>-<component>
+  zulu-java-21/
+  liberica-java-21/
 ```
 
 `JavaLocator` 会扫描该目录（深度 2），因此下载完成后无需手工导入。
 
-## 6. UI 与 CLI
+## 8. UI 与 CLI
 
 UI 实例页：
 
@@ -105,9 +133,8 @@ ecl java install <实例ID>
 ecl launch <实例ID> --dry-run
 ```
 
-## 7. 限制与后续
+## 9. 限制与后续
 
-- 尚未提供 JVM 参数预设（G1/ZGC/Aikar flags）。
-- 尚未校验 32/64 位与游戏内存需求是否匹配。
-- 尚未支持 Adoptium、Zulu、Liberica 等第三方运行时下载。
+- JVM 预设目前是内置组合，尚不支持用户自定义/保存预设。
+- 32/64 位与内存校验只给出警告，不强制阻止启动。
 - Microsoft 账户体系（原 v0.3）因 OAuth 审核限制暂缓，不影响本地离线启动。

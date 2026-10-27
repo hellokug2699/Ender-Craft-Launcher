@@ -8,10 +8,10 @@ namespace Ecl.Minecraft.Versions;
 
 public static partial class JavaRequirements
 {
-    public static JavaRequirement Resolve(MinecraftVersion version, string gameVersion)
+    public static JavaRequirement Resolve(MinecraftVersion? version, string gameVersion)
     {
-        var component = version.JavaVersion?.Component;
-        var declaredMajor = version.JavaVersion?.MajorVersion ?? 0;
+        var component = version?.JavaVersion?.Component;
+        var declaredMajor = version?.JavaVersion?.MajorVersion ?? 0;
 
         // 版本 JSON 是唯一权威来源；它已经覆盖 1.x、26.x 以及未来版本号格式。
         if (declaredMajor > 0)
