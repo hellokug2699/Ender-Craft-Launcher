@@ -15,7 +15,8 @@ public sealed record JavaSelectionResult(
     JavaCompatibilityResult? Compatibility,
     bool HasAnyDetectedJava,
     string? ExplicitPath,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    int MemoryMb);
 
 public interface IJavaSelectionService
 {
@@ -79,6 +80,24 @@ public sealed class JavaSelectionService(
             ? null
             : JavaCompatibility.Evaluate(requirement, runtime);
 
+        var instanceMemory = settings.Get<int?>("instance.java.memoryMb", instance.Id);
+        var globalMemory = settings.Get<int>("java.defaultMemoryMb");
+        var memoryMb = Math.Clamp(instanceMemory ?? globalMemory, 1024, 65536);
+
+        foreach (var issue in JavaPlatformAdvisor.Assess(runtime, memoryMb))
+        {
+            warnings.Add(DescribePlatformIssue(issue));
+        }
+
+        var presetValue = settings.Get<string?>("instance.java.jvmPreset", instance.Id)
+                          ?? settings.Get<string>("java.jvmPreset");
+        if (JvmPresets.TryParse(presetValue, out var preset) &&
+            preset == JvmPreset.Zgc &&
+            runtime?.Version is { Major: < 17 })
+        {
+            warnings.Add(localizer.Get("launch.java.issue.zgcOld", runtime.Version.Raw));
+        }
+
         return new JavaSelectionResult(
             runtime,
             requirement,
@@ -86,6 +105,23 @@ public sealed class JavaSelectionService(
             compatibility,
             runtimes.Count > 0,
             explicitPath,
-            warnings);
+            warnings,
+            memoryMb);
     }
+
+    private string DescribePlatformIssue(JavaPlatformIssue issue) => issue.Kind switch
+    {
+        JavaPlatformIssueKind.Java32BitOn64BitOs => localizer.Get("launch.java.issue.java32On64"),
+        JavaPlatformIssueKind.Java64BitOn32BitOs => localizer.Get("launch.java.issue.java64On32"),
+        JavaPlatformIssueKind.X64JavaOnArm64Os => localizer.Get("launch.java.issue.x64OnArm64"),
+        JavaPlatformIssueKind.MemoryTooHighFor32BitJava => localizer.Get(
+            "launch.java.issue.memory32Bit",
+            issue.MemoryMb ?? 0,
+            issue.LimitMb ?? 1024),
+        JavaPlatformIssueKind.MemoryExceedsPhysical => localizer.Get(
+            "launch.java.issue.memoryPhysical",
+            issue.MemoryMb ?? 0,
+            issue.LimitMb ?? 0),
+        _ => string.Empty,
+    };
 }

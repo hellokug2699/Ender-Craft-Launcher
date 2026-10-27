@@ -25,26 +25,8 @@ public static class LibraryRules
         VersionLibrary library,
         string osName,
         string osArch,
-        IReadOnlyDictionary<string, bool>? features = null)
-    {
-        if (library.Rules is null || library.Rules.Count == 0)
-        {
-            return true;
-        }
-
-        var allowed = false;
-        foreach (var rule in library.Rules)
-        {
-            if (!Matches(rule, osName, osArch, features))
-            {
-                continue;
-            }
-
-            allowed = string.Equals(rule.Action, "allow", StringComparison.OrdinalIgnoreCase);
-        }
-
-        return allowed;
-    }
+        IReadOnlyDictionary<string, bool>? features = null) =>
+        VersionRuleEvaluator.IsAllowed(library.Rules, osName, osArch, features);
 
     public static bool IsModernNativeClassifier(VersionLibrary library)
     {
@@ -72,7 +54,7 @@ public static class LibraryRules
         var url = artifact?.Url;
         if (string.IsNullOrWhiteSpace(url) && !string.IsNullOrWhiteSpace(library.Url))
         {
-            url = CombineUrl(library.Url, path);
+            url = ResolveArtifactUrl(library.Url, path);
         }
 
         return new VersionLibraryArtifact
@@ -82,6 +64,52 @@ public static class LibraryRules
             Sha1 = artifact?.Sha1 ?? library.Sha1,
             Size = artifact?.Size ?? library.Size,
         };
+    }
+
+    /// <summary>
+    /// 旧版安装器既可能给出 Maven 根地址，也可能直接给出完整文件 URL。
+    /// 完整文件 URL 不应再拼接一次 Maven 相对路径。
+    /// </summary>
+    public static string ResolveArtifactUrl(string? url, string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            throw new ArgumentException("URL 不能为空。", nameof(url));
+        }
+
+        var trimmed = url.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            return CombineUrl(trimmed, relativePath);
+        }
+
+        var normalizedPath = relativePath.Replace('\\', '/').TrimStart('/');
+        var uriPath = Uri.UnescapeDataString(uri.AbsolutePath);
+        if (uriPath.EndsWith('/'))
+        {
+            return CombineUrl(trimmed, normalizedPath);
+        }
+
+        if (uriPath.EndsWith("/" + normalizedPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return trimmed;
+        }
+
+        // 完整文件 URL 可能带 classifier（例如 -universal.jar），与按 name 推导的路径不完全相同。
+        var extension = Path.GetExtension(uriPath);
+        if (extension is ".jar" or ".zip" or ".lzma" or ".txt" or ".json")
+        {
+            return trimmed;
+        }
+
+        var fileName = normalizedPath[(normalizedPath.LastIndexOf('/') + 1)..];
+        if (fileName.Length > 0 &&
+            uriPath.EndsWith("/" + fileName, StringComparison.OrdinalIgnoreCase))
+        {
+            return trimmed;
+        }
+
+        return CombineUrl(trimmed, normalizedPath);
     }
 
     public static VersionLibraryArtifact? GetNativeArtifact(VersionLibrary library, string osName, string osArch)
@@ -94,7 +122,7 @@ public static class LibraryRules
         if (library.Natives is not null)
         {
             var classifier = library.Natives
-                .FirstOrDefault(pair => OsKeyMatches(pair.Key, osName))
+                .FirstOrDefault(pair => VersionRuleEvaluator.OsKeyMatches(pair.Key, osName))
                 .Value;
 
             if (string.IsNullOrWhiteSpace(classifier))
@@ -138,7 +166,7 @@ public static class LibraryRules
 
         var suffix = normalized[prefixLength..];
         var osPart = suffix.Split('-')[0];
-        if (!OsKeyMatches(osPart, osName))
+        if (!VersionRuleEvaluator.OsKeyMatches(osPart, osName))
         {
             return -1;
         }
@@ -155,7 +183,7 @@ public static class LibraryRules
 
         return (normalizedArch, archPart) switch
         {
-            ("x64", "") or ("x64", "64") or ("x64", "x86_64") => 10,
+            ("x64", "") or ("x64", "64") or ("x64", "x64") or ("x64", "x86_64") => 10,
             ("x86", "x86") or ("x86", "32") => 10,
             ("x86", "") => 5,
             ("arm64", "arm64") => 10,
@@ -173,7 +201,7 @@ public static class LibraryRules
             var artifactUrl = artifact.Url;
             if (string.IsNullOrWhiteSpace(artifactUrl) && !string.IsNullOrWhiteSpace(library.Url) && artifactPath is not null)
             {
-                artifactUrl = CombineUrl(library.Url, artifactPath);
+                artifactUrl = ResolveArtifactUrl(library.Url, artifactPath);
             }
 
             return new VersionLibraryArtifact
@@ -194,78 +222,9 @@ public static class LibraryRules
         return new VersionLibraryArtifact
         {
             Path = path,
-            Url = string.IsNullOrWhiteSpace(library.Url) ? null : CombineUrl(library.Url, path),
+            Url = string.IsNullOrWhiteSpace(library.Url) ? null : ResolveArtifactUrl(library.Url, path),
             Sha1 = library.Sha1,
             Size = library.Size,
-        };
-    }
-
-    private static bool Matches(
-        VersionRule rule,
-        string osName,
-        string osArch,
-        IReadOnlyDictionary<string, bool>? features)
-    {
-        if (rule.Os is not null)
-        {
-            if (!string.IsNullOrWhiteSpace(rule.Os.Name) && !OsKeyMatches(rule.Os.Name, osName))
-            {
-                return false;
-            }
-
-            if (!string.IsNullOrWhiteSpace(rule.Os.Arch) && !ArchMatches(rule.Os.Arch, osArch))
-            {
-                return false;
-            }
-        }
-
-        if (rule.Features is not null)
-        {
-            foreach (var feature in rule.Features)
-            {
-                if (features is null ||
-                    !features.TryGetValue(feature.Key, out var actual) ||
-                    actual != feature.Value)
-                {
-                    return false;
-                }
-            }
-        }
-
-        return true;
-    }
-
-    private static bool OsKeyMatches(string candidate, string osName)
-    {
-        var normalized = candidate.ToLowerInvariant();
-        if (osName == "osx" && normalized == "macos")
-        {
-            return true;
-        }
-
-        if (osName == "macos" && normalized == "osx")
-        {
-            return true;
-        }
-
-        return string.Equals(normalized, osName, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool ArchMatches(string candidate, string osArch)
-    {
-        var normalizedCandidate = candidate.ToLowerInvariant();
-        var normalizedArch = osArch.ToLowerInvariant();
-
-        return (normalizedCandidate, normalizedArch) switch
-        {
-            ("x86_64", "x86_64") => true,
-            ("amd64", "x86_64") => true,
-            ("x86", "x86") => true,
-            ("i386", "x86") => true,
-            ("arm64", "arm64") => true,
-            ("aarch64", "arm64") => true,
-            ("arm32", "arm32") => true,
-            _ => false,
         };
     }
 

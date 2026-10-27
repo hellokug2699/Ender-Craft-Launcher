@@ -20,7 +20,7 @@ public sealed record GameInstance
     /// <summary>Fabric 实例必装 Fabric API 的版本号。</summary>
     public string? FabricApiVersion { get; init; }
 
-    /// <summary>用户显式选择的 OptiFine 版本键（type:patch）；为空表示不安装。</summary>
+    /// <summary>用户显式选择的 OptiFine 版本键（type:patch）；为空表示不安装。Forge 与 Cleanroom 可用。</summary>
     public string? OptiFineVersion { get; init; }
 
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;

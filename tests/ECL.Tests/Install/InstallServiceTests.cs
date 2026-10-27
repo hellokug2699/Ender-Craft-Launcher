@@ -148,6 +148,103 @@ public sealed class InstallServiceTests
         Assert.Contains(result.Value!.Components!, component => component == "forge:47.4.0");
     }
 
+    [Fact]
+    public async Task InstallsNeoForgeLoaderByRunningProcessors()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService();
+        var runner = new FakeForgeProcessorRunner();
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(fake);
+            services.AddSingleton<IJavaSelectionService>(new FakeJavaSelectionService());
+            services.AddSingleton<IForgeProcessorRunner>(runner);
+        });
+
+        var instanceResult = await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("NeoForge", "1.21.1", "neoforge", "21.1.264");
+        Assert.True(instanceResult.IsSuccess);
+        var instance = instanceResult.Value!;
+
+        var result = await provider.GetRequiredService<IVersionInstallService>()
+            .InstallAsync(instance.Id);
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        Assert.True(runner.Called);
+        Assert.Contains(result.Value!.Components!, component => component == "neoforge:21.1.264");
+    }
+
+    [Fact]
+    public async Task InstallsLegacyForgeWithoutJavaOrProcessors()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService(legacyForgeInstaller: true);
+        var runner = new FakeForgeProcessorRunner();
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(fake);
+            services.AddSingleton<IForgeProcessorRunner>(runner);
+            services.AddSingleton<IJavaSelectionService>(new ThrowingJavaSelectionService());
+        });
+
+        var instanceResult = await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Legacy Forge", "1.21.1", "forge", "47.4.0");
+        Assert.True(instanceResult.IsSuccess);
+        var instance = instanceResult.Value!;
+
+        var result = await provider.GetRequiredService<IVersionInstallService>()
+            .InstallAsync(instance.Id);
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        Assert.False(runner.Called);
+        Assert.Contains(result.Value!.Components!, component => component == "forge:47.4.0");
+        Assert.True(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, instance.VersionId)));
+    }
+
+    [Fact]
+    public async Task FailedInstallRollsBackNewFilesAndWritesDiagnostics()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService(
+            legacyForgeInstaller: true,
+            failOnDisplayName: "client-1.12.xml");
+        var runner = new FakeForgeProcessorRunner();
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(fake);
+            services.AddSingleton<IForgeProcessorRunner>(runner);
+            services.AddSingleton<IJavaSelectionService>(new ThrowingJavaSelectionService());
+        });
+
+        var instanceResult = await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Broken Forge", "1.21.1", "forge", "47.4.0");
+        Assert.True(instanceResult.IsSuccess);
+        var instance = instanceResult.Value!;
+
+        var result = await provider.GetRequiredService<IVersionInstallService>()
+            .InstallAsync(instance.Id);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("install.download_failed", result.Error?.Code);
+
+        Assert.False(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, instance.VersionId)));
+        Assert.False(File.Exists(VersionFilePlanner.GetClientJarPath(environment.Paths, instance.VersionId)));
+        Assert.False(File.Exists(Path.Combine(
+            environment.Paths.LibrariesDirectory,
+            "com/example/demo/1.0/demo-1.0.jar".Replace('/', Path.DirectorySeparatorChar))));
+
+        // 基础版本 JSON 不是本次安装新建的加载器版本，应保留。
+        Assert.True(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, "1.21.1")));
+
+        var diagnostics = Directory.GetFiles(
+            Path.Combine(environment.Paths.LogsDirectory, "install"),
+            "*.json");
+        Assert.Single(diagnostics);
+        var content = await File.ReadAllTextAsync(diagnostics[0]);
+        Assert.Contains("install.download_failed", content, StringComparison.Ordinal);
+        Assert.Contains(instance.Id, content, StringComparison.Ordinal);
+    }
+
     private sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>
     {
         public void Report(T value) => callback(value);
@@ -239,7 +336,17 @@ public sealed class InstallServiceTests
                 null,
                 true,
                 null,
-                []));
+                [],
+                4096));
+    }
+
+    private sealed class ThrowingJavaSelectionService : IJavaSelectionService
+    {
+        public Task<JavaSelectionResult> ResolveAsync(
+            GameInstance instance,
+            MinecraftVersion? version,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("spec 0 安装不应解析 Java。");
     }
 
     private sealed class FakeForgeProcessorRunner : IForgeProcessorRunner
@@ -260,7 +367,9 @@ public sealed class InstallServiceTests
         }
     }
 
-    private sealed class FakeDownloadService : IDownloadService
+    private sealed class FakeDownloadService(
+        bool legacyForgeInstaller = false,
+        string? failOnDisplayName = null) : IDownloadService
     {
         public ConcurrentBag<DownloadRequest> Requests { get; } = [];
 
@@ -269,6 +378,12 @@ public sealed class InstallServiceTests
             IProgress<DownloadProgress>? progress = null,
             CancellationToken cancellationToken = default)
         {
+            if (failOnDisplayName is not null &&
+                requests.Any(request => string.Equals(request.DisplayName, failOnDisplayName, StringComparison.Ordinal)))
+            {
+                throw new DownloadException("fake download failure", [failOnDisplayName]);
+            }
+
             foreach (var request in requests)
             {
                 Requests.Add(request);
@@ -280,7 +395,14 @@ public sealed class InstallServiceTests
 
                 if (request.DestinationPath.EndsWith("-installer.jar", StringComparison.OrdinalIgnoreCase))
                 {
-                    WriteInstaller(request.DestinationPath);
+                    if (legacyForgeInstaller)
+                    {
+                        WriteLegacyInstaller(request.DestinationPath);
+                    }
+                    else
+                    {
+                        WriteInstaller(request.DestinationPath);
+                    }
                 }
                 else
                 {
@@ -289,6 +411,35 @@ public sealed class InstallServiceTests
             }
 
             return Task.FromResult(new DownloadBatchResult(requests.Count, 0, requests.Count));
+        }
+
+        private static void WriteLegacyInstaller(string path)
+        {
+            using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+
+            WriteEntry(archive, "install_profile.json", """
+                {
+                  "install": {
+                    "profileName": "Forge",
+                    "minecraft": "1.21.1"
+                  },
+                  "versionInfo": {
+                    "id": "1.21.1-forge-47.4.0",
+                    "inheritsFrom": "1.21.1",
+                    "type": "release",
+                    "mainClass": "net.minecraft.launchwrapper.Launch",
+                    "minecraftArguments": "--username ${auth_player_name} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",
+                    "libraries": [
+                      {
+                        "name": "net.minecraftforge:forge:47.4.0",
+                        "url": "https://maven.minecraftforge.net/"
+                      }
+                    ]
+                  }
+                }
+                """);
+
+            WriteEntry(archive, "version.json", "{}");
         }
 
         private static void WriteInstaller(string path)

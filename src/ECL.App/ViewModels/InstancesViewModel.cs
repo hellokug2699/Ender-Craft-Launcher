@@ -485,13 +485,16 @@ public sealed partial class InstancesViewModel : ObservableObject
 
         var instance = SelectedInstance.Model;
         var versionResult = await _versionResolver.ResolveAsync(instance.VersionId).ConfigureAwait(true);
+
+        // 新建 Forge/Cleanroom 实例时版本 JSON 可能尚未写入；此时按 GameVersion 推断
+        // Java 要求，避免“先有版本 JSON 才能下载 Java、先有 Java 才能安装加载器”的死循环。
+        var version = versionResult.IsSuccess ? versionResult.Value : null;
+        var requirement = JavaRequirements.Resolve(version, instance.GameVersion);
         if (!versionResult.IsSuccess)
         {
-            JavaDownloadStatus = _localizer.Get("instances.java.installFirst");
-            return;
+            JavaDownloadStatus = _localizer.Get("instances.java.usingGameVersion", instance.GameVersion);
         }
 
-        var requirement = JavaRequirements.Resolve(versionResult.Value!, instance.GameVersion);
         IsBusy = true;
         IsDownloadingJava = true;
         JavaDownloadIndeterminate = true;

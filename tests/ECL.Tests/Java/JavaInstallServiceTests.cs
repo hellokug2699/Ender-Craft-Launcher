@@ -13,6 +13,25 @@ namespace Ecl.Tests.Java;
 public sealed class JavaInstallServiceTests
 {
     [Fact]
+    public void ReportsUnsupportedPlatformsInsteadOfDownloadingWrongArchitecture()
+    {
+        var supported = JavaPlatform.TryGetIndexPlatformKey(out var platformKey);
+
+        if (OperatingSystem.IsLinux() &&
+            System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture ==
+            System.Runtime.InteropServices.Architecture.Arm64)
+        {
+            Assert.False(supported);
+            Assert.Contains("linux", platformKey, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.True(supported);
+            Assert.NotEmpty(platformKey);
+        }
+    }
+
+    [Fact]
     public async Task DownloadsRuntimeAndReturnsLocatorResult()
     {
         using var environment = new TestEnvironment();

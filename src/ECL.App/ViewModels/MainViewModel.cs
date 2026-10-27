@@ -10,6 +10,7 @@ namespace Ecl.App.ViewModels;
 public sealed partial class MainViewModel : ObservableObject
 {
     private readonly InstancesViewModel _instances;
+    private readonly ModsViewModel _mods;
     private readonly SettingsViewModel _settings;
 
     public ObservableCollection<NavItemViewModel> NavItems { get; }
@@ -23,17 +24,20 @@ public sealed partial class MainViewModel : ObservableObject
 
     public MainViewModel(
         InstancesViewModel instances,
+        ModsViewModel mods,
         SettingsViewModel settings,
         AboutViewModel about,
         IAppPaths paths,
         ILocalizer localizer)
     {
         _instances = instances;
+        _mods = mods;
         _settings = settings;
 
         NavItems =
         [
             new NavItemViewModel(localizer.Get("nav.instances"), instances),
+            new NavItemViewModel(localizer.Get("nav.mods"), mods),
             new NavItemViewModel(localizer.Get("nav.settings"), settings),
             new NavItemViewModel(localizer.Get("nav.about"), about),
         ];
@@ -46,6 +50,7 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task InitializeAsync()
     {
         await _instances.InitializeAsync().ConfigureAwait(true);
+        await _mods.InitializeAsync().ConfigureAwait(true);
         await _settings.InitializeAsync().ConfigureAwait(true);
     }
 }

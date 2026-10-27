@@ -17,6 +17,9 @@
             <DataTemplate DataType="{x:Type vm:InstancesViewModel}">
                 <views:InstancesView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:ModsViewModel}">
+                <views:ModsView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
                 <views:SettingsView />
             </DataTemplate>

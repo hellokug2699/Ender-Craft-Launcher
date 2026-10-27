@@ -12,6 +12,8 @@ namespace Ecl.Minecraft.Loaders;
 /// </summary>
 public static class ForgeInstallerReader
 {
+    private const string OfficialLibrariesRoot = "https://libraries.minecraft.net/";
+
     public static ForgeInstallerContent Read(string installerPath, string mavenRoot)
     {
         using var archive = ZipFile.OpenRead(installerPath);
@@ -40,8 +42,11 @@ public static class ForgeInstallerReader
     }
 
     /// <summary>
-    /// 旧版安装器的 Forge 库只给出相对路径，URL 为空。这里按加载器 Maven 根补全，
-    /// 并对 spec 0 的 Forge 产物补上 -universal 后缀（maven 中不存在不带后缀的文件）。
+    /// 旧版安装器的库条目有三种形式：
+    /// 1. downloads.artifact.url 是完整文件 URL；
+    /// 2. 只有 library.url（Maven 根地址或完整文件 URL）；
+    /// 3. 什么都没有（旧 Forge 的 launchwrapper、lzma 等依赖）。
+    /// 这里统一把地址补成完整文件 URL，避免 <see cref="LibraryRules.GetPrimaryArtifact"/> 再次拼接。
     /// </summary>
     public static void ResolveLibraryUrls(
         MinecraftVersion version,
@@ -59,26 +64,42 @@ public static class ForgeInstallerReader
                 continue;
             }
 
+            var isForgeArtifact = IsLegacyForgeArtifact(library.Name);
+            var relative = path.Replace('\\', '/');
+            var isUniversal = relative.EndsWith("-universal.jar", StringComparison.OrdinalIgnoreCase);
+            if (profile.Spec < 1 &&
+                isForgeArtifact &&
+                relative.EndsWith(".jar", StringComparison.OrdinalIgnoreCase) &&
+                !isUniversal)
+            {
+                // Forge 1.12.2 及更早版本只发布 -universal.jar；安装器的 path 却是无后缀路径。
+                var universalPath = relative[..^".jar".Length] + "-universal.jar";
+                var universalUrl = CombineUrl(root, universalPath);
+                if (artifact is not null)
+                {
+                    artifact.Url = universalUrl;
+                }
+                else
+                {
+                    library.Url = universalUrl;
+                }
+
+                continue;
+            }
+
             var currentUrl = artifact?.Url;
             if (string.IsNullOrWhiteSpace(currentUrl))
             {
                 currentUrl = library.Url;
             }
 
-            if (!string.IsNullOrWhiteSpace(currentUrl))
-            {
-                continue;
-            }
+            // 旧版 Forge 的依赖（launchwrapper、lzma 等）默认来自 Mojang 库；
+            // 只有 Forge/NeoForge 自己的产物才使用加载器 Maven 根。
+            var baseUrl = isForgeArtifact ? root : OfficialLibrariesRoot;
+            var url = string.IsNullOrWhiteSpace(currentUrl)
+                ? CombineUrl(baseUrl, relative)
+                : LibraryRules.ResolveArtifactUrl(currentUrl, relative);
 
-            var relative = path.Replace('\\', '/');
-            if (profile.Spec < 1 &&
-                IsLegacyForgeArtifact(library.Name) &&
-                relative.EndsWith(".jar", StringComparison.OrdinalIgnoreCase))
-            {
-                relative = relative[..^".jar".Length] + "-universal.jar";
-            }
-
-            var url = new Uri(new Uri(root), relative).ToString();
             if (artifact is not null)
             {
                 artifact.Url = url;
@@ -88,6 +109,12 @@ public static class ForgeInstallerReader
                 library.Url = url;
             }
         }
+    }
+
+    private static string CombineUrl(string baseUrl, string relativePath)
+    {
+        var normalizedBase = baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/";
+        return new Uri(new Uri(normalizedBase), relativePath.Replace('\\', '/')).ToString();
     }
 
     private static bool IsLegacyForgeArtifact(string name) =>

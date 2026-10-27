@@ -194,6 +194,44 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             Order = 30,
         };
 
+        yield return new OptionDefinition<string>
+        {
+            Key = "java.jvmPreset",
+            Kind = OptionKind.Select,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.java",
+            DisplayNameKey = "option.java.jvmPreset.name",
+            DescriptionKey = "option.java.jvmPreset.desc",
+            Default = "default",
+            Order = 35,
+            Choices =
+            [
+                new OptionChoice("default", "option.java.jvmPreset.default"),
+                new OptionChoice("g1", "option.java.jvmPreset.g1"),
+                new OptionChoice("zgc", "option.java.jvmPreset.zgc"),
+                new OptionChoice("aikar", "option.java.jvmPreset.aikar"),
+            ],
+        };
+
+        yield return new OptionDefinition<string>
+        {
+            Key = "java.runtimeProvider",
+            Kind = OptionKind.Select,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.java",
+            DisplayNameKey = "option.java.runtimeProvider.name",
+            DescriptionKey = "option.java.runtimeProvider.desc",
+            Default = "mojang",
+            Order = 40,
+            Choices =
+            [
+                new OptionChoice("mojang", "option.java.runtimeProvider.mojang"),
+                new OptionChoice("adoptium", "option.java.runtimeProvider.adoptium"),
+                new OptionChoice("zulu", "option.java.runtimeProvider.zulu"),
+                new OptionChoice("liberica", "option.java.runtimeProvider.liberica"),
+            ],
+        };
+
         yield return new OptionDefinition<int>
         {
             Key = "game.windowWidth",

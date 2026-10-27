@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Text;
+using Ecl.Java;
 
 namespace Ecl.Minecraft.Launch;
 
@@ -9,6 +10,7 @@ public static class CommandLineBuilder
     public static LaunchCommand Build(LaunchContext context)
     {
         var arguments = new List<string>();
+        var classpath = BuildClasspath(context);
 
         arguments.Add($"-Xmx{context.MemoryMb}M");
         arguments.Add($"-Xms{Math.Min(1024, context.MemoryMb)}M");
@@ -28,13 +30,19 @@ public static class CommandLineBuilder
         var globalJvmArguments = context.Settings.Get<string>("java.extraArguments");
         arguments.AddRange(SplitArguments(instanceJvmArguments ?? globalJvmArguments));
 
-        string ReplacePlaceholders(string value) => ReplaceVersionPlaceholders(value, context);
+        var presetValue = context.GetInstanceSetting<string?>("instance.java.jvmPreset")
+                          ?? context.Settings.Get<string>("java.jvmPreset");
+        arguments.AddRange(JvmPresets.GetArguments(
+            JvmPresets.Parse(presetValue),
+            context.Java?.Version));
+
+        string ReplacePlaceholders(string value) => ReplaceVersionPlaceholders(value, context, classpath);
         arguments.AddRange(VersionArgumentResolver.ResolveJvmArguments(
             context.Version?.Arguments,
             ReplacePlaceholders));
 
         arguments.Add("-cp");
-        arguments.Add(BuildClasspath(context));
+        arguments.Add(classpath);
         arguments.Add(context.Version?.MainClass ?? "net.minecraft.client.main.Main");
 
         arguments.Add("--username");
@@ -60,6 +68,13 @@ public static class CommandLineBuilder
         arguments.Add("--height");
         arguments.Add(context.Settings.Get<int>("game.windowHeight").ToString());
 
+        // 1.7.10 等旧版本要求 --userProperties；新版版本 JSON 不包含该选项。
+        if (context.Version?.MinecraftArguments?.Contains("--userProperties", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            arguments.Add("--userProperties");
+            arguments.Add("{}");
+        }
+
         var instanceGameArguments = context.GetInstanceSetting<string?>("instance.game.extraArguments");
         var globalGameArguments = context.Settings.Get<string>("game.extraArguments");
         arguments.AddRange(SplitArguments(instanceGameArguments ?? globalGameArguments));
@@ -68,7 +83,7 @@ public static class CommandLineBuilder
             context.Version?.MinecraftArguments,
             ReplacePlaceholders));
 
-        arguments.AddRange(VersionArgumentResolver.ResolveLoaderGameArguments(
+        arguments.AddRange(VersionArgumentResolver.ResolveGameArguments(
             context.Version?.Arguments,
             ReplacePlaceholders));
 
@@ -136,7 +151,7 @@ public static class CommandLineBuilder
     public static string BuildDisplay(string executable, IReadOnlyList<string> arguments) =>
         string.Join(' ', new[] { executable }.Concat(arguments).Select(Quote));
 
-    private static string ReplaceVersionPlaceholders(string value, LaunchContext context)
+    private static string ReplaceVersionPlaceholders(string value, LaunchContext context, string classpath)
     {
         var assetsIndex = context.Version?.AssetIndex?.Id ?? context.Version?.Assets ?? "legacy";
         return value
@@ -147,13 +162,20 @@ public static class CommandLineBuilder
             .Replace("${assets_index_name}", assetsIndex, StringComparison.OrdinalIgnoreCase)
             .Replace("${auth_uuid}", context.Account.Uuid, StringComparison.OrdinalIgnoreCase)
             .Replace("${auth_access_token}", "0", StringComparison.OrdinalIgnoreCase)
+            .Replace("${auth_session}", "0", StringComparison.OrdinalIgnoreCase)
             .Replace("${user_type}", "legacy", StringComparison.OrdinalIgnoreCase)
             .Replace("${version_type}", context.Version?.Type ?? "release", StringComparison.OrdinalIgnoreCase)
             .Replace("${natives_directory}", context.NativesDirectory, StringComparison.OrdinalIgnoreCase)
             .Replace("${library_directory}", context.Paths.LibrariesDirectory, StringComparison.OrdinalIgnoreCase)
             .Replace("${classpath_separator}", Path.PathSeparator.ToString(), StringComparison.OrdinalIgnoreCase)
+            .Replace("${classpath}", classpath, StringComparison.OrdinalIgnoreCase)
             .Replace("${launcher_name}", "EnderCraftLauncher", StringComparison.OrdinalIgnoreCase)
-            .Replace("${launcher_version}", LauncherVersion, StringComparison.OrdinalIgnoreCase);
+            .Replace("${launcher_version}", LauncherVersion, StringComparison.OrdinalIgnoreCase)
+            .Replace("${user_properties}", "{}", StringComparison.OrdinalIgnoreCase)
+            .Replace("${clientid}", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("${auth_xuid}", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("${resolution_width}", context.Settings.Get<int>("game.windowWidth").ToString(), StringComparison.OrdinalIgnoreCase)
+            .Replace("${resolution_height}", context.Settings.Get<int>("game.windowHeight").ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string BuildClasspath(LaunchContext context)

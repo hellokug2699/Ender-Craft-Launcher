@@ -66,6 +66,27 @@ internal sealed class MinecraftOptionsProvider : IOptionProvider
 
         yield return new OptionDefinition<string?>
         {
+            Key = "instance.java.jvmPreset",
+            Kind = OptionKind.Select,
+            Scope = OptionScope.Instance,
+            CategoryKey = "category.instance",
+            DisplayNameKey = "option.instance.jvmPreset.name",
+            DescriptionKey = "option.instance.jvmPreset.desc",
+            Default = null,
+            EmptyIsNull = true,
+            Order = 35,
+            Choices =
+            [
+                new OptionChoice(string.Empty, "common.inherit"),
+                new OptionChoice("default", "option.java.jvmPreset.default"),
+                new OptionChoice("g1", "option.java.jvmPreset.g1"),
+                new OptionChoice("zgc", "option.java.jvmPreset.zgc"),
+                new OptionChoice("aikar", "option.java.jvmPreset.aikar"),
+            ],
+        };
+
+        yield return new OptionDefinition<string?>
+        {
             Key = "instance.game.extraArguments",
             Kind = OptionKind.Text,
             Scope = OptionScope.Instance,

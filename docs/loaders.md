@@ -74,8 +74,10 @@ NeoForge 的 Maven 版本号随游戏版本变化：
 
 安装器 jar 内包含 `install_profile.json` 与 `version.json`：
 
-- **spec 0（≤1.12.2）**：不需要 processors。ECL 直接使用 `version.json`，并为 `url` 为空的 Forge 库补齐
-  `<maven>/...-universal.jar`。
+- **spec 0（≤1.12.2）**：不需要 processors，也不需要 Java。ECL 直接使用 `version.json` / `versionInfo`：
+  - Forge 产物在 Maven 中只有 `-universal.jar`，ECL 会把 `net.minecraftforge:forge` / `net.neoforged:forge` 的地址无条件改为 `<maven>/...-universal.jar`；
+  - 库条目可能给出 Maven 根地址（如 `https://maven.minecraftforge.net/`）或完整文件 URL，ECL 会区分两者，避免重复拼接路径；
+  - 没有 URL 的旧依赖（`launchwrapper`、`lzma` 等）回退到 Mojang 官方库 `https://libraries.minecraft.net/`。
 - **spec 1+（1.13+ / NeoForge）**：安装器需要运行 processors 才能生成打补丁的客户端 jar
   （`libraries/net/.../<artifact>-<version>-client.jar`）。ECL 会：
   1. 下载 `install_profile.json.libraries` 到共享 `libraries/`（含 installertools、jarsplitter、
@@ -89,6 +91,8 @@ NeoForge 的 Maven 版本号随游戏版本变化：
   4. 校验 `PATCHED` 输出文件存在，否则判定安装失败。
 - 运行 processors 需要本机存在可用 Java；ECL 复用实例的 Java 选择（默认按版本 JSON 的
   `javaVersion` 选取），未检测到 Java 时提示先安装/指定 Java。
+- 只有 `install_profile.json` 中确实存在客户端 processors 时才会要求 Java；spec 0 的 Forge
+  以及没有 processor 的安装器不依赖 Java。
 - 下载源策略中，`maven.minecraftforge.net` 与 `maven.neoforged.net/releases` 会映射到
   BMCLAPI 的 `/maven/` 镜像。
 
@@ -114,8 +118,19 @@ cache/forge/                              # 安装器及其解压的 data 文件
 
 Fabric / Forge / NeoForge 版本 JSON 保留 `inheritsFrom`，依赖原版版本 JSON；Cleanroom 版本 JSON 是独立的完整定义。
 
+## 安装失败回滚与诊断
+
+安装过程记录在 `InstallTransaction` 中：
+
+- 本次新建的 client、库、资源对象、Fabric API / OptiFine mod 在失败时删除；
+- 被覆盖的加载器版本 JSON 恢复为安装前内容；
+- 原本已存在的共享库与资源不会删除，避免影响其他实例；
+- 失败原因写入 `<data>/logs/install/install-<实例ID>-<时间>.json`，包含实例、加载器、错误码、
+  错误详情、运行环境与回滚操作记录，便于反馈问题。
+
 ## 启动参数
 
+- 继承链合并时，加载器库排在原版库之前：Forge 1.7.10 的 guava 17.0 必须先于原版 1.7.10 的 15.0 进入类路径，否则会触发 `NoSuchMethodError`。
 - Fabric profile 的 `arguments.jvm` 会注入启动命令，例如 `-DFabricMcEmu= net.minecraft.client.main.Main`。
 - Cleanroom 与 1.12.2 Forge 的旧式 `minecraftArguments` 中启动器未处理的选项会被补充，
   例如 `--tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker`。

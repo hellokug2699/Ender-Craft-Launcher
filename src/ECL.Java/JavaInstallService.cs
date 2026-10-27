@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Text.Json;
+using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Core.Localization;
@@ -15,6 +16,8 @@ public sealed class JavaInstallService : IJavaInstallService
     private readonly DownloadSourceResolver _sources;
     private readonly IJavaLocator _locator;
     private readonly IAppPaths _paths;
+    private readonly ISettingsService _settings;
+    private readonly IReadOnlyDictionary<string, IJavaRuntimeProvider> _providers;
     private readonly ILocalizer _localizer;
     private readonly ILogger<JavaInstallService> _logger;
 
@@ -23,6 +26,8 @@ public sealed class JavaInstallService : IJavaInstallService
         DownloadSourceResolver sources,
         IJavaLocator locator,
         IAppPaths paths,
+        ISettingsService settings,
+        IEnumerable<IJavaRuntimeProvider> providers,
         ILocalizer localizer,
         ILogger<JavaInstallService> logger)
     {
@@ -30,6 +35,8 @@ public sealed class JavaInstallService : IJavaInstallService
         _sources = sources;
         _locator = locator;
         _paths = paths;
+        _settings = settings;
+        _providers = providers.ToDictionary(provider => provider.Id, StringComparer.OrdinalIgnoreCase);
         _localizer = localizer;
         _logger = logger;
     }
@@ -54,6 +61,29 @@ public sealed class JavaInstallService : IJavaInstallService
         IProgress<JavaInstallProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        var providerId = _settings.Get<string>("java.runtimeProvider");
+        if (!string.IsNullOrWhiteSpace(providerId) &&
+            !string.Equals(providerId, "mojang", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!_providers.TryGetValue(providerId, out var provider))
+            {
+                return Result<JavaRuntime>.Fail(
+                    "java.provider_unsupported",
+                    _localizer.Get("java.error.providerUnsupported", providerId));
+            }
+
+            return await DownloadFromProviderAsync(provider, requirement, progress, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return await DownloadFromMojangAsync(requirement, progress, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<Result<JavaRuntime>> DownloadFromMojangAsync(
+        JavaRequirement requirement,
+        IProgress<JavaInstallProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
         try
         {
             Report(progress, JavaInstallStage.Index, "java.stage.index", 0, 0, 0, 0, null);
@@ -71,12 +101,13 @@ public sealed class JavaInstallService : IJavaInstallService
                 return Result<JavaRuntime>.Fail("java.index_invalid", _localizer.Get("java.error.indexInvalid"));
             }
 
-            var platformKey = JavaPlatform.GetIndexPlatformKey();
-            if (!index.TryGetValue(platformKey, out var components) || components.Count == 0)
+            if (!JavaPlatform.TryGetIndexPlatformKey(out var platformKey) ||
+                !index.TryGetValue(platformKey, out var components) ||
+                components.Count == 0)
             {
                 return Result<JavaRuntime>.Fail(
                     "java.platform_unsupported",
-                    _localizer.Get("java.error.platformUnsupported", platformKey));
+                    _localizer.Get("java.error.platformUnsupported", JavaPlatform.DescribeCurrentPlatform()));
             }
 
             var selected = SelectComponent(components, requirement);
@@ -235,6 +266,161 @@ public sealed class JavaInstallService : IJavaInstallService
                 "java.install_failed",
                 _localizer.Get("java.error.installFailed", exception.Message));
         }
+    }
+
+    private async Task<Result<JavaRuntime>> DownloadFromProviderAsync(
+        IJavaRuntimeProvider provider,
+        JavaRequirement requirement,
+        IProgress<JavaInstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            Report(progress, JavaInstallStage.Provider, "java.stage.provider", 0, 0, 0, 0, provider.DisplayName);
+
+            var packageResult = await provider.ResolveAsync(requirement, cancellationToken).ConfigureAwait(false);
+            if (!packageResult.IsSuccess)
+            {
+                return Result<JavaRuntime>.Fail(packageResult.Error!);
+            }
+
+            var package = packageResult.Value!;
+            var component = SanitizeComponent(package.Component);
+            var runtimeId = $"{provider.Id}-{component}";
+            var destination = Path.Combine(_paths.JavaDirectory, runtimeId);
+
+            var cacheDirectory = Path.Combine(_paths.CacheDirectory, "java");
+            Directory.CreateDirectory(cacheDirectory);
+            var archiveName = Path.GetFileName(package.FileName);
+            if (string.IsNullOrWhiteSpace(archiveName))
+            {
+                archiveName = $"java-{requirement.MinimumMajor}.zip";
+            }
+
+            var archivePath = Path.Combine(cacheDirectory, $"{runtimeId}-{archiveName}");
+            var hash = !string.IsNullOrWhiteSpace(package.Sha256) ? package.Sha256 : package.Sha1;
+            var algorithm = !string.IsNullOrWhiteSpace(package.Sha256)
+                ? HashingAlgorithm.Sha256
+                : HashingAlgorithm.Sha1;
+
+            var request = new DownloadRequest(
+                archivePath,
+                [new Uri(package.DownloadUrl)],
+                hash,
+                algorithm,
+                package.Size,
+                package.DisplayName);
+
+            Report(
+                progress,
+                JavaInstallStage.Download,
+                "java.stage.download",
+                0,
+                1,
+                0,
+                package.Size ?? 0,
+                package.DisplayName);
+
+            var forwarding = new ForwardingProgress<DownloadProgress>(update =>
+                progress?.Report(new JavaInstallProgress(
+                    JavaInstallStage.Download,
+                    _localizer.Get("java.stage.download"),
+                    update.CompletedFiles,
+                    update.TotalFiles,
+                    update.CompletedBytes,
+                    update.TotalBytes,
+                    update.CurrentFile)));
+
+            await _downloads.DownloadAsync([request], forwarding, cancellationToken).ConfigureAwait(false);
+
+            Report(
+                progress,
+                JavaInstallStage.Extract,
+                "java.stage.extract",
+                0,
+                0,
+                0,
+                0,
+                package.DisplayName);
+
+            var extracted = await JavaArchiveInstaller
+                .ExtractAsync(archivePath, package.ArchiveKind, destination, cancellationToken)
+                .ConfigureAwait(false);
+            if (!extracted.IsSuccess)
+            {
+                return Result<JavaRuntime>.Fail(extracted.Error!);
+            }
+
+            var runtime = _locator.FromPath(destination);
+            if (runtime is null)
+            {
+                return Result<JavaRuntime>.Fail(
+                    "java.runtime_invalid",
+                    _localizer.Get("java.error.runtimeInvalid"));
+            }
+
+            if (runtime.Version is null && package.Version is not null)
+            {
+                runtime = runtime with { Version = package.Version };
+            }
+
+            try
+            {
+                File.Delete(archivePath);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogDebug(exception, "无法删除 Java 安装包缓存：{Path}", archivePath);
+            }
+
+            Report(
+                progress,
+                JavaInstallStage.Completed,
+                "java.stage.completed",
+                1,
+                1,
+                0,
+                0,
+                null);
+
+            _logger.LogInformation(
+                "已安装第三方 Java 运行时 {Provider} {Version} 到 {Directory}。",
+                provider.DisplayName,
+                runtime.Version?.Raw ?? package.Version?.Raw ?? "未知版本",
+                destination);
+
+            return Result<JavaRuntime>.Ok(runtime);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (DownloadException exception)
+        {
+            _logger.LogError(exception, "下载第三方 Java 运行时失败。");
+            return Result<JavaRuntime>.Fail(
+                "java.download_failed",
+                _localizer.Get("java.error.downloadFailed", exception.Message),
+                string.Join("; ", exception.Failures.Take(5)));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                              or InvalidOperationException or UriFormatException)
+        {
+            _logger.LogError(exception, "安装第三方 Java 运行时失败。");
+            return Result<JavaRuntime>.Fail(
+                "java.install_failed",
+                _localizer.Get("java.error.installFailed", exception.Message));
+        }
+    }
+
+    private static string SanitizeComponent(string component)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var sanitized = new string(component
+            .Select(character => invalid.Contains(character) || character is '/' or '\\' ? '-' : character)
+            .ToArray())
+            .Trim();
+        return sanitized.Length == 0 ? "java" : sanitized;
     }
 
     private static (string Component, JavaRuntimeIndexEntry Entry, JavaVersion? Version)? SelectComponent(

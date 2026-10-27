@@ -47,6 +47,65 @@ public sealed class LibrarySelectionTests
         Assert.False(LibraryRules.IsAllowed(windowsOnly, "linux", "x86_64"));
     }
 
+    [Theory]
+    [InlineData("x64")]
+    [InlineData("x86_64")]
+    [InlineData("amd64")]
+    public void AcceptsX64ArchAlias(string arch)
+    {
+        var library = new VersionLibrary
+        {
+            Name = "com.example:demo:1.0",
+            Rules =
+            [
+                new VersionRule
+                {
+                    Action = "allow",
+                    Os = new VersionRuleOs { Name = "windows", Arch = arch },
+                },
+            ],
+        };
+
+        Assert.True(LibraryRules.IsAllowed(library, "windows", "x86_64"));
+        Assert.False(LibraryRules.IsAllowed(library, "windows", "x86"));
+        Assert.False(LibraryRules.IsAllowed(library, "linux", "x86_64"));
+    }
+
+    [Fact]
+    public void SelectsCleanroomX64NativeLibraries()
+    {
+        // Cleanroom 0.7.12 的真实格式：LWJGL natives 的 rules 使用 "arch": "x64"。
+        var library = new VersionLibrary
+        {
+            Name = "org.lwjgl:lwjgl:3.3.3:natives-windows",
+            Downloads = new VersionLibraryDownloads
+            {
+                Artifact = new VersionLibraryArtifact
+                {
+                    Path = "org/lwjgl/lwjgl/3.3.3/lwjgl-3.3.3-natives-windows.jar",
+                    Url = "https://repo.maven.apache.org/maven2/org/lwjgl/lwjgl/3.3.3/lwjgl-3.3.3-natives-windows.jar",
+                    Sha1 = "0000000000000000000000000000000000000000",
+                    Size = 1,
+                },
+            },
+            Rules =
+            [
+                new VersionRule
+                {
+                    Action = "allow",
+                    Os = new VersionRuleOs { Name = "windows", Arch = "x64" },
+                },
+            ],
+        };
+
+        var plan = PlatformLibrarySelector.Plan([library], "windows", "x86_64");
+
+        var item = Assert.Single(plan);
+        Assert.NotNull(item.NativeArtifact);
+        Assert.NotNull(item.PrimaryArtifact);
+        Assert.Contains("natives-windows", item.NativeArtifact!.Path, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ClassifierOnlyLibraryHasNoPrimaryArtifact()
     {

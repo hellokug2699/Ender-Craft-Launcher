@@ -55,9 +55,13 @@ public static class LoaderKinds
         _ => Vanilla,
     };
 
-    /// <summary>需要运行安装器 processors 的加载器（Forge 1.13+ 与 NeoForge）。</summary>
-    public static bool UsesInstallerProcessors(LoaderKind kind) =>
+    /// <summary>使用安装器 spec 的加载器（Forge 1.13+ 与 NeoForge）。是否需要 processors 由 install_profile 决定。</summary>
+    public static bool UsesInstaller(LoaderKind kind) =>
         kind is LoaderKind.Forge or LoaderKind.NeoForge;
+
+    /// <summary>保留旧名称；是否需要运行 processors 请使用 <see cref="Ecl.Minecraft.Install.ForgeProcessorPlanner.HasClientProcessors"/>。</summary>
+    [Obsolete("请使用 UsesInstaller；是否需要 processors 由 install_profile 决定。")]
+    public static bool UsesInstallerProcessors(LoaderKind kind) => UsesInstaller(kind);
 
     public static bool IsSupported(string? value) => TryParse(value, out _);
 }

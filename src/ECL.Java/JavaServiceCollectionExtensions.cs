@@ -10,6 +10,9 @@ public static class JavaServiceCollectionExtensions
     {
         services.AddSingleton<IJavaLocator, JavaLocator>();
         services.AddSingleton<IJavaInstallService, JavaInstallService>();
+        services.AddSingleton<IJavaRuntimeProvider, AdoptiumJavaRuntimeProvider>();
+        services.AddSingleton<IJavaRuntimeProvider, ZuluJavaRuntimeProvider>();
+        services.AddSingleton<IJavaRuntimeProvider, LibericaJavaRuntimeProvider>();
         return services;
     }
 }
