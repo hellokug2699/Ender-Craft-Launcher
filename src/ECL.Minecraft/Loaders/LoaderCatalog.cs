@@ -13,6 +13,7 @@ namespace Ecl.Minecraft.Loaders;
 /// </summary>
 public sealed class LoaderCatalog(
     IDownloadService downloads,
+    DownloadSourceResolver sources,
     ILogger<LoaderCatalog> logger) : ILoaderCatalog
 {
     private const string FabricMetaRoot = "https://meta.fabricmc.net/v2/versions/loader";
@@ -22,6 +23,12 @@ public sealed class LoaderCatalog(
     private const string CleanroomReleasesAtom = "https://github.com/CleanroomMC/Cleanroom/releases.atom";
     private const string FabricApiVersionsRoot = "https://api.modrinth.com/v2/project/fabric-api/version";
     private const string OptiFineRoot = "https://bmclapi2.bangbang93.com/optifine";
+    private const string ForgeMetadata =
+        "https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml";
+    private const string NeoForgeMetadata =
+        "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml";
+    private const string NeoForgeLegacyMetadata =
+        "https://maven.neoforged.net/releases/net/neoforged/forge/maven-metadata.xml";
 
     public async Task<Result<IReadOnlyList<LoaderVersionInfo>>> GetFabricLoadersAsync(
         string gameVersion,
@@ -44,6 +51,56 @@ public sealed class LoaderCatalog(
             return Result<IReadOnlyList<LoaderVersionInfo>>.Fail(
                 "loader.catalog_failed",
                 $"读取 Fabric 加载器版本失败：{exception.Message}");
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<LoaderVersionInfo>>> GetForgeVersionsAsync(
+        string gameVersion,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var xml = await DownloadTextAsync(ForgeMetadata, cancellationToken).ConfigureAwait(false);
+            return Result<IReadOnlyList<LoaderVersionInfo>>.Ok(
+                LoaderCatalogParsers.ParseForgeVersions(xml, gameVersion));
+        }
+        catch (Exception exception) when (IsCatalogFailure(exception))
+        {
+            logger.LogWarning(exception, "读取 Forge 版本失败：{GameVersion}", gameVersion);
+            return Result<IReadOnlyList<LoaderVersionInfo>>.Fail(
+                "loader.catalog_failed",
+                $"读取 Forge 版本失败：{exception.Message}");
+        }
+    }
+
+    public async Task<Result<IReadOnlyList<LoaderVersionInfo>>> GetNeoForgeVersionsAsync(
+        string gameVersion,
+        CancellationToken cancellationToken = default)
+    {
+        if (LoaderCatalogParsers.GetNeoForgeVersionPrefix(gameVersion) is null)
+        {
+            return Result<IReadOnlyList<LoaderVersionInfo>>.Ok([]);
+        }
+
+        var metadataUrl = string.Equals(
+            gameVersion.Trim(),
+            LoaderCatalogParsers.NeoForgeLegacyGameVersion,
+            StringComparison.Ordinal)
+            ? NeoForgeLegacyMetadata
+            : NeoForgeMetadata;
+
+        try
+        {
+            var xml = await DownloadTextAsync(metadataUrl, cancellationToken).ConfigureAwait(false);
+            return Result<IReadOnlyList<LoaderVersionInfo>>.Ok(
+                LoaderCatalogParsers.ParseNeoForgeVersions(xml, gameVersion));
+        }
+        catch (Exception exception) when (IsCatalogFailure(exception))
+        {
+            logger.LogWarning(exception, "读取 NeoForge 版本失败：{GameVersion}", gameVersion);
+            return Result<IReadOnlyList<LoaderVersionInfo>>.Fail(
+                "loader.catalog_failed",
+                $"读取 NeoForge 版本失败：{exception.Message}");
         }
     }
 
@@ -149,8 +206,17 @@ public sealed class LoaderCatalog(
         }
     }
 
-    private Task<string> DownloadTextAsync(string url, CancellationToken cancellationToken) =>
-        downloads.DownloadTextAsync([new Uri(url)], cancellationToken: cancellationToken);
+    private Task<string> DownloadTextAsync(string url, CancellationToken cancellationToken)
+    {
+        var candidates = sources.GetCandidates(url);
+        if (candidates.Count == 0 && Uri.TryCreate(url, UriKind.Absolute, out var direct))
+        {
+            // 第三方地址（Modrinth、GitHub、Cleanroom Maven 等）没有镜像时仍直接下载。
+            candidates = [direct];
+        }
+
+        return downloads.DownloadTextAsync(candidates, cancellationToken: cancellationToken);
+    }
 
     private async Task<IReadOnlyDictionary<string, DateTimeOffset>> TryGetAtomDatesAsync(
         string url,

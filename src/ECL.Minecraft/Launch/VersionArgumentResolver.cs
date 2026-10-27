@@ -92,6 +92,48 @@ public static class VersionArgumentResolver
         return result;
     }
 
+    /// <summary>
+    /// 新式加载器把启动目标放在 arguments.game 中（--launchTarget forgeclient、--fml.*）。
+    /// 只提取这类加载器专属参数，避免与启动器自行拼装的原版参数重复。
+    /// </summary>
+    public static IReadOnlyList<string> ResolveLoaderGameArguments(
+        VersionArguments? arguments,
+        Func<string, string> replacePlaceholders)
+    {
+        if (arguments?.Game is null || arguments.Game.Count == 0)
+        {
+            return [];
+        }
+
+        var tokens = arguments.Game
+            .Select(ExtractString)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => replacePlaceholders(value!))
+            .ToList();
+
+        var result = new List<string>();
+        for (var index = 0; index < tokens.Count; index++)
+        {
+            var token = tokens[index];
+            if (!IsLoaderOption(token))
+            {
+                continue;
+            }
+
+            result.Add(token);
+            if (index + 1 < tokens.Count && !tokens[index + 1].StartsWith("--", StringComparison.Ordinal))
+            {
+                result.Add(tokens[++index]);
+            }
+        }
+
+        return result;
+    }
+
+    private static bool IsLoaderOption(string token) =>
+        string.Equals(token, "--launchTarget", StringComparison.OrdinalIgnoreCase) ||
+        token.StartsWith("--fml.", StringComparison.OrdinalIgnoreCase);
+
     private static string? ExtractString(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.String)

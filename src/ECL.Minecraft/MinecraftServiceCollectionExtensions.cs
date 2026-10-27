@@ -23,6 +23,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IVersionResolver, VersionResolver>();
         services.AddSingleton<IProcessLauncher, SystemProcessLauncher>();
         services.AddSingleton<ILoaderCatalog, LoaderCatalog>();
+        services.AddSingleton<IForgeProcessorRunner, ForgeProcessorRunner>();
         services.AddSingleton<IVersionInstallService, VanillaInstallService>();
         services.AddSingleton<IJavaSelectionService, JavaSelectionService>();
         services.AddSingleton<IEulaService, FileEulaService>();

@@ -75,13 +75,30 @@ public sealed class InstanceServiceTests
     }
 
     [Fact]
-    public async Task RejectsOptiFineOutsideCleanroom()
+    public async Task CreatesForgeAndNeoForgeInstances()
     {
         using var environment = new TestEnvironment();
         await using var provider = environment.CreateServices();
         var instances = provider.GetRequiredService<IInstanceService>();
 
-        var created = await instances.CreateAsync(
+        var forge = await instances.CreateAsync("Forge", "1.20.1", "forge", "47.4.0", optiFineVersion: "HD_U:G5");
+        Assert.True(forge.IsSuccess, forge.Error?.ToString());
+        Assert.Equal("1.20.1-forge-47.4.0", forge.Value!.VersionId);
+        Assert.Equal("HD_U:G5", forge.Value.OptiFineVersion);
+
+        var neoForge = await instances.CreateAsync("NeoForge", "1.21.1", "neoforge", "21.1.264");
+        Assert.True(neoForge.IsSuccess, neoForge.Error?.ToString());
+        Assert.Equal("1.21.1-neoforge-21.1.264", neoForge.Value!.VersionId);
+    }
+
+    [Fact]
+    public async Task RejectsOptiFineForFabricAndNeoForge()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+
+        var fabric = await instances.CreateAsync(
             "Fabric",
             "1.21.1",
             "fabric",
@@ -89,8 +106,18 @@ public sealed class InstanceServiceTests
             "0.116.0+1.21.1",
             "HD_U:G5");
 
-        Assert.False(created.IsSuccess);
-        Assert.Equal("instance.optifine_requires_cleanroom", created.Error?.Code);
+        Assert.False(fabric.IsSuccess);
+        Assert.Equal("instance.optifine_requires_forge", fabric.Error?.Code);
+
+        var neoForge = await instances.CreateAsync(
+            "NeoForge",
+            "1.21.1",
+            "neoforge",
+            "21.1.264",
+            optiFineVersion: "HD_U:G5");
+
+        Assert.False(neoForge.IsSuccess);
+        Assert.Equal("instance.optifine_requires_forge", neoForge.Error?.Code);
     }
 
     [Fact]

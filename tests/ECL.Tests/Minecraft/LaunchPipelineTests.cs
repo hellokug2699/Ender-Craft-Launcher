@@ -195,6 +195,43 @@ public sealed class LaunchPipelineTests
         Assert.DoesNotContain("${auth_player_name}", report.CommandLine);
     }
 
+    [Fact]
+    public async Task ForgeLaunchTargetAndLibraryDirectoryAreAdded()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeProcessLauncher();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IProcessLauncher>(fake));
+
+        var created = await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Forge", "1.20.1", "forge", "47.4.0");
+        Assert.True(created.IsSuccess);
+        var instance = created.Value!;
+        await provider.GetRequiredService<IAccountService>().AddOfflineAsync("Player");
+        ConfigureFakeJava(environment, provider);
+
+        WriteVersion(environment, "1.20.1", "1.20.1", "net.minecraft.client.main.Main");
+        WriteVersion(
+            environment,
+            instance.VersionId,
+            "1.20.1",
+            "cpw.mods.bootstraplauncher.BootstrapLauncher",
+            $$"""
+            "arguments": {
+              "game": ["--launchTarget", "forgeclient", "--fml.forgeVersion", "47.4.0", "--fml.mcVersion", "1.20.1"],
+              "jvm": ["-DlibraryDirectory=${library_directory}", "-p", "${library_directory}/cpw/mods/bootstraplauncher/1.1.2/bootstraplauncher-1.1.2.jar"]
+            },
+            """);
+
+        var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: true);
+
+        Assert.True(report.Success);
+        Assert.Contains("--launchTarget", report.CommandLine);
+        Assert.Contains("forgeclient", report.CommandLine);
+        Assert.Contains("--fml.forgeVersion", report.CommandLine);
+        Assert.Contains($"-DlibraryDirectory={environment.Paths.LibrariesDirectory}", report.CommandLine);
+        Assert.DoesNotContain("${library_directory}", report.CommandLine);
+    }
+
     private static void ConfigureFakeJava(TestEnvironment environment, IServiceProvider provider)
     {
         var fakeJavaHome = Path.Combine(environment.Root, "fakejava");

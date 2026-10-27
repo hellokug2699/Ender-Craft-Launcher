@@ -11,7 +11,7 @@ ECL 是一个 Windows 优先的 Minecraft 启动器，目标能力对齐 HMCL / 
 
 同时保留自己的设计空间：配置项由元数据驱动、启动流程分阶段可观测、模块边界清晰、UI 只是薄壳。
 
-当前版本（v0.5）已完成原版安装、Java 管理与加载器安装：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查、Mojang Java 运行时自动下载、Fabric（含 Fabric API）与 Cleanroom 安装、OptiFine 显式安装。v0.3 账户体系因 Microsoft OAuth 审核限制暂缓；Mod 与整合包管理是下一阶段。
+当前版本（v0.5）已完成原版安装、Java 管理与加载器安装：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查、Mojang Java 运行时自动下载、Fabric（含 Fabric API）、Forge/NeoForge（含安装器 processors）与 Cleanroom 安装、OptiFine 显式安装。v0.3 账户体系因 Microsoft OAuth 审核限制暂缓；Mod 与整合包管理是下一阶段。
 
 ## 2. 设计原则
 
@@ -137,7 +137,8 @@ services.AddEclMinecraft();
 ├─ assets/                         # 共享资源
 ├─ java/                           # 启动器托管的 Java 运行时（java/<component>）
 ├─ cache/
-│  └─ cleanroom/                   # Cleanroom 安装器缓存
+│  ├─ cleanroom/                   # Cleanroom 安装器缓存
+│  └─ forge/                       # Forge/NeoForge 安装器与解压的 data 文件
 └─ logs/                           # ecl-YYYYMMDD.log
 ```
 
@@ -184,12 +185,13 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 
 ### 7.5 加载器与组件
 
-1. `ILoaderCatalog` 统一读取 Fabric Loader、Cleanroom、Fabric API、OptiFine 的可用版本，并附带能获取到的更新时间。
+1. `ILoaderCatalog` 统一读取 Fabric Loader、Forge、NeoForge、Cleanroom、Fabric API、OptiFine 的可用版本，并附带能获取到的更新时间。
 2. Fabric 使用 Meta 的 profile JSON 生成版本 JSON；Cleanroom 从官方安装器 zip 提取 `version.json` 并补全仓库 URL，不执行安装器进程。
-3. Fabric 实例强制安装 Fabric API；OptiFine 仅在用户显式选择且加载器为 Cleanroom 时下载到实例 `mods/`。
-4. 启动时补充 Fabric 的 `arguments.jvm` 与 Cleanroom 旧式 `--tweakClass`；版本 ID 形如 `<游戏版本>-<加载器>-<加载器版本>`。
+3. Forge/NeoForge 从官方安装器读取 `install_profile.json` 与 `version.json`；spec 0 直接使用版本 JSON，spec 1+ 在下载原版/加载器文件后由 `ForgeProcessorRunner` 运行安装器 processors，产出打补丁的客户端 jar。
+4. Fabric 实例强制安装 Fabric API；OptiFine 仅在用户显式选择且加载器为 Forge 或 Cleanroom 时下载到实例 `mods/`。
+5. 启动时补充 Fabric 的 `arguments.jvm`、Forge/NeoForge 的 `${library_directory}`/`--launchTarget` 与 Cleanroom 旧式 `--tweakClass`；版本 ID 形如 `<游戏版本>-<加载器>-<加载器版本>`。
 
-详见 [loaders.md](loaders.md) 与 [ADR 0007](adr/0007-loaders-and-components.md)。
+详见 [loaders.md](loaders.md)、[ADR 0007](adr/0007-loaders-and-components.md) 与 [ADR 0008](adr/0008-forge-neoforge-installers.md)。
 
 ### 7.6 配置解析
 
@@ -269,9 +271,9 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 
 ## 10. 当前边界与已知缺口
 
-- 已实现原版安装、资源/库补全、natives 解压、EULA、Java 选择/兼容性检查/Mojang 运行时下载；加载器安装尚未实现。
-- `inheritsFrom` 已在本地版本 JSON 层面合并；加载器生成的继承链仍需专用安装器。
-- 已处理 library `rules`、natives classifier、日志配置路径；尚未使用版本 JSON 的 `arguments` 占位符体系（当前由启动器自建命令，原版可用）。
+- 已实现原版安装、资源/库补全、natives 解压、EULA、Java 选择/兼容性检查/Mojang 运行时下载；Fabric/Forge/NeoForge/Cleanroom 安装已完成。
+- Fabric/Forge/NeoForge 生成的继承链已按 `inheritsFrom` 合并；Forge/NeoForge 的 processors 产物（client jar）位于共享 `libraries/`。
+- 已处理 library `rules`、natives classifier、日志配置路径；已使用版本 JSON 的 `arguments.jvm` 与加载器专属 `arguments.game` 参数（标准游戏参数仍由启动器生成）。
 - Java 自动下载目前仅支持 Mojang 运行时；Adoptium/Zulu/Liberica、32/64 位与内存匹配、JVM 预设未实现。
 - 未实现 Microsoft OAuth、authlib-injector、令牌加密（v0.3 暂缓）。
 - 未实现更新器与签名验证；签名脚本已预留。

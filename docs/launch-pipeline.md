@@ -82,7 +82,8 @@ public sealed record LaunchCommand(
 -Dminecraft.launcher.version=<launcher version>
 -Dlog4j.configurationFile=<data>/assets/logging/<file id>   （版本 JSON 提供 logging 时）
 <instance/global extra JVM arguments>
-<版本 JSON arguments.jvm>                                  （例如 Fabric 的 -DFabricMcEmu）
+<版本 JSON arguments.jvm>                                  （例如 Fabric 的 -DFabricMcEmu、
+                                                           Forge/NeoForge 的 -DlibraryDirectory、-p）
 ```
 
 当前游戏参数：
@@ -103,9 +104,10 @@ public sealed record LaunchCommand(
 --height <game.windowHeight>
 <instance/global extra game arguments>
 <旧式 minecraftArguments 中未处理的选项>                   （例如 Cleanroom 的 --tweakClass）
+<arguments.game 中的加载器专属参数>                        （例如 --launchTarget forgeclient、--fml.*）
 ```
 
-加载器阶段只补充自定义选项，标准参数仍由启动器生成；完整 `arguments.game` 规则对象与占位符替换仍在后续计划中。
+加载器阶段只补充自定义选项，标准参数仍由启动器生成；`${library_directory}` 与 `${classpath_separator}` 会被替换为实际路径与分隔符，完整 `arguments.game` 规则对象与占位符替换仍在后续计划中。
 
 ### 额外参数解析
 

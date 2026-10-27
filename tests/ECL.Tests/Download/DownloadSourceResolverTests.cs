@@ -62,6 +62,16 @@ public sealed class DownloadSourceResolverTests
             "https://maven.aliyun.com/repository/public/org/ow2/asm/asm/9.10.1/asm-9.10.1.jar",
             resolver.MapToMirror(new Uri(
                 "https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.10.1/asm-9.10.1.jar"))?.ToString());
+
+        Assert.Equal(
+            "https://bmclapi2.bangbang93.com/maven/net/minecraftforge/forge/1.20.1-47.4.0/forge-1.20.1-47.4.0-installer.jar",
+            resolver.MapToMirror(new Uri(
+                "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.0/forge-1.20.1-47.4.0-installer.jar"))?.ToString());
+
+        Assert.Equal(
+            "https://bmclapi2.bangbang93.com/maven/net/neoforged/neoforge/21.1.264/neoforge-21.1.264-installer.jar",
+            resolver.MapToMirror(new Uri(
+                "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.264/neoforge-21.1.264-installer.jar"))?.ToString());
     }
 
     [Fact]

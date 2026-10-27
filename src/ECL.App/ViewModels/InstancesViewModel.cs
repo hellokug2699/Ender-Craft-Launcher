@@ -226,6 +226,8 @@ public sealed partial class InstancesViewModel : ObservableObject
 
         LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Vanilla, _localizer.Get("instances.loader.vanilla")));
         LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Fabric, _localizer.Get("instances.loader.fabric")));
+        LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Forge, _localizer.Get("instances.loader.forge")));
+        LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.NeoForge, _localizer.Get("instances.loader.neoforge")));
         LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Cleanroom, _localizer.Get("instances.loader.cleanroom")));
         _selectedNewLoader = LoaderChoices[0];
     }
@@ -354,6 +356,52 @@ public sealed partial class InstancesViewModel : ObservableObject
                     : FabricApiVersions.Count == 0
                         ? _localizer.Get("instances.fabricApi.none")
                         : string.Empty;
+                return;
+            }
+
+            if ((loader == LoaderKinds.Forge || loader == LoaderKinds.NeoForge) &&
+                LoaderKinds.TryParse(loader, out var installerKind))
+            {
+                var loaders = installerKind == LoaderKind.Forge
+                    ? await _loaderCatalog.GetForgeVersionsAsync(version).ConfigureAwait(true)
+                    : await _loaderCatalog.GetNeoForgeVersionsAsync(version).ConfigureAwait(true);
+
+                if (!loaders.IsSuccess)
+                {
+                    ComponentStatus = _localizer.Get("instances.components.failed", loaders.Error?.Message ?? string.Empty);
+                    return;
+                }
+
+                foreach (var item in loaders.Value!)
+                {
+                    LoaderVersions.Add(FormatLoaderVersion(item));
+                }
+
+                SelectedLoaderVersion = LoaderVersions.FirstOrDefault();
+
+                if (installerKind == LoaderKind.Forge)
+                {
+                    var forgeOptiFineVersions = await _loaderCatalog.GetOptiFineVersionsAsync(version).ConfigureAwait(true);
+                    if (!forgeOptiFineVersions.IsSuccess)
+                    {
+                        ComponentStatus = _localizer.Get("instances.components.failed", forgeOptiFineVersions.Error?.Message ?? string.Empty);
+                        return;
+                    }
+
+                    OptiFineVersions.Add(new VersionChoiceViewModel(null, _localizer.Get("instances.optifine.none")));
+                    foreach (var item in forgeOptiFineVersions.Value!)
+                    {
+                        OptiFineVersions.Add(new VersionChoiceViewModel(
+                            item.Key,
+                            FormatVersionWithDate(item.FileName, item.ReleasedAt)));
+                    }
+
+                    SelectedOptiFineVersion = OptiFineVersions[0];
+                }
+
+                ComponentStatus = LoaderVersions.Count == 0
+                    ? _localizer.Get("instances.loader.noVersions")
+                    : string.Empty;
                 return;
             }
 
@@ -558,7 +606,7 @@ public sealed partial class InstancesViewModel : ObservableObject
             }
         }
 
-        if (loader == LoaderKinds.Cleanroom)
+        if (loader == LoaderKinds.Cleanroom || loader == LoaderKinds.Forge)
         {
             optiFineVersion = SelectedOptiFineVersion?.Value;
         }
@@ -719,7 +767,8 @@ public sealed partial class InstancesViewModel : ObservableObject
     partial void OnSelectedNewLoaderChanged(LoaderChoiceViewModel? value)
     {
         ShowFabricApiNotice = string.Equals(value?.Id, LoaderKinds.Fabric, StringComparison.OrdinalIgnoreCase);
-        OptiFineEnabled = string.Equals(value?.Id, LoaderKinds.Cleanroom, StringComparison.OrdinalIgnoreCase);
+        OptiFineEnabled = string.Equals(value?.Id, LoaderKinds.Cleanroom, StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(value?.Id, LoaderKinds.Forge, StringComparison.OrdinalIgnoreCase);
 
         if (!_initialized)
         {

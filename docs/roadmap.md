@@ -27,7 +27,7 @@
 - [x] `eula.txt` 流程与首次启动 EULA 弹窗、多人联机免责声明。
 - [x] CLI `install`、UI“安装/补全”、安装进度。
 - [~] 真实启动冒烟测试：Linux 下已完成安装、Dry Run 与进程拉起；Windows + 兼容 Java 的手动验证待做。
-- [~] 版本 JSON `arguments` 占位符完整替换（已支持 `arguments.jvm` 与旧式 `minecraftArguments` 额外选项；`arguments.game` 规则对象待补）。
+- [~] 版本 JSON `arguments` 占位符完整替换（已支持 `arguments.jvm`、加载器专属 `arguments.game` 与旧式 `minecraftArguments` 额外选项；`arguments.game` 规则对象待补）。
 
 ## v0.3 账户体系（暂缓：Microsoft OAuth 审核限制）
 
@@ -53,12 +53,13 @@
 ## v0.5 模组加载器（已完成）
 
 - [x] Fabric 安装：Meta profile JSON、Fabric API 强制安装、版本选择与更新时间。
+- [x] Forge 安装：Maven 版本目录、spec 0 直接解压、spec 1+ 运行安装器 processors。
+- [x] NeoForge 安装：1.20.1 旧产物与 1.20.2+/26.x 版本前缀映射、processors。
 - [x] Cleanroom 安装：1.12.2 安装器内容解析、版本 JSON 提取、库仓库映射、Java 25 展示。
-- [x] OptiFine 显式安装：仅 Cleanroom 可选，默认不安装，遵守分发限制。
+- [x] OptiFine 显式安装：仅 Forge / Cleanroom 可选，默认不安装，遵守分发限制。
 - [x] 加载器 / Fabric API / OptiFine 版本列表、更新时间标记、CLI `loader list`。
-- [x] Fabric profile `arguments.jvm` 与 Cleanroom `--tweakClass` 启动参数。
-- [x] Maven Central → 阿里云公共仓库镜像回退。
-- [ ] Forge / NeoForge installer processors 与库补丁（后续版本）。
+- [x] Fabric profile `arguments.jvm`、Forge/NeoForge `library_directory`/`--launchTarget` 与 Cleanroom `--tweakClass` 启动参数。
+- [x] Maven Central → 阿里云公共仓库镜像回退；Forge/NeoForge Maven → BMCLAPI `/maven/`。
 - [ ] Quilt、Legacy Fabric 等加载器（明确不在当前范围）。
 - [ ] 安装失败诊断与回滚。
 

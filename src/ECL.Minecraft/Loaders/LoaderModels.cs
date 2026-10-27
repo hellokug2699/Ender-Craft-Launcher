@@ -8,6 +8,8 @@ public enum LoaderKind
 {
     Vanilla,
     Fabric,
+    Forge,
+    NeoForge,
     Cleanroom,
 }
 
@@ -15,6 +17,8 @@ public static class LoaderKinds
 {
     public const string Vanilla = "vanilla";
     public const string Fabric = "fabric";
+    public const string Forge = "forge";
+    public const string NeoForge = "neoforge";
     public const string Cleanroom = "cleanroom";
 
     public static bool TryParse(string? value, out LoaderKind kind)
@@ -26,6 +30,12 @@ public static class LoaderKinds
                 return true;
             case Fabric:
                 kind = LoaderKind.Fabric;
+                return true;
+            case Forge:
+                kind = LoaderKind.Forge;
+                return true;
+            case NeoForge:
+                kind = LoaderKind.NeoForge;
                 return true;
             case Cleanroom:
                 kind = LoaderKind.Cleanroom;
@@ -39,9 +49,15 @@ public static class LoaderKinds
     public static string ToId(LoaderKind kind) => kind switch
     {
         LoaderKind.Fabric => Fabric,
+        LoaderKind.Forge => Forge,
+        LoaderKind.NeoForge => NeoForge,
         LoaderKind.Cleanroom => Cleanroom,
         _ => Vanilla,
     };
+
+    /// <summary>需要运行安装器 processors 的加载器（Forge 1.13+ 与 NeoForge）。</summary>
+    public static bool UsesInstallerProcessors(LoaderKind kind) =>
+        kind is LoaderKind.Forge or LoaderKind.NeoForge;
 
     public static bool IsSupported(string? value) => TryParse(value, out _);
 }
@@ -71,6 +87,14 @@ public sealed record OptiFineVersionInfo(
 public interface ILoaderCatalog
 {
     Task<Result<IReadOnlyList<LoaderVersionInfo>>> GetFabricLoadersAsync(
+        string gameVersion,
+        CancellationToken cancellationToken = default);
+
+    Task<Result<IReadOnlyList<LoaderVersionInfo>>> GetForgeVersionsAsync(
+        string gameVersion,
+        CancellationToken cancellationToken = default);
+
+    Task<Result<IReadOnlyList<LoaderVersionInfo>>> GetNeoForgeVersionsAsync(
         string gameVersion,
         CancellationToken cancellationToken = default);
 

@@ -8,6 +8,7 @@ using Ecl.Core.Json;
 using Ecl.Core.Localization;
 using Ecl.Download;
 using Ecl.Minecraft.Instances;
+using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Versions;
 using Microsoft.Extensions.Logging;
@@ -27,6 +28,8 @@ public sealed class VanillaInstallService : IVersionInstallService
     private readonly IDownloadService _downloads;
     private readonly DownloadSourceResolver _sources;
     private readonly ILoaderCatalog _catalog;
+    private readonly IJavaSelectionService _javaSelection;
+    private readonly IForgeProcessorRunner _forgeRunner;
     private readonly ILocalizer _localizer;
     private readonly ILogger<VanillaInstallService> _logger;
 
@@ -36,6 +39,8 @@ public sealed class VanillaInstallService : IVersionInstallService
         IDownloadService downloads,
         DownloadSourceResolver sources,
         ILoaderCatalog catalog,
+        IJavaSelectionService javaSelection,
+        IForgeProcessorRunner forgeRunner,
         ILocalizer localizer,
         ILogger<VanillaInstallService> logger)
     {
@@ -44,6 +49,8 @@ public sealed class VanillaInstallService : IVersionInstallService
         _downloads = downloads;
         _sources = sources;
         _catalog = catalog;
+        _javaSelection = javaSelection;
+        _forgeRunner = forgeRunner;
         _localizer = localizer;
         _logger = logger;
     }
@@ -77,16 +84,51 @@ public sealed class VanillaInstallService : IVersionInstallService
 
         try
         {
-            var versionResult = loaderKind == LoaderKind.Cleanroom
-                ? await InstallCleanroomLoaderAsync(instance, progress, cancellationToken).ConfigureAwait(false)
-                : await ResolveBaseVersionAsync(instance, loaderKind, progress, cancellationToken).ConfigureAwait(false);
+            MinecraftVersion version;
+            ForgeInstallPlan? forgePlan = null;
 
-            if (!versionResult.IsSuccess)
+            if (loaderKind == LoaderKind.Cleanroom)
             {
-                return Result<InstallReport>.Fail(versionResult.Error!);
+                var cleanroomResult = await InstallCleanroomLoaderAsync(instance, progress, cancellationToken)
+                    .ConfigureAwait(false);
+                if (!cleanroomResult.IsSuccess)
+                {
+                    return Result<InstallReport>.Fail(cleanroomResult.Error!);
+                }
+
+                version = cleanroomResult.Value!;
+            }
+            else
+            {
+                var baseResult = await ResolveBaseVersionAsync(instance, loaderKind, progress, cancellationToken)
+                    .ConfigureAwait(false);
+                if (!baseResult.IsSuccess)
+                {
+                    return Result<InstallReport>.Fail(baseResult.Error!);
+                }
+
+                version = baseResult.Value!;
+
+                if (LoaderKinds.UsesInstallerProcessors(loaderKind))
+                {
+                    var planResult = await PrepareForgeInstallerAsync(
+                            instance,
+                            loaderKind,
+                            version,
+                            progress,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+
+                    if (!planResult.IsSuccess)
+                    {
+                        return Result<InstallReport>.Fail(planResult.Error!);
+                    }
+
+                    forgePlan = planResult.Value!;
+                    version = forgePlan.Version;
+                }
             }
 
-            var version = versionResult.Value!;
             var downloadedFiles = 0;
             var skippedFiles = 0;
             long bytes = 0;
@@ -114,6 +156,41 @@ public sealed class VanillaInstallService : IVersionInstallService
             Add(loggingResult, ref downloadedFiles, ref skippedFiles, ref bytes);
 
             var components = new List<string>();
+
+            if (forgePlan is not null)
+            {
+                var processors = await InstallForgeProcessorLibrariesAsync(forgePlan, progress, cancellationToken)
+                    .ConfigureAwait(false);
+                Add(processors, ref downloadedFiles, ref skippedFiles, ref bytes);
+
+                var javaResult = await ResolveInstallJavaAsync(instance, version, cancellationToken)
+                    .ConfigureAwait(false);
+                if (!javaResult.IsSuccess)
+                {
+                    return Result<InstallReport>.Fail(javaResult.Error!);
+                }
+
+                var runResult = await _forgeRunner
+                    .RunAsync(
+                        new ForgeProcessorRunRequest(
+                            javaResult.Value!,
+                            forgePlan.InstallerPath,
+                            VersionFilePlanner.GetClientJarPath(_paths, instance.VersionId),
+                            instance.GameVersion,
+                            ForgeProcessorPlanner.ClientSide,
+                            forgePlan.Profile),
+                        progress,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (!runResult.IsSuccess)
+                {
+                    return Result<InstallReport>.Fail(runResult.Error!);
+                }
+
+                components.Add($"{LoaderKinds.ToId(loaderKind)}:{instance.LoaderVersion}");
+            }
+
             if (loaderKind == LoaderKind.Fabric)
             {
                 var fabricApi = await InstallFabricApiAsync(instance, progress, cancellationToken).ConfigureAwait(false);
@@ -126,7 +203,8 @@ public sealed class VanillaInstallService : IVersionInstallService
                 components.Add($"fabric-api:{fabricApi.Value.Version}");
             }
 
-            if (loaderKind == LoaderKind.Cleanroom && !string.IsNullOrWhiteSpace(instance.OptiFineVersion))
+            if (loaderKind is LoaderKind.Cleanroom or LoaderKind.Forge &&
+                !string.IsNullOrWhiteSpace(instance.OptiFineVersion))
             {
                 var optiFine = await InstallOptiFineAsync(instance, progress, cancellationToken).ConfigureAwait(false);
                 if (!optiFine.IsSuccess)
@@ -181,7 +259,8 @@ public sealed class VanillaInstallService : IVersionInstallService
                 string.Join("; ", exception.Failures.Take(5)));
         }
         catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException
-                                              or InvalidOperationException or InvalidDataException)
+                                              or InvalidOperationException or InvalidDataException
+                                              or System.ComponentModel.Win32Exception)
         {
             _logger.LogError(exception, "安装实例 {InstanceId} 失败。", instance.Id);
             return Result<InstallReport>.Fail(
@@ -297,6 +376,126 @@ public sealed class VanillaInstallService : IVersionInstallService
                 "install.loader_failed",
                 _localizer.Get("install.error.loaderFailed", "Cleanroom"));
         }
+    }
+
+    private async Task<Result<ForgeInstallPlan>> PrepareForgeInstallerAsync(
+        GameInstance instance,
+        LoaderKind loaderKind,
+        MinecraftVersion baseVersion,
+        IProgress<InstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        Report(progress, InstallStage.Loader, "install.stage.loader", 0, 0, 0, 0, null);
+
+        var mavenRoot = ForgeInstallers.GetMavenRoot(loaderKind);
+        var installerUrl = ForgeInstallers.GetInstallerUrl(loaderKind, instance.GameVersion, instance.LoaderVersion!);
+        var installerName = Path.GetFileName(new Uri(installerUrl, UriKind.Absolute).AbsolutePath);
+        var installerPath = Path.Combine(_paths.CacheDirectory, LoaderKinds.ToId(loaderKind), installerName);
+
+        await DownloadBatchAsync(
+                InstallStage.Loader,
+                "install.stage.loader",
+                [CreateRequest(installerPath, installerUrl, null, null, installerName)],
+                progress,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        try
+        {
+            var content = ForgeInstallerReader.Read(installerPath, mavenRoot);
+            var version = content.Version;
+            version.Id = instance.VersionId;
+            version.InheritsFrom = instance.GameVersion;
+            WriteVersionJson(instance.VersionId, version);
+
+            _logger.LogInformation(
+                "已解析 {Loader} 安装器：spec {Spec}，processors {Processors}，libraries {Libraries}。",
+                LoaderKinds.ToId(loaderKind),
+                content.Profile.Spec,
+                content.Profile.Processors.Count,
+                content.Profile.Libraries.Count);
+
+            return Result<ForgeInstallPlan>.Ok(new ForgeInstallPlan(
+                VersionMerger.Merge(baseVersion, version),
+                content.Profile,
+                installerPath,
+                mavenRoot));
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or JsonException)
+        {
+            _logger.LogError(exception, "解析安装器失败：{Path}", installerPath);
+            return Result<ForgeInstallPlan>.Fail(
+                "install.loader_failed",
+                _localizer.Get("install.error.loaderFailed", LoaderKinds.ToId(loaderKind)));
+        }
+    }
+
+    private async Task<DownloadBatchResult> InstallForgeProcessorLibrariesAsync(
+        ForgeInstallPlan plan,
+        IProgress<InstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var requests = new List<DownloadRequest>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var library in plan.Profile.Libraries)
+        {
+            var artifact = library.Downloads?.Artifact;
+            var relativePath = artifact?.Path ?? MavenCoordinates.GetPath(library.Name);
+            if (string.IsNullOrWhiteSpace(relativePath))
+            {
+                continue;
+            }
+
+            var url = artifact?.Url;
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                url = library.Url;
+            }
+
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                url = plan.MavenRoot + relativePath;
+            }
+
+            var destination = Path.Combine(
+                _paths.LibrariesDirectory,
+                relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+            if (!seen.Add(destination))
+            {
+                continue;
+            }
+
+            requests.Add(CreateRequest(
+                destination,
+                url,
+                artifact?.Sha1,
+                artifact?.Size,
+                Path.GetFileName(relativePath)));
+        }
+
+        return await DownloadBatchAsync(
+                InstallStage.Processors,
+                "install.stage.processors",
+                requests,
+                progress,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<Result<string>> ResolveInstallJavaAsync(
+        GameInstance instance,
+        MinecraftVersion version,
+        CancellationToken cancellationToken)
+    {
+        var selection = await _javaSelection.ResolveAsync(instance, version, cancellationToken).ConfigureAwait(false);
+        if (selection.Runtime is null)
+        {
+            return Result<string>.Fail("install.java_missing", _localizer.Get("install.error.javaMissing"));
+        }
+
+        return Result<string>.Ok(selection.Runtime.ExecutablePath);
     }
 
     private async Task<MinecraftVersion?> ResolveVersionChainAsync(
@@ -740,6 +939,12 @@ public sealed class VanillaInstallService : IVersionInstallService
             totalBytes,
             currentFile));
     }
+
+    private sealed record ForgeInstallPlan(
+        MinecraftVersion Version,
+        ForgeInstallProfile Profile,
+        string InstallerPath,
+        string MavenRoot);
 
     private sealed class ForwardingProgress<T>(Action<T> callback) : IProgress<T>
     {
