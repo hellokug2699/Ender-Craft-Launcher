@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Ecl.Minecraft.Versions;
@@ -16,6 +17,10 @@ public sealed partial class MinecraftVersion
 
     public string? Assets { get; set; }
 
+    public string? MinecraftArguments { get; set; }
+
+    public VersionArguments? Arguments { get; set; }
+
     public VersionAssetIndex? AssetIndex { get; set; }
 
     public VersionJavaRequirement? JavaVersion { get; set; }
@@ -31,6 +36,13 @@ public sealed partial class MinecraftVersion
 
     [GeneratedRegex("^[0-9A-Za-z._-]{1,64}$", RegexOptions.CultureInvariant)]
     private static partial Regex VersionIdRegex();
+}
+
+public sealed class VersionArguments
+{
+    public List<JsonElement> Game { get; set; } = [];
+
+    public List<JsonElement> Jvm { get; set; } = [];
 }
 
 public sealed class VersionAssetIndex

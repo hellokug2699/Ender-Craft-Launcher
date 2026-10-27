@@ -15,6 +15,8 @@ public interface IInstanceService
         string gameVersion,
         string loader = "vanilla",
         string? loaderVersion = null,
+        string? fabricApiVersion = null,
+        string? optiFineVersion = null,
         CancellationToken cancellationToken = default);
 
     Task<Result> DeleteAsync(string instanceId, CancellationToken cancellationToken = default);

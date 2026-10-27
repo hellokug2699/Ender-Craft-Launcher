@@ -134,6 +134,104 @@ public sealed class LaunchPipelineTests
         Assert.Equal(["-Dfoo=a b", "c d", "-Xmx2G"], arguments);
     }
 
+    [Fact]
+    public async Task FabricProfileJvmArgumentsAreAdded()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeProcessLauncher();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IProcessLauncher>(fake));
+
+        var created = await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Fabric", "1.21.1", "fabric", "0.16.0");
+        Assert.True(created.IsSuccess);
+        var instance = created.Value!;
+        await provider.GetRequiredService<IAccountService>().AddOfflineAsync("Player");
+        ConfigureFakeJava(environment, provider);
+
+        WriteVersion(environment, "1.21.1", "1.21.1", "net.minecraft.client.main.Main");
+        WriteVersion(
+            environment,
+            instance.VersionId,
+            "1.21.1",
+            "net.fabricmc.loader.impl.launch.knot.KnotClient",
+            """
+            "arguments": { "jvm": ["-DFabricMcEmu= net.minecraft.client.main.Main "] },
+            """);
+
+        var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: true);
+
+        Assert.True(report.Success);
+        Assert.Contains("FabricMcEmu", report.CommandLine);
+    }
+
+    [Fact]
+    public async Task CleanroomTweakClassIsAddedFromLegacyArguments()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeProcessLauncher();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IProcessLauncher>(fake));
+
+        var created = await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Cleanroom", "1.12.2", "cleanroom", "0.7.12-alpha");
+        Assert.True(created.IsSuccess);
+        var instance = created.Value!;
+        await provider.GetRequiredService<IAccountService>().AddOfflineAsync("Player");
+        ConfigureFakeJava(environment, provider);
+
+        WriteVersion(
+            environment,
+            instance.VersionId,
+            instance.VersionId,
+            "top.outlands.foundation.boot.Foundation",
+            """
+            "minecraftArguments": "--username ${auth_player_name} --gameDir ${game_directory} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker --versionType Cleanroom",
+            """);
+
+        var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: true);
+
+        Assert.True(report.Success);
+        Assert.Contains("--tweakClass", report.CommandLine);
+        Assert.Contains("FMLTweaker", report.CommandLine);
+        Assert.DoesNotContain("${auth_player_name}", report.CommandLine);
+    }
+
+    private static void ConfigureFakeJava(TestEnvironment environment, IServiceProvider provider)
+    {
+        var fakeJavaHome = Path.Combine(environment.Root, "fakejava");
+        var fakeJavaBin = Path.Combine(fakeJavaHome, "bin");
+        Directory.CreateDirectory(fakeJavaBin);
+        var fakeJava = Path.Combine(fakeJavaBin, OperatingSystem.IsWindows() ? "java.exe" : "java");
+        File.WriteAllText(fakeJava, string.Empty);
+        var settings = provider.GetRequiredService<ISettingsService>();
+        Assert.True(settings.TrySetRaw("java.defaultPath", fakeJava, null, out var error), error);
+    }
+
+    private static void WriteVersion(
+        TestEnvironment environment,
+        string versionId,
+        string parent,
+        string mainClass,
+        string extra = "")
+    {
+        var directory = Path.Combine(environment.Paths.VersionsDirectory, versionId);
+        Directory.CreateDirectory(directory);
+        var inherits = string.Equals(versionId, parent, StringComparison.Ordinal)
+            ? string.Empty
+            : $"\"inheritsFrom\": \"{parent}\",";
+        File.WriteAllText(
+            Path.Combine(directory, $"{versionId}.json"),
+            $$"""
+            {
+              "id": "{{versionId}}",
+              {{inherits}}
+              "type": "release",
+              "mainClass": "{{mainClass}}",
+              {{extra}}
+              "libraries": []
+            }
+            """);
+    }
+
     private static async Task<GameInstance> CreateInstanceAsync(IServiceProvider provider)
     {
         var created = await provider.GetRequiredService<IInstanceService>().CreateAsync("Test", "1.21.1");

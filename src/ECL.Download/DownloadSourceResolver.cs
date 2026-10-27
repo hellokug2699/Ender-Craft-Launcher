@@ -11,6 +11,7 @@ public sealed class DownloadSourceResolver(ISettingsService settings)
 {
     public const string OfficialManifestUrl = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
     public const string DefaultMirrorRoot = "https://bmclapi2.bangbang93.com";
+    public const string MavenCentralMirrorRoot = "https://maven.aliyun.com/repository/public";
 
     public string MirrorRoot { get; init; } = DefaultMirrorRoot;
 
@@ -69,6 +70,15 @@ public sealed class DownloadSourceResolver(ISettingsService settings)
         if (host is "launchermeta.mojang.com" or "piston-meta.mojang.com" or "piston-data.mojang.com" or "launcher.mojang.com")
         {
             return new Uri(root + path);
+        }
+
+        if (host is "repo.maven.apache.org" or "repo1.maven.org")
+        {
+            // Maven Central 没有 BMCLAPI 映射，使用阿里云公共仓库作为镜像。
+            var mavenPath = path.StartsWith("/maven2/", StringComparison.OrdinalIgnoreCase)
+                ? path["/maven2".Length..]
+                : path;
+            return new Uri(MavenCentralMirrorRoot + mavenPath);
         }
 
         return null;

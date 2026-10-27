@@ -8,6 +8,7 @@ using Ecl.Core.Json;
 using Ecl.Core.Localization;
 using Ecl.Download;
 using Ecl.Minecraft.Instances;
+using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Versions;
 using Microsoft.Extensions.Logging;
 
@@ -17,11 +18,15 @@ public sealed class VanillaInstallService : IVersionInstallService
 {
     private const string OfficialLibrariesRoot = "https://libraries.minecraft.net/";
     private const string OfficialAssetsRoot = "https://resources.download.minecraft.net/";
+    private const string CleanroomMavenRoot =
+        "https://repo.cleanroommc.com/releases/com/cleanroommc/cleanroom";
+    private const string OptiFineRoot = "https://bmclapi2.bangbang93.com/optifine";
 
     private readonly IInstanceService _instances;
     private readonly IAppPaths _paths;
     private readonly IDownloadService _downloads;
     private readonly DownloadSourceResolver _sources;
+    private readonly ILoaderCatalog _catalog;
     private readonly ILocalizer _localizer;
     private readonly ILogger<VanillaInstallService> _logger;
 
@@ -30,6 +35,7 @@ public sealed class VanillaInstallService : IVersionInstallService
         IAppPaths paths,
         IDownloadService downloads,
         DownloadSourceResolver sources,
+        ILoaderCatalog catalog,
         ILocalizer localizer,
         ILogger<VanillaInstallService> logger)
     {
@@ -37,6 +43,7 @@ public sealed class VanillaInstallService : IVersionInstallService
         _paths = paths;
         _downloads = downloads;
         _sources = sources;
+        _catalog = catalog;
         _localizer = localizer;
         _logger = logger;
     }
@@ -54,47 +61,32 @@ public sealed class VanillaInstallService : IVersionInstallService
             return Result<InstallReport>.Fail("install.instance_missing", _localizer.Get("install.error.instanceMissing", instanceId));
         }
 
-        if (!string.Equals(instance.Loader, "vanilla", StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(instance.VersionId, instance.GameVersion, StringComparison.Ordinal))
+        if (!LoaderKinds.TryParse(instance.Loader, out var loaderKind))
         {
             return Result<InstallReport>.Fail(
-                 "install.unsupported_loader",
+                "install.unsupported_loader",
                 _localizer.Get("install.error.unsupportedLoader"));
+        }
+
+        if (loaderKind != LoaderKind.Vanilla && string.IsNullOrWhiteSpace(instance.LoaderVersion))
+        {
+            return Result<InstallReport>.Fail(
+                "install.loader_version_missing",
+                _localizer.Get("install.error.loaderVersionMissing"));
         }
 
         try
         {
-            Report(progress, InstallStage.Manifest, "install.stage.manifest", 0, 0, 0, 0, null);
+            var versionResult = loaderKind == LoaderKind.Cleanroom
+                ? await InstallCleanroomLoaderAsync(instance, progress, cancellationToken).ConfigureAwait(false)
+                : await ResolveBaseVersionAsync(instance, loaderKind, progress, cancellationToken).ConfigureAwait(false);
 
-            var manifestText = await _downloads
-                .DownloadTextAsync(_sources.GetManifestCandidates(), cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-
-            var manifest = JsonSerializer.Deserialize<VersionManifest>(manifestText, EclJson.Default);
-            if (manifest is null || manifest.Versions.Count == 0)
+            if (!versionResult.IsSuccess)
             {
-                return Result<InstallReport>.Fail("install.manifest_invalid", _localizer.Get("install.error.manifestInvalid"));
+                return Result<InstallReport>.Fail(versionResult.Error!);
             }
 
-            var entry = manifest.Versions.FirstOrDefault(
-                item => string.Equals(item.Id, instance.GameVersion, StringComparison.Ordinal));
-
-            if (entry is null)
-            {
-                return Result<InstallReport>.Fail(
-                    "install.version_not_found",
-                    _localizer.Get("install.error.versionNotFound", instance.GameVersion));
-            }
-
-            Report(progress, InstallStage.Version, "install.stage.version", 0, 0, 0, 0, null);
-
-            var version = await ResolveVersionChainAsync(entry, manifest, cancellationToken)
-                .ConfigureAwait(false);
-            if (version is null)
-            {
-                return Result<InstallReport>.Fail("install.version_invalid", _localizer.Get("install.error.versionInvalid"));
-            }
-
+            var version = versionResult.Value!;
             var downloadedFiles = 0;
             var skippedFiles = 0;
             long bytes = 0;
@@ -121,8 +113,39 @@ public sealed class VanillaInstallService : IVersionInstallService
             var loggingResult = await InstallLoggingAsync(version, progress, cancellationToken).ConfigureAwait(false);
             Add(loggingResult, ref downloadedFiles, ref skippedFiles, ref bytes);
 
+            var components = new List<string>();
+            if (loaderKind == LoaderKind.Fabric)
+            {
+                var fabricApi = await InstallFabricApiAsync(instance, progress, cancellationToken).ConfigureAwait(false);
+                if (!fabricApi.IsSuccess)
+                {
+                    return Result<InstallReport>.Fail(fabricApi.Error!);
+                }
+
+                Add(fabricApi.Value!.Result, ref downloadedFiles, ref skippedFiles, ref bytes);
+                components.Add($"fabric-api:{fabricApi.Value.Version}");
+            }
+
+            if (loaderKind == LoaderKind.Cleanroom && !string.IsNullOrWhiteSpace(instance.OptiFineVersion))
+            {
+                var optiFine = await InstallOptiFineAsync(instance, progress, cancellationToken).ConfigureAwait(false);
+                if (!optiFine.IsSuccess)
+                {
+                    return Result<InstallReport>.Fail(optiFine.Error!);
+                }
+
+                Add(optiFine.Value!.Result, ref downloadedFiles, ref skippedFiles, ref bytes);
+                components.Add($"optifine:{instance.OptiFineVersion}");
+            }
+
             total.Stop();
-            var report = new InstallReport(instance.VersionId, downloadedFiles, skippedFiles, bytes, total.Elapsed);
+            var report = new InstallReport(
+                instance.VersionId,
+                downloadedFiles,
+                skippedFiles,
+                bytes,
+                total.Elapsed,
+                components);
 
             Report(
                 progress,
@@ -135,8 +158,9 @@ public sealed class VanillaInstallService : IVersionInstallService
                 null);
 
             _logger.LogInformation(
-                "实例 {InstanceId} 安装完成：下载 {Downloaded}，跳过 {Skipped}，{Bytes} 字节，耗时 {Duration}。",
+                "实例 {InstanceId} 安装完成：加载器 {Loader}，下载 {Downloaded}，跳过 {Skipped}，{Bytes} 字节，耗时 {Duration}。",
                 instance.Id,
+                instance.Loader,
                 downloadedFiles,
                 skippedFiles,
                 bytes,
@@ -156,12 +180,122 @@ public sealed class VanillaInstallService : IVersionInstallService
                 _localizer.Get("install.downloadFailed", exception.Message),
                 string.Join("; ", exception.Failures.Take(5)));
         }
-        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException
+                                              or InvalidOperationException or InvalidDataException)
         {
             _logger.LogError(exception, "安装实例 {InstanceId} 失败。", instance.Id);
             return Result<InstallReport>.Fail(
                 "install.failed",
                 _localizer.Get("install.failed", exception.Message));
+        }
+    }
+
+    private async Task<Result<MinecraftVersion>> ResolveBaseVersionAsync(
+        GameInstance instance,
+        LoaderKind loaderKind,
+        IProgress<InstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        Report(progress, InstallStage.Manifest, "install.stage.manifest", 0, 0, 0, 0, null);
+
+        var manifestText = await _downloads
+            .DownloadTextAsync(_sources.GetManifestCandidates(), cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        var manifest = JsonSerializer.Deserialize<VersionManifest>(manifestText, EclJson.Default);
+        if (manifest is null || manifest.Versions.Count == 0)
+        {
+            return Result<MinecraftVersion>.Fail("install.manifest_invalid", _localizer.Get("install.error.manifestInvalid"));
+        }
+
+        var entry = manifest.Versions.FirstOrDefault(
+            item => string.Equals(item.Id, instance.GameVersion, StringComparison.Ordinal));
+
+        if (entry is null)
+        {
+            return Result<MinecraftVersion>.Fail(
+                "install.version_not_found",
+                _localizer.Get("install.error.versionNotFound", instance.GameVersion));
+        }
+
+        Report(progress, InstallStage.Version, "install.stage.version", 0, 0, 0, 0, null);
+
+        var baseVersion = await ResolveVersionChainAsync(entry, manifest, cancellationToken).ConfigureAwait(false);
+        if (baseVersion is null)
+        {
+            return Result<MinecraftVersion>.Fail("install.version_invalid", _localizer.Get("install.error.versionInvalid"));
+        }
+
+        if (loaderKind != LoaderKind.Fabric)
+        {
+            return Result<MinecraftVersion>.Ok(baseVersion);
+        }
+
+        Report(progress, InstallStage.Loader, "install.stage.loader", 0, 0, 0, 0, null);
+
+        var profile = await _catalog
+            .GetFabricProfileAsync(instance.GameVersion, instance.LoaderVersion!, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!profile.IsSuccess)
+        {
+            return Result<MinecraftVersion>.Fail(profile.Error!);
+        }
+
+        var version = JsonSerializer.Deserialize<MinecraftVersion>(profile.Value!, EclJson.Default);
+        if (version is null || string.IsNullOrWhiteSpace(version.MainClass))
+        {
+            return Result<MinecraftVersion>.Fail(
+                "install.loader_failed",
+                _localizer.Get("install.error.loaderFailed", "Fabric"));
+        }
+
+        version.Id = instance.VersionId;
+        version.InheritsFrom = instance.GameVersion;
+        WriteVersionJson(instance.VersionId, version);
+
+        var merged = VersionMerger.Merge(baseVersion, version);
+        return Result<MinecraftVersion>.Ok(merged);
+    }
+
+    private async Task<Result<MinecraftVersion>> InstallCleanroomLoaderAsync(
+        GameInstance instance,
+        IProgress<InstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var loaderVersion = instance.LoaderVersion!;
+        var installerName = $"cleanroom-{loaderVersion}-installer.jar";
+        var installerPath = Path.Combine(_paths.CacheDirectory, "cleanroom", installerName);
+        var installerUrl = $"{CleanroomMavenRoot}/{loaderVersion}/{installerName}";
+
+        Report(progress, InstallStage.Loader, "install.stage.loader", 0, 0, 0, 0, null);
+
+        var request = new DownloadRequest(
+            installerPath,
+            [new Uri(installerUrl)],
+            DisplayName: installerName);
+
+        await DownloadBatchAsync(
+                InstallStage.Loader,
+                "install.stage.loader",
+                [request],
+                progress,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        try
+        {
+            var content = CleanroomInstallerReader.Read(installerPath);
+            content.Version.Id = instance.VersionId;
+            WriteVersionJson(instance.VersionId, content.Version);
+            return Result<MinecraftVersion>.Ok(content.Version);
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or JsonException)
+        {
+            _logger.LogError(exception, "解析 Cleanroom 安装器失败：{Path}", installerPath);
+            return Result<MinecraftVersion>.Fail(
+                "install.loader_failed",
+                _localizer.Get("install.error.loaderFailed", "Cleanroom"));
         }
     }
 
@@ -371,6 +505,107 @@ public sealed class VanillaInstallService : IVersionInstallService
             .ConfigureAwait(false);
     }
 
+    private async Task<Result<(DownloadBatchResult Result, string Version)>> InstallFabricApiAsync(
+        GameInstance instance,
+        IProgress<InstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        Report(progress, InstallStage.FabricApi, "install.stage.fabricApi", 0, 0, 0, 0, null);
+
+        var versions = await _catalog
+            .GetFabricApiVersionsAsync(instance.GameVersion, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!versions.IsSuccess)
+        {
+            return Result<(DownloadBatchResult, string)>.Fail(versions.Error!);
+        }
+
+        var selected = string.IsNullOrWhiteSpace(instance.FabricApiVersion)
+            ? versions.Value!.FirstOrDefault()
+            : versions.Value!.FirstOrDefault(item =>
+                string.Equals(item.Version, instance.FabricApiVersion, StringComparison.OrdinalIgnoreCase));
+
+        if (selected is null)
+        {
+            return Result<(DownloadBatchResult, string)>.Fail(
+                "install.fabric_api_missing",
+                _localizer.Get("install.error.fabricApiMissing", instance.GameVersion));
+        }
+
+        var destination = Path.Combine(
+            _paths.GetInstanceGameDirectory(instance.Id),
+            "mods",
+            selected.FileName);
+
+        var request = new DownloadRequest(
+            destination,
+            [new Uri(selected.DownloadUrl)],
+            selected.Sha1,
+            HashingAlgorithm.Sha1,
+            selected.Size,
+            selected.FileName);
+
+        var result = await DownloadBatchAsync(
+                InstallStage.FabricApi,
+                "install.stage.fabricApi",
+                [request],
+                progress,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return Result<(DownloadBatchResult, string)>.Ok((result, selected.Version));
+    }
+
+    private async Task<Result<(DownloadBatchResult Result, string Version)>> InstallOptiFineAsync(
+        GameInstance instance,
+        IProgress<InstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        Report(progress, InstallStage.OptiFine, "install.stage.optifine", 0, 0, 0, 0, null);
+
+        var versions = await _catalog
+            .GetOptiFineVersionsAsync(instance.GameVersion, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!versions.IsSuccess)
+        {
+            return Result<(DownloadBatchResult, string)>.Fail(versions.Error!);
+        }
+
+        var selected = versions.Value!.FirstOrDefault(item =>
+            string.Equals(item.Key, instance.OptiFineVersion, StringComparison.OrdinalIgnoreCase));
+
+        if (selected is null)
+        {
+            return Result<(DownloadBatchResult, string)>.Fail(
+                "install.optifine_missing",
+                _localizer.Get("install.error.optifineMissing", instance.OptiFineVersion ?? string.Empty));
+        }
+
+        var url = $"{OptiFineRoot}/{Uri.EscapeDataString(instance.GameVersion)}/" +
+                  $"{Uri.EscapeDataString(selected.Type)}/{Uri.EscapeDataString(selected.Patch)}";
+        var destination = Path.Combine(
+            _paths.GetInstanceGameDirectory(instance.Id),
+            "mods",
+            selected.FileName);
+
+        var request = new DownloadRequest(
+            destination,
+            [new Uri(url)],
+            DisplayName: selected.FileName);
+
+        var result = await DownloadBatchAsync(
+                InstallStage.OptiFine,
+                "install.stage.optifine",
+                [request],
+                progress,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return Result<(DownloadBatchResult, string)>.Ok((result, instance.OptiFineVersion!));
+    }
+
     private DownloadRequest CreateRequest(
         string destination,
         string url,
@@ -379,6 +614,12 @@ public sealed class VanillaInstallService : IVersionInstallService
         string displayName)
     {
         var candidates = _sources.GetCandidates(url);
+        if (candidates.Count == 0 && Uri.TryCreate(url, UriKind.Absolute, out var direct))
+        {
+            // 第三方 Maven / Modrinth / BMCLAPI 等地址没有镜像映射，仍应直接下载。
+            candidates = [direct];
+        }
+
         return new DownloadRequest(destination, candidates, hash, HashingAlgorithm.Sha1, size, displayName);
     }
 
@@ -412,6 +653,20 @@ public sealed class VanillaInstallService : IVersionInstallService
         return await _downloads
             .DownloadAsync(requests, forwarding, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private void WriteVersionJson(string versionId, MinecraftVersion version)
+    {
+        var path = VersionFilePlanner.GetVersionJsonPath(_paths, versionId);
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var temporary = $"{path}.{Guid.NewGuid():N}.tmp";
+        File.WriteAllText(temporary, JsonSerializer.Serialize(version, EclJson.Default));
+        File.Move(temporary, path, overwrite: true);
     }
 
     private async Task<string> EnsureTextFileAsync(

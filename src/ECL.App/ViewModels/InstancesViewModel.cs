@@ -15,6 +15,7 @@ using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Launch;
+using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Versions;
 
 namespace Ecl.App.ViewModels;
@@ -34,6 +35,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IJavaInstallService _javaInstall;
     private readonly IVersionResolver _versionResolver;
     private readonly IEulaService _eula;
+    private readonly ILoaderCatalog _loaderCatalog;
     private bool _initialized;
     private bool _suppressAccountSelection;
     private bool _suppressJavaSelection;
@@ -47,6 +49,14 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     public ObservableCollection<JavaOptionViewModel> JavaOptions { get; } = [];
 
+    public ObservableCollection<LoaderChoiceViewModel> LoaderChoices { get; } = [];
+
+    public ObservableCollection<VersionChoiceViewModel> LoaderVersions { get; } = [];
+
+    public ObservableCollection<VersionChoiceViewModel> FabricApiVersions { get; } = [];
+
+    public ObservableCollection<VersionChoiceViewModel> OptiFineVersions { get; } = [];
+
     [ObservableProperty]
     private InstanceItemViewModel? _selectedInstance;
 
@@ -58,6 +68,30 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     [ObservableProperty]
     private string _newInstanceVersion = "1.21.1";
+
+    [ObservableProperty]
+    private LoaderChoiceViewModel? _selectedNewLoader;
+
+    [ObservableProperty]
+    private VersionChoiceViewModel? _selectedLoaderVersion;
+
+    [ObservableProperty]
+    private VersionChoiceViewModel? _selectedFabricApiVersion;
+
+    [ObservableProperty]
+    private VersionChoiceViewModel? _selectedOptiFineVersion;
+
+    [ObservableProperty]
+    private bool _isLoadingComponents;
+
+    [ObservableProperty]
+    private string _componentStatus = string.Empty;
+
+    [ObservableProperty]
+    private bool _showFabricApiNotice;
+
+    [ObservableProperty]
+    private bool _optiFineEnabled;
 
     [ObservableProperty]
     private string _newAccountName = string.Empty;
@@ -125,6 +159,40 @@ public sealed partial class InstancesViewModel : ObservableObject
         ? string.Empty
         : _localizer.Get("instances.createdAt", SelectedInstance.Model.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd"));
 
+    public string SelectedInstanceComponents
+    {
+        get
+        {
+            if (SelectedInstance is null)
+            {
+                return string.Empty;
+            }
+
+            var model = SelectedInstance.Model;
+            var parts = new List<string>();
+            if (!string.Equals(model.Loader, LoaderKinds.Vanilla, StringComparison.OrdinalIgnoreCase))
+            {
+                parts.Add(string.IsNullOrWhiteSpace(model.LoaderVersion)
+                    ? model.Loader
+                    : _localizer.Get("instances.loaderSummary", model.Loader, model.LoaderVersion));
+            }
+
+            if (!string.IsNullOrWhiteSpace(model.FabricApiVersion))
+            {
+                parts.Add($"Fabric API {model.FabricApiVersion}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(model.OptiFineVersion))
+            {
+                parts.Add($"OptiFine {model.OptiFineVersion}");
+            }
+
+            return parts.Count == 0
+                ? string.Empty
+                : _localizer.Get("instances.components.summary", string.Join(" · ", parts));
+        }
+    }
+
     public InstancesViewModel(
         IInstanceService instances,
         IAccountService accounts,
@@ -138,7 +206,8 @@ public sealed partial class InstancesViewModel : ObservableObject
         IJavaSelectionService javaSelection,
         IJavaInstallService javaInstall,
         IVersionResolver versionResolver,
-        IEulaService eula)
+        IEulaService eula,
+        ILoaderCatalog loaderCatalog)
     {
         _instances = instances;
         _accounts = accounts;
@@ -153,6 +222,12 @@ public sealed partial class InstancesViewModel : ObservableObject
         _javaInstall = javaInstall;
         _versionResolver = versionResolver;
         _eula = eula;
+        _loaderCatalog = loaderCatalog;
+
+        LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Vanilla, _localizer.Get("instances.loader.vanilla")));
+        LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Fabric, _localizer.Get("instances.loader.fabric")));
+        LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Cleanroom, _localizer.Get("instances.loader.cleanroom")));
+        _selectedNewLoader = LoaderChoices[0];
     }
 
     public async Task InitializeAsync()
@@ -210,6 +285,140 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
 
         await UpdateJavaStatusAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private async Task RefreshComponentsAsync()
+    {
+        ClearComponentChoices();
+        ComponentStatus = string.Empty;
+
+        var loader = SelectedNewLoader?.Id ?? LoaderKinds.Vanilla;
+        if (loader == LoaderKinds.Vanilla)
+        {
+            return;
+        }
+
+        var version = NewInstanceVersion.Trim();
+        if (version.Length == 0)
+        {
+            ComponentStatus = _localizer.Get("instances.versionRequired");
+            return;
+        }
+
+        if (loader == LoaderKinds.Cleanroom &&
+            !string.Equals(version, "1.12.2", StringComparison.OrdinalIgnoreCase))
+        {
+            ComponentStatus = _localizer.Get("instances.loader.cleanroomOnly");
+            return;
+        }
+
+        IsLoadingComponents = true;
+        ComponentStatus = _localizer.Get("instances.components.loading");
+
+        try
+        {
+            if (loader == LoaderKinds.Fabric)
+            {
+                var loaders = await _loaderCatalog.GetFabricLoadersAsync(version).ConfigureAwait(true);
+                if (!loaders.IsSuccess)
+                {
+                    ComponentStatus = _localizer.Get("instances.components.failed", loaders.Error?.Message ?? string.Empty);
+                    return;
+                }
+
+                foreach (var item in loaders.Value!)
+                {
+                    LoaderVersions.Add(FormatLoaderVersion(item));
+                }
+
+                SelectedLoaderVersion = LoaderVersions.FirstOrDefault();
+
+                var apiVersions = await _loaderCatalog.GetFabricApiVersionsAsync(version).ConfigureAwait(true);
+                if (!apiVersions.IsSuccess)
+                {
+                    ComponentStatus = _localizer.Get("instances.components.failed", apiVersions.Error?.Message ?? string.Empty);
+                    return;
+                }
+
+                foreach (var item in apiVersions.Value!)
+                {
+                    FabricApiVersions.Add(new VersionChoiceViewModel(
+                        item.Version,
+                        FormatVersionWithDate(item.Version, item.ReleasedAt)));
+                }
+
+                SelectedFabricApiVersion = FabricApiVersions.FirstOrDefault();
+                ComponentStatus = LoaderVersions.Count == 0
+                    ? _localizer.Get("instances.loader.noVersions")
+                    : FabricApiVersions.Count == 0
+                        ? _localizer.Get("instances.fabricApi.none")
+                        : string.Empty;
+                return;
+            }
+
+            var cleanroomVersions = await _loaderCatalog.GetCleanroomVersionsAsync(version).ConfigureAwait(true);
+            if (!cleanroomVersions.IsSuccess)
+            {
+                ComponentStatus = _localizer.Get("instances.components.failed", cleanroomVersions.Error?.Message ?? string.Empty);
+                return;
+            }
+
+            foreach (var item in cleanroomVersions.Value!)
+            {
+                LoaderVersions.Add(FormatLoaderVersion(item));
+            }
+
+            SelectedLoaderVersion = LoaderVersions.FirstOrDefault();
+
+            var optiFineVersions = await _loaderCatalog.GetOptiFineVersionsAsync(version).ConfigureAwait(true);
+            if (!optiFineVersions.IsSuccess)
+            {
+                ComponentStatus = _localizer.Get("instances.components.failed", optiFineVersions.Error?.Message ?? string.Empty);
+                return;
+            }
+
+            OptiFineVersions.Add(new VersionChoiceViewModel(null, _localizer.Get("instances.optifine.none")));
+            foreach (var item in optiFineVersions.Value!)
+            {
+                OptiFineVersions.Add(new VersionChoiceViewModel(
+                    item.Key,
+                    FormatVersionWithDate(item.FileName, item.ReleasedAt)));
+            }
+
+            SelectedOptiFineVersion = OptiFineVersions[0];
+            ComponentStatus = LoaderVersions.Count == 0
+                ? _localizer.Get("instances.loader.noVersions")
+                : string.Empty;
+        }
+        catch (Exception exception)
+        {
+            ComponentStatus = _localizer.Get("instances.components.failed", exception.Message);
+        }
+        finally
+        {
+            IsLoadingComponents = false;
+        }
+    }
+
+    private void ClearComponentChoices()
+    {
+        LoaderVersions.Clear();
+        FabricApiVersions.Clear();
+        OptiFineVersions.Clear();
+        SelectedLoaderVersion = null;
+        SelectedFabricApiVersion = null;
+        SelectedOptiFineVersion = null;
+    }
+
+    private VersionChoiceViewModel FormatLoaderVersion(LoaderVersionInfo version) =>
+        new(version.Version, FormatVersionWithDate(version.Version, version.ReleasedAt));
+
+    private string FormatVersionWithDate(string version, DateTimeOffset? releasedAt)
+    {
+        var date = releasedAt?.ToLocalTime().ToString("yyyy-MM-dd")
+                   ?? _localizer.Get("instances.versionDateUnknown");
+        return _localizer.Get("instances.versionWithDate", version, date);
     }
 
     [RelayCommand]
@@ -317,10 +526,50 @@ public sealed partial class InstancesViewModel : ObservableObject
             return;
         }
 
+        var loader = SelectedNewLoader?.Id ?? LoaderKinds.Vanilla;
+        if (loader == LoaderKinds.Cleanroom &&
+            !string.Equals(version, "1.12.2", StringComparison.OrdinalIgnoreCase))
+        {
+            StatusMessage = _localizer.Get("instances.loader.cleanroomOnly");
+            return;
+        }
+
+        string? loaderVersion = null;
+        string? fabricApiVersion = null;
+        string? optiFineVersion = null;
+
+        if (loader != LoaderKinds.Vanilla)
+        {
+            loaderVersion = SelectedLoaderVersion?.Value;
+            if (string.IsNullOrWhiteSpace(loaderVersion))
+            {
+                StatusMessage = _localizer.Get("instances.loader.versionRequired");
+                return;
+            }
+        }
+
+        if (loader == LoaderKinds.Fabric)
+        {
+            fabricApiVersion = SelectedFabricApiVersion?.Value;
+            if (string.IsNullOrWhiteSpace(fabricApiVersion))
+            {
+                StatusMessage = _localizer.Get("instances.fabricApi.none");
+                return;
+            }
+        }
+
+        if (loader == LoaderKinds.Cleanroom)
+        {
+            optiFineVersion = SelectedOptiFineVersion?.Value;
+        }
+
         IsBusy = true;
         try
         {
-            var result = await _instances.CreateAsync(name, version).ConfigureAwait(true);
+            var result = await _instances
+                .CreateAsync(name, version, loader, loaderVersion, fabricApiVersion, optiFineVersion)
+                .ConfigureAwait(true);
+
             if (!result.IsSuccess)
             {
                 StatusMessage = result.Error?.Message ?? string.Empty;
@@ -467,6 +716,20 @@ public sealed partial class InstancesViewModel : ObservableObject
         StatusMessage = _localizer.Get("instances.accountAdded", result.Value!.Name);
     }
 
+    partial void OnSelectedNewLoaderChanged(LoaderChoiceViewModel? value)
+    {
+        ShowFabricApiNotice = string.Equals(value?.Id, LoaderKinds.Fabric, StringComparison.OrdinalIgnoreCase);
+        OptiFineEnabled = string.Equals(value?.Id, LoaderKinds.Cleanroom, StringComparison.OrdinalIgnoreCase);
+
+        if (!_initialized)
+        {
+            ClearComponentChoices();
+            return;
+        }
+
+        _ = RefreshComponentsAsync();
+    }
+
     partial void OnSelectedInstanceChanged(InstanceItemViewModel? value)
     {
         OnPropertyChanged(nameof(HasSelection));
@@ -474,6 +737,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedInstanceMeta));
         OnPropertyChanged(nameof(SelectedInstancePath));
         OnPropertyChanged(nameof(SelectedInstanceCreated));
+        OnPropertyChanged(nameof(SelectedInstanceComponents));
 
         LaunchSteps.Clear();
         LaunchStatus = string.Empty;
@@ -875,6 +1139,10 @@ public sealed partial class AccountItemViewModel : ObservableObject
 }
 
 public sealed record JavaOptionViewModel(JavaRuntime? Runtime, string DisplayName);
+
+public sealed record LoaderChoiceViewModel(string Id, string DisplayName);
+
+public sealed record VersionChoiceViewModel(string? Value, string DisplayName);
 
 public sealed class LaunchStepItemViewModel
 {
