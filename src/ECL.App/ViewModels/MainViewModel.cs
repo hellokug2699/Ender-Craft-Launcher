@@ -53,6 +53,14 @@ public sealed partial class MainViewModel : ObservableObject
         await _mods.InitializeAsync().ConfigureAwait(true);
         await _settings.InitializeAsync().ConfigureAwait(true);
     }
+
+    partial void OnSelectedNavItemChanged(NavItemViewModel value)
+    {
+        if (value.Page is ModsViewModel mods)
+        {
+            _ = mods.ActivateAsync();
+        }
+    }
 }
 
 public sealed record NavItemViewModel(string Title, object Page);

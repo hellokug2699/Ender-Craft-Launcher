@@ -95,7 +95,7 @@ Linux ARM64 在 Mojang 来源下会返回“平台不支持”；切换到 Adopt
 | --- | --- |
 | `default` | 不额外注入 |
 | `g1` | G1 GC + 基础停顿/引用处理参数 |
-| `zgc` | ZGC；Java 21+ 追加 `-XX:+ZGenerational` |
+| `zgc` | ZGC；Java 21–23 追加 `-XX:+ZGenerational`，24+ 不再使用该参数 |
 | `aikar` | Aikar's flags（G1 大堆调优） |
 
 预设只包含 GC/堆行为参数，`-Xms`/`-Xmx` 仍由内存设置统一生成。

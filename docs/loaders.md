@@ -122,7 +122,7 @@ Fabric / Forge / NeoForge 版本 JSON 保留 `inheritsFrom`，依赖原版版本
 
 安装过程记录在 `InstallTransaction` 中：
 
-- 本次新建的 client、库、资源对象、Fabric API / OptiFine mod 在失败时删除；
+- 本次新建的 client、库、资源对象、Forge processors 生成的 patched client jar、Fabric API / OptiFine mod 在失败时删除；
 - 被覆盖的加载器版本 JSON 恢复为安装前内容；
 - 原本已存在的共享库与资源不会删除，避免影响其他实例；
 - 失败原因写入 `<data>/logs/install/install-<实例ID>-<时间>.json`，包含实例、加载器、错误码、

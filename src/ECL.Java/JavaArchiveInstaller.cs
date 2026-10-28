@@ -62,6 +62,7 @@ public static class JavaArchiveInstaller
                 TryDeleteDirectory(temporaryRoot);
             }
 
+            MarkJavaExecutable(destinationRoot);
             return Result<string>.Ok(destinationRoot);
         }
         catch (OperationCanceledException)
@@ -97,6 +98,45 @@ public static class JavaArchiveInstaller
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             return null;
+        }
+    }
+
+    private static void MarkJavaExecutable(string home)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        const UnixFileMode mode =
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+            UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
+
+        var candidates = new List<string>();
+        var bin = Path.Combine(home, "bin");
+        if (Directory.Exists(bin))
+        {
+            candidates.AddRange(Directory.EnumerateFiles(bin));
+        }
+
+        var spawnHelper = Path.Combine(home, "lib", "jspawnhelper");
+        if (File.Exists(spawnHelper))
+        {
+            candidates.Add(spawnHelper);
+        }
+
+        foreach (var file in candidates)
+        {
+            try
+            {
+                File.SetUnixFileMode(file, mode);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                                  or PlatformNotSupportedException)
+            {
+                // 无法设置执行位时继续；Java 仍可能由系统包管理器提供。
+            }
         }
     }
 

@@ -245,6 +245,39 @@ public sealed class InstallServiceTests
         Assert.Contains(instance.Id, content, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task FailedInstallRemovesForgeProcessorOutput()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService();
+        var runner = new FakeForgeProcessorRunner(environment.Paths.LibrariesDirectory);
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(fake);
+            services.AddSingleton<ILoaderCatalog>(new FakeLoaderCatalog());
+            services.AddSingleton<IJavaSelectionService>(new FakeJavaSelectionService());
+            services.AddSingleton<IForgeProcessorRunner>(runner);
+        });
+
+        var instanceResult = await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Forge OptiFine", "1.21.1", "forge", "47.4.0", optiFineVersion: "HD_U:G5");
+        Assert.True(instanceResult.IsSuccess);
+        var instance = instanceResult.Value!;
+
+        var result = await provider.GetRequiredService<IVersionInstallService>()
+            .InstallAsync(instance.Id);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("install.optifine_missing", result.Error?.Code);
+        Assert.True(runner.Called);
+
+        var patched = Path.Combine(
+            environment.Paths.LibrariesDirectory,
+            "com/example/demo/1.0/demo-1.0-client.jar".Replace('/', Path.DirectorySeparatorChar));
+        Assert.False(File.Exists(patched));
+        Assert.False(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, instance.VersionId)));
+    }
+
     private sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>
     {
         public void Report(T value) => callback(value);
@@ -349,7 +382,7 @@ public sealed class InstallServiceTests
             throw new InvalidOperationException("spec 0 安装不应解析 Java。");
     }
 
-    private sealed class FakeForgeProcessorRunner : IForgeProcessorRunner
+    private sealed class FakeForgeProcessorRunner(string? librariesDirectory = null) : IForgeProcessorRunner
     {
         public bool Called { get; private set; }
 
@@ -362,6 +395,22 @@ public sealed class InstallServiceTests
         {
             Called = true;
             LoaderVersion = request.Profile.Version;
+
+            if (librariesDirectory is not null)
+            {
+                var patched = ForgeProcessorPlanner.ResolveClientPatchedPath(request.Profile, librariesDirectory);
+                if (!string.IsNullOrWhiteSpace(patched))
+                {
+                    var directory = Path.GetDirectoryName(patched);
+                    if (!string.IsNullOrEmpty(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                    }
+
+                    File.WriteAllText(patched, "patched");
+                }
+            }
+
             progress?.Report(new InstallProgress(InstallStage.Processors, "processors", 1, 1, 0, 0, null));
             return Task.FromResult(Result.Ok());
         }

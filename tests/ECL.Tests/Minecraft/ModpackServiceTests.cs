@@ -126,6 +126,30 @@ public sealed class ModpackServiceTests
         }
     }
 
+    [Fact]
+    public async Task ExportFailureIsReturnedAsResult()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IDownloadService>(fake));
+        var instance = await CreateInstanceAsync(provider, "1.21.1", "fabric", "0.16.0");
+
+        var blocker = Path.Combine(Path.GetTempPath(), $"ecl-export-blocker-{Guid.NewGuid():N}");
+        await File.WriteAllTextAsync(blocker, "not a directory");
+        try
+        {
+            var result = await provider.GetRequiredService<IModpackService>()
+                .ExportAsync(instance.Id, Path.Combine(blocker, "out.mrpack"));
+
+            Assert.False(result.IsSuccess);
+            Assert.Equal("modpack.export_failed", result.Error?.Code);
+        }
+        finally
+        {
+            File.Delete(blocker);
+        }
+    }
+
     private static async Task<GameInstance> CreateInstanceAsync(
         IServiceProvider provider,
         string gameVersion,
