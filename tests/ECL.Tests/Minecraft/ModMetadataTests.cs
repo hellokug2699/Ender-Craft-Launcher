@@ -55,7 +55,7 @@ public sealed class ModMetadataTests
             [[mods]]
             modId="examplemod"
             version="${file.jarVersion}"
-            displayName="Example Forge Mod"
+            displayName="Example # Forge Mod"
             description='''A multi-line description.'''
 
             [[dependencies.examplemod]]
@@ -67,6 +67,11 @@ public sealed class ModMetadataTests
             modId="requiredlib"
             mandatory=true
             versionRange="[1.0,2.0)"
+
+            [[dependencies.examplemod]]
+            modId="optionallib"
+            mandatory=false # optional dependency
+            versionRange="[1.0,)"
             """, "META-INF/mods.toml", ("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\nImplementation-Version: 4.5.6\n"));
 
         try
@@ -76,9 +81,11 @@ public sealed class ModMetadataTests
             var metadata = result.Metadata!;
             Assert.Equal("examplemod", metadata.ModId);
             Assert.Equal("4.5.6", metadata.Version);
+            Assert.Equal("Example # Forge Mod", metadata.Name);
             Assert.Equal(ModPlatform.Forge, metadata.Platform);
             Assert.Contains(metadata.Dependencies, item => item.ModId == "requiredlib" && item.Mandatory);
             Assert.Contains(metadata.Dependencies, item => item.ModId == "forge" && item.Mandatory);
+            Assert.Contains(metadata.Dependencies, item => item.ModId == "optionallib" && !item.Mandatory);
         }
         finally
         {

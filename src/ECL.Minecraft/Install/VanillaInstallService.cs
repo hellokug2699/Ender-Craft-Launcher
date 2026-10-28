@@ -234,6 +234,15 @@ public sealed class VanillaInstallService : IVersionInstallService
                     return Result<InstallReport>.Fail(javaResult.Error!);
                 }
 
+                var patchedPath = ForgeProcessorPlanner.ResolveClientPatchedPath(
+                    forgePlan.Profile,
+                    _paths.LibrariesDirectory);
+                if (!string.IsNullOrWhiteSpace(patchedPath))
+                {
+                    // processors 生成的是派生客户端 jar，不属于下载列表；失败时同样要清理。
+                    transaction.TrackFile(patchedPath);
+                }
+
                 var runResult = await _forgeRunner
                     .RunAsync(
                         new ForgeProcessorRunRequest(

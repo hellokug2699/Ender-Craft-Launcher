@@ -36,7 +36,7 @@ Forge 的 `${file.jarVersion}` 会尝试从 `META-INF/MANIFEST.MF` 的 `Implemen
 - 导入：`mod import <实例ID> <文件...>`（复制 `*.jar` / `*.jar.disabled`，默认不覆盖）
 - 删除：`mod delete <实例ID> <文件名>`
 
-WPF 的 **Mods** 页面提供同样的列表、启停、批量、导入、整合包导入导出操作。
+WPF 的 **Mods** 页面提供同样的列表、启停、批量、导入、删除、整合包导入导出操作；页面刷新/切换时会重新加载实例下拉，新建/删除实例后无需重启启动器。
 
 ## 整合包
 
@@ -68,6 +68,7 @@ ecl pack delete <实例ID> <文件名> [--type resource|shader]
 
 - 资源包读取 `pack.mcmeta` 的 `pack_format` 与 `description`。
 - 光影包按 `shaderpacks/` 目录管理。
+- WPF **Mods** 页面的“资源包 / 光影包”区域也提供类型选择、列表、导入与删除。
 - 当前只管理文件，不修改 `options.txt` 中的“当前启用”选择。
 
 ## CLI 示例

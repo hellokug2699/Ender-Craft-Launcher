@@ -15,7 +15,7 @@
                 </StackPanel>
                 <Button Grid.Column="1"
                         Content="{loc:Loc Key=common.refresh}"
-                        Command="{Binding RefreshCommand}"
+                        Command="{Binding ReloadCommand}"
                         Style="{StaticResource GhostButton}"
                         VerticalAlignment="Top" />
             </Grid>
@@ -53,6 +53,10 @@
                         <Button Content="{loc:Loc Key=mods.import}"
                                 Command="{Binding ImportModsCommand}"
                                 Style="{StaticResource GhostButton}" />
+                        <Button Content="{loc:Loc Key=common.delete}"
+                                Command="{Binding DeleteSelectedCommand}"
+                                Style="{StaticResource DangerButton}"
+                                Margin="8,0,0,0" />
                         <Button Content="{loc:Loc Key=mods.importPack}"
                                 Command="{Binding ImportModpackCommand}"
                                 Style="{StaticResource GhostButton}"
@@ -112,6 +116,59 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+
+            <Border Style="{StaticResource Card}" Margin="0,14,0,0">
+                <StackPanel>
+                    <TextBlock Text="{loc:Loc Key=mods.packsTitle}" Style="{StaticResource LabelText}" />
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox ItemsSource="{Binding PackTypes}"
+                                  SelectedItem="{Binding SelectedPackType, Mode=TwoWay}"
+                                  DisplayMemberPath="Title" />
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding PackSummary}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="4"
+                                Content="{loc:Loc Key=mods.packImport}"
+                                Command="{Binding ImportPackCommand}"
+                                Style="{StaticResource GhostButton}" />
+                        <Button Grid.Column="6"
+                                Content="{loc:Loc Key=common.delete}"
+                                Command="{Binding DeletePackCommand}"
+                                Style="{StaticResource DangerButton}" />
+                    </Grid>
+
+                    <ListBox ItemsSource="{Binding Packs}"
+                             SelectedItem="{Binding SelectedPack, Mode=TwoWay}"
+                             Margin="0,10,0,0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Name}" FontSize="12" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding Meta}"
+                                               Foreground="{StaticResource TextMutedBrush}"
+                                               FontSize="10" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

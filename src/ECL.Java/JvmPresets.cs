@@ -72,7 +72,7 @@ public static class JvmPresets
             return [];
         }
 
-        return javaMajor >= 21
+        return javaMajor is >= 21 and < 24
             ? ["-XX:+UseZGC", "-XX:+ZGenerational", "-XX:+AlwaysPreTouch", "-XX:+DisableExplicitGC"]
             : ["-XX:+UseZGC", "-XX:+AlwaysPreTouch", "-XX:+DisableExplicitGC"];
     }

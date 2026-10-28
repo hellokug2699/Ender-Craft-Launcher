@@ -21,7 +21,7 @@ ECL 的目标是达到 HMCL、PCL2 级别的完整度，同时在配置系统、
 - **真实启动**：检查文件完整性（大小 + SHA-1，含资源对象存在性）、解压 natives、按规则过滤库、构建命令并启动进程；支持 Fabric `arguments.jvm`、Forge/NeoForge `${library_directory}`/`--launchTarget` 与 Cleanroom `--tweakClass`；`arguments.jvm`/`arguments.game` 按 OS/架构/feature 规则过滤。
 - 启动流水线：校验 → 读取版本 → 解析 Java → 检查文件 → 解压 natives → 检查 EULA → 构建命令 → 启动/干跑；失败可定位到具体步骤。
 - CLI：无 GUI 环境下安装游戏、管理 Java/实例/账户/配置、Mod/整合包/资源包，并预览启动命令。
-- 单元测试：152 个测试覆盖下载源、HTTP 下载、Java 需求/选择/安装/第三方提供方/归档解压/平台校验/JVM 预设、配置、账户、Java 探测、EULA、实例、加载器目录、Forge/NeoForge 安装器解析、Cleanroom 安装器解析、库规则（含 `arch: x64`）、版本继承、arguments 规则/占位符、安装回滚与诊断、Mod 元数据/扫描/启停、整合包导入导出、资源包管理与安装/启动流水线。
+- 单元测试：154 个测试覆盖下载源、HTTP 下载、Java 需求/选择/安装/第三方提供方/归档解压/平台校验/JVM 预设、配置、账户、Java 探测、EULA、实例、加载器目录、Forge/NeoForge 安装器解析、Cleanroom 安装器解析、库规则（含 `arch: x64`）、版本继承、arguments 规则/占位符、安装回滚与诊断、Mod 元数据/扫描/启停、整合包导入导出、资源包管理与安装/启动流水线。
 
 ## 尚未实现
 

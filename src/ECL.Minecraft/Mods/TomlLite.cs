@@ -19,7 +19,7 @@ public static class TomlLite
         for (var index = 0; index < lines.Length; index++)
         {
             var line = lines[index];
-            var trimmed = line.Trim();
+            var trimmed = StripComment(line).Trim();
             if (trimmed.Length == 0 || trimmed.StartsWith('#'))
             {
                 continue;
@@ -102,6 +102,50 @@ public static class TomlLite
         return equals <= 0
             ? (string.Empty, string.Empty)
             : (line[..equals].Trim(), line[(equals + 1)..].Trim());
+    }
+
+    private static string StripComment(string line)
+    {
+        // 多行字符串的起止行可能包含 #；保留原样，避免破坏内容。
+        if (line.Contains("'''", StringComparison.Ordinal) ||
+            line.Contains("\"\"\"", StringComparison.Ordinal))
+        {
+            return line;
+        }
+
+        var quote = '\0';
+        for (var index = 0; index < line.Length; index++)
+        {
+            var character = line[index];
+            if (quote != '\0')
+            {
+                if (character == '\\' && quote == '"' && index + 1 < line.Length)
+                {
+                    index++;
+                    continue;
+                }
+
+                if (character == quote)
+                {
+                    quote = '\0';
+                }
+
+                continue;
+            }
+
+            if (character is '"' or '\'')
+            {
+                quote = character;
+                continue;
+            }
+
+            if (character == '#')
+            {
+                return line[..index];
+            }
+        }
+
+        return line;
     }
 
     private static List<string> ParseArray(string value)

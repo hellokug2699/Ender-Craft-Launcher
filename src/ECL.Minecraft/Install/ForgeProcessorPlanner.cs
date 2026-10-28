@@ -31,6 +31,31 @@ public static partial class ForgeProcessorPlanner
     public static bool HasClientProcessors(ForgeInstallProfile profile) =>
         SelectProcessors(profile, ClientSide).Count > 0;
 
+    /// <summary>
+    /// 返回 processors 最终生成的 client jar 路径（install_profile 的 PATCHED 项）。
+    /// 用于安装失败时把该产物纳入回滚范围。
+    /// </summary>
+    public static string? ResolveClientPatchedPath(
+        ForgeInstallProfile profile,
+        string librariesDirectory)
+    {
+        if (profile.Data is null ||
+            !profile.Data.TryGetValue("PATCHED", out var element))
+        {
+            return null;
+        }
+
+        var raw = ExtractSideValue(element, ClientSide);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        return MavenCoordinates.TryParseReference(raw, out var coordinate, out var extension)
+            ? ResolveMavenPath(librariesDirectory, coordinate, extension)
+            : null;
+    }
+
     public static IReadOnlyDictionary<string, string> BuildTokens(
         ForgeInstallProfile profile,
         string side,

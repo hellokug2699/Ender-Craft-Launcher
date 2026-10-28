@@ -76,71 +76,87 @@ public sealed class ModpackService(
             return Result<ModpackExportReport>.Fail("modpack.invalid_output", "导出路径不能为空。");
         }
 
-        var gameDirectory = paths.GetInstanceGameDirectory(instance.Id);
-        var fullOutput = Path.GetFullPath(outputPath);
-        var outputDirectory = Path.GetDirectoryName(fullOutput);
-        if (!string.IsNullOrEmpty(outputDirectory))
+        try
         {
-            Directory.CreateDirectory(outputDirectory);
-        }
-
-        var dependencies = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["minecraft"] = instance.GameVersion,
-        };
-
-        switch (instance.Loader.ToLowerInvariant())
-        {
-            case "fabric" when !string.IsNullOrWhiteSpace(instance.LoaderVersion):
-                dependencies["fabric-loader"] = instance.LoaderVersion;
-                break;
-            case "forge" when !string.IsNullOrWhiteSpace(instance.LoaderVersion):
-                dependencies["forge"] = instance.LoaderVersion;
-                break;
-            case "neoforge" when !string.IsNullOrWhiteSpace(instance.LoaderVersion):
-                dependencies["neoforge"] = instance.LoaderVersion;
-                break;
-            case "cleanroom" when !string.IsNullOrWhiteSpace(instance.LoaderVersion):
-                dependencies["forge"] = instance.LoaderVersion;
-                dependencies["cleanroom"] = instance.LoaderVersion;
-                break;
-        }
-
-        var index = new
-        {
-            formatVersion = 1,
-            game = "minecraft",
-            versionId = instance.VersionId,
-            name = instance.Name,
-            summary = "Exported by Ender Craft Launcher",
-            files = Array.Empty<object>(),
-            dependencies,
-        };
-
-        var count = 0;
-        using (var archive = ZipFile.Open(fullOutput, ZipArchiveMode.Create))
-        {
-            WriteEntry(archive, "modrinth.index.json", JsonSerializer.Serialize(index, EclJson.Indented));
-            foreach (var root in new[] { "mods", "config", "defaultconfigs", "resourcepacks", "shaderpacks" })
+            var gameDirectory = paths.GetInstanceGameDirectory(instance.Id);
+            var fullOutput = Path.GetFullPath(outputPath);
+            var outputDirectory = Path.GetDirectoryName(fullOutput);
+            if (!string.IsNullOrEmpty(outputDirectory))
             {
-                var directory = Path.Combine(gameDirectory, root);
-                if (!Directory.Exists(directory))
-                {
-                    continue;
-                }
+                Directory.CreateDirectory(outputDirectory);
+            }
 
-                foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
+            var dependencies = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["minecraft"] = instance.GameVersion,
+            };
+
+            switch (instance.Loader.ToLowerInvariant())
+            {
+                case "fabric" when !string.IsNullOrWhiteSpace(instance.LoaderVersion):
+                    dependencies["fabric-loader"] = instance.LoaderVersion;
+                    break;
+                case "forge" when !string.IsNullOrWhiteSpace(instance.LoaderVersion):
+                    dependencies["forge"] = instance.LoaderVersion;
+                    break;
+                case "neoforge" when !string.IsNullOrWhiteSpace(instance.LoaderVersion):
+                    dependencies["neoforge"] = instance.LoaderVersion;
+                    break;
+                case "cleanroom" when !string.IsNullOrWhiteSpace(instance.LoaderVersion):
+                    dependencies["forge"] = instance.LoaderVersion;
+                    dependencies["cleanroom"] = instance.LoaderVersion;
+                    break;
+            }
+
+            var index = new
+            {
+                formatVersion = 1,
+                game = "minecraft",
+                versionId = instance.VersionId,
+                name = instance.Name,
+                summary = "Exported by Ender Craft Launcher",
+                files = Array.Empty<object>(),
+                dependencies,
+            };
+
+            var count = 0;
+            using (var archive = ZipFile.Open(fullOutput, ZipArchiveMode.Create))
+            {
+                WriteEntry(archive, "modrinth.index.json", JsonSerializer.Serialize(index, EclJson.Indented));
+                foreach (var root in new[] { "mods", "config", "defaultconfigs", "resourcepacks", "shaderpacks" })
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var relative = Path.GetRelativePath(gameDirectory, file).Replace('\\', '/');
-                    WriteEntry(archive, $"overrides/{relative}", File.ReadAllBytes(file));
-                    count++;
+                    var directory = Path.Combine(gameDirectory, root);
+                    if (!Directory.Exists(directory))
+                    {
+                        continue;
+                    }
+
+                    foreach (var file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var relative = Path.GetRelativePath(gameDirectory, file).Replace('\\', '/');
+                        WriteEntry(archive, $"overrides/{relative}", File.ReadAllBytes(file));
+                        count++;
+                    }
                 }
             }
-        }
 
-        logger.LogInformation("已导出整合包 {Path}（{Count} 个文件）。", fullOutput, count);
-        return Result<ModpackExportReport>.Ok(new ModpackExportReport(fullOutput, count, ContainsDownloads: false));
+            logger.LogInformation("已导出整合包 {Path}（{Count} 个文件）。", fullOutput, count);
+            return Result<ModpackExportReport>.Ok(new ModpackExportReport(fullOutput, count, ContainsDownloads: false));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                              or InvalidDataException or NotSupportedException
+                                              or ArgumentException)
+        {
+            logger.LogError(exception, "导出整合包失败：{Path}", outputPath);
+            return Result<ModpackExportReport>.Fail(
+                "modpack.export_failed",
+                $"导出整合包失败：{exception.Message}");
+        }
     }
 
     private async Task<Result<ModpackImportReport>> ImportModrinthAsync(
