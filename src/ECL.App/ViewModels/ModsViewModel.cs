@@ -64,6 +64,12 @@ public sealed partial class ModsViewModel : ObservableObject
     private string _packSummary = string.Empty;
 
     [ObservableProperty]
+    private string _packWarning = string.Empty;
+
+    [ObservableProperty]
+    private bool _packHasWarning;
+
+    [ObservableProperty]
     private bool _isBusy;
 
     public ModsViewModel(
@@ -198,6 +204,8 @@ public sealed partial class ModsViewModel : ObservableObject
         {
             Packs.Clear();
             PackSummary = string.Empty;
+            PackWarning = string.Empty;
+            PackHasWarning = false;
             return;
         }
 
@@ -212,18 +220,87 @@ public sealed partial class ModsViewModel : ObservableObject
                 return;
             }
 
+            var list = result.Value!;
+            var selectedFileName = SelectedPack?.FileName;
             Packs.Clear();
-            foreach (var pack in result.Value!)
+            foreach (var pack in list.Packs)
             {
-                Packs.Add(new ContentPackItemViewModel(pack));
+                Packs.Add(new ContentPackItemViewModel(pack, _localizer));
             }
 
-            PackSummary = _localizer.Get("mods.packCount", Packs.Count);
+            SelectedPack = Packs.FirstOrDefault(pack => pack.FileName == selectedFileName);
+
+            PackSummary = _localizer.Get("mods.packSummary", list.EnabledCount, list.Packs.Count);
+            PackWarning = BuildPackWarning(list);
+            PackHasWarning = PackWarning.Length > 0;
         }
         catch (Exception exception)
         {
             StatusMessage = exception.Message;
         }
+    }
+
+    private string BuildPackWarning(ContentPackList list)
+    {
+        var warnings = new List<string>();
+        if (list.Status == PackOptionsStatus.Unreadable)
+        {
+            warnings.Add(_localizer.Get("mods.packWarningCorrupt"));
+        }
+
+        if (list.MissingEntries.Count > 0)
+        {
+            warnings.Add(_localizer.Get(
+                "mods.packWarningMissing",
+                list.MissingEntries.Count,
+                SummarizeEntries(list.MissingEntries)));
+        }
+
+        if (list.UnmanagedEntries.Count > 0)
+        {
+            warnings.Add(_localizer.Get(
+                "mods.packWarningUnmanaged",
+                list.UnmanagedEntries.Count,
+                SummarizeEntries(list.UnmanagedEntries)));
+        }
+
+        if (list.DuplicateEntries.Count > 0)
+        {
+            warnings.Add(_localizer.Get(
+                "mods.packWarningDuplicate",
+                list.DuplicateEntries.Count,
+                SummarizeEntries(list.DuplicateEntries)));
+        }
+
+        return string.Join(" ", warnings);
+    }
+
+    private static string SummarizeEntries(IReadOnlyList<string> entries)
+    {
+        const int limit = 3;
+        var names = string.Join("、", entries.Take(limit));
+        return entries.Count > limit ? $"{names} …" : names;
+    }
+
+    [RelayCommand]
+    private async Task TogglePackAsync()
+    {
+        if (SelectedInstance is null || SelectedPackType is null || SelectedPack is null)
+        {
+            StatusMessage = _localizer.Get("mods.selectPack");
+            return;
+        }
+
+        var enable = !SelectedPack.Enabled;
+        var result = await _contentPacks
+            .SetEnabledAsync(SelectedInstance.Id, SelectedPackType.Kind, SelectedPack.FileName, enable)
+            .ConfigureAwait(true);
+
+        StatusMessage = result.IsSuccess
+            ? _localizer.Get(enable ? "mods.packEnabled" : "mods.packDisabled", SelectedPack.FileName)
+            : result.Error?.ToString() ?? _localizer.Get("mods.packToggleFailed");
+
+        await RefreshPacksAsync().ConfigureAwait(true);
     }
 
     [RelayCommand]
@@ -527,7 +604,8 @@ public sealed partial class ModsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ImportModpackAsync()    {
+    private async Task ImportModpackAsync()
+    {
         if (SelectedInstance is null)
         {
             return;
@@ -619,15 +697,30 @@ public sealed record PackTypeChoice(ContentPackKind Kind, string Title);
 public sealed class ContentPackItemViewModel
 {
     private readonly ContentPackEntry _entry;
+    private readonly ILocalizer _localizer;
 
-    public ContentPackItemViewModel(ContentPackEntry entry)
+    public ContentPackItemViewModel(ContentPackEntry entry, ILocalizer localizer)
     {
         _entry = entry;
+        _localizer = localizer;
     }
 
     public string FileName => _entry.FileName;
 
+    public bool Enabled => _entry.Enabled;
+
     public string Name => _entry.Name;
+
+    public string StatusText
+    {
+        get
+        {
+            var state = _localizer.Get(Enabled ? "mods.packEnabledLabel" : "mods.packDisabledLabel");
+            return _entry.Incompatible
+                ? $"{state} · {_localizer.Get("mods.packIncompatibleLabel")}"
+                : state;
+        }
+    }
 
     public string Meta => _entry.PackFormat is null
         ? _entry.FileName

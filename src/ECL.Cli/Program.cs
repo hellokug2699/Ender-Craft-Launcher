@@ -100,7 +100,9 @@ internal static class Program
           curseforge install <实例ID> <项目ID|slug|链接> [--file-id <ID>] [--no-dependencies] [--json]
                                           下载并安装 CurseForge Mod（默认同时安装必需依赖）
           pack list <实例ID> [--type resource|shader] [--json]
-                                          列出资源包/光影包
+                                          列出资源包/光影包及启用状态
+          pack enable|disable <实例ID> <文件> [--type resource|shader]
+                                          启用/禁用资源包或光影包（写入 options.txt）
           pack import <实例ID> <文件> [--type resource|shader]
                                           导入资源包/光影包
           pack delete <实例ID> <文件> [--type resource|shader]
@@ -126,6 +128,7 @@ internal static class Program
           ecl launch survival-a1b2c3 --dry-run
           ecl mod list survival-a1b2c3
           ecl modpack import survival-a1b2c3 "C:\packs\example.mrpack"
+          ecl pack enable survival-a1b2c3 "example.zip"
           ecl settings set java.jvmPreset aikar
           ecl settings set java.runtimeProvider adoptium
           ecl settings set java.defaultMemoryMb 8192

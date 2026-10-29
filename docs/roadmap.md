@@ -20,13 +20,12 @@ ECL 是面向 Windows 的 Minecraft 启动器，长期目标是达到 HMCL / PCL
 
 ## 当前基线
 
-当前仓库已实现原版安装与启动、Java 管理、Fabric / Forge / NeoForge / Cleanroom、OptiFine 显式安装、Mod 管理、Modrinth / CurseForge 整合包导入导出、CurseForge 搜索与安装、资源包和光影包文件管理、崩溃分析、脱敏诊断包、下载暂停/恢复、自定义 JVM 预设、WPF 与 CLI、单元测试及 CI。
+当前仓库已实现原版安装与启动、Java 管理、Fabric / Forge / NeoForge / Cleanroom、OptiFine 显式安装、Mod 管理、Modrinth / CurseForge 整合包导入导出、CurseForge 搜索与安装、资源包和光影包文件管理及启用状态（写入 `options.txt`）、崩溃分析、脱敏诊断包、下载暂停/恢复、自定义 JVM 预设、WPF 与 CLI、单元测试及 CI。
 
 已知未完成或受限项：
 
 - [!] Microsoft OAuth 及 Xbox / XSTS / Minecraft Services 认证链路：受应用注册 / OAuth 审核条件影响；不能以离线账户模拟替代真实认证。
 - [ ] authlib-injector 第三方认证。
-- [ ] 资源包与光影包启用选择（当前文件管理已完成）。
 - [ ] Mod 更新检查、可选依赖选择及严格依赖版本范围语义。
 - [ ] 更完整的键盘导航、焦点与读屏支持。
 - [ ] 正式安装包、发布签名验证与自更新。
@@ -45,7 +44,7 @@ ECL 是面向 Windows 的 Minecraft 启动器，长期目标是达到 HMCL / PCL
 
 - [ ] 在 Windows CI 中验证 Release 构建、完整测试和 WPF 项目构建。
 - [ ] 在 Linux CI 中验证 Core / CLI / Tests 可构建、测试可运行。
-- [ ] 统一执行 `dotnet format` 检查和静态分析；先修复现存问题，再作为 CI 门槛。
+- [~] 统一执行 `dotnet format` 检查和静态分析；`dotnet format --verify-no-changes` 已修复现存问题并作为 Windows CI 门槛，静态分析（分析器/警告即错误）仍待补齐。
 - [ ] 为关键用户流程补充集成级回归测试：创建实例 → 安装原版 → 安装加载器 → Dry Run → 真实启动所需前置条件检查。
 - [ ] 记录测试结果、已知限制和可复现的失败步骤；不以测试数量单独衡量覆盖质量。
 
@@ -56,10 +55,10 @@ ECL 是面向 Windows 的 Minecraft 启动器，长期目标是达到 HMCL / PCL
 
 ### A2. 资源包 / 光影包启用状态
 
-- [ ] 明确启用状态的唯一事实来源，以及与 `options.txt`、资源文件缺失和外部修改的同步规则。
-- [ ] 接入启用 / 禁用选择器，支持缺失文件、无效条目和重复条目的安全处理。
-- [ ] 在 UI 与 CLI 中提供一致的状态查询与修改能力（如适用）。
-- [ ] 为配置写入增加备份或原子替换，避免异常中断造成配置损坏。
+- [x] 明确启用状态的唯一事实来源，以及与 `options.txt`、资源文件缺失和外部修改的同步规则。
+- [x] 接入启用 / 禁用选择器，支持缺失文件、无效条目和重复条目的安全处理。
+- [x] 在 UI 与 CLI 中提供一致的状态查询与修改能力（如适用）。
+- [x] 为配置写入增加备份或原子替换，避免异常中断造成配置损坏。
 
 **验收门槛**
 - 启用、禁用、重启启动器后状态一致。
@@ -211,7 +210,7 @@ ECL 是面向 Windows 的 Minecraft 启动器，长期目标是达到 HMCL / PCL
 ## 近期推荐顺序
 
 1. 建立并确认当前 Windows / Linux CI 基线。
-2. 完成资源包 / 光影包启用状态闭环。
+2. 完成资源包 / 光影包启用状态闭环（A2 已完成）。
 3. 处理 Mod 依赖匹配与更新检查的设计，再分阶段实现。
 4. 收敛诊断、无障碍与数据安全缺口。
 5. 单独评估 Microsoft OAuth 外部条件；不让它阻塞可独立完成的工作。

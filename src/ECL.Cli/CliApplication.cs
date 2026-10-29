@@ -1372,7 +1372,7 @@ internal sealed class CliApplication
     {
         if (args.Length < 2)
         {
-            return UsageError("pack 支持 list、import、delete。");
+            return UsageError("pack 支持 list、enable、disable、import、delete。");
         }
 
         var subCommand = args[0].ToLowerInvariant();
@@ -1388,28 +1388,74 @@ internal sealed class CliApplication
                 return WriteError(result.Error);
             }
 
+            var list = result.Value!;
             if (_commandLine.HasFlag("json"))
             {
-                Console.WriteLine(JsonSerializer.Serialize(result.Value, EclJson.Indented));
+                Console.WriteLine(JsonSerializer.Serialize(list, EclJson.Indented));
                 return 0;
             }
 
-            if (result.Value!.Count == 0)
+            if (list.Packs.Count == 0)
             {
                 Console.WriteLine("没有找到资源包/光影包。");
-                return 0;
             }
-
-            foreach (var entry in result.Value)
+            else
             {
-                Console.WriteLine($"{entry.FileName}");
-                Console.WriteLine($"  name: {entry.Name}");
-                if (entry.PackFormat is not null)
+                Console.WriteLine($"{list.EnabledCount} 启用 / {list.Packs.Count} 个");
+                foreach (var entry in list.Packs)
                 {
-                    Console.WriteLine($"  pack format: {entry.PackFormat}");
+                    Console.WriteLine(
+                        $"  [{(entry.Enabled ? "启用" : "禁用")}] {entry.FileName}" +
+                        (entry.Incompatible ? "（已确认不兼容）" : string.Empty));
+                    Console.WriteLine($"         name: {entry.Name}");
+                    if (entry.PackFormat is not null)
+                    {
+                        Console.WriteLine($"         pack format: {entry.PackFormat}");
+                    }
                 }
             }
 
+            if (!string.IsNullOrWhiteSpace(list.Warning))
+            {
+                Console.WriteLine($"! {list.Warning}");
+            }
+
+            foreach (var entry in list.MissingEntries)
+            {
+                Console.WriteLine($"! 已启用但文件缺失：{entry}");
+            }
+
+            foreach (var entry in list.UnmanagedEntries)
+            {
+                Console.WriteLine($"! options.txt 中的未识别条目：{entry}");
+            }
+
+            foreach (var entry in list.DuplicateEntries)
+            {
+                Console.WriteLine($"! options.txt 中的重复条目：{entry}");
+            }
+
+            return 0;
+        }
+
+        if (subCommand is "enable" or "disable")
+        {
+            var fileName = args.ElementAtOrDefault(2);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                return UsageError($"pack {subCommand} 需要文件名。");
+            }
+
+            var enabled = subCommand == "enable";
+            var result = await service
+                .SetEnabledAsync(instanceId, kind, fileName, enabled)
+                .ConfigureAwait(false);
+            if (!result.IsSuccess)
+            {
+                return WriteError(result.Error);
+            }
+
+            Console.WriteLine($"已{(enabled ? "启用" : "禁用")} {fileName}");
             return 0;
         }
 

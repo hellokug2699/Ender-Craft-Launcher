@@ -202,6 +202,8 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="8" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <ComboBox ItemsSource="{Binding PackTypes}"
                                   SelectedItem="{Binding SelectedPackType, Mode=TwoWay}"
@@ -212,14 +214,25 @@
                                    FontSize="11"
                                    VerticalAlignment="Center" />
                         <Button Grid.Column="4"
+                                Content="{loc:Loc Key=mods.packToggle}"
+                                Command="{Binding TogglePackCommand}"
+                                Style="{StaticResource GhostButton}" />
+                        <Button Grid.Column="6"
                                 Content="{loc:Loc Key=mods.packImport}"
                                 Command="{Binding ImportPackCommand}"
                                 Style="{StaticResource GhostButton}" />
-                        <Button Grid.Column="6"
+                        <Button Grid.Column="8"
                                 Content="{loc:Loc Key=common.delete}"
                                 Command="{Binding DeletePackCommand}"
                                 Style="{StaticResource DangerButton}" />
                     </Grid>
+
+                    <TextBlock Text="{Binding PackWarning}"
+                               Foreground="{StaticResource WarningBrush}"
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Margin="0,8,0,0"
+                               Visibility="{Binding PackHasWarning, Converter={StaticResource BoolToVisibility}}" />
 
                     <ListBox ItemsSource="{Binding Packs}"
                              SelectedItem="{Binding SelectedPack, Mode=TwoWay}"
@@ -230,12 +243,20 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="12" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding Name}" FontSize="12" />
+                                    <TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1"
+                                               Text="{Binding StatusText}"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               FontSize="10"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="3"
                                                Text="{Binding Meta}"
                                                Foreground="{StaticResource TextMutedBrush}"
-                                               FontSize="10" />
+                                               FontSize="10"
+                                               VerticalAlignment="Center" />
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>

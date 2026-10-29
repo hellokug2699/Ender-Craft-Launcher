@@ -1,6 +1,6 @@
 # Mod、整合包与资源包
 
-v0.6 提供 Mod 元数据解析、问题检测、启停/导入，以及 Modrinth/CurseForge 整合包导入和资源包/光影包文件管理。v0.7 补全 CurseForge API：按实例版本/加载器搜索、一键安装（含必需依赖）与整合包远程文件下载。Mod 的实际加载仍由 Fabric/Forge/NeoForge/Cleanroom 负责，本模块只管理实例 `minecraft/` 目录中的文件与元数据。
+v0.6 提供 Mod 元数据解析、问题检测、启停/导入，以及 Modrinth/CurseForge 整合包导入和资源包/光影包文件管理。v0.7 补全 CurseForge API：按实例版本/加载器搜索、一键安装（含必需依赖）与整合包远程文件下载。v0.8 补全资源包/光影包启用状态：以 `options.txt` 为唯一事实来源写入选择，并对缺失、重复与损坏条目给出提示。Mod 的实际加载仍由 Fabric/Forge/NeoForge/Cleanroom 负责，本模块只管理实例 `minecraft/` 目录中的文件与元数据。
 
 ## Mod 元数据
 
@@ -58,18 +58,41 @@ WPF 的 **Mods** 页面提供同样的列表、启停、批量、导入、删除
 
 ## 资源包与光影包
 
-扫描/导入/删除：
+扫描/导入/删除，以及启用状态：
 
 ```powershell
 ecl pack list <实例ID> [--type resource|shader] [--json]
+ecl pack enable <实例ID> <文件名> [--type resource|shader]
+ecl pack disable <实例ID> <文件名> [--type resource|shader]
 ecl pack import <实例ID> <文件.zip> [--type resource|shader]
 ecl pack delete <实例ID> <文件名> [--type resource|shader]
 ```
 
 - 资源包读取 `pack.mcmeta` 的 `pack_format` 与 `description`。
 - 光影包按 `shaderpacks/` 目录管理。
-- WPF **Mods** 页面的“资源包 / 光影包”区域也提供类型选择、列表、导入与删除。
-- 当前只管理文件，不修改 `options.txt` 中的“当前启用”选择。
+- WPF **Mods** 页面的“资源包 / 光影包”区域提供类型选择、启用/禁用、列表、导入与删除，并显示启用状态与配置警告。
+
+### 启用状态的唯一事实来源
+
+启用状态只来自实例 `minecraft/options.txt`，启动器不维护第二份状态：
+
+- 资源包：`resourcePacks`（JSON 字符串数组），条目格式为 `file/<文件名>.zip`；`vanilla` 是游戏默认资源包，原样保留。`incompatibleResourcePacks` 表示用户已在游戏内确认“不兼容”，列表页会显示该标记。
+- 光影包：`shaderPack`（单值字符串），同一时间只有一个光影包启用；禁用即删除该键。
+
+同步规则：
+
+- 每次 `pack list` / 启用 / 禁用都会重新读取 `options.txt`，游戏退出后写入的新选择会被直接看到，不缓存旧状态。
+- 禁用只修改 `options.txt`，**不删除、不移动资源文件**。
+- 启用资源包时若 `resourcePacks` 键不存在，会按游戏默认值补上 `vanilla`，再追加新条目。
+- 缺失文件、未识别条目（非 `file/` 前缀，例如旧式写法）与重复条目只在列表中提示，不会在只读查询时被清理；只有显式禁用或删除对应文件时才移除相关条目。
+- `options.txt` 存在但 `resourcePacks` / `incompatibleResourcePacks` 无法解析时，列表返回警告，启用/禁用直接失败并保持文件原样，绝不覆盖用户配置。
+- 写入采用“临时文件 → 覆盖 `options.txt.bak` 备份 → 原子替换”，避免异常中断损坏配置。
+
+### 限制
+
+- 只写入 `options.txt`。若某个光影实现把自己的选择保存在独立配置文件（例如 OptiFine 的 `optionsshaders.txt`），ECL 不会同步该文件，需在游戏内选择。
+- ECL 不判断资源包与游戏版本的 `pack_format` 兼容性，只展示 `pack_format` 与游戏内已确认的“不兼容”标记。
+- 启动器与游戏同时运行时，后写入者覆盖先写入者；修改启用状态前应先退出游戏。
 
 ## CurseForge 搜索与一键安装
 
@@ -93,6 +116,9 @@ ecl curseforge status --check
 ecl curseforge search jei --game-version 1.20.1 --loader forge
 ecl curseforge install survival-a1b2c3 jei
 ecl pack import survival-a1b2c3 "C:\packs\resource.zip"
+ecl pack enable survival-a1b2c3 "resource.zip"
+ecl pack list survival-a1b2c3 --json
+ecl pack disable survival-a1b2c3 "resource.zip"
 ```
 
 ## 限制
@@ -100,4 +126,4 @@ ecl pack import survival-a1b2c3 "C:\packs\resource.zip"
 - CurseForge 作者禁止第三方分发的文件（`downloadUrl` 为空且下载端点无返回值）无法下载。
 - 不做 Mod 更新检查、依赖版本范围严格语义匹配、可选依赖选择界面。
 - 不解析 Mod 内部类/注册表，只读取元数据。
-- 资源包/光影包的启用选择尚未写入 `options.txt`。
+- 资源包/光影包的启用状态只写 `options.txt`；使用独立配置文件的 shader 实现不会被同步（见上文“限制”）。

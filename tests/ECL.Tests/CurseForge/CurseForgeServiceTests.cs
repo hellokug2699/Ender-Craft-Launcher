@@ -169,15 +169,15 @@ public sealed class CurseForgeServiceTests
         int modId,
         string fileName,
         string? downloadUrl = "https://edge.forgecdn.net/files/0/10/demo.jar") => new()
-    {
-        Id = id,
-        ModId = modId,
-        FileName = fileName,
-        DownloadUrl = downloadUrl,
-        FileLength = 4,
-        GameVersions = ["1.20.1", "Forge"],
-        Hashes = [new CurseForgeFileHash { Algo = 1, Value = "0000000000000000000000000000000000000000" }],
-    };
+        {
+            Id = id,
+            ModId = modId,
+            FileName = fileName,
+            DownloadUrl = downloadUrl,
+            FileLength = 4,
+            GameVersions = ["1.20.1", "Forge"],
+            Hashes = [new CurseForgeFileHash { Algo = 1, Value = "0000000000000000000000000000000000000000" }],
+        };
 
     private static async Task<GameInstance> CreateInstanceAsync(
         IServiceProvider provider,
