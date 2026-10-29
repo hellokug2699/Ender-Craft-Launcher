@@ -1,6 +1,6 @@
 # Mod、整合包与资源包
 
-v0.6 提供 Mod 元数据解析、问题检测、启停/导入，以及 Modrinth 整合包导入导出和资源包/光影包文件管理。Mod 的实际加载仍由 Fabric/Forge/NeoForge/Cleanroom 负责，本模块只管理实例 `minecraft/` 目录中的文件与元数据。
+v0.6 提供 Mod 元数据解析、问题检测、启停/导入，以及 Modrinth/CurseForge 整合包导入和资源包/光影包文件管理。v0.7 补全 CurseForge API：按实例版本/加载器搜索、一键安装（含必需依赖）与整合包远程文件下载。Mod 的实际加载仍由 Fabric/Forge/NeoForge/Cleanroom 负责，本模块只管理实例 `minecraft/` 目录中的文件与元数据。
 
 ## Mod 元数据
 
@@ -43,9 +43,9 @@ WPF 的 **Mods** 页面提供同样的列表、启停、批量、导入、删除
 ### 导入
 
 - **Modrinth `.mrpack`**：读取 `modrinth.index.json`，校验 `dependencies.minecraft` 与实例游戏版本、加载器是否匹配；按 `files[]` 的 `path`、`hashes.sha1`、`downloads`、`fileSize` 下载并校验；解压 `overrides/` 与 `client-overrides/`。`env.client = unsupported` 的文件会跳过。
-- **CurseForge `.zip`**：读取 `manifest.json`，校验游戏版本并解压 `overrides/`。远程 `files[]` 需要 CurseForge API key，当前只导入 overrides，并在报告中给出警告。
+- **CurseForge `.zip`**：读取 `manifest.json`，校验游戏版本与加载器（`forge-*` / `fabric-*` / `neoforge-*` / `cleanroom-*`），通过 `POST /v1/mods/files` 批量解析 `files[].fileID` 并下载到 `mods/`，校验 SHA-1 与大小；`required=false` 的文件跳过并警告；最后解压 `overrides`（支持自定义目录名）与 `client-overrides/`。未配置 API key 且包内包含远程文件时直接失败，不会导入残缺包。详见 [curseforge.md](curseforge.md)。
 - 所有路径都会做目录穿越检查，只允许写入实例 `minecraft/` 目录。
-- 导入完成后写入 `minecraft/.ecl-modpack.json` 记录包名/版本/来源。
+- 导入完成后写入 `minecraft/.ecl-modpack.json` 记录包名/版本/来源（`modrinth` 或 `curseforge`）。
 
 ### 导出
 
@@ -71,6 +71,14 @@ ecl pack delete <实例ID> <文件名> [--type resource|shader]
 - WPF **Mods** 页面的“资源包 / 光影包”区域也提供类型选择、列表、导入与删除。
 - 当前只管理文件，不修改 `options.txt` 中的“当前启用”选择。
 
+## CurseForge 搜索与一键安装
+
+- WPF **Mods** 页面的 CurseForge 区域按当前实例的游戏版本与加载器搜索；选中结果后可安装或打开项目页。
+- CLI `curseforge search|files|install` 提供同样的能力，支持 `--json`。
+- 默认安装所选文件的最新稳定版（没有稳定版才选 Beta/Alpha），并递归安装 `RequiredDependency`；`--no-dependencies` 可关闭。
+- 安装记录写入 `minecraft/.ecl-curseforge.json`，用于去重与后续更新。
+- 完整说明、API key 配置与限制见 [curseforge.md](curseforge.md)。
+
 ## CLI 示例
 
 ```powershell
@@ -79,13 +87,17 @@ ecl mod check survival-a1b2c3
 ecl mod disable survival-a1b2c3 "example.jar"
 ecl mod import survival-a1b2c3 "C:\mods\example.jar"
 ecl modpack import survival-a1b2c3 "C:\packs\example.mrpack"
+ecl modpack import survival-a1b2c3 "C:\packs\example.zip"
 ecl modpack export survival-a1b2c3 "C:\packs\export.mrpack"
+ecl curseforge status --check
+ecl curseforge search jei --game-version 1.20.1 --loader forge
+ecl curseforge install survival-a1b2c3 jei
 ecl pack import survival-a1b2c3 "C:\packs\resource.zip"
 ```
 
 ## 限制
 
-- 不做 Mod 下载站搜索/一键安装（CurseForge/Modrinth API 的搜索与授权不在当前范围）。
+- CurseForge 作者禁止第三方分发的文件（`downloadUrl` 为空且下载端点无返回值）无法下载。
+- 不做 Mod 更新检查、依赖版本范围严格语义匹配、可选依赖选择界面。
 - 不解析 Mod 内部类/注册表，只读取元数据。
-- CurseForge 远程文件下载需要 API key，当前仅导入 overrides。
 - 资源包/光影包的启用选择尚未写入 `options.txt`。

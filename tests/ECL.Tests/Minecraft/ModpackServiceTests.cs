@@ -3,8 +3,10 @@
 using System.IO.Compression;
 using System.Text;
 using Ecl.Download;
+using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Mods;
+using Ecl.Tests.CurseForge;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -65,7 +67,7 @@ public sealed class ModpackServiceTests
     }
 
     [Fact]
-    public async Task ImportsCurseForgeOverridesWithWarning()
+    public async Task ImportsCurseForgeOverridesWithoutApiKey()
     {
         using var environment = new TestEnvironment();
         var fake = new FakeDownloadService();
@@ -80,11 +82,158 @@ public sealed class ModpackServiceTests
 
             Assert.True(result.IsSuccess, result.Error?.ToString());
             Assert.Equal(0, result.Value!.DownloadedFiles);
-            Assert.Single(result.Value.Warnings);
+            Assert.Empty(result.Value.Warnings);
             Assert.True(File.Exists(Path.Combine(
                 environment.Paths.GetInstanceGameDirectory(instance.Id),
                 "config",
                 "test.txt")));
+        }
+        finally
+        {
+            File.Delete(archive);
+        }
+    }
+
+    [Fact]
+    public async Task ImportsCurseForgeRemoteFilesAndOverrides()
+    {
+        using var environment = new TestEnvironment();
+        var downloads = new RecordingDownloadService();
+        var curseForge = CreateConfiguredClient();
+        curseForge.Files[2] = new CurseForgeFile
+        {
+            Id = 2,
+            ModId = 1,
+            FileName = "demo.jar",
+            DownloadUrl = "https://edge.forgecdn.net/files/0/2/demo.jar",
+            FileLength = 4,
+            GameVersions = ["1.20.1", "Forge"],
+            Hashes = [new CurseForgeFileHash { Algo = 1, Value = "0000000000000000000000000000000000000000" }],
+        };
+
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(downloads);
+            services.AddSingleton<ICurseForgeClient>(curseForge);
+        });
+        var instance = await CreateInstanceAsync(provider, "1.20.1", "forge", "47.4.0");
+        var archive = CreateCurseForgePack(
+            """[{"projectID":1,"fileID":2,"required":true}]""");
+
+        try
+        {
+            var result = await provider.GetRequiredService<IModpackService>()
+                .ImportAsync(instance.Id, archive);
+
+            Assert.True(result.IsSuccess, result.Error?.ToString());
+            Assert.Equal(1, result.Value!.DownloadedFiles);
+            Assert.Equal(1, result.Value.OverrideFiles);
+            var request = Assert.Single(downloads.Requests);
+            Assert.EndsWith(Path.Combine("mods", "demo.jar"), request.DestinationPath);
+            Assert.Equal("https://edge.forgecdn.net/files/0/2/demo.jar", request.Urls[0].ToString());
+            Assert.Equal(HashingAlgorithm.Sha1, request.Algorithm);
+            Assert.True(File.Exists(Path.Combine(
+                environment.Paths.GetInstanceGameDirectory(instance.Id),
+                "mods",
+                "demo.jar")));
+            Assert.Contains("curseforge", await File.ReadAllTextAsync(Path.Combine(
+                environment.Paths.GetInstanceGameDirectory(instance.Id),
+                ".ecl-modpack.json")));
+        }
+        finally
+        {
+            File.Delete(archive);
+        }
+    }
+
+    [Fact]
+    public async Task RejectsCurseForgeRemoteFilesWithoutApiKey()
+    {
+        using var environment = new TestEnvironment();
+        var downloads = new RecordingDownloadService();
+        var curseForge = new FakeCurseForgeClient
+        {
+            Status = new CurseForgeStatus(CurseForgeKeySource.None),
+        };
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(downloads);
+            services.AddSingleton<ICurseForgeClient>(curseForge);
+        });
+        var instance = await CreateInstanceAsync(provider, "1.20.1", "forge", "47.4.0");
+        var archive = CreateCurseForgePack(
+            """[{"projectID":1,"fileID":2,"required":true}]""");
+
+        try
+        {
+            var result = await provider.GetRequiredService<IModpackService>()
+                .ImportAsync(instance.Id, archive);
+
+            Assert.False(result.IsSuccess);
+            Assert.Equal("curseforge.not_configured", result.Error?.Code);
+            Assert.Empty(downloads.Requests);
+            Assert.Equal(0, curseForge.GetFilesCalls);
+        }
+        finally
+        {
+            File.Delete(archive);
+        }
+    }
+
+    [Fact]
+    public async Task RejectsCurseForgePackWithDifferentLoader()
+    {
+        using var environment = new TestEnvironment();
+        var downloads = new RecordingDownloadService();
+        var curseForge = CreateConfiguredClient();
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(downloads);
+            services.AddSingleton<ICurseForgeClient>(curseForge);
+        });
+        var instance = await CreateInstanceAsync(provider, "1.20.1", "fabric", "0.16.0");
+        var archive = CreateCurseForgePack(
+            """[{"projectID":1,"fileID":2,"required":true}]""");
+
+        try
+        {
+            var result = await provider.GetRequiredService<IModpackService>()
+                .ImportAsync(instance.Id, archive);
+
+            Assert.False(result.IsSuccess);
+            Assert.Equal("modpack.loader_mismatch", result.Error?.Code);
+        }
+        finally
+        {
+            File.Delete(archive);
+        }
+    }
+
+    [Fact]
+    public async Task SkipsOptionalCurseForgeFilesWithWarning()
+    {
+        using var environment = new TestEnvironment();
+        var downloads = new RecordingDownloadService();
+        var curseForge = CreateConfiguredClient();
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(downloads);
+            services.AddSingleton<ICurseForgeClient>(curseForge);
+        });
+        var instance = await CreateInstanceAsync(provider, "1.20.1", "forge", "47.4.0");
+        var archive = CreateCurseForgePack(
+            """[{"projectID":1,"fileID":2,"required":false}]""");
+
+        try
+        {
+            var result = await provider.GetRequiredService<IModpackService>()
+                .ImportAsync(instance.Id, archive);
+
+            Assert.True(result.IsSuccess, result.Error?.ToString());
+            Assert.Equal(0, result.Value!.DownloadedFiles);
+            Assert.Equal(1, result.Value.SkippedFiles);
+            Assert.Contains(result.Value.Warnings, warning => warning.Contains("可选"));
+            Assert.Empty(downloads.Requests);
         }
         finally
         {
@@ -191,16 +340,24 @@ public sealed class ModpackServiceTests
         return path;
     }
 
-    private static string CreateCurseForgePack()
+    private static FakeCurseForgeClient CreateConfiguredClient() =>
+        new() { Status = new CurseForgeStatus(CurseForgeKeySource.Embedded) };
+
+    private static string CreateCurseForgePack(string filesJson = "[]")
     {
         var path = Path.Combine(Path.GetTempPath(), $"ecl-cf-{Guid.NewGuid():N}.zip");
         using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
-        WriteEntry(archive, "manifest.json", """
+        WriteEntry(archive, "manifest.json", $$"""
             {
               "name": "CurseForge Pack",
               "version": "1.0",
-              "minecraft": { "version": "1.20.1" },
-              "files": []
+              "minecraft": {
+                "version": "1.20.1",
+                "modLoaders": [
+                  { "id": "forge-47.4.0", "primary": true }
+                ]
+              },
+              "files": {{filesJson}}
             }
             """);
         WriteEntry(archive, "overrides/config/test.txt", "config");

@@ -9,6 +9,7 @@ using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Core.Localization;
 using Ecl.Java;
+using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Diagnostics;
 using Ecl.Minecraft.Eula;
 using Ecl.Minecraft.Install;
@@ -47,6 +48,7 @@ internal sealed class CliApplication
             "loader" => await LoaderCommandAsync(rest).ConfigureAwait(false),
             "mod" => await ModCommandAsync(rest).ConfigureAwait(false),
             "modpack" => await ModpackCommandAsync(rest).ConfigureAwait(false),
+            "curseforge" => await CurseForgeCommandAsync(rest).ConfigureAwait(false),
             "pack" => await PackCommandAsync(rest).ConfigureAwait(false),
             "crash" => await CrashCommandAsync(rest).ConfigureAwait(false),
             "diagnostics" => await DiagnosticsCommandAsync(rest).ConfigureAwait(false),
@@ -1080,6 +1082,303 @@ internal sealed class CliApplication
 
         return UsageError($"不支持的 modpack 子命令：{subCommand}");
     }
+
+    private async Task<int> CurseForgeCommandAsync(string[] args)
+    {
+        var subCommand = args.Length == 0 ? "status" : args[0].ToLowerInvariant();
+        var service = _provider.GetRequiredService<ICurseForgeService>();
+
+        switch (subCommand)
+        {
+            case "status":
+                return await CurseForgeStatusAsync(service).ConfigureAwait(false);
+            case "search":
+                return await CurseForgeSearchAsync(service, args).ConfigureAwait(false);
+            case "files":
+                return await CurseForgeFilesAsync(args).ConfigureAwait(false);
+            case "install":
+                return await CurseForgeInstallAsync(service, args).ConfigureAwait(false);
+            default:
+                return UsageError($"不支持的 curseforge 子命令：{subCommand}");
+        }
+    }
+
+    private async Task<int> CurseForgeStatusAsync(ICurseForgeService service)
+    {
+        var status = service.Status;
+        var checkResult = (Result<CurseForgeSearchResult>?)null;
+        if (_commandLine.HasFlag("check") && status.IsConfigured)
+        {
+            checkResult = await service
+                .SearchAsync(new CurseForgeSearchQuery { PageSize = 1 })
+                .ConfigureAwait(false);
+        }
+
+        if (_commandLine.HasFlag("json"))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                configured = status.IsConfigured,
+                source = status.Source.ToString().ToLowerInvariant(),
+                checkedApi = checkResult.HasValue,
+                checkSucceeded = checkResult?.IsSuccess,
+                checkError = checkResult?.Error?.Message,
+            }, EclJson.Indented));
+            return status.IsConfigured && (checkResult is not { } check || check.IsSuccess) ? 0 : 1;
+        }
+
+        Console.WriteLine($"CurseForge API：{(status.IsConfigured ? "已配置" : "未配置")}");
+        Console.WriteLine($"  来源：{DescribeCurseForgeSource(status.Source)}");
+        if (!status.IsConfigured)
+        {
+            Console.WriteLine(
+                $"  设置环境变量 {CurseForgeApiKeyProvider.EnvironmentVariableName}，或使用注入了 key 的发布版。");
+            return 1;
+        }
+
+        if (checkResult is null)
+        {
+            return 0;
+        }
+
+        if (!checkResult.Value.IsSuccess)
+        {
+            return WriteError(checkResult.Value.Error);
+        }
+
+        Console.WriteLine("  API 连通性：正常");
+        return 0;
+    }
+
+    private async Task<int> CurseForgeSearchAsync(ICurseForgeService service, string[] args)
+    {
+        if (!TryGetCurseForgeLoader(out var loader))
+        {
+            return UsageError("--loader 支持 fabric、forge、neoforge、quilt 或 any。");
+        }
+
+        var query = args.ElementAtOrDefault(1) ?? string.Empty;
+        var gameVersion = _commandLine.GetValue("game-version") ?? _commandLine.GetValue("version");
+        var pageSize = Math.Clamp(GetIntOption("page-size", 20), 1, 50);
+        var index = Math.Max(0, GetIntOption("index", 0));
+
+        var result = await service.SearchAsync(
+                new CurseForgeSearchQuery
+                {
+                    SearchFilter = query,
+                    GameVersion = gameVersion,
+                    Loader = loader,
+                    Index = index,
+                    PageSize = pageSize,
+                })
+            .ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return WriteError(result.Error);
+        }
+
+        var search = result.Value!;
+        if (_commandLine.HasFlag("json"))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                totalCount = search.TotalCount,
+                index = search.Index,
+                pageSize = search.PageSize,
+                mods = search.Mods.Select(mod => new
+                {
+                    mod.Id,
+                    mod.Slug,
+                    mod.Name,
+                    mod.Summary,
+                    mod.DownloadCount,
+                    mod.DateModified,
+                    mod.WebsiteUrl,
+                }),
+            }, EclJson.Indented));
+            return 0;
+        }
+
+        Console.WriteLine($"CurseForge 搜索结果：{search.TotalCount} 个（显示 {search.Mods.Count} 个）");
+        foreach (var mod in search.Mods)
+        {
+            Console.WriteLine($"  {mod.Id}  {mod.Slug}  {mod.Name}");
+            Console.WriteLine($"        下载 {mod.DownloadCount:N0} · {FormatReleasedAt(mod.DateModified)}");
+        }
+
+        if (search.Mods.Count == 0)
+        {
+            Console.WriteLine("  没有匹配的 Mod。");
+        }
+
+        return 0;
+    }
+
+    private async Task<int> CurseForgeFilesAsync(string[] args)
+    {
+        var reference = args.ElementAtOrDefault(1);
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            return UsageError("curseforge files 需要项目 ID 或 slug。");
+        }
+
+        if (!TryGetCurseForgeLoader(out var loader))
+        {
+            return UsageError("--loader 支持 fabric、forge、neoforge、quilt 或 any。");
+        }
+
+        var client = _provider.GetRequiredService<ICurseForgeClient>();
+        var modResult = await ResolveCurseForgeModAsync(client, reference).ConfigureAwait(false);
+        if (!modResult.IsSuccess)
+        {
+            return WriteError(modResult.Error);
+        }
+
+        var gameVersion = _commandLine.GetValue("game-version") ?? _commandLine.GetValue("version");
+        var pageSize = Math.Clamp(GetIntOption("page-size", 20), 1, 50);
+        var filesResult = await client
+            .GetFilesForModAsync(modResult.Value!.Id, gameVersion, loader, pageSize)
+            .ConfigureAwait(false);
+        if (!filesResult.IsSuccess)
+        {
+            return WriteError(filesResult.Error);
+        }
+
+        if (_commandLine.HasFlag("json"))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(filesResult.Value, EclJson.Indented));
+            return 0;
+        }
+
+        Console.WriteLine($"{modResult.Value!.Name} 的文件：");
+        foreach (var file in filesResult.Value!)
+        {
+            Console.WriteLine($"  {file.Id}  {file.FileName}");
+            Console.WriteLine(
+                $"        {FormatCurseForgeReleaseType(file.ReleaseType)} · {FormatReleasedAt(file.FileDate)} · {file.FileLength / 1024} KB");
+            Console.WriteLine($"        {string.Join(", ", file.GameVersions)}");
+        }
+
+        return 0;
+    }
+
+    private async Task<int> CurseForgeInstallAsync(ICurseForgeService service, string[] args)
+    {
+        var instanceId = args.ElementAtOrDefault(1);
+        var reference = args.ElementAtOrDefault(2);
+        if (string.IsNullOrWhiteSpace(instanceId) || string.IsNullOrWhiteSpace(reference))
+        {
+            return UsageError("curseforge install 需要实例 ID 与项目 ID/slug/链接。");
+        }
+
+        int? fileId = int.TryParse(_commandLine.GetValue("file-id"), out var parsedFileId) && parsedFileId > 0
+            ? parsedFileId
+            : null;
+        var lastStage = string.Empty;
+        var progress = new InlineProgress<CurseForgeProgress>(update =>
+        {
+            if (!string.Equals(lastStage, update.Stage, StringComparison.Ordinal))
+            {
+                Console.WriteLine(update.Message);
+                lastStage = update.Stage;
+            }
+
+            if (update.Total > 0 &&
+                (update.Completed == update.Total || update.Completed % 10 == 0))
+            {
+                Console.WriteLine($"  {update.Completed}/{update.Total}");
+            }
+        });
+
+        var result = await service
+            .InstallAsync(
+                instanceId,
+                reference,
+                fileId,
+                includeDependencies: !_commandLine.HasFlag("no-dependencies"),
+                progress)
+            .ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return WriteError(result.Error);
+        }
+
+        var report = result.Value!;
+        if (_commandLine.HasFlag("json"))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(report, EclJson.Indented));
+            return 0;
+        }
+
+        Console.WriteLine($"已安装 {report.ModName}（项目 {report.ProjectId}，文件 {report.FileId}）");
+        foreach (var file in report.InstalledFiles)
+        {
+            Console.WriteLine($"  + {file}");
+        }
+
+        foreach (var warning in report.Warnings)
+        {
+            Console.WriteLine($"  ! {warning}");
+        }
+
+        return 0;
+    }
+
+    private static async Task<Result<CurseForgeMod>> ResolveCurseForgeModAsync(
+        ICurseForgeClient client,
+        string reference)
+    {
+        if (int.TryParse(reference, out var modId) && modId > 0)
+        {
+            return await client.GetModAsync(modId).ConfigureAwait(false);
+        }
+
+        var bySlug = await client.FindModBySlugAsync(reference).ConfigureAwait(false);
+        if (!bySlug.IsSuccess)
+        {
+            return Result<CurseForgeMod>.Fail(bySlug.Error!);
+        }
+
+        return bySlug.Value is null
+            ? Result<CurseForgeMod>.Fail("curseforge.mod_not_found", $"没有找到 CurseForge 项目：{reference}")
+            : Result<CurseForgeMod>.Ok(bySlug.Value);
+    }
+
+    private bool TryGetCurseForgeLoader(out CurseForgeModLoader? loader)
+    {
+        loader = null;
+        var text = _commandLine.GetValue("loader");
+        if (string.IsNullOrWhiteSpace(text) || string.Equals(text, "any", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!CurseForgeLoaders.TryParse(text, out var parsed))
+        {
+            return false;
+        }
+
+        loader = parsed;
+        return true;
+    }
+
+    private int GetIntOption(string name, int fallback) =>
+        int.TryParse(_commandLine.GetValue(name), out var value) ? value : fallback;
+
+    private static string DescribeCurseForgeSource(CurseForgeKeySource source) => source switch
+    {
+        CurseForgeKeySource.Environment => $"环境变量 {CurseForgeApiKeyProvider.EnvironmentVariableName}",
+        CurseForgeKeySource.Embedded => "构建时注入的程序集元数据",
+        _ => "未配置",
+    };
+
+    private static string FormatCurseForgeReleaseType(int releaseType) => releaseType switch
+    {
+        1 => "Release",
+        2 => "Beta",
+        3 => "Alpha",
+        _ => "Unknown",
+    };
 
     private async Task<int> PackCommandAsync(string[] args)
     {

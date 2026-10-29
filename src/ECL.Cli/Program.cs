@@ -88,8 +88,17 @@ internal static class Program
                                           批量启用/禁用
           mod import <实例ID> <文件...>   导入 .jar 到实例 mods/
           mod delete <实例ID> <文件>      删除 Mod
-          modpack import <实例ID> <整合包> 导入 Modrinth .mrpack（CurseForge 仅导入 overrides）
+          modpack import <实例ID> <整合包> 导入 Modrinth .mrpack 或 CurseForge .zip
           modpack export <实例ID> <输出>  导出为 Modrinth .mrpack
+          curseforge status [--check] [--json]
+                                          查看 CurseForge API 配置，--check 验证连通性
+          curseforge search <关键词> [--game-version <版本>] [--loader fabric|forge|neoforge|quilt]
+                           [--page-size <1-50>] [--json]
+                                          搜索 CurseForge Mod
+          curseforge files <项目ID|slug> [--game-version <版本>] [--loader <加载器>] [--json]
+                                          列出项目的文件，用于选择 --file-id
+          curseforge install <实例ID> <项目ID|slug|链接> [--file-id <ID>] [--no-dependencies] [--json]
+                                          下载并安装 CurseForge Mod（默认同时安装必需依赖）
           pack list <实例ID> [--type resource|shader] [--json]
                                           列出资源包/光影包
           pack import <实例ID> <文件> [--type resource|shader]

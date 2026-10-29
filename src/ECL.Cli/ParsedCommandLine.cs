@@ -14,6 +14,8 @@ public sealed class ParsedCommandLine
         "dry-run",
         "accept-eula",
         "verbose",
+        "check",
+        "no-dependencies",
     };
 
     private readonly Dictionary<string, string?> _options = new(StringComparer.Ordinal);

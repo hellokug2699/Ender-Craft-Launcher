@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using Microsoft.Win32;
 
@@ -18,6 +20,8 @@ public interface IDialogService
     IReadOnlyList<string> PickOpenFiles(string title, string filter);
 
     string? PickSaveFile(string title, string filter, string? defaultFileName = null);
+
+    bool OpenUrl(string url);
 }
 
 public sealed class DialogService : IDialogService
@@ -65,5 +69,18 @@ public sealed class DialogService : IDialogService
         };
 
         return dialog.ShowDialog() == true ? dialog.FileName : null;
+    }
+
+    public bool OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            return true;
+        }
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException or ArgumentException)
+        {
+            return false;
+        }
     }
 }

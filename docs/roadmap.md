@@ -68,11 +68,13 @@
 - [x] `fabric.mod.json`、`mods.toml`、`neoforge.mods.toml`、`mcmod.info` 解析。
 - [x] 依赖/冲突/重复 Mod/加载器不匹配检测（版本范围只展示，不做严格语义匹配）。
 - [x] 启用/禁用、批量操作、导入、删除（WPF Mods 页面 + CLI）。
-- [~] CurseForge / Modrinth 整合包导入：Modrinth `.mrpack` 完整下载；CurseForge 仅导入 overrides（远程文件需要 API key）。
+- [x] CurseForge / Modrinth 整合包导入：Modrinth `.mrpack` 与 CurseForge `.zip` 均完整下载远程文件、校验并解压 overrides。
+- [x] CurseForge 搜索、文件列表与一键安装（WPF + CLI，递归安装必需依赖）。
+- [x] CurseForge API key 的环境变量/发布版注入、缓存、限流与错误映射。
 - [x] 整合包导出（Modrinth `.mrpack`，本地 overrides 形式）。
 - [~] 资源包、光影包管理：列表/导入/删除已完成（WPF + CLI）；`options.txt` 启用选择待接入。
-- [ ] CurseForge 远程文件下载（API key 配置与授权）。
 - [ ] Mod 依赖版本范围的严格语义匹配。
+- [ ] Mod 更新检查与 CurseForge 可选依赖选择。
 
 ## v0.7 体验与诊断（进行中，首次启动向导暂缓）
 

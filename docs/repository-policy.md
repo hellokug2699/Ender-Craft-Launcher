@@ -5,7 +5,7 @@ ECL 使用两个仓库：
 | 仓库 | 可见性 | 内容 |
 | --- | --- | --- |
 | `Ender-Craft-Launcher` | public | 全部源码、文档、构建脚本、公开配置、公开密钥 |
-| `Ender-Craft-Launcher-Core` | private | 仅存放极私密材料：签名证书、私钥、OAuth/上传凭据 |
+| `Ender-Craft-Launcher-Core` | private | 仅存放极私密材料：签名证书、私钥、OAuth/上传凭据、CurseForge API key |
 
 ## 1. 判断规则
 
@@ -25,6 +25,7 @@ ECL 使用两个仓库：
 - Windows 代码签名证书（`.pfx`）及其口令。
 - 更新包签名私钥、安装包签名私钥。
 - OAuth 客户端机密（若未来使用需要机密的流程）。
+- CurseForge API key 等第三方服务凭据。
 - 崩溃上传、遥测、私有 API 的访问令牌。
 - 发布自动化使用的凭据、私有基础设施配置。
 - 尚未公开的私密合作/分发材料。
@@ -55,6 +56,17 @@ $env:ECL_SIGNING_PASSWORD = "<从安全存储读取>"
 ```
 
 证书文件放在 Core 仓库的本地检出目录中，通过安全存储或 CI Secret 提供口令；public 仓库不保存任何证书。
+
+### 第三方 API key（CurseForge）
+
+CurseForge API key 存放在 Core 仓库的 `credentials/curseforge.json`。public 仓库只包含读取逻辑：
+
+- 普通构建不设置 `ECL_CURSEFORGE_API_KEY`，产物不含 key，功能显示“未配置”。
+- 发布构建从 Core 或 CI Secret 注入 `ECL_CURSEFORGE_API_KEY`，构建生成 `Ecl.CurseForge.ApiKey` 程序集元数据。
+- 运行时环境变量优先于构建时元数据，便于开发与轮换。
+- 任何情况下都不得把 key 写入 public 仓库文件、命令行历史、日志或诊断包。
+
+详见 [curseforge.md](curseforge.md)。
 
 ## 3. CI 与发布
 
