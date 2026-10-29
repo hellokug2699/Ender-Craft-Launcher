@@ -12,6 +12,13 @@ $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
 
 try {
+    if (-not [string]::IsNullOrWhiteSpace($env:ECL_CURSEFORGE_API_KEY)) {
+        Write-Host "==> CurseForge API key：构建时嵌入" -ForegroundColor DarkGray
+    }
+    else {
+        Write-Host "==> CurseForge API key：未注入（CurseForge 功能将提示未配置）" -ForegroundColor Yellow
+    }
+
     Write-Host "==> Restore" -ForegroundColor Cyan
     dotnet restore ECL.sln
     if ($LASTEXITCODE -ne 0) { throw "dotnet restore 失败" }

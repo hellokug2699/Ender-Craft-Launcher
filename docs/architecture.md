@@ -11,7 +11,7 @@ ECL 是一个 Windows 优先的 Minecraft 启动器，目标能力对齐 HMCL / 
 
 同时保留自己的设计空间：配置项由元数据驱动、启动流程分阶段可观测、模块边界清晰、UI 只是薄壳。
 
-当前版本（v0.7）已完成原版安装、Java 管理与加载器安装：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查、Mojang/Adoptium/Zulu/Liberica Java 运行时下载、Fabric（含 Fabric API）、Forge/NeoForge（含安装器 processors）与 Cleanroom 安装、OptiFine 显式安装；v0.6 的 Mod/整合包/资源包管理与 v0.7 的主题切换、崩溃分析、脱敏诊断包、下载暂停/速度与自定义 JVM 预设也已接入。v0.3 账户体系因 Microsoft OAuth 审核限制暂缓；首次启动向导本阶段暂缓。
+当前版本（v0.7）已完成原版安装、Java 管理与加载器安装：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查、Mojang/Adoptium/Zulu/Liberica Java 运行时下载、Fabric（含 Fabric API）、Forge/NeoForge（含安装器 processors）与 Cleanroom 安装、OptiFine 显式安装；v0.6 的 Mod/整合包/资源包管理、CurseForge 搜索与远程下载，以及 v0.7 的主题切换、崩溃分析、脱敏诊断包、下载暂停/速度与自定义 JVM 预设也已接入。v0.3 账户体系因 Microsoft OAuth 审核限制暂缓；首次启动向导本阶段暂缓。
 
 ## 2. 设计原则
 
@@ -79,7 +79,7 @@ flowchart TD
 | `ECL.Download` | 下载源策略、官方↔BMCLAPI 映射、并发/重试/续传、哈希校验 | `DownloadSourceResolver`, `IDownloadService`, `DownloadRequest` |
 | `ECL.Auth` | 账户模型、离线 UUID、账户文件 | `Account`, `IAccountService`, `OfflineUuid` |
 | `ECL.Java` | Java 版本解析、运行时探测、需求/兼容性/32-64 位与内存校验、JVM 预设、Mojang/Adoptium/Zulu/Liberica 下载与解压 | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `JvmPresets`, `IJavaInstallService` |
-| `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动、Mod/整合包/资源包管理 | `GameInstance`, `VanillaInstallService`, `ILoaderCatalog`, `IJavaSelectionService`, `IModService`, `IModpackService`, `ILaunchStep` |
+| `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动、Mod/整合包/资源包管理、CurseForge API 与安装 | `GameInstance`, `VanillaInstallService`, `ILoaderCatalog`, `IJavaSelectionService`, `IModService`, `IModpackService`, `ICurseForgeClient`, `ICurseForgeService`, `ILaunchStep` |
 | `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框 | `MainViewModel`, `InstancesViewModel`, `ModsViewModel`, `SettingsViewModel` |
 | `ECL.Cli` | 无 GUI 管理、调试启动链路 | `CliApplication`, `ParsedCommandLine` |
 | `ECL.Tests` | 单元测试与临时数据目录 | `TestEnvironment`, `FakeProcessLauncher` |
@@ -139,6 +139,7 @@ services.AddEclMinecraft();
 ├─ java/                           # 启动器托管的 Java 运行时（java/<component> 或 <provider>-<component>）
 ├─ cache/
 │  ├─ cleanroom/                   # Cleanroom 安装器缓存
+│  ├─ curseforge/                  # CurseForge API 响应缓存（搜索 10 分钟、元数据 6 小时）
 │  ├─ java/                        # 第三方 Java 安装包缓存
 │  └─ forge/                       # Forge/NeoForge 安装器与解压的 data 文件
 └─ logs/                           # ecl-YYYYMMDD.log 与 install/ 安装失败诊断
@@ -203,6 +204,16 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - 实例选项只看 `instances/<id>/settings.json`；空值表示继承或未设置。
 - 每次读取返回“值 + 来源（Default/Global/Instance）”，UI 用来源标记帮助用户理解覆盖关系。
 
+### 7.7 CurseForge
+
+详见 [curseforge.md](curseforge.md)。概要：
+
+1. `CurseForgeApiKeyProvider` 依次读取 `ECL_CURSEFORGE_API_KEY` 与程序集元数据；都没有时功能明确失败，不影响启动器其余部分。
+2. `CurseForgeClient` 负责搜索、项目/文件解析、批量文件查询、下载 URL、限流重试与磁盘缓存；只接受 CurseForge CDN 下载地址。
+3. `CurseForgeService` 按实例游戏版本/加载器选择文件，递归安装必需依赖，写入 `minecraft/.ecl-curseforge.json`。
+4. `ModpackService` 对 CurseForge `.zip` 批量解析 `manifest.json` 的 `files[]`，下载、校验、解压 overrides，并写入 `.ecl-modpack.json`。
+5. WPF 与 CLI 只调用 `ICurseForgeService` / `ICurseForgeClient`，不直接拼 HTTP。
+
 ## 8. 横切关注点
 
 ### 错误模型
@@ -234,7 +245,9 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 
 - 更新包与安装包必须签名验证（规划中）。
 - 账户令牌计划使用 DPAPI 加密（规划中），当前仅实现离线账户。
-- 签名证书、私钥、OAuth 机密只存在于 private Core 仓库；public 仓库构建不读取它。
+- 签名证书、私钥、OAuth 机密与 CurseForge API key 只存在于 private Core 仓库；public 仓库构建不读取它。
+- CurseForge key 通过 `ECL_CURSEFORGE_API_KEY` 在构建时注入程序集元数据（发布版），或运行时从环境变量读取（开发/轮换）；普通 public 构建不含 key。日志与诊断包不输出 key。
+- CurseForge 下载只接受官方 CDN（`*.forgecdn.net` / `*.curseforge.com`），避免 API 响应被滥用为任意 URL。
 
 ### 测试
 
@@ -276,14 +289,15 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - 已实现原版安装、资源/库补全、natives 解压、EULA、Java 选择/兼容性检查/Mojang 运行时下载；Fabric/Forge/NeoForge/Cleanroom 安装已完成。
 - Fabric/Forge/NeoForge 生成的继承链已按 `inheritsFrom` 合并；Forge/NeoForge 的 processors 产物（client jar）位于共享 `libraries/`。
 - 已处理 library `rules`、natives classifier、日志配置路径；已使用版本 JSON 的 `arguments.jvm` 与加载器专属 `arguments.game` 参数（标准游戏参数仍由启动器生成）。
-- Java 自动下载目前仅支持 Mojang 运行时；Adoptium/Zulu/Liberica、32/64 位与内存匹配、JVM 预设未实现。
+- Java 自动下载支持 Mojang、Adoptium、Zulu 与 Liberica；32/64 位与内存提示、JVM 预设已接入。
 - 未实现 Microsoft OAuth、authlib-injector、令牌加密（v0.3 暂缓）。
 - 未实现更新器与签名验证；签名脚本已预留。
 - 未实现下载限速；并发、重试、续传、暂停/恢复已生效。
 - 主题支持深色/浅色即时切换；托盘、完整 i18n 热切换与更细的无障碍仍在路线图中。
 - 崩溃分析基于日志/崩溃报告文本与 Mod 元数据排序，不是完整的符号化解析；日志导出已做脱敏。
+- CurseForge 搜索、一键安装与整合包远程下载已完成；不做 Mod 更新检查、可选依赖选择，作者禁止第三方分发的文件无法下载。
 - 首次启动向导本阶段暂缓。
 
 ## 11. 下一步
 
-按 [roadmap.md](roadmap.md) 推进：v0.7 主题、崩溃分析、诊断包、下载控制与自定义 JVM 预设已完成；首次启动向导暂缓，下一步完成 v0.7 无障碍细节与 v1.0 分发/更新。
+按 [roadmap.md](roadmap.md) 推进：v0.7 主题、崩溃分析、诊断包、下载控制与自定义 JVM 预设已完成，CurseForge 搜索/安装与远程下载已补全；下一步完成 v0.7 无障碍细节、Mod 更新检查和 v1.0 分发/更新。

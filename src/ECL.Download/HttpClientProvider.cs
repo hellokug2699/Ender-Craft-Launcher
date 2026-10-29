@@ -49,7 +49,8 @@ public sealed class SettingsHttpClientProvider(
             Timeout = Timeout.InfiniteTimeSpan,
         };
 
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("EnderCraftLauncher/0.1");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(
+            $"EnderCraftLauncher/{typeof(SettingsHttpClientProvider).Assembly.GetName().Version?.ToString(3) ?? "0.1"} (+https://github.com/hellokug2699/Ender-Craft-Launcher)");
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
         return client;
     }

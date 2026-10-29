@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.Configuration;
+using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Diagnostics;
 using Ecl.Minecraft.Eula;
 using Ecl.Minecraft.Install;
@@ -31,6 +32,9 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IEulaService, FileEulaService>();
         services.AddSingleton<IModService, ModService>();
         services.AddSingleton<IModpackService, ModpackService>();
+        services.AddSingleton<ICurseForgeApiKeyProvider, CurseForgeApiKeyProvider>();
+        services.AddSingleton<ICurseForgeClient, CurseForgeClient>();
+        services.AddSingleton<ICurseForgeService, CurseForgeService>();
         services.AddSingleton<IContentPackService, ContentPackService>();
         services.AddSingleton<ICrashReportService, CrashReportService>();
         services.AddSingleton<IDiagnosticPackageService, DiagnosticPackageService>();
