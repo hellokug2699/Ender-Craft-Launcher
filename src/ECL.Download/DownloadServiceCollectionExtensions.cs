@@ -10,7 +10,9 @@ public static class DownloadServiceCollectionExtensions
     {
         services.AddSingleton<IHttpClientProvider, SettingsHttpClientProvider>();
         services.AddSingleton<DownloadSourceResolver>();
-        services.AddSingleton<IDownloadService, DownloadService>();
+        services.AddSingleton<DownloadService>();
+        services.AddSingleton<IDownloadService>(provider => provider.GetRequiredService<DownloadService>());
+        services.AddSingleton<IDownloadController>(provider => provider.GetRequiredService<DownloadService>());
         return services;
     }
 }

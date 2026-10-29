@@ -2,7 +2,12 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:Ecl.App.Localization">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <UserControl.InputBindings>
+        <KeyBinding Key="F5" Command="{Binding RefreshCommand}" />
+    </UserControl.InputBindings>
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  KeyboardNavigation.TabNavigation="Cycle">
         <StackPanel>
             <Grid Margin="0,0,0,20">
                 <Grid.ColumnDefinitions>
@@ -100,6 +105,19 @@
                                FontSize="11"
                                Margin="0,8,0,0"
                                TextWrapping="Wrap" />
+
+                    <StackPanel Orientation="Horizontal"
+                                Margin="0,8,0,0"
+                                Visibility="{Binding CanPauseDownload, Converter={StaticResource BoolToVisibility}}">
+                        <Button Content="{Binding DownloadPauseButtonText}"
+                                Command="{Binding ToggleDownloadPauseCommand}"
+                                Style="{StaticResource GhostButton}" />
+                        <TextBlock Text="{Binding DownloadSpeedText}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   Margin="12,0,0,0"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 
@@ -316,6 +334,19 @@
                                    Margin="0,8,0,0"
                                    TextWrapping="Wrap" />
 
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="0,8,0,0"
+                                    Visibility="{Binding CanPauseDownload, Converter={StaticResource BoolToVisibility}}">
+                            <Button Content="{Binding DownloadPauseButtonText}"
+                                    Command="{Binding ToggleDownloadPauseCommand}"
+                                    Style="{StaticResource GhostButton}" />
+                            <TextBlock Text="{Binding DownloadSpeedText}"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       FontSize="11"
+                                       Margin="12,0,0,0"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+
                         <TextBlock Text="{Binding LaunchStatus}"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    FontSize="11"
@@ -357,6 +388,36 @@
                         <TextBox Style="{StaticResource MonoTextBox}"
                                  Text="{Binding LaunchCommandPreview, Mode=OneWay}"
                                  Height="140" />
+
+                        <TextBlock Text="{loc:Loc Key=diagnostics.title}"
+                                   Style="{StaticResource LabelText}"
+                                   Margin="0,14,0,6" />
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="{loc:Loc Key=diagnostics.analyze}"
+                                    Command="{Binding AnalyzeCrashCommand}"
+                                    Style="{StaticResource GhostButton}" />
+                            <Button Content="{loc:Loc Key=diagnostics.export}"
+                                    Command="{Binding ExportDiagnosticsCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    Margin="8,0,0,0" />
+                        </StackPanel>
+                        <ProgressBar Height="3"
+                                     Margin="0,8,0,0"
+                                     IsIndeterminate="True"
+                                     Visibility="{Binding IsAnalyzingCrash, Converter={StaticResource BoolToVisibility}}" />
+                        <ScrollViewer MaxHeight="220"
+                                      VerticalScrollBarVisibility="Auto"
+                                      Margin="0,8,0,0">
+                            <TextBlock Text="{Binding CrashAnalysisText}"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       FontSize="11"
+                                       TextWrapping="Wrap" />
+                        </ScrollViewer>
+                        <TextBlock Text="{Binding DiagnosticStatus}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   Margin="0,6,0,0"
+                                   TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
             </Grid>

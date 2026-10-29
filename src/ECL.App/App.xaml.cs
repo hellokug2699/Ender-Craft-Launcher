@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Threading;
 using Ecl.App.Localization;
 using Ecl.App.Services;
+using Ecl.App.Theming;
 using Ecl.App.ViewModels;
 using Ecl.Auth;
 using Ecl.Configuration;
@@ -33,6 +34,8 @@ public partial class App : Application
         {
             var paths = AppPaths.Create();
             paths.EnsureCreated();
+
+            ThemeManager.Apply(SettingsBootstrap.ReadGlobalString(paths, "launcher.theme"));
 
             var language = SettingsBootstrap.ReadGlobalString(paths, "launcher.language")
                            ?? CultureInfo.CurrentUICulture.Name;

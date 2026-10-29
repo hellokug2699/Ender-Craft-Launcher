@@ -29,6 +29,8 @@ public sealed class LaunchContext
 
     public string JavaExecutable { get; set; } = "java";
 
+    public string? JvmPresetWarning { get; set; }
+
     public LaunchCommand? Command { get; set; }
 
     public int? ProcessId { get; set; }

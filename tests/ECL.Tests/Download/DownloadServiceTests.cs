@@ -163,6 +163,20 @@ public sealed class DownloadServiceTests
         Assert.Equal("fallback", await File.ReadAllTextAsync(destination));
     }
 
+    [Fact]
+    public void PauseAndResumeTogglesControllerState()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var service = CreateService(provider.GetRequiredService<ISettingsService>(), new StubHandler());
+
+        Assert.False(service.IsPaused);
+        service.Pause();
+        Assert.True(service.IsPaused);
+        service.Resume();
+        Assert.False(service.IsPaused);
+    }
+
     private static DownloadService CreateService(ISettingsService settings, StubHandler handler) =>
         new(new StubHttpClientProvider(handler), settings, NullLogger<DownloadService>.Instance);
 

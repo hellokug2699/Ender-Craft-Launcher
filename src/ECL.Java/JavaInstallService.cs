@@ -210,7 +210,11 @@ public sealed class JavaInstallService : IJavaInstallService
                     update.TotalFiles,
                     update.CompletedBytes,
                     update.TotalBytes,
-                    update.CurrentFile)));
+                    update.CurrentFile)
+                {
+                    BytesPerSecond = update.BytesPerSecond,
+                    IsPaused = update.IsPaused,
+                }));
 
             var result = await _downloads
                 .DownloadAsync(requests, forwarding, cancellationToken)
@@ -329,7 +333,11 @@ public sealed class JavaInstallService : IJavaInstallService
                     update.TotalFiles,
                     update.CompletedBytes,
                     update.TotalBytes,
-                    update.CurrentFile)));
+                    update.CurrentFile)
+                {
+                    BytesPerSecond = update.BytesPerSecond,
+                    IsPaused = update.IsPaused,
+                }));
 
             await _downloads.DownloadAsync([request], forwarding, cancellationToken).ConfigureAwait(false);
 

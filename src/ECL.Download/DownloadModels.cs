@@ -24,6 +24,20 @@ public sealed record DownloadProgress(
     string? CurrentFile)
 {
     public bool IsIndeterminate => TotalFiles == 0;
+
+    public double BytesPerSecond { get; init; }
+
+    public bool IsPaused { get; init; }
+}
+
+/// <summary>全局下载暂停/恢复控制，供 UI 与下载服务共享。</summary>
+public interface IDownloadController
+{
+    bool IsPaused { get; }
+
+    void Pause();
+
+    void Resume();
 }
 
 public sealed record DownloadBatchResult(int DownloadedFiles, int SkippedFiles, long Bytes);

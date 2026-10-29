@@ -11,7 +11,7 @@ ECL 是一个 Windows 优先的 Minecraft 启动器，目标能力对齐 HMCL / 
 
 同时保留自己的设计空间：配置项由元数据驱动、启动流程分阶段可观测、模块边界清晰、UI 只是薄壳。
 
-当前版本（v0.5）已完成原版安装、Java 管理与加载器安装：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查、Mojang Java 运行时自动下载、Fabric（含 Fabric API）、Forge/NeoForge（含安装器 processors）与 Cleanroom 安装、OptiFine 显式安装。v0.3 账户体系因 Microsoft OAuth 审核限制暂缓；Mod 与整合包管理是下一阶段。
+当前版本（v0.7）已完成原版安装、Java 管理与加载器安装：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查、Mojang/Adoptium/Zulu/Liberica Java 运行时下载、Fabric（含 Fabric API）、Forge/NeoForge（含安装器 processors）与 Cleanroom 安装、OptiFine 显式安装；v0.6 的 Mod/整合包/资源包管理与 v0.7 的主题切换、崩溃分析、脱敏诊断包、下载暂停/速度与自定义 JVM 预设也已接入。v0.3 账户体系因 Microsoft OAuth 审核限制暂缓；首次启动向导本阶段暂缓。
 
 ## 2. 设计原则
 
@@ -279,9 +279,11 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - Java 自动下载目前仅支持 Mojang 运行时；Adoptium/Zulu/Liberica、32/64 位与内存匹配、JVM 预设未实现。
 - 未实现 Microsoft OAuth、authlib-injector、令牌加密（v0.3 暂缓）。
 - 未实现更新器与签名验证；签名脚本已预留。
-- 未实现下载限速；并发、重试、续传已生效。
-- 主题固定深色；主题切换、托盘、崩溃分析在路线图中。
+- 未实现下载限速；并发、重试、续传、暂停/恢复已生效。
+- 主题支持深色/浅色即时切换；托盘、完整 i18n 热切换与更细的无障碍仍在路线图中。
+- 崩溃分析基于日志/崩溃报告文本与 Mod 元数据排序，不是完整的符号化解析；日志导出已做脱敏。
+- 首次启动向导本阶段暂缓。
 
 ## 11. 下一步
 
-按 [roadmap.md](roadmap.md) 推进：v0.3 账户体系暂缓，v0.5 加载器安装已完成；下一步进入 v0.6 Mod 与整合包管理。
+按 [roadmap.md](roadmap.md) 推进：v0.7 主题、崩溃分析、诊断包、下载控制与自定义 JVM 预设已完成；首次启动向导暂缓，下一步完成 v0.7 无障碍细节与 v1.0 分发/更新。

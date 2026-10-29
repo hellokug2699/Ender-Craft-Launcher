@@ -227,7 +227,10 @@
                                     SelectOptionTemplate="{StaticResource Option.Select}" />
     </UserControl.Resources>
 
-    <Grid>
+    <UserControl.InputBindings>
+        <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveCommand}" />
+    </UserControl.InputBindings>
+    <Grid KeyboardNavigation.TabNavigation="Cycle">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />

@@ -954,7 +954,11 @@ public sealed class VanillaInstallService : IVersionInstallService
                 download.TotalFiles,
                 download.CompletedBytes,
                 download.TotalBytes,
-                download.CurrentFile)));
+                download.CurrentFile)
+            {
+                BytesPerSecond = download.BytesPerSecond,
+                IsPaused = download.IsPaused,
+            }));
 
         return await _downloads
             .DownloadAsync(requests, forwarding, cancellationToken)
