@@ -70,7 +70,7 @@
 - [x] 启用/禁用、批量操作、导入、删除（WPF Mods 页面 + CLI）。
 - [x] CurseForge / Modrinth 整合包导入：Modrinth `.mrpack` 与 CurseForge `.zip` 均完整下载远程文件、校验并解压 overrides。
 - [x] CurseForge 搜索、文件列表与一键安装（WPF + CLI，递归安装必需依赖）。
-- [x] CurseForge API key 的环境变量/发布版注入、缓存、限流与错误映射。
+- [x] CurseForge 凭据经私有代理（客户端不含 key）、无 API 缓存、限流与错误映射。
 - [x] 整合包导出（Modrinth `.mrpack`，本地 overrides 形式）。
 - [~] 资源包、光影包管理：列表/导入/删除已完成（WPF + CLI）；`options.txt` 启用选择待接入。
 - [ ] Mod 依赖版本范围的严格语义匹配。

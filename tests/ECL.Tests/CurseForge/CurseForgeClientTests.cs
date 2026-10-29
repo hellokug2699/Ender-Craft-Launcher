@@ -32,11 +32,10 @@ public sealed class CurseForgeClientTests
         """;
 
     [Fact]
-    public async Task SearchSendsKeyAndParsesFilters()
+    public async Task SearchSendsRequestThroughProxyAndParsesFilters()
     {
-        using var environment = new TestEnvironment();
-        var handler = new StubHandler { Response = JsonResponse(SearchJson) };
-        using var client = CreateClient(environment, handler, "test-key");
+        var handler = new StubHandler { ResponseFactory = () => JsonResponse(SearchJson) };
+        using var client = CreateClient(handler);
 
         var result = await client.SearchModsAsync(new CurseForgeSearchQuery
         {
@@ -56,8 +55,10 @@ public sealed class CurseForgeClientTests
         Assert.Equal(9352806, Assert.Single(mod.LatestFilesIndexes).FileId);
 
         Assert.Equal(HttpMethod.Get, handler.LastMethod);
-        Assert.Equal("test-key", handler.LastApiKey);
-        Assert.Contains("gameId=432", handler.LastUri!.Query);
+        Assert.Null(handler.LastApiKey);
+        Assert.Equal(new Uri(CurseForgeClient.BaseAddress).Host, handler.LastUri!.Host);
+        Assert.Equal("/v1/mods/search", handler.LastUri.AbsolutePath);
+        Assert.Contains("gameId=432", handler.LastUri.Query);
         Assert.Contains("classId=6", handler.LastUri.Query);
         Assert.Contains("searchFilter=jei", handler.LastUri.Query);
         Assert.Contains("gameVersion=1.20.1", handler.LastUri.Query);
@@ -65,11 +66,10 @@ public sealed class CurseForgeClientTests
     }
 
     [Fact]
-    public async Task RepeatedSearchUsesDiskCache()
+    public async Task RepeatedSearchDoesNotUseDiskCache()
     {
-        using var environment = new TestEnvironment();
-        var handler = new StubHandler { Response = JsonResponse(SearchJson) };
-        using var client = CreateClient(environment, handler, "test-key");
+        var handler = new StubHandler { ResponseFactory = () => JsonResponse(SearchJson) };
+        using var client = CreateClient(handler);
         var query = new CurseForgeSearchQuery { SearchFilter = "jei" };
 
         var first = await client.SearchModsAsync(query);
@@ -77,32 +77,17 @@ public sealed class CurseForgeClientTests
 
         Assert.True(first.IsSuccess);
         Assert.True(second.IsSuccess);
-        Assert.Equal(1, handler.Calls);
-    }
-
-    [Fact]
-    public async Task MissingKeyFailsWithoutNetworkRequest()
-    {
-        using var environment = new TestEnvironment();
-        var handler = new StubHandler { Response = JsonResponse(SearchJson) };
-        using var client = CreateClient(environment, handler, null);
-
-        var result = await client.SearchModsAsync(new CurseForgeSearchQuery());
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal("curseforge.not_configured", result.Error?.Code);
-        Assert.Equal(0, handler.Calls);
+        Assert.Equal(2, handler.Calls);
     }
 
     [Fact]
     public async Task UnauthorizedResponseIsReported()
     {
-        using var environment = new TestEnvironment();
         var handler = new StubHandler
         {
-            Response = JsonResponse("""{"error":"invalid key"}""", HttpStatusCode.Unauthorized),
+            ResponseFactory = () => JsonResponse("""{"error":"invalid key"}""", HttpStatusCode.Unauthorized),
         };
-        using var client = CreateClient(environment, handler, "bad-key");
+        using var client = CreateClient(handler);
 
         var result = await client.SearchModsAsync(new CurseForgeSearchQuery());
 
@@ -114,10 +99,9 @@ public sealed class CurseForgeClientTests
     [Fact]
     public async Task BatchFilesUsesPostBodyAndParsesHashes()
     {
-        using var environment = new TestEnvironment();
         var handler = new StubHandler
         {
-            Response = JsonResponse("""
+            ResponseFactory = () => JsonResponse("""
                 {
                   "data": [
                     {
@@ -134,7 +118,7 @@ public sealed class CurseForgeClientTests
                 }
                 """),
         };
-        using var client = CreateClient(environment, handler, "test-key");
+        using var client = CreateClient(handler);
 
         var result = await client.GetFilesAsync([2, 3, 2]);
 
@@ -144,6 +128,7 @@ public sealed class CurseForgeClientTests
         Assert.Equal("ABCDEF", file.Sha1);
         Assert.Equal(3, Assert.Single(file.Dependencies).ModId);
         Assert.Equal(HttpMethod.Post, handler.LastMethod);
+        Assert.Null(handler.LastApiKey);
         Assert.Equal("/v1/mods/files", handler.LastUri!.AbsolutePath);
         Assert.Contains("\"fileIds\":[2,3]", handler.LastBody);
         Assert.Equal(1, handler.Calls);
@@ -152,9 +137,8 @@ public sealed class CurseForgeClientTests
     [Fact]
     public async Task DownloadUrlMayBeNull()
     {
-        using var environment = new TestEnvironment();
-        var handler = new StubHandler { Response = JsonResponse("""{"data":null}""") };
-        using var client = CreateClient(environment, handler, "test-key");
+        var handler = new StubHandler { ResponseFactory = () => JsonResponse("""{"data":null}""") };
+        using var client = CreateClient(handler);
 
         var result = await client.GetDownloadUrlAsync(1, 2);
 
@@ -162,14 +146,9 @@ public sealed class CurseForgeClientTests
         Assert.Null(result.Value);
     }
 
-    private static CurseForgeClient CreateClient(
-        TestEnvironment environment,
-        StubHandler handler,
-        string? apiKey) =>
+    private static CurseForgeClient CreateClient(StubHandler handler) =>
         new(
             new StubHttpClientProvider(handler),
-            environment.Paths,
-            new StaticKeyProvider(apiKey),
             NullLogger<CurseForgeClient>.Instance);
 
     private static HttpResponseMessage JsonResponse(
@@ -179,14 +158,6 @@ public sealed class CurseForgeClientTests
         {
             Content = new StringContent(json, Encoding.UTF8, "application/json"),
         };
-
-    private sealed class StaticKeyProvider(string? apiKey) : ICurseForgeApiKeyProvider
-    {
-        public CurseForgeStatus Status => new(
-            apiKey is null ? CurseForgeKeySource.None : CurseForgeKeySource.Environment);
-
-        public string? GetApiKey() => apiKey;
-    }
 
     private sealed class StubHttpClientProvider(HttpMessageHandler handler) : IHttpClientProvider
     {
@@ -208,7 +179,7 @@ public sealed class CurseForgeClientTests
 
         public string? LastBody { get; private set; }
 
-        public HttpResponseMessage Response { get; set; } = new(HttpStatusCode.NotFound);
+        public Func<HttpResponseMessage> ResponseFactory { get; set; } = () => new(HttpStatusCode.NotFound);
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
@@ -223,7 +194,7 @@ public sealed class CurseForgeClientTests
             LastBody = request.Content is null
                 ? null
                 : await request.Content.ReadAsStringAsync(cancellationToken);
-            return Response;
+            return ResponseFactory();
         }
     }
 }

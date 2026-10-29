@@ -60,14 +60,6 @@ public sealed class CurseForgeService(
             return Result<CurseForgeInstallReport>.Fail("curseforge.invalid_mod", "请提供 CurseForge 项目 ID、slug 或链接。");
         }
 
-        if (!Status.IsConfigured)
-        {
-            return Result<CurseForgeInstallReport>.Fail(
-                "curseforge.not_configured",
-                "尚未配置 CurseForge API key。",
-                $"设置环境变量 {CurseForgeApiKeyProvider.EnvironmentVariableName}，或使用注入了 key 的发布版。");
-        }
-
         var instance = await instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
         if (instance is null)
         {

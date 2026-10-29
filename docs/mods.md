@@ -43,7 +43,7 @@ WPF 的 **Mods** 页面提供同样的列表、启停、批量、导入、删除
 ### 导入
 
 - **Modrinth `.mrpack`**：读取 `modrinth.index.json`，校验 `dependencies.minecraft` 与实例游戏版本、加载器是否匹配；按 `files[]` 的 `path`、`hashes.sha1`、`downloads`、`fileSize` 下载并校验；解压 `overrides/` 与 `client-overrides/`。`env.client = unsupported` 的文件会跳过。
-- **CurseForge `.zip`**：读取 `manifest.json`，校验游戏版本与加载器（`forge-*` / `fabric-*` / `neoforge-*` / `cleanroom-*`），通过 `POST /v1/mods/files` 批量解析 `files[].fileID` 并下载到 `mods/`，校验 SHA-1 与大小；`required=false` 的文件跳过并警告；最后解压 `overrides`（支持自定义目录名）与 `client-overrides/`。未配置 API key 且包内包含远程文件时直接失败，不会导入残缺包。详见 [curseforge.md](curseforge.md)。
+- **CurseForge `.zip`**：读取 `manifest.json`，校验游戏版本与加载器（`forge-*` / `fabric-*` / `neoforge-*` / `cleanroom-*`），通过 `POST /v1/mods/files`（经 ECL 代理，客户端不含 key）批量解析 `files[].fileID` 并下载到 `mods/`，校验 SHA-1 与大小；`required=false` 的文件跳过并警告；最后解压 `overrides`（支持自定义目录名）与 `client-overrides/`。代理不可用时返回真实网络/HTTP 错误，不会导入残缺包；只有 overrides 的旧式包仍可导入。详见 [curseforge.md](curseforge.md)。
 - 所有路径都会做目录穿越检查，只允许写入实例 `minecraft/` 目录。
 - 导入完成后写入 `minecraft/.ecl-modpack.json` 记录包名/版本/来源（`modrinth` 或 `curseforge`）。
 

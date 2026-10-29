@@ -91,7 +91,7 @@ internal static class Program
           modpack import <实例ID> <整合包> 导入 Modrinth .mrpack 或 CurseForge .zip
           modpack export <实例ID> <输出>  导出为 Modrinth .mrpack
           curseforge status [--check] [--json]
-                                          查看 CurseForge API 配置，--check 验证连通性
+                                          查看 CurseForge 代理状态，--check 验证连通性
           curseforge search <关键词> [--game-version <版本>] [--loader fabric|forge|neoforge|quilt]
                            [--page-size <1-50>] [--json]
                                           搜索 CurseForge Mod

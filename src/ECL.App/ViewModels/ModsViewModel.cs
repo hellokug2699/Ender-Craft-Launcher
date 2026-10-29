@@ -55,9 +55,6 @@ public sealed partial class ModsViewModel : ObservableObject
     private string _curseForgeStatusText = string.Empty;
 
     [ObservableProperty]
-    private bool _curseForgeConfigured;
-
-    [ObservableProperty]
     private string _statusMessage = string.Empty;
 
     [ObservableProperty]
@@ -85,7 +82,6 @@ public sealed partial class ModsViewModel : ObservableObject
         _curseForge = curseForge;
         _dialogs = dialogs;
         _localizer = localizer;
-        _curseForgeConfigured = curseForge.Status.IsConfigured;
 
         PackTypes.Add(new PackTypeChoice(ContentPackKind.ResourcePack, localizer.Get("mods.resourcePacks")));
         PackTypes.Add(new PackTypeChoice(ContentPackKind.ShaderPack, localizer.Get("mods.shaderPacks")));
@@ -388,12 +384,6 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task SearchCurseForgeAsync()
     {
-        if (!_curseForge.Status.IsConfigured)
-        {
-            StatusMessage = _localizer.Get("mods.curseforge.notConfigured");
-            return;
-        }
-
         if (SelectedInstance is null)
         {
             StatusMessage = _localizer.Get("mods.curseforge.selectInstance");
@@ -522,28 +512,18 @@ public sealed partial class ModsViewModel : ObservableObject
 
     private void UpdateCurseForgeStatus()
     {
-        if (!_curseForge.Status.IsConfigured)
-        {
-            CurseForgeStatusText = _localizer.Get("mods.curseforge.notConfigured");
-            return;
-        }
-
         if (SelectedInstance is null)
         {
             CurseForgeStatusText = _localizer.Get("mods.curseforge.selectInstance");
             return;
         }
 
-        var source = _localizer.Get(
-            _curseForge.Status.Source == CurseForgeKeySource.Environment
-                ? "mods.curseforge.source.environment"
-                : "mods.curseforge.source.embedded");
         CurseForgeStatusText = _localizer.Get(
             "mods.curseforge.ready",
             SelectedInstance.Name,
             SelectedInstance.GameVersion,
             SelectedInstance.Loader,
-            source);
+            _localizer.Get("mods.curseforge.source.proxy"));
     }
 
     [RelayCommand]

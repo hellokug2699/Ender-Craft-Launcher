@@ -2,57 +2,37 @@
 
 v0.7 补全了 CurseForge for Minecraft API 的接入：搜索、文件解析、一键安装、必需依赖安装，以及 CurseForge 整合包中远程 `files[]` 的下载。实现位于 `ECL.Minecraft/CurseForge/`，WPF 与 CLI 共用同一套服务。
 
-## 1. API key 放在哪里
+## 1. 请求路径与 API key
 
-CurseForge 的 key 是**私有凭据**，不进入 public 仓库：
+ECL **不持有 CurseForge API key**。客户端只把请求发往 ECL 自建的 CurseForge 代理，由代理注入 key 后转发到官方 API：
 
-| 位置 | 用途 |
-| --- | --- |
-| `Ender-Craft-Launcher-Core/credentials/curseforge.json` | 私库中的唯一持久副本 |
-| 环境变量 `ECL_CURSEFORGE_API_KEY` | 本地开发、CI、发布构建时注入 |
-| 程序集元数据 `Ecl.CurseForge.ApiKey` | 构建时由环境变量写入发布版，供最终用户使用 |
-
-读取优先级：
-
-1. 进程环境变量 `ECL_CURSEFORGE_API_KEY`；
-2. `ECL.Minecraft.dll` 中的构建时元数据；
-3. 都没有 → `CurseForge` 功能明确返回 `curseforge.not_configured`，UI 显示配置提示，但启动器其他功能不受影响。
-
-public 仓库的普通构建（不设置环境变量）**不包含任何 key**，仍然可以完整构建和测试：
-
-```powershell
-dotnet restore ECL.sln
-dotnet build ECL.sln -c Release
-dotnet test tests/ECL.Tests/ECL.Tests.csproj -c Release
+```text
+ECL ── GET /v1/... ──▶ ECL 代理 ── x-api-key ──▶ https://api.curseforge.com/v1/...
 ```
 
-发布版构建：
+- 代理的源码、路由、部署与凭据材料全部在 private Core 仓库，**不在本仓库**；本仓库只包含客户端与“经代理访问”的说明。
+- 代理地址由 `CurseForgeClient` 中的内置常量决定；客户端路径与 CurseForge 官方 API 一致（`/v1/...`）。
+- 实际 `.jar` / `.zip` 下载不经过代理，仍由 ECL 直接访问 `edge.forgecdn.net` 等官方 CDN。
 
-```powershell
-# 在 public 仓库根目录执行；key 从同级私有仓库读取，只注入当前进程
-$env:ECL_CURSEFORGE_API_KEY = (Get-Content ..\Ender-Craft-Launcher-Core\credentials\curseforge.json -Raw -Encoding UTF8 | ConvertFrom-Json).apiKey
-dotnet publish src/ECL.App/ECL.App.csproj -c Release -r win-x64 --self-contained false -o artifacts/publish/win-x64
-```
+关键约束：
 
-注意：
-
-- 环境变量只影响当前 PowerShell 进程，不会写入用户环境变量。
-- 改变 key 后建议先 `dotnet clean` 再构建，避免旧的程序集元数据残留。
-- key 一旦嵌入客户端二进制，就无法真正保密；这是第三方启动器使用 CurseForge API 的固有限制。泄露或滥用时按 [repository-policy.md](repository-policy.md) 轮换。
-- 日志、CLI 输出、诊断包都不会输出 key；只显示“环境变量 / 发布版内置 / 未配置”。
-- 不要在 public 仓库的 `.env`、脚本、测试或 CI 日志中写入 key。`.gitignore` 已忽略 `secrets/`、`.env` 等路径作为纵深防御。
+- ECL 的源码、构建、发布产物、配置文件、日志与诊断包都不包含 key。
+- 构建与运行都不读取任何 API key：没有环境变量、没有程序集元数据，也没有“从私库注入构建”的步骤。
+- 客户端不存在“未配置 key”的状态；`ICurseForgeClient.Status.Source` 固定为 `Proxy`。
+- 更换 key 只需要在代理服务端更新，不需要重新发布启动器。
 
 ## 2. 搜索与文件解析
 
 `ICurseForgeClient` 封装 REST 调用，统一处理：
 
-- `x-api-key` 认证、`User-Agent`、30 秒单请求超时；
-- HTTP 401/403 → `curseforge.unauthorized`；
+- 请求发往代理，不携带 `x-api-key`、`Authorization` 或 Cookie，认证完全由代理负责；
+- 30 秒单请求超时；
+- HTTP 401/403 → `curseforge.unauthorized`（通常是代理侧 key 无效或没有权限）；
 - 404 → `curseforge.not_found`；
-- 429 → 读取 `Retry-After`，单请求最多尝试 3 次；
+- 429 → 读取 `Retry-After`，否则指数退避，单请求最多尝试 3 次；
 - 5xx / 网络错误 → 指数退避重试；
 - 响应 JSON 解析失败 → `curseforge.invalid_response`；
-- 磁盘缓存（`<data>/cache/curseforge/`）：搜索 10 分钟，项目/文件元数据 6 小时。
+- 不做磁盘缓存：CurseForge 3rd Party API 条款对 API 数据的缓存有限制。
 
 搜索固定使用 `gameId=432`、`classId=6`（Mod），默认按热度排序，`pageSize` 上限 50（API 限制）。按实例过滤时同时传 `gameVersion` 与 `modLoaderType`：
 
@@ -96,12 +76,12 @@ dotnet publish src/ECL.App/ECL.App.csproj -c Release -r win-x64 --self-contained
 6. 解压 `overrides`（manifest 可自定义目录名）与 `client-overrides/`，所有路径做目录穿越检查；
 7. 写入 `.ecl-modpack.json`，记录 `sourceKind`、下载数与跳过数。
 
-如果包内包含远程文件但未配置 key，导入会直接失败并返回 `curseforge.not_configured`，不会静默导入一个残缺整合包；只有 overrides 的旧式包仍可导入。
+客户端不检查“有没有配置 API key”。代理不可用时，导入会返回真实的网络/HTTP 错误（例如 `curseforge.network_error`、`curseforge.unauthorized`、`curseforge.http_error`），而不是伪造一个配置错误；只有 overrides 的旧式包仍可导入。
 
 ## 5. CLI
 
 ```powershell
-# 查看配置与连通性
+# 查看代理端点与连通性
 ecl curseforge status --check
 
 # 搜索（按实例版本/加载器手动过滤）
@@ -120,7 +100,7 @@ ecl curseforge install survival-a1b2c3 238222 --file-id 9352806 --no-dependencie
 ecl modpack import survival-a1b2c3 "C:\packs\example.zip"
 ```
 
-所有命令支持 `--json`，错误码稳定，便于脚本判断。
+`curseforge status` 显示客户端内置的代理端点；`--json` 输出包含 `configured`、`source`（固定为 `proxy`）、`endpoint`、`checkSucceeded` 与 `checkError`。所有命令支持 `--json`，错误码稳定，便于脚本判断。
 
 ## 6. WPF
 
@@ -130,11 +110,14 @@ ecl modpack import survival-a1b2c3 "C:\packs\example.zip"
 - 显示名称、简介、项目 ID、下载量、更新时间；
 - “安装所选 Mod”下载并刷新 Mod 列表；
 - “打开页面”在浏览器打开 CurseForge 项目页；
-- 未配置 key 或原版实例时给出明确提示，不会把失败伪装成成功。
+- 状态栏显示“通过 ECL 代理访问”，不再出现配置 API key 的提示；
+- 原版实例仍会明确提示需要带加载器的实例。
 
 ## 7. 使用的 API
 
-| 端点 | 用途 |
+客户端只使用 CurseForge 官方 v1 接口（代理原样转发，不做路径改写）：
+
+| 路径 | 用途 |
 | --- | --- |
 | `GET /v1/mods/search` | 搜索项目、slug 精确查询 |
 | `GET /v1/mods/{modId}` | 项目详情与 `latestFilesIndexes` |
@@ -147,11 +130,11 @@ ecl modpack import survival-a1b2c3 "C:\packs\example.zip"
 
 - 不做 Mod 更新检查、依赖版本范围严格匹配、可选依赖选择界面。
 - 作者禁止第三方分发（`downloadUrl` 为空且端点无返回值）的文件无法下载；整合包会跳过并警告。
-- CurseForge 的 key 会随发布版二进制分发，无法做到真正保密。
-- `curseforge.unauthorized`：key 无效或没有该游戏权限。
+- `curseforge.unauthorized`：代理侧 key 无效、过期或没有该游戏权限；轮换代理的 key 后重试。
+- `curseforge.not_found`：项目/文件不存在。
 - `curseforge.rate_limited`：等待后重试；批量端点已把整合包导入的请求数压到最低。
 - `curseforge.no_compatible_file`：项目没有对应游戏版本/加载器的文件。
 - `curseforge.distribution_restricted`：作者未授权第三方下载。
-- 如果 CurseForge 页面显示已更新但客户端仍拿到旧文件，删除 `<data>/cache/curseforge/` 后重试。
+- `curseforge.network_error` / HTTP 5xx：先用 `curseforge status --check` 确认代理连通性，再检查本机网络与代理服务状态。
 
-测试不访问真实 API：`CurseForgeClientTests` 使用自定义 `HttpMessageHandler` 验证请求头、查询参数、缓存与错误映射；`CurseForgeServiceTests` 与 `ModpackServiceTests` 使用假客户端和假下载服务验证安装、依赖与整合包流程。
+测试不访问真实 API：`CurseForgeClientTests` 使用自定义 `HttpMessageHandler` 验证请求走代理主机（断言取自客户端常量）、**请求头中没有 `x-api-key`**、查询参数、无缓存与错误映射；`CurseForgeServiceTests` 与 `ModpackServiceTests` 使用假客户端和假下载服务验证安装、依赖与整合包流程。

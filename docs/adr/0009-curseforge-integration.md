@@ -1,7 +1,10 @@
 # ADR 0009：CurseForge API 集成与凭据注入
 
-- 状态：已采纳
+- 状态：已被 [ADR 0010](0010-curseforge-private-proxy.md) 取代
 - 日期：2026-10-29
+
+> 2026-10-30 更新：CurseForge 已改为经私有代理转发，客户端不再持有 API key。
+> 本 ADR 保留作为历史记录，当前架构以 ADR 0010 为准。
 
 ## 背景
 

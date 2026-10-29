@@ -253,8 +253,8 @@ ecl settings list --json
 
 - 密码、令牌、证书口令**不应**作为普通配置项存储。
 - 若未来需要存储令牌，使用单独的加密存储（DPAPI），并通过 `IsSecret` 防止日志泄漏。
-- CurseForge API key 不进入 `global.json`，而是从 `ECL_CURSEFORGE_API_KEY` 环境变量或构建时程序集元数据读取；详见 [curseforge.md](curseforge.md)。
-- 代码签名证书、私钥、OAuth 机密与 CurseForge key 只放 private Core 仓库，详见 [repository-policy.md](repository-policy.md)。
+- CurseForge 不读取任何本地 API key 设置，也不存在构建时注入：请求固定经 ECL 自建的代理转发，key 只存在于代理服务端（部署材料在 private Core 仓库）；详见 [curseforge.md](curseforge.md)。
+- 代码签名证书、私钥与 OAuth 机密只放 private Core 仓库，详见 [repository-policy.md](repository-policy.md)。
 
 ## 8. 设计取舍
 

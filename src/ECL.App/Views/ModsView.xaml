@@ -139,13 +139,11 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBox Text="{Binding CurseForgeQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 IsEnabled="{Binding CurseForgeConfigured}"
                                  ToolTip="{loc:Loc Key=mods.curseforge.searchPlaceholder}" />
                         <Button Grid.Column="2"
                                 Content="{loc:Loc Key=mods.curseforge.search}"
                                 Command="{Binding SearchCurseForgeCommand}"
-                                Style="{StaticResource PrimaryButton}"
-                                IsEnabled="{Binding CurseForgeConfigured}" />
+                                Style="{StaticResource PrimaryButton}" />
                         <Button Grid.Column="4"
                                 Content="{loc:Loc Key=mods.curseforge.open}"
                                 Command="{Binding OpenCurseForgePageCommand}"

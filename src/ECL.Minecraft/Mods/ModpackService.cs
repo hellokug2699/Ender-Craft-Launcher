@@ -381,14 +381,6 @@ public sealed class ModpackService(
         }
 
         var manifestFiles = ReadCurseForgeFiles(root);
-        if (manifestFiles.Count > 0 && !curseForge.Status.IsConfigured)
-        {
-            return Result<ModpackImportReport>.Fail(
-                "curseforge.not_configured",
-                "该 CurseForge 整合包包含远程文件，但尚未配置 API key。",
-                $"设置环境变量 {CurseForgeApiKeyProvider.EnvironmentVariableName}，或使用注入了 key 的发布版。");
-        }
-
         var requests = new List<DownloadRequest>();
         var skipped = 0;
         var downloaded = 0;

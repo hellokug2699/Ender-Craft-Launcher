@@ -19,13 +19,4 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
-  <!--
-    CurseForge API key 只在构建环境显式提供时写入程序集元数据。
-    默认的 public 构建（没有 ECL_CURSEFORGE_API_KEY）不包含任何密钥；
-    release 构建从私有 Core 仓库读取后注入，详见 docs/curseforge.md。
-  -->
-  <ItemGroup Condition="'$(ECL_CURSEFORGE_API_KEY)' != ''">
-    <AssemblyMetadata Include="Ecl.CurseForge.ApiKey" Value="$(ECL_CURSEFORGE_API_KEY)" />
-  </ItemGroup>
-
 </Project>

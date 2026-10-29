@@ -145,7 +145,7 @@ public sealed class CurseForgeServiceTests
     }
 
     private static FakeCurseForgeClient CreateClient() =>
-        new() { Status = new CurseForgeStatus(CurseForgeKeySource.Embedded) };
+        new() { Status = new CurseForgeStatus(CurseForgeKeySource.Proxy) };
 
     private static CurseForgeMod CreateMod(int id, string slug, string name) => new()
     {

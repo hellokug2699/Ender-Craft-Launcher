@@ -8,7 +8,7 @@ namespace Ecl.Tests.CurseForge;
 
 internal sealed class FakeCurseForgeClient : ICurseForgeClient
 {
-    public CurseForgeStatus Status { get; set; } = new(CurseForgeKeySource.Embedded);
+    public CurseForgeStatus Status { get; set; } = new(CurseForgeKeySource.Proxy);
 
     public Dictionary<int, CurseForgeMod> Mods { get; } = [];
 

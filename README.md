@@ -111,9 +111,9 @@ build/                 构建、打包、签名脚本
 ## 仓库拆分
 
 - 本仓库 `Ender-Craft-Launcher`（public）：全部源码、文档、构建脚本与公开配置，GPL-3.0-or-later。
-- `Ender-Craft-Launcher-Core`（private）：只放代码签名证书、私钥、OAuth/上传凭据、CurseForge API key 等极私密材料。
+- `Ender-Craft-Launcher-Core`（private）：只放代码签名证书、私钥、OAuth/上传凭据等极私密材料。
 
-**本仓库的构建不依赖 Core 仓库。** 签名与 CurseForge key 通过环境变量从 Core 仓库注入；没有 key 时构建、测试与其余功能不受影响，详见 [docs/repository-policy.md](docs/repository-policy.md) 与 [docs/curseforge.md](docs/curseforge.md)。
+**本仓库的构建不依赖 Core 仓库。** 签名材料通过环境变量从 Core 仓库注入；CurseForge 请求经私有代理转发，key 只保存在代理服务端，构建与客户端都不读取，详见 [docs/repository-policy.md](docs/repository-policy.md) 与 [docs/curseforge.md](docs/curseforge.md)。
 
 ## 文档
 

@@ -147,13 +147,24 @@ public sealed class ModpackServiceTests
     }
 
     [Fact]
-    public async Task RejectsCurseForgeRemoteFilesWithoutApiKey()
+    public async Task ImportsCurseForgeRemoteFilesWithoutClientSideKeyGate()
     {
         using var environment = new TestEnvironment();
         var downloads = new RecordingDownloadService();
         var curseForge = new FakeCurseForgeClient
         {
+            // API key 由代理持有；即使状态对象报告未配置，导入也不应在客户端被拦截。
             Status = new CurseForgeStatus(CurseForgeKeySource.None),
+        };
+        curseForge.Files[2] = new CurseForgeFile
+        {
+            Id = 2,
+            ModId = 1,
+            FileName = "demo.jar",
+            DownloadUrl = "https://edge.forgecdn.net/files/0/2/demo.jar",
+            FileLength = 4,
+            GameVersions = ["1.20.1", "Forge"],
+            Hashes = [new CurseForgeFileHash { Algo = 1, Value = "0000000000000000000000000000000000000000" }],
         };
         await using var provider = environment.CreateServices(services =>
         {
@@ -169,10 +180,9 @@ public sealed class ModpackServiceTests
             var result = await provider.GetRequiredService<IModpackService>()
                 .ImportAsync(instance.Id, archive);
 
-            Assert.False(result.IsSuccess);
-            Assert.Equal("curseforge.not_configured", result.Error?.Code);
-            Assert.Empty(downloads.Requests);
-            Assert.Equal(0, curseForge.GetFilesCalls);
+            Assert.True(result.IsSuccess, result.Error?.ToString());
+            Assert.Single(downloads.Requests);
+            Assert.Equal(1, curseForge.GetFilesCalls);
         }
         finally
         {
@@ -341,7 +351,7 @@ public sealed class ModpackServiceTests
     }
 
     private static FakeCurseForgeClient CreateConfiguredClient() =>
-        new() { Status = new CurseForgeStatus(CurseForgeKeySource.Embedded) };
+        new() { Status = new CurseForgeStatus(CurseForgeKeySource.Proxy) };
 
     private static string CreateCurseForgePack(string filesJson = "[]")
     {

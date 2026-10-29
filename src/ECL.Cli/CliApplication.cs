@@ -1106,8 +1106,9 @@ internal sealed class CliApplication
     private async Task<int> CurseForgeStatusAsync(ICurseForgeService service)
     {
         var status = service.Status;
+        var endpoint = CurseForgeClient.BaseAddress + CurseForgeClient.ApiVersionPath;
         var checkResult = (Result<CurseForgeSearchResult>?)null;
-        if (_commandLine.HasFlag("check") && status.IsConfigured)
+        if (_commandLine.HasFlag("check"))
         {
             checkResult = await service
                 .SearchAsync(new CurseForgeSearchQuery { PageSize = 1 })
@@ -1120,22 +1121,16 @@ internal sealed class CliApplication
             {
                 configured = status.IsConfigured,
                 source = status.Source.ToString().ToLowerInvariant(),
+                endpoint,
                 checkedApi = checkResult.HasValue,
                 checkSucceeded = checkResult?.IsSuccess,
                 checkError = checkResult?.Error?.Message,
             }, EclJson.Indented));
-            return status.IsConfigured && (checkResult is not { } check || check.IsSuccess) ? 0 : 1;
+            return checkResult is not { } check || check.IsSuccess ? 0 : 1;
         }
 
-        Console.WriteLine($"CurseForge API：{(status.IsConfigured ? "已配置" : "未配置")}");
-        Console.WriteLine($"  来源：{DescribeCurseForgeSource(status.Source)}");
-        if (!status.IsConfigured)
-        {
-            Console.WriteLine(
-                $"  设置环境变量 {CurseForgeApiKeyProvider.EnvironmentVariableName}，或使用注入了 key 的发布版。");
-            return 1;
-        }
-
+        Console.WriteLine("CurseForge API：通过 ECL 代理访问");
+        Console.WriteLine($"  端点：{endpoint}");
         if (checkResult is null)
         {
             return 0;
@@ -1364,13 +1359,6 @@ internal sealed class CliApplication
 
     private int GetIntOption(string name, int fallback) =>
         int.TryParse(_commandLine.GetValue(name), out var value) ? value : fallback;
-
-    private static string DescribeCurseForgeSource(CurseForgeKeySource source) => source switch
-    {
-        CurseForgeKeySource.Environment => $"环境变量 {CurseForgeApiKeyProvider.EnvironmentVariableName}",
-        CurseForgeKeySource.Embedded => "构建时注入的程序集元数据",
-        _ => "未配置",
-    };
 
     private static string FormatCurseForgeReleaseType(int releaseType) => releaseType switch
     {

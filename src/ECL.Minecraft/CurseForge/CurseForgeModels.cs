@@ -39,9 +39,11 @@ public enum CurseForgeSortField
 
 public enum CurseForgeKeySource
 {
+    /// <summary>未知状态；只用于测试替身模拟“客户端不认为已就绪”。</summary>
     None,
-    Environment,
-    Embedded,
+
+    /// <summary>API key 由 ECL 代理服务端注入，客户端不持有 key。</summary>
+    Proxy,
 }
 
 public sealed record CurseForgeStatus(CurseForgeKeySource Source)

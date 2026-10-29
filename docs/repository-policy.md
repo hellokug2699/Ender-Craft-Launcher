@@ -5,12 +5,13 @@ ECL 使用两个仓库：
 | 仓库 | 可见性 | 内容 |
 | --- | --- | --- |
 | `Ender-Craft-Launcher` | public | 全部源码、文档、构建脚本、公开配置、公开密钥 |
-| `Ender-Craft-Launcher-Core` | private | 仅存放极私密材料：签名证书、私钥、OAuth/上传凭据、CurseForge API key |
+| `Ender-Craft-Launcher-Core` | private | 仅存放极私密材料：签名证书、私钥、OAuth/上传凭据、CurseForge 代理与其凭据 |
 
 ## 1. 判断规则
 
 **如果一个文件是构建、运行、测试、发布（不含签名）所必需的，它属于 public。**  
 **只有当文件泄露会造成安全风险，且不属于产品源码时，才放进 Core。**
+公开后会被无鉴权调用、消耗第三方配额的基础设施（例如 CurseForge 代理）同样属于 Core。
 
 ### public 仓库允许
 
@@ -18,6 +19,7 @@ ECL 使用两个仓库：
 - 架构文档、ADR、路线图、构建脚本。
 - 更新公钥（用于客户端验证签名，公钥本身不保密）。
 - 本地化文件。
+- “CurseForge 请求经自建代理转发”的说明，以及客户端中必须存在的代理域名常量。
 - CI 配置（不含任何密钥值）。
 
 ### Core 仓库允许
@@ -25,7 +27,7 @@ ECL 使用两个仓库：
 - Windows 代码签名证书（`.pfx`）及其口令。
 - 更新包签名私钥、安装包签名私钥。
 - OAuth 客户端机密（若未来使用需要机密的流程）。
-- CurseForge API key 等第三方服务凭据。
+- **CurseForge 代理服务的源码、路由与部署配置**，以及用于配置其 Secret 的 API key（仅作为部署来源，不进入构建）。
 - 崩溃上传、遥测、私有 API 的访问令牌。
 - 发布自动化使用的凭据、私有基础设施配置。
 - 尚未公开的私密合作/分发材料。
@@ -34,6 +36,7 @@ ECL 使用两个仓库：
 
 - 在 public 仓库提交 `.pfx`、`.p12`、`.snk`、私钥、令牌、密码。
 - 在 public 仓库的提交历史、Issue、PR、Actions 日志中出现秘密。
+- 在 public 仓库出现代理地址、路由、部署配置、Secret 名称或部署步骤。
 - 在 Core 仓库放业务代码、文档、截图、构建产物、可公开的配置。
 - 让 public 仓库的构建、测试、CI 依赖 Core 仓库或私有子模块。
 
@@ -57,16 +60,16 @@ $env:ECL_SIGNING_PASSWORD = "<从安全存储读取>"
 
 证书文件放在 Core 仓库的本地检出目录中，通过安全存储或 CI Secret 提供口令；public 仓库不保存任何证书。
 
-### 第三方 API key（CurseForge）
+### CurseForge 代理与 API key
 
-CurseForge API key 存放在 Core 仓库的 `credentials/curseforge.json`。public 仓库只包含读取逻辑：
+CurseForge 请求经私有代理转发，代理与 key 都不进入 public 仓库：
 
-- 普通构建不设置 `ECL_CURSEFORGE_API_KEY`，产物不含 key，功能显示“未配置”。
-- 发布构建从 Core 或 CI Secret 注入 `ECL_CURSEFORGE_API_KEY`，构建生成 `Ecl.CurseForge.ApiKey` 程序集元数据。
-- 运行时环境变量优先于构建时元数据，便于开发与轮换。
-- 任何情况下都不得把 key 写入 public 仓库文件、命令行历史、日志或诊断包。
+- ECL 客户端、构建、发布产物与配置文件都不读取、不发送也不包含 key。
+- 代理的源码、路由、部署配置与 Secret 名称只存在于 private Core 仓库；public 仓库不含任何代理工程文件。
+- Core 仓库的 `credentials/curseforge.json` 仅作为部署时的配置来源，运行时不依赖它。
+- 任何情况下都不得把 key 或代理地址、路由写入 public 仓库文件、CI 日志、Issue 或诊断包。
 
-详见 [curseforge.md](curseforge.md)。
+泄露或滥用时的轮换流程：在 CurseForge 后台生成新 key → 更新代理的 Secret → 重新部署。客户端无需重新发布。代理侧必须配置限流，详见 [curseforge.md](curseforge.md)。
 
 ## 3. CI 与发布
 

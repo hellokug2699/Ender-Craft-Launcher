@@ -139,7 +139,6 @@ services.AddEclMinecraft();
 ├─ java/                           # 启动器托管的 Java 运行时（java/<component> 或 <provider>-<component>）
 ├─ cache/
 │  ├─ cleanroom/                   # Cleanroom 安装器缓存
-│  ├─ curseforge/                  # CurseForge API 响应缓存（搜索 10 分钟、元数据 6 小时）
 │  ├─ java/                        # 第三方 Java 安装包缓存
 │  └─ forge/                       # Forge/NeoForge 安装器与解压的 data 文件
 └─ logs/                           # ecl-YYYYMMDD.log 与 install/ 安装失败诊断
@@ -208,11 +207,12 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 
 详见 [curseforge.md](curseforge.md)。概要：
 
-1. `CurseForgeApiKeyProvider` 依次读取 `ECL_CURSEFORGE_API_KEY` 与程序集元数据；都没有时功能明确失败，不影响启动器其余部分。
-2. `CurseForgeClient` 负责搜索、项目/文件解析、批量文件查询、下载 URL、限流重试与磁盘缓存；只接受 CurseForge CDN 下载地址。
-3. `CurseForgeService` 按实例游戏版本/加载器选择文件，递归安装必需依赖，写入 `minecraft/.ecl-curseforge.json`。
-4. `ModpackService` 对 CurseForge `.zip` 批量解析 `manifest.json` 的 `files[]`，下载、校验、解压 overrides，并写入 `.ecl-modpack.json`。
-5. WPF 与 CLI 只调用 `ICurseForgeService` / `ICurseForgeClient`，不直接拼 HTTP。
+1. 所有 CurseForge API 请求都发往 ECL 自建的代理（客户端路径与官方 API 一致，`/v1/...`），由代理注入 `x-api-key` 后转发到 `api.curseforge.com`。代理的源码、路由与部署材料不在本仓库。ECL 不读取、不发送也不嵌入 key，构建过程不注入任何凭据。
+2. 代理只转发 API；`edge.forgecdn.net` 等实际文件下载仍由 ECL 直接访问。
+3. `CurseForgeClient` 负责搜索、项目/文件解析、批量文件查询、下载 URL、限流重试；不做磁盘缓存；只接受 CurseForge CDN 下载地址。
+4. `CurseForgeService` 按实例游戏版本/加载器选择文件，递归安装必需依赖，写入 `minecraft/.ecl-curseforge.json`。
+5. `ModpackService` 对 CurseForge `.zip` 批量解析 `manifest.json` 的 `files[]`，下载、校验、解压 overrides，并写入 `.ecl-modpack.json`。
+6. WPF 与 CLI 只调用 `ICurseForgeService` / `ICurseForgeClient`，不直接拼 HTTP。
 
 ## 8. 横切关注点
 
@@ -245,8 +245,8 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 
 - 更新包与安装包必须签名验证（规划中）。
 - 账户令牌计划使用 DPAPI 加密（规划中），当前仅实现离线账户。
-- 签名证书、私钥、OAuth 机密与 CurseForge API key 只存在于 private Core 仓库；public 仓库构建不读取它。
-- CurseForge key 通过 `ECL_CURSEFORGE_API_KEY` 在构建时注入程序集元数据（发布版），或运行时从环境变量读取（开发/轮换）；普通 public 构建不含 key。日志与诊断包不输出 key。
+- 签名证书、私钥、OAuth 机密只存在于 private Core 仓库；public 仓库构建不读取它。
+- CurseForge API key 只保存在私有代理服务端；ECL 客户端、构建产物、日志与诊断包都不含 key。代理实现与部署材料只在 private Core 仓库。
 - CurseForge 下载只接受官方 CDN（`*.forgecdn.net` / `*.curseforge.com`），避免 API 响应被滥用为任意 URL。
 
 ### 测试

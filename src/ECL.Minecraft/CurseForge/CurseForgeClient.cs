@@ -2,7 +2,6 @@
 
 using System.Net;
 using System.Net.Http.Headers;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Ecl.Core;
@@ -51,29 +50,28 @@ public interface ICurseForgeClient
 }
 
 /// <summary>
-/// CurseForge for Minecraft REST 客户端。只负责 HTTP、认证、错误映射、有限重试与磁盘缓存；
-/// 业务兼容性判断在 <see cref="CurseForgeService"/> 与整合包导入中完成。
+/// CurseForge for Minecraft REST 客户端。请求统一发往 ECL 自建的 CurseForge 代理，
+/// API key 只存在于代理服务端，客户端既不读取也不发送 key。
+/// 只负责 HTTP、错误映射与有限重试；业务兼容性判断在 <see cref="CurseForgeService"/> 与整合包导入中完成。
 /// </summary>
 public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
 {
-    public const string BaseAddress = "https://api.curseforge.com";
+    /// <summary>ECL 的 CurseForge 代理主机；路径与官方 API 完全一致，不做前缀改写。</summary>
+    public const string BaseAddress = "https://api.wikifactory.top";
+
+    /// <summary>CurseForge API 版本前缀，实际请求形如 <c>/v1/mods/search</c>。</summary>
+    public const string ApiVersionPath = "/v1";
 
     private const int MaxAttempts = 3;
     private const int MaxBatchSize = 50;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan MetadataCacheTtl = TimeSpan.FromHours(6);
-    private static readonly TimeSpan SearchCacheTtl = TimeSpan.FromMinutes(10);
 
     private readonly HttpClient _http;
-    private readonly IAppPaths _paths;
-    private readonly ICurseForgeApiKeyProvider _keys;
     private readonly ILogger<CurseForgeClient> _logger;
     private readonly SemaphoreSlim _requestGate = new(4, 4);
 
     public CurseForgeClient(
         IHttpClientProvider httpClientProvider,
-        IAppPaths paths,
-        ICurseForgeApiKeyProvider keys,
         ILogger<CurseForgeClient> logger)
     {
         _http = httpClientProvider.CreateClient();
@@ -83,12 +81,10 @@ public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
         }
 
         _http.Timeout = Timeout.InfiniteTimeSpan;
-        _paths = paths;
-        _keys = keys;
         _logger = logger;
     }
 
-    public CurseForgeStatus Status => _keys.Status;
+    public CurseForgeStatus Status => new(CurseForgeKeySource.Proxy);
 
     public async Task<Result<CurseForgeSearchResult>> SearchModsAsync(
         CurseForgeSearchQuery query,
@@ -107,7 +103,7 @@ public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
             ("gameVersion", query.GameVersion),
             ("modLoaderType", query.Loader is null ? null : ((int)query.Loader.Value).ToString()));
 
-        var raw = await SendAsync(HttpMethod.Get, path, null, SearchCacheTtl, cancellationToken)
+        var raw = await SendAsync(HttpMethod.Get, path, null, cancellationToken)
             .ConfigureAwait(false);
         if (!raw.IsSuccess)
         {
@@ -145,7 +141,6 @@ public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
                 HttpMethod.Get,
                 $"/v1/mods/{modId}",
                 null,
-                MetadataCacheTtl,
                 cancellationToken)
             .ConfigureAwait(false);
         return raw.IsSuccess
@@ -195,7 +190,6 @@ public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
                     HttpMethod.Post,
                     "/v1/mods/files",
                     body,
-                    MetadataCacheTtl,
                     cancellationToken)
                 .ConfigureAwait(false);
             if (!raw.IsSuccess)
@@ -224,7 +218,6 @@ public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
                 HttpMethod.Get,
                 $"/v1/mods/{modId}/files/{fileId}",
                 null,
-                MetadataCacheTtl,
                 cancellationToken)
             .ConfigureAwait(false);
         return raw.IsSuccess
@@ -245,7 +238,7 @@ public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
             ("index", "0"),
             ("pageSize", Math.Clamp(pageSize, 1, 50).ToString()));
 
-        var raw = await SendAsync(HttpMethod.Get, path, null, MetadataCacheTtl, cancellationToken)
+        var raw = await SendAsync(HttpMethod.Get, path, null, cancellationToken)
             .ConfigureAwait(false);
         if (!raw.IsSuccess)
         {
@@ -267,7 +260,6 @@ public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
                 HttpMethod.Get,
                 $"/v1/mods/{modId}/files/{fileId}/download-url",
                 null,
-                TimeSpan.FromMinutes(30),
                 cancellationToken)
             .ConfigureAwait(false);
         if (!raw.IsSuccess)
@@ -306,24 +298,9 @@ public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
         HttpMethod method,
         string path,
         object? body,
-        TimeSpan cacheTtl,
         CancellationToken cancellationToken)
     {
-        if (!Status.IsConfigured || string.IsNullOrWhiteSpace(_keys.GetApiKey()))
-        {
-            return Result<byte[]>.Fail(
-                "curseforge.not_configured",
-                "尚未配置 CurseForge API key。",
-                $"设置环境变量 {CurseForgeApiKeyProvider.EnvironmentVariableName}，或使用注入了 key 的发布版。");
-        }
-
-        var apiKey = _keys.GetApiKey()!;
         var bodyJson = body is null ? null : JsonSerializer.Serialize(body, EclJson.Default);
-        var cachePath = GetCachePath(method.Method, path, bodyJson);
-        if (cacheTtl > TimeSpan.Zero && TryReadCache(cachePath, cacheTtl, out var cached))
-        {
-            return Result<byte[]>.Ok(cached);
-        }
 
         Exception? lastException = null;
         for (var attempt = 1; attempt <= MaxAttempts; attempt++)
@@ -335,7 +312,6 @@ public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
             try
             {
                 using var request = new HttpRequestMessage(method, path);
-                request.Headers.TryAddWithoutValidation("x-api-key", apiKey);
                 request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 if (bodyJson is not null)
                 {
@@ -360,7 +336,6 @@ public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
                     var bytes = await response.Content.ReadAsByteArrayAsync(attemptCts.Token).ConfigureAwait(false);
                     if (response.IsSuccessStatusCode)
                     {
-                        TryWriteCache(cachePath, bytes);
                         return Result<byte[]>.Ok(bytes);
                     }
 
@@ -373,7 +348,7 @@ public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
                             (int)response.StatusCode);
                         return Result<byte[]>.Fail(
                             "curseforge.unauthorized",
-                            "CurseForge API key 无效或没有访问权限。",
+                            "CurseForge 代理拒绝请求：代理服务端的 API key 无效或没有访问权限。",
                             $"HTTP {(int)response.StatusCode}");
                     }
 
@@ -480,53 +455,6 @@ public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
 
     private static Result<T> InvalidResponse<T>(JsonException exception) =>
         Result<T>.Fail("curseforge.invalid_response", "CurseForge 返回了无法解析的数据。", exception.Message);
-
-    private string GetCachePath(string method, string path, string? body)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{method}\n{path}\n{body}"));
-        var key = Convert.ToHexString(hash).ToLowerInvariant();
-        return Path.Combine(_paths.CacheDirectory, "curseforge", key + ".json");
-    }
-
-    private bool TryReadCache(string path, TimeSpan ttl, out byte[] bytes)
-    {
-        bytes = [];
-        try
-        {
-            var info = new FileInfo(path);
-            if (!info.Exists || DateTime.UtcNow - info.LastWriteTimeUtc > ttl)
-            {
-                return false;
-            }
-
-            bytes = File.ReadAllBytes(path);
-            return true;
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            return false;
-        }
-    }
-
-    private void TryWriteCache(string path, byte[] bytes)
-    {
-        try
-        {
-            var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            File.WriteAllBytes(temporary, bytes);
-            File.Move(temporary, path, overwrite: true);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            _logger.LogDebug(exception, "写入 CurseForge 缓存失败：{Path}", path);
-        }
-    }
 
     private static TimeSpan Backoff(int attempt) =>
         TimeSpan.FromMilliseconds(300 * Math.Pow(2, attempt - 1));
