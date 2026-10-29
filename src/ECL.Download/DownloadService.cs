@@ -2,6 +2,7 @@
 
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -14,12 +15,20 @@ namespace Ecl.Download;
 public sealed class DownloadService(
     IHttpClientProvider httpClientProvider,
     ISettingsService settings,
-    ILogger<DownloadService> logger) : IDownloadService
+    ILogger<DownloadService> logger) : IDownloadService, IDownloadController
 {
     private const int BufferSize = 81920;
     private const int MaxAttemptsPerUrl = 3;
     private static readonly TimeSpan FileDownloadTimeout = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan TextDownloadTimeout = TimeSpan.FromMinutes(2);
+
+    private readonly ManualResetEventSlim _resumeSignal = new(initialState: true);
+
+    public bool IsPaused => !_resumeSignal.IsSet;
+
+    public void Pause() => _resumeSignal.Reset();
+
+    public void Resume() => _resumeSignal.Set();
 
     public async Task<DownloadBatchResult> DownloadAsync(
         IReadOnlyList<DownloadRequest> requests,
@@ -52,7 +61,12 @@ public sealed class DownloadService(
         };
 
         using var client = httpClientProvider.CreateClient();
-        Report(progress, 0, totalFiles, 0, totalBytes, null);
+        var speedWatch = Stopwatch.StartNew();
+        double Speed(long bytes) => speedWatch.Elapsed.TotalSeconds < 0.2
+            ? 0
+            : bytes / speedWatch.Elapsed.TotalSeconds;
+
+        Report(progress, 0, totalFiles, 0, totalBytes, null, 0, IsPaused);
 
         await Parallel.ForEachAsync(uniqueRequests, parallelOptions, async (request, token) =>
         {
@@ -66,7 +80,15 @@ public sealed class DownloadService(
                     Interlocked.Increment(ref skippedFiles);
                     Interlocked.Increment(ref completedFiles);
                     Interlocked.Add(ref completedBytes, size);
-                    Report(progress, Volatile.Read(ref completedFiles), totalFiles, Volatile.Read(ref completedBytes), totalBytes, displayName);
+                    Report(
+                        progress,
+                        Volatile.Read(ref completedFiles),
+                        totalFiles,
+                        Volatile.Read(ref completedBytes),
+                        totalBytes,
+                        displayName,
+                        Speed(Volatile.Read(ref completedBytes)),
+                        IsPaused);
                     return;
                 }
 
@@ -74,7 +96,15 @@ public sealed class DownloadService(
                 Interlocked.Increment(ref downloadedFiles);
                 Interlocked.Increment(ref completedFiles);
                 Interlocked.Add(ref completedBytes, request.Size ?? GetFileLength(request.DestinationPath));
-                Report(progress, Volatile.Read(ref completedFiles), totalFiles, Volatile.Read(ref completedBytes), totalBytes, displayName);
+                Report(
+                    progress,
+                    Volatile.Read(ref completedFiles),
+                    totalFiles,
+                    Volatile.Read(ref completedBytes),
+                    totalBytes,
+                    displayName,
+                    Speed(Volatile.Read(ref completedBytes)),
+                    IsPaused);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -120,6 +150,7 @@ public sealed class DownloadService(
             for (var attempt = 0; attempt < MaxAttemptsPerUrl; attempt++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                _resumeSignal.Wait(cancellationToken);
                 using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 attemptCts.CancelAfter(TextDownloadTimeout);
                 try
@@ -279,7 +310,27 @@ public sealed class DownloadService(
                          BufferSize,
                          FileOptions.Asynchronous | FileOptions.SequentialScan))
         {
-            await source.CopyToAsync(destination, BufferSize, token).ConfigureAwait(false);
+            var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+            try
+            {
+                while (true)
+                {
+                    // 暂停点放在每次读写之间，避免暂停时仍把当前响应体灌进磁盘。
+                    _resumeSignal.Wait(token);
+                    var read = await source.ReadAsync(buffer.AsMemory(0, BufferSize), token).ConfigureAwait(false);
+                    if (read == 0)
+                    {
+                        break;
+                    }
+
+                    await destination.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+
             await destination.FlushAsync(token).ConfigureAwait(false);
         }
 
@@ -384,6 +435,12 @@ public sealed class DownloadService(
         int totalFiles,
         long completedBytes,
         long totalBytes,
-        string? currentFile) =>
-        progress?.Report(new DownloadProgress(completedFiles, totalFiles, completedBytes, totalBytes, currentFile));
+        string? currentFile,
+        double bytesPerSecond,
+        bool isPaused) =>
+        progress?.Report(new DownloadProgress(completedFiles, totalFiles, completedBytes, totalBytes, currentFile)
+        {
+            BytesPerSecond = bytesPerSecond,
+            IsPaused = isPaused,
+        });
 }

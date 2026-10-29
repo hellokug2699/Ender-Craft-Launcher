@@ -16,6 +16,9 @@
     <Color x:Key="SuccessColor">#3DDC97</Color>
     <Color x:Key="WarningColor">#F2C14E</Color>
     <Color x:Key="DangerColor">#F06A6A</Color>
+    <Color x:Key="DangerSoftColor">#2E1D22</Color>
+    <Color x:Key="DangerBorderColor">#4A2A31</Color>
+    <Color x:Key="DangerHoverColor">#3A232A</Color>
 
     <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}" />
     <SolidColorBrush x:Key="SidebarBrush" Color="{StaticResource SidebarColor}" />
@@ -32,6 +35,9 @@
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
     <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
+    <SolidColorBrush x:Key="DangerSoftBrush" Color="{StaticResource DangerSoftColor}" />
+    <SolidColorBrush x:Key="DangerBorderBrush" Color="{StaticResource DangerBorderColor}" />
+    <SolidColorBrush x:Key="DangerHoverBrush" Color="{StaticResource DangerHoverColor}" />
 
     <Style TargetType="TextBlock">
         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
@@ -134,9 +140,9 @@
     </Style>
 
     <Style x:Key="DangerButton" TargetType="Button">
-        <Setter Property="Background" Value="#2E1D22" />
+        <Setter Property="Background" Value="{StaticResource DangerSoftBrush}" />
         <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
-        <Setter Property="BorderBrush" Value="#4A2A31" />
+        <Setter Property="BorderBrush" Value="{StaticResource DangerBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="14,8" />
         <Setter Property="FontSize" Value="12" />
@@ -155,7 +161,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="#3A232A" />
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource DangerHoverBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Bd" Property="Opacity" Value="0.82" />

@@ -9,6 +9,20 @@ internal sealed class MinecraftOptionsProvider : IOptionProvider
 {
     public IEnumerable<OptionDefinition> GetOptions()
     {
+        yield return new OptionDefinition<string>
+        {
+            Key = "java.customJvmPreset",
+            Kind = OptionKind.Path,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.java",
+            DisplayNameKey = "option.java.customJvmPreset.name",
+            DescriptionKey = "option.java.customJvmPreset.desc",
+            Default = string.Empty,
+            EmptyIsNull = true,
+            Order = 36,
+            Validate = path => string.IsNullOrWhiteSpace(path) || File.Exists(path),
+        };
+
         yield return new OptionDefinition<int?>
         {
             Key = "instance.java.memoryMb",
@@ -83,6 +97,20 @@ internal sealed class MinecraftOptionsProvider : IOptionProvider
                 new OptionChoice("zgc", "option.java.jvmPreset.zgc"),
                 new OptionChoice("aikar", "option.java.jvmPreset.aikar"),
             ],
+        };
+
+        yield return new OptionDefinition<string?>
+        {
+            Key = "instance.java.customJvmPreset",
+            Kind = OptionKind.Path,
+            Scope = OptionScope.Instance,
+            CategoryKey = "category.instance",
+            DisplayNameKey = "option.instance.customJvmPreset.name",
+            DescriptionKey = "option.instance.customJvmPreset.desc",
+            Default = null,
+            EmptyIsNull = true,
+            Order = 36,
+            Validate = path => string.IsNullOrWhiteSpace(path) || File.Exists(path),
         };
 
         yield return new OptionDefinition<string?>

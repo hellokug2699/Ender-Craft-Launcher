@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.Configuration;
+using Ecl.Minecraft.Diagnostics;
 using Ecl.Minecraft.Eula;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
@@ -31,6 +32,8 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IModService, ModService>();
         services.AddSingleton<IModpackService, ModpackService>();
         services.AddSingleton<IContentPackService, ContentPackService>();
+        services.AddSingleton<ICrashReportService, CrashReportService>();
+        services.AddSingleton<IDiagnosticPackageService, DiagnosticPackageService>();
 
         services.AddSingleton<ILaunchStep, ValidateInstanceStep>();
         services.AddSingleton<ILaunchStep, ResolveJavaStep>();

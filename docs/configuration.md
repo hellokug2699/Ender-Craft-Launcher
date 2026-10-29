@@ -101,6 +101,8 @@ UI 在每项下方展示“来源”，实例作用域下 `Default` 显示为“
 
 ### 下载源策略
 
+`launcher.theme` 是全局选项，支持 `dark` / `light`，保存后立即修改共享画刷颜色，不需要重启。
+
 `network.downloadSource` 是全局选项，提供四档候选顺序：
 
 | 值 | 行为 |
@@ -143,11 +145,13 @@ CLI 使用 `ecl launch <实例ID> --accept-eula` 记录同意；未同意时真�
 | `java.defaultMemoryMb` | Global | 默认最大堆内存 |
 | `java.extraArguments` | Global | 全局额外 JVM 参数 |
 | `java.jvmPreset` | Global | JVM 预设：default / g1 / zgc / aikar |
+| `java.customJvmPreset` | Global | 自定义 JVM 预设 JSON 文件；留空使用内置预设 |
 | `java.runtimeProvider` | Global | Java 下载来源：mojang / adoptium / zulu / liberica |
 | `instance.java.executablePath` | Instance | 实例指定 Java；留空自动选择 |
 | `instance.java.memoryMb` | Instance | 实例内存覆盖；留空继承全局 |
 | `instance.java.extraArguments` | Instance | 实例 JVM 参数覆盖 |
 | `instance.java.jvmPreset` | Instance | 实例 JVM 预设覆盖；留空继承全局 |
+| `instance.java.customJvmPreset` | Instance | 实例自定义 JVM 预设文件；留空继承全局 |
 | `instance.java.disableCompatibilityCheck` | Instance | 关闭该实例的 Java 兼容性检验 |
 
 自动选择与兼容性规则详见 [java.md](java.md)。实例页的 Java 下拉框会写入 `instance.java.executablePath`；“自动”会清空该值。

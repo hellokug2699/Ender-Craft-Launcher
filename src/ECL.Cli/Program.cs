@@ -96,6 +96,9 @@ internal static class Program
                                           导入资源包/光影包
           pack delete <实例ID> <文件> [--type resource|shader]
                                           删除资源包/光影包
+          crash <实例ID> [--json]         分析最近一次崩溃与可疑 Mod
+          diagnostics export <实例ID> [--output <路径>] [--json]
+                                          导出脱敏诊断包
           account list [--json]           列出账户
           account add-offline <名称> [--default]
                                           添加离线账户

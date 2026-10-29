@@ -30,6 +30,21 @@ public static class CommandLineBuilder
         var globalJvmArguments = context.Settings.Get<string>("java.extraArguments");
         arguments.AddRange(SplitArguments(instanceJvmArguments ?? globalJvmArguments));
 
+        var customPresetPath = context.GetInstanceSetting<string?>("instance.java.customJvmPreset")
+                               ?? context.Settings.Get<string>("java.customJvmPreset");
+        if (!string.IsNullOrWhiteSpace(customPresetPath))
+        {
+            var customPreset = CustomJvmPresetLoader.Load(customPresetPath);
+            if (customPreset.IsSuccess)
+            {
+                arguments.AddRange(customPreset.Value!.Arguments);
+            }
+            else
+            {
+                context.JvmPresetWarning = customPreset.Error?.Message;
+            }
+        }
+
         var presetValue = context.GetInstanceSetting<string?>("instance.java.jvmPreset")
                           ?? context.Settings.Get<string>("java.jvmPreset");
         arguments.AddRange(JvmPresets.GetArguments(

@@ -28,6 +28,23 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             ],
         };
 
+        yield return new OptionDefinition<string>
+        {
+            Key = "launcher.theme",
+            Kind = OptionKind.Select,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.theme.name",
+            DescriptionKey = "option.launcher.theme.desc",
+            Default = "dark",
+            Order = 20,
+            Choices =
+            [
+                new OptionChoice("dark", "option.launcher.theme.dark"),
+                new OptionChoice("light", "option.launcher.theme.light"),
+            ],
+        };
+
         yield return new OptionDefinition<bool>
         {
             Key = "launcher.checkUpdates",

@@ -29,6 +29,10 @@ public sealed record JavaInstallProgress(
     public double Percent => TotalFiles > 0
         ? Math.Clamp(CompletedFiles * 100.0 / TotalFiles, 0, 100)
         : 0;
+
+    public double BytesPerSecond { get; init; }
+
+    public bool IsPaused { get; init; }
 }
 
 public interface IJavaInstallService

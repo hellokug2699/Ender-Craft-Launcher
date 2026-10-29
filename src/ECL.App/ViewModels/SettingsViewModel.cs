@@ -3,6 +3,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Ecl.App.Theming;
 using Ecl.Configuration;
 using Ecl.Configuration.Settings;
 using Ecl.Core.Localization;
@@ -93,6 +94,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             editor.RefreshSource();
         }
+
+        ThemeManager.Apply(_settings.Get<string>("launcher.theme"));
 
         StatusMessage = _localizer.Get("settings.saved");
     }

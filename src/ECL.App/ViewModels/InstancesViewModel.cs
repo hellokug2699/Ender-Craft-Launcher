@@ -9,7 +9,9 @@ using Ecl.Auth;
 using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Localization;
+using Ecl.Download;
 using Ecl.Java;
+using Ecl.Minecraft.Diagnostics;
 using Ecl.Minecraft.Eula;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
@@ -36,6 +38,9 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IVersionResolver _versionResolver;
     private readonly IEulaService _eula;
     private readonly ILoaderCatalog _loaderCatalog;
+    private readonly IDownloadController _downloads;
+    private readonly ICrashReportService _crashReports;
+    private readonly IDiagnosticPackageService _diagnostics;
     private bool _initialized;
     private bool _suppressAccountSelection;
     private bool _suppressJavaSelection;
@@ -141,6 +146,27 @@ public sealed partial class InstancesViewModel : ObservableObject
     [ObservableProperty]
     private string _javaDownloadStatus = string.Empty;
 
+    [ObservableProperty]
+    private string _downloadSpeedText = string.Empty;
+
+    [ObservableProperty]
+    private string _downloadPauseButtonText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isDownloadPaused;
+
+    [ObservableProperty]
+    private bool _canPauseDownload;
+
+    [ObservableProperty]
+    private string _crashAnalysisText = string.Empty;
+
+    [ObservableProperty]
+    private string _diagnosticStatus = string.Empty;
+
+    [ObservableProperty]
+    private bool _isAnalyzingCrash;
+
     public bool HasSelection => SelectedInstance is not null;
 
     public bool IsEmpty => Instances.Count == 0;
@@ -207,7 +233,10 @@ public sealed partial class InstancesViewModel : ObservableObject
         IJavaInstallService javaInstall,
         IVersionResolver versionResolver,
         IEulaService eula,
-        ILoaderCatalog loaderCatalog)
+        ILoaderCatalog loaderCatalog,
+        IDownloadController downloads,
+        ICrashReportService crashReports,
+        IDiagnosticPackageService diagnostics)
     {
         _instances = instances;
         _accounts = accounts;
@@ -223,6 +252,11 @@ public sealed partial class InstancesViewModel : ObservableObject
         _versionResolver = versionResolver;
         _eula = eula;
         _loaderCatalog = loaderCatalog;
+        _downloads = downloads;
+        _crashReports = crashReports;
+        _diagnostics = diagnostics;
+
+        DownloadPauseButtonText = _localizer.Get("instances.download.pause");
 
         LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Vanilla, _localizer.Get("instances.loader.vanilla")));
         LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Fabric, _localizer.Get("instances.loader.fabric")));
@@ -470,6 +504,55 @@ public sealed partial class InstancesViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void ToggleDownloadPause()
+    {
+        if (!CanPauseDownload)
+        {
+            return;
+        }
+
+        if (IsDownloadPaused)
+        {
+            _downloads.Resume();
+            IsDownloadPaused = false;
+            DownloadPauseButtonText = _localizer.Get("instances.download.pause");
+        }
+        else
+        {
+            _downloads.Pause();
+            IsDownloadPaused = true;
+            DownloadPauseButtonText = _localizer.Get("instances.download.resume");
+            DownloadSpeedText = _localizer.Get("instances.download.paused");
+        }
+    }
+
+    private void BeginDownloadUi()
+    {
+        _downloads.Resume();
+        CanPauseDownload = true;
+        IsDownloadPaused = false;
+        DownloadSpeedText = string.Empty;
+        DownloadPauseButtonText = _localizer.Get("instances.download.pause");
+    }
+
+    private void EndDownloadUi()
+    {
+        _downloads.Resume();
+        CanPauseDownload = false;
+        IsDownloadPaused = false;
+        DownloadSpeedText = string.Empty;
+        DownloadPauseButtonText = _localizer.Get("instances.download.pause");
+    }
+
+    private static string FormatSpeed(double bytesPerSecond) => bytesPerSecond switch
+    {
+        >= 1024 * 1024 => $"{bytesPerSecond / 1024 / 1024:F1} MB/s",
+        >= 1024 => $"{bytesPerSecond / 1024:F0} KB/s",
+        > 0 => $"{bytesPerSecond:F0} B/s",
+        _ => string.Empty,
+    };
+
+    [RelayCommand]
     private async Task DownloadJavaAsync()
     {
         if (SelectedInstance is null)
@@ -500,6 +583,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         JavaDownloadIndeterminate = true;
         JavaDownloadProgressValue = 0;
         JavaDownloadStatus = _localizer.Get("instances.java.downloading");
+        BeginDownloadUi();
 
         var progress = new Progress<JavaInstallProgress>(update =>
         {
@@ -508,6 +592,10 @@ public sealed partial class InstancesViewModel : ObservableObject
             JavaDownloadStatus = update.TotalFiles > 0
                 ? $"{update.Message} ({update.CompletedFiles}/{update.TotalFiles})"
                 : update.Message;
+            if (update.BytesPerSecond > 0)
+            {
+                DownloadSpeedText = FormatSpeed(update.BytesPerSecond);
+            }
         });
 
         try
@@ -552,6 +640,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         {
             IsDownloadingJava = false;
             IsBusy = false;
+            EndDownloadUi();
         }
     }
 
@@ -681,6 +770,108 @@ public sealed partial class InstancesViewModel : ObservableObject
     private Task DryRunAsync() => RunLaunchAsync(dryRun: true);
 
     [RelayCommand]
+    private async Task AnalyzeCrashAsync()
+    {
+        if (SelectedInstance is null)
+        {
+            StatusMessage = _localizer.Get("instances.selectFirst");
+            return;
+        }
+
+        if (IsAnalyzingCrash)
+        {
+            return;
+        }
+
+        IsAnalyzingCrash = true;
+        CrashAnalysisText = _localizer.Get("diagnostics.analyzing");
+        try
+        {
+            var result = await _crashReports
+                .AnalyzeLatestAsync(SelectedInstance.Model.Id)
+                .ConfigureAwait(true);
+
+            if (!result.IsSuccess)
+            {
+                CrashAnalysisText = result.Error?.ToString() ?? _localizer.Get("diagnostics.failed");
+                return;
+            }
+
+            if (result.Value is null)
+            {
+                CrashAnalysisText = _localizer.Get("diagnostics.noCrash");
+                return;
+            }
+
+            var analysis = result.Value;
+            var builder = new System.Text.StringBuilder();
+            builder.AppendLine(analysis.Summary);
+            if (!string.IsNullOrWhiteSpace(analysis.SourcePath))
+            {
+                builder.AppendLine(_localizer.Get("diagnostics.source", analysis.SourcePath));
+            }
+
+            if (analysis.Suspects.Count > 0)
+            {
+                builder.AppendLine(_localizer.Get("diagnostics.suspects"));
+                foreach (var suspect in analysis.Suspects)
+                {
+                    builder.AppendLine($"  {suspect.Name ?? suspect.ModId} ({suspect.ModId}) · {suspect.Score}");
+                    foreach (var evidence in suspect.Evidence.Take(2))
+                    {
+                        builder.AppendLine($"    {evidence}");
+                    }
+                }
+            }
+
+            if (analysis.KeyLines.Count > 0)
+            {
+                builder.AppendLine(_localizer.Get("diagnostics.keyLines"));
+                foreach (var line in analysis.KeyLines.Take(6))
+                {
+                    builder.AppendLine($"  {line}");
+                }
+            }
+
+            CrashAnalysisText = builder.ToString().TrimEnd();
+        }
+        catch (Exception exception)
+        {
+            CrashAnalysisText = exception.Message;
+        }
+        finally
+        {
+            IsAnalyzingCrash = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportDiagnosticsAsync()
+    {
+        if (SelectedInstance is null)
+        {
+            StatusMessage = _localizer.Get("instances.selectFirst");
+            return;
+        }
+
+        DiagnosticStatus = _localizer.Get("diagnostics.exporting");
+        try
+        {
+            var result = await _diagnostics
+                .ExportAsync(SelectedInstance.Model.Id)
+                .ConfigureAwait(true);
+
+            DiagnosticStatus = result.IsSuccess
+                ? _localizer.Get("diagnostics.exported", result.Value!.OutputPath, result.Value.Entries)
+                : result.Error?.ToString() ?? _localizer.Get("diagnostics.exportFailed");
+        }
+        catch (Exception exception)
+        {
+            DiagnosticStatus = exception.Message;
+        }
+    }
+
+    [RelayCommand]
     private async Task InstallAsync()
     {
         if (SelectedInstance is null)
@@ -699,6 +890,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         InstallIndeterminate = true;
         InstallProgressValue = 0;
         InstallStatus = _localizer.Get("instances.installing");
+        BeginDownloadUi();
 
         var progress = new Progress<InstallProgress>(update =>
         {
@@ -707,6 +899,10 @@ public sealed partial class InstancesViewModel : ObservableObject
             InstallStatus = update.TotalFiles > 0
                 ? $"{update.Message} ({update.CompletedFiles}/{update.TotalFiles})"
                 : update.Message;
+            if (update.BytesPerSecond > 0)
+            {
+                DownloadSpeedText = FormatSpeed(update.BytesPerSecond);
+            }
         });
 
         try
@@ -737,6 +933,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         {
             IsInstalling = false;
             IsBusy = false;
+            EndDownloadUi();
         }
     }
 

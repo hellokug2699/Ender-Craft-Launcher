@@ -9,6 +9,7 @@ using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Core.Localization;
 using Ecl.Java;
+using Ecl.Minecraft.Diagnostics;
 using Ecl.Minecraft.Eula;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
@@ -47,6 +48,8 @@ internal sealed class CliApplication
             "mod" => await ModCommandAsync(rest).ConfigureAwait(false),
             "modpack" => await ModpackCommandAsync(rest).ConfigureAwait(false),
             "pack" => await PackCommandAsync(rest).ConfigureAwait(false),
+            "crash" => await CrashCommandAsync(rest).ConfigureAwait(false),
+            "diagnostics" => await DiagnosticsCommandAsync(rest).ConfigureAwait(false),
             "settings" => SettingsCommand(rest),
             "java" => await JavaCommandAsync(rest).ConfigureAwait(false),
             "account" => await AccountCommandAsync(rest).ConfigureAwait(false),
@@ -1160,6 +1163,85 @@ internal sealed class CliApplication
         }
 
         return UsageError($"不支持的 pack 子命令：{subCommand}");
+    }
+
+    private async Task<int> CrashCommandAsync(string[] args)
+    {
+        var instanceId = args.ElementAtOrDefault(0);
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            return UsageError("crash 需要实例 ID。");
+        }
+
+        var result = await _provider.GetRequiredService<ICrashReportService>()
+            .AnalyzeLatestAsync(instanceId)
+            .ConfigureAwait(false);
+
+        if (!result.IsSuccess)
+        {
+            return WriteError(result.Error);
+        }
+
+        if (result.Value is null)
+        {
+            Console.WriteLine("未找到崩溃报告或 latest.log 中的异常。");
+            return 0;
+        }
+
+        var analysis = result.Value;
+        if (_commandLine.HasFlag("json"))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(analysis, EclJson.Indented));
+            return 0;
+        }
+
+        Console.WriteLine(analysis.Summary);
+        if (!string.IsNullOrWhiteSpace(analysis.SourcePath))
+        {
+            Console.WriteLine($"Source: {analysis.SourcePath}");
+        }
+
+        foreach (var suspect in analysis.Suspects)
+        {
+            Console.WriteLine(
+                $"  ? {suspect.Name ?? suspect.ModId} ({suspect.ModId}) score={suspect.Score}");
+            foreach (var evidence in suspect.Evidence)
+            {
+                Console.WriteLine($"    {evidence}");
+            }
+        }
+
+        return 0;
+    }
+
+    private async Task<int> DiagnosticsCommandAsync(string[] args)
+    {
+        if (args.Length < 2 || !string.Equals(args[0], "export", StringComparison.OrdinalIgnoreCase))
+        {
+            return UsageError("diagnostics 支持 export <实例ID> [--output <路径>]。");
+        }
+
+        var instanceId = args[1];
+        var output = _commandLine.GetValue("output");
+        var result = await _provider.GetRequiredService<IDiagnosticPackageService>()
+            .ExportAsync(instanceId, output)
+            .ConfigureAwait(false);
+
+        if (!result.IsSuccess)
+        {
+            return WriteError(result.Error);
+        }
+
+        if (_commandLine.HasFlag("json"))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(result.Value, EclJson.Indented));
+            return 0;
+        }
+
+        Console.WriteLine($"已导出诊断包：{result.Value!.OutputPath}");
+        Console.WriteLine($"  Entries: {result.Value.Entries}");
+        Console.WriteLine($"  Bytes  : {result.Value.Bytes}");
+        return 0;
     }
 
     private static ContentPackKind ParseContentPackKind(string? value) =>

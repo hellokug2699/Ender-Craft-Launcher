@@ -15,9 +15,14 @@ internal sealed class BuildCommandStep(ILocalizer localizer) : ILaunchStep
         var command = CommandLineBuilder.Build(context);
         context.Command = command;
 
-        return Task.FromResult(new LaunchStepResult(
-            Id,
-            LaunchStepStatus.Success,
-            localizer.Get("launch.command.built", command.Arguments.Count)));
+        var message = localizer.Get("launch.command.built", command.Arguments.Count);
+        var status = LaunchStepStatus.Success;
+        if (!string.IsNullOrWhiteSpace(context.JvmPresetWarning))
+        {
+            status = LaunchStepStatus.Warning;
+            message = $"{message} {localizer.Get("launch.command.jvmPresetWarning", context.JvmPresetWarning)}";
+        }
+
+        return Task.FromResult(new LaunchStepResult(Id, status, message));
     }
 }

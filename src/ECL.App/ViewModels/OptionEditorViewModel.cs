@@ -119,6 +119,23 @@ public sealed partial class OptionEditorViewModel : ObservableObject
     [RelayCommand]
     private void Browse()
     {
+        if (Definition.Key.Contains("customJvmPreset", StringComparison.OrdinalIgnoreCase))
+        {
+            var fileDialog = new OpenFileDialog
+            {
+                Title = _localizer.Get("common.browseFile"),
+                Filter = "JVM preset (*.json)|*.json|All files (*.*)|*.*",
+                Multiselect = false,
+            };
+
+            if (fileDialog.ShowDialog() == true)
+            {
+                TextValue = fileDialog.FileName;
+            }
+
+            return;
+        }
+
         var dialog = new OpenFolderDialog
         {
             Title = _localizer.Get("common.browseFolder"),

@@ -100,6 +100,19 @@ Linux ARM64 在 Mojang 来源下会返回“平台不支持”；切换到 Adopt
 
 预设只包含 GC/堆行为参数，`-Xms`/`-Xmx` 仍由内存设置统一生成。
 
+### 自定义 / 导入预设
+
+`java.customJvmPreset`（全局）与 `instance.java.customJvmPreset`（实例覆盖）可以指向一个 JSON 文件：
+
+```json
+{
+  "name": "My preset",
+  "arguments": ["-XX:+UseG1GC", "-XX:MaxGCPauseMillis=200"]
+}
+```
+
+也支持直接使用字符串数组。加载时会拒绝 `-Xmx`、`-Xms`、`-cp`/`-classpath` 和空参数；文件不存在或格式错误时，启动命令步骤给出 Warning，并继续使用内置预设。
+
 ## 7. 数据目录
 
 ```text
