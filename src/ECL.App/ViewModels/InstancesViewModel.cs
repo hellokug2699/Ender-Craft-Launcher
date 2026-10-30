@@ -111,6 +111,9 @@ public sealed partial class InstancesViewModel : ObservableObject
     private bool _showFabricApiNotice;
 
     [ObservableProperty]
+    private bool _showOptiFineSelector;
+
+    [ObservableProperty]
     private bool _optiFineEnabled;
 
     [ObservableProperty]
@@ -685,12 +688,18 @@ public sealed partial class InstancesViewModel : ObservableObject
             return;
         }
 
-        var name = NewInstanceName.Trim();
         var version = NewInstanceVersion.Trim();
+        var name = NewInstanceName.Trim();
+        if (version.Length == 0)
+        {
+            StatusMessage = _localizer.Get("instances.versionRequired");
+            return;
+        }
+
+        // 实例名可选；留空时使用游戏版本作为默认名称。
         if (name.Length == 0)
         {
-            StatusMessage = _localizer.Get("instances.nameRequired");
-            return;
+            name = version;
         }
 
         if (version.Length == 0)
@@ -1070,8 +1079,9 @@ public sealed partial class InstancesViewModel : ObservableObject
     partial void OnSelectedNewLoaderChanged(LoaderChoiceViewModel? value)
     {
         ShowFabricApiNotice = string.Equals(value?.Id, LoaderKinds.Fabric, StringComparison.OrdinalIgnoreCase);
-        OptiFineEnabled = string.Equals(value?.Id, LoaderKinds.Cleanroom, StringComparison.OrdinalIgnoreCase) ||
-                          string.Equals(value?.Id, LoaderKinds.Forge, StringComparison.OrdinalIgnoreCase);
+        ShowOptiFineSelector = string.Equals(value?.Id, LoaderKinds.Cleanroom, StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(value?.Id, LoaderKinds.Forge, StringComparison.OrdinalIgnoreCase);
+        OptiFineEnabled = ShowOptiFineSelector;
 
         if (!_initialized)
         {
