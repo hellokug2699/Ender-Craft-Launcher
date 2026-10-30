@@ -31,3 +31,8 @@
 - 评估压缩比与压缩数据大小限制，进一步降低 zip bomb 风险。
 
 这些限制应在确认真实整合包兼容性后逐步加入，不通过过严的经验阈值破坏正常大型整合包。
+
+
+## Metadata entry limits
+
+The Modrinth index and CurseForge manifest are read from ZIP entries and must not use an unbounded `ReadToEnd()`. Metadata entries are limited to 4 MiB. The implementation checks the declared uncompressed length and also enforces the same limit while streaming, so a malformed archive cannot bypass the limit by reporting an incorrect entry length.
