@@ -13,6 +13,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly DownloadViewModel _download;
     private readonly ModsViewModel _mods;
     private readonly SettingsViewModel _settings;
+    private readonly InstancesViewModel _instances;
 
     public ObservableCollection<NavItemViewModel> NavItems { get; }
 
@@ -39,6 +40,7 @@ public sealed partial class MainViewModel : ObservableObject
         _download = download;
         _mods = mods;
         _settings = settings;
+        _instances = instances;
 
         NavItems =
         [
@@ -52,9 +54,16 @@ public sealed partial class MainViewModel : ObservableObject
 
         _selectedNavItem = NavItems[0];
         _home.Navigate = NavigateTo;
+        _instances.NavigateToContent = OpenContentForInstance;
         VersionText = $"ECL {typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0"}";
         DataDirectory = paths.Root;
         GameDirectory = paths.GameRoot;
+    }
+
+    private void OpenContentForInstance(string instanceId)
+    {
+        _mods.SelectInstance(instanceId);
+        NavigateTo("content");
     }
 
     private void NavigateTo(string key)
