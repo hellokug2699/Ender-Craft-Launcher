@@ -8,6 +8,7 @@ using Ecl.Minecraft.Content;
 using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Modrinth;
+using Ecl.Minecraft.Mods;
 using Ecl.Tests.CurseForge;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -94,6 +95,26 @@ public sealed class ContentInstallTests
         Assert.True(File.Exists(Path.Combine(
             environment.Paths.GetInstanceGameDirectory(instance.Id),
             ".ecl-modpack.json")));
+    }
+
+    [Fact]
+    public async Task RollsBackCreatedInstanceWhenModpackImportFails()
+    {
+        var payload = CreateMrpack();
+        using var environment = new TestEnvironment();
+        var modrinth = CreateModrinthClient(payload.Length);
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(new PayloadDownloadService(payload));
+            services.AddSingleton<IModrinthClient>(modrinth);
+            services.AddSingleton<IModpackService>(new FailingModpackService());
+        });
+
+        var result = await provider.GetRequiredService<IContentInstallService>()
+            .CreateInstanceAndImportModpackAsync(CreateModpackHit());
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(await provider.GetRequiredService<IInstanceService>().GetInstancesAsync());
     }
 
     [Fact]
@@ -230,6 +251,22 @@ public sealed class ContentInstallTests
             environment.Paths.GetInstanceGameDirectory(instance.Id),
             "config",
             "cf.txt")));
+    }
+
+    private sealed class FailingModpackService : IModpackService
+    {
+        public Task<Result<ModpackImportReport>> ImportAsync(
+            string instanceId,
+            string archivePath,
+            IProgress<ModpackProgress>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result<ModpackImportReport>.Fail("test.import_failed", "模拟导入失败。"));
+
+        public Task<Result<ModpackExportReport>> ExportAsync(
+            string instanceId,
+            string outputPath,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private static FakeModrinthClient CreateModrinthClient(int payloadSize)
