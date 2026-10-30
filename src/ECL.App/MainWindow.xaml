@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:Ecl.App.Localization"
         Title="{loc:Loc Key=app.name}"
+        Icon="{StaticResource EclCompactIcon}"
         Width="1180"
         Height="760"
         MinWidth="980"

@@ -30,6 +30,9 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        var splash = new SplashWindow();
+        splash.Show();
+
         try
         {
             var paths = AppPaths.Create();
@@ -66,11 +69,13 @@ public partial class App : Application
             var window = _services.GetRequiredService<MainWindow>();
             MainWindow = window;
             window.Show();
+            splash.Close();
 
             await _services.GetRequiredService<MainViewModel>().InitializeAsync();
         }
         catch (Exception exception)
         {
+            splash.Close();
             _logger?.LogCritical(exception, "启动失败。");
             MessageBox.Show(
                 $"ECL 启动失败：{exception.Message}",

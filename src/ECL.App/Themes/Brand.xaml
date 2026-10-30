@@ -1,0 +1,22 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Compact mark: version 3 direction. Designed to remain recognizable at small sizes. -->
+    <DrawingImage x:Key="EclCompactIcon">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="#120A24">
+                    <GeometryDrawing.Geometry>
+                        <RectangleGeometry Rect="0,0,256,256" RadiusX="34" RadiusY="34" />
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+                <GeometryDrawing Brush="#27104B" Pen="#C98BFF" Geometry="M48,78 L128,34 L208,78 L208,178 L128,222 L48,178 Z" />
+                <GeometryDrawing Brush="#0A0613" Pen="#8B35FF" Geometry="M64,88 L128,52 L192,88 L192,168 L128,204 L64,168 Z" />
+                <GeometryDrawing Brush="Transparent" Pen="#D9B3FF" Geometry="M72,128 A56,56 0 1 1 184,128 A56,56 0 1 1 72,128" />
+                <GeometryDrawing Brush="Transparent" Pen="#8A2BFF" Geometry="M92,128 A36,36 0 1 1 164,128 A36,36 0 1 1 92,128" />
+                <GeometryDrawing Brush="#CFA1FF" Geometry="M118,114 L140,114 L148,128 L140,142 L118,142 L110,128 Z" />
+                <GeometryDrawing Brush="#8A2BFF" Geometry="M124,120 L136,120 L140,128 L136,136 L124,136 L120,128 Z" />
+                <GeometryDrawing Brush="Transparent" Pen="#E3C5FF" Geometry="M30,168 C78,214 178,208 224,92" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+</ResourceDictionary>
