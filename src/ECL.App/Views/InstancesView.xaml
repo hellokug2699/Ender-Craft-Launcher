@@ -5,514 +5,105 @@
     <UserControl.InputBindings>
         <KeyBinding Key="F5" Command="{Binding RefreshCommand}" />
     </UserControl.InputBindings>
-
-    <ScrollViewer VerticalScrollBarVisibility="Auto"
-                  HorizontalScrollBarVisibility="Disabled"
-                  KeyboardNavigation.TabNavigation="Cycle">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" KeyboardNavigation.TabNavigation="Cycle">
         <StackPanel>
-            <!-- Page header -->
             <Grid Margin="0,0,0,22">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <StackPanel>
                     <TextBlock Text="{loc:Loc Key=instances.title}" Style="{StaticResource TitleText}" />
-                    <TextBlock Text="{loc:Loc Key=instances.subtitle}"
-                               Style="{StaticResource SubtitleText}"
-                               Margin="0,6,0,0" />
+                    <TextBlock Text="{loc:Loc Key=instances.subtitle}" Style="{StaticResource SubtitleText}" Margin="0,6,0,0" />
                 </StackPanel>
-                <Button Grid.Column="1"
-                        Content="{loc:Loc Key=common.refresh}"
-                        Command="{Binding RefreshCommand}"
-                        Style="{StaticResource GhostButton}"
-                        VerticalAlignment="Top" />
+                <Button Grid.Column="1" Content="{loc:Loc Key=common.refresh}" Command="{Binding RefreshCommand}" Style="{StaticResource GhostButton}" />
             </Grid>
-
-            <!-- Primary launcher hero -->
-            <Border Style="{StaticResource HeroCard}"
-                    Margin="0,0,0,18"
-                    Padding="24">
+            <Border Style="{StaticResource HeroCard}" Margin="0,0,0,18" Padding="24">
                 <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="24" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="24" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Text="{loc:Loc Key=instances.launch}"
-                                   Style="{StaticResource LabelText}"
-                                   Foreground="{StaticResource AccentBrush}" />
-                        <TextBlock Text="{Binding SelectedInstanceName}"
-                                   FontSize="28"
-                                   FontWeight="SemiBold"
-                                   Margin="0,5,0,0"
-                                   Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}" />
-                        <TextBlock Text="{loc:Loc Key=instances.empty}"
-                                   FontSize="22"
-                                   FontWeight="SemiBold"
-                                   Visibility="{Binding HasSelection, Converter={StaticResource InverseBoolToVisibility}}" />
-                        <TextBlock Text="{Binding SelectedInstanceMeta}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="12"
-                                   Margin="0,6,0,0"
-                                   Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}" />
-                        <TextBlock Text="{Binding SelectedInstanceComponents}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="11"
-                                   Margin="0,4,0,0"
-                                   TextWrapping="Wrap"
-                                   Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}" />
-                        <TextBlock Text="{Binding SelectedInstancePath}"
-                                   Foreground="{StaticResource TextMutedBrush}"
-                                   FontSize="10"
-                                   Margin="0,8,0,0"
-                                   TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding SelectedInstancePath}"
-                                   Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}" />
-                        <TextBlock Text="{loc:Loc Key=instances.createTitle}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="12"
-                                   Margin="0,8,0,0"
-                                   Visibility="{Binding HasSelection, Converter={StaticResource InverseBoolToVisibility}}" />
+                        <TextBlock Text="{loc:Loc Key=instances.launch}" Style="{StaticResource LabelText}" Foreground="{StaticResource AccentBrush}" />
+                        <TextBlock Text="{Binding SelectedInstanceName}" FontSize="28" FontWeight="SemiBold" Margin="0,5,0,0" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Text="{loc:Loc Key=instances.empty}" FontSize="22" FontWeight="SemiBold" Visibility="{Binding HasSelection, Converter={StaticResource InverseBoolToVisibility}}" />
+                        <TextBlock Text="{Binding SelectedInstanceMeta}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,6,0,0" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Text="{Binding SelectedInstanceComponents}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}" />
                     </StackPanel>
-
-                    <StackPanel Grid.Column="2"
-                                VerticalAlignment="Center">
-                        <Button Content="{loc:Loc Key=instances.launch}"
-                                Command="{Binding LaunchCommand}"
-                                Style="{StaticResource PrimaryButton}"
-                                MinWidth="128"
-                                Height="42"
-                                IsEnabled="{Binding HasSelection}" />
-                        <Button Content="{loc:Loc Key=instances.install}"
-                                Command="{Binding InstallCommand}"
-                                Style="{StaticResource GhostButton}"
-                                MinWidth="128"
-                                Margin="0,8,0,0"
-                                IsEnabled="{Binding HasSelection}" />
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                        <Button Content="{loc:Loc Key=instances.launch}" Command="{Binding LaunchCommand}" Style="{StaticResource PrimaryButton}" MinWidth="128" Height="42" IsEnabled="{Binding HasSelection}" />
+                        <Button Content="{loc:Loc Key=instances.install}" Command="{Binding InstallCommand}" Style="{StaticResource GhostButton}" MinWidth="128" Margin="0,8,0,0" IsEnabled="{Binding HasSelection}" />
                     </StackPanel>
                 </Grid>
             </Border>
-
-            <!-- Instance library -->
             <Grid Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel>
-                    <TextBlock Text="{loc:Loc Key=instances.title}" Style="{StaticResource SectionText}" />
-                    <TextBlock Text="{Binding StatusMessage}"
-                               Foreground="{StaticResource TextMutedBrush}"
-                               FontSize="10"
-                               Margin="0,3,0,0"
-                               TextWrapping="Wrap" />
-                </StackPanel>
-                <TextBlock Grid.Column="1"
-                           Text="{loc:Loc Key=common.create}"
-                           Foreground="{StaticResource AccentBrush}"
-                           FontSize="11"
-                           VerticalAlignment="Center" />
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBlock Text="{loc:Loc Key=instances.title}" Style="{StaticResource SectionText}" />
+                <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" Foreground="{StaticResource TextMutedBrush}" FontSize="10" VerticalAlignment="Center" />
             </Grid>
-
-            <TextBlock Text="{loc:Loc Key=instances.empty}"
-                       Style="{StaticResource SubtitleText}"
-                       Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}"
-                       Margin="0,0,0,14" />
-
-            <ListBox ItemsSource="{Binding Instances}"
-                     SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
-                     ItemContainerStyle="{StaticResource InstanceItemStyle}"
-                     BorderThickness="0"
-                     Background="Transparent"
-                     Margin="0,0,0,18">
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <UniformGrid Columns="2" />
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
+            <TextBlock Text="{loc:Loc Key=instances.empty}" Style="{StaticResource SubtitleText}" Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}" Margin="0,0,0,14" />
+            <ListBox ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedInstance, Mode=TwoWay}" ItemContainerStyle="{StaticResource InstanceItemStyle}" BorderThickness="0" Background="Transparent" Margin="0,0,0,18">
+                <ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate></ListBox.ItemsPanel>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Border Style="{StaticResource Card}"
-                                Padding="16"
-                                Margin="0,0,10,10">
+                        <Border Style="{StaticResource Card}" Padding="16" Margin="0,0,10,10">
                             <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="{Binding Name}"
-                                               FontSize="15"
-                                               FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding VersionText}"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
-                                               FontSize="11"
-                                               Margin="0,5,0,0" />
-                                    <TextBlock Text="{Binding LastPlayedText}"
-                                               Foreground="{StaticResource TextMutedBrush}"
-                                               FontSize="10"
-                                               Margin="0,5,0,0" />
+                                    <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding VersionText}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,5,0,0" />
+                                    <TextBlock Text="{Binding LastPlayedText}" Foreground="{StaticResource TextMutedBrush}" FontSize="10" Margin="0,5,0,0" />
                                 </StackPanel>
-                                <Border Grid.Column="1"
-                                        Style="{StaticResource Badge}"
-                                        VerticalAlignment="Top"
-                                        Margin="12,0,0,0">
-                                    <TextBlock Text="{Binding VersionText}" />
-                                </Border>
+                                <Border Grid.Column="1" Style="{StaticResource Badge}" VerticalAlignment="Top" Margin="12,0,0,0"><TextBlock Text="{Binding VersionText}" /></Border>
                             </Grid>
                         </Border>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
-
-            <!-- Selected instance operations -->
-            <Border Style="{StaticResource Card}"
-                    Margin="0,0,0,18">
+            <Border Margin="0,0,0,18">
                 <Border.Style>
                     <Style TargetType="Border" BasedOn="{StaticResource Card}">
                         <Setter Property="Visibility" Value="Collapsed" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding HasSelection}" Value="True">
-                                <Setter Property="Visibility" Value="Visible" />
-                            </DataTrigger>
-                        </Style.Triggers>
+                        <Style.Triggers><DataTrigger Binding="{Binding HasSelection}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
                     </Style>
                 </Border.Style>
                 <StackPanel>
                     <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="{loc:Loc Key=instances.launch}"
-                                       Style="{StaticResource SectionText}" />
-                            <TextBlock Text="{Binding SelectedInstanceCreated}"
-                                       Foreground="{StaticResource TextMutedBrush}"
-                                       FontSize="10"
-                                       Margin="0,4,0,0" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <Button Content="{loc:Loc Key=instances.dryRun}"
-                                    Command="{Binding DryRunCommand}"
-                                    Style="{StaticResource GhostButton}" />
-                            <Button Content="{loc:Loc Key=common.delete}"
-                                    Command="{Binding DeleteInstanceCommand}"
-                                    Style="{StaticResource DangerButton}"
-                                    Margin="8,0,0,0" />
-                        </StackPanel>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel><TextBlock Text="{loc:Loc Key=instances.launch}" Style="{StaticResource SectionText}" /><TextBlock Text="{Binding SelectedInstanceCreated}" Foreground="{StaticResource TextMutedBrush}" FontSize="10" Margin="0,4,0,0" /></StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal"><Button Content="{loc:Loc Key=instances.dryRun}" Command="{Binding DryRunCommand}" Style="{StaticResource GhostButton}" /><Button Content="{loc:Loc Key=common.delete}" Command="{Binding DeleteInstanceCommand}" Style="{StaticResource DangerButton}" Margin="8,0,0,0" /></StackPanel>
                     </Grid>
-
-                    <ProgressBar Height="4"
-                                 Margin="0,14,0,0"
-                                 Minimum="0"
-                                 Maximum="100"
-                                 Value="{Binding InstallProgressValue}"
-                                 IsIndeterminate="{Binding InstallIndeterminate}"
-                                 Visibility="{Binding IsInstalling, Converter={StaticResource BoolToVisibility}}" />
-                    <TextBlock Text="{Binding InstallStatus}"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               FontSize="11"
-                               Margin="0,7,0,0"
-                               TextWrapping="Wrap" />
-
-                    <StackPanel Orientation="Horizontal"
-                                Margin="0,8,0,0"
-                                Visibility="{Binding CanPauseDownload, Converter={StaticResource BoolToVisibility}}">
-                        <Button Content="{Binding DownloadPauseButtonText}"
-                                Command="{Binding ToggleDownloadPauseCommand}"
-                                Style="{StaticResource GhostButton}" />
-                        <TextBlock Text="{Binding DownloadSpeedText}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="11"
-                                   Margin="12,0,0,0"
-                                   VerticalAlignment="Center" />
-                    </StackPanel>
-
-                    <TextBlock Text="{Binding LaunchStatus}"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               FontSize="11"
-                               Margin="0,12,0,0"
-                               TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding SelectedInstancePath}" Foreground="{StaticResource TextMutedBrush}" FontSize="10" Margin="0,7,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding SelectedInstancePath}" />
+                    <ProgressBar Height="4" Margin="0,14,0,0" Minimum="0" Maximum="100" Value="{Binding InstallProgressValue}" IsIndeterminate="{Binding InstallIndeterminate}" Visibility="{Binding IsInstalling, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Text="{Binding InstallStatus}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,7,0,0" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0" Visibility="{Binding CanPauseDownload, Converter={StaticResource BoolToVisibility}}"><Button Content="{Binding DownloadPauseButtonText}" Command="{Binding ToggleDownloadPauseCommand}" Style="{StaticResource GhostButton}" /><TextBlock Text="{Binding DownloadSpeedText}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="12,0,0,0" VerticalAlignment="Center" /></StackPanel>
+                    <TextBlock Text="{Binding LaunchStatus}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,12,0,0" TextWrapping="Wrap" />
                     <ItemsControl ItemsSource="{Binding LaunchSteps}" Margin="0,6,0,0">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="0,3">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="58" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding StatusText}"
-                                               Foreground="{Binding Status, Converter={StaticResource LaunchStatusBrush}}"
-                                               FontSize="10"
-                                               FontWeight="SemiBold" />
-                                    <StackPanel Grid.Column="1" Margin="8,0,8,0">
-                                        <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding Message}"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                                   FontSize="10"
-                                                   TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <TextBlock Grid.Column="2"
-                                               Text="{Binding DurationText}"
-                                               Foreground="{StaticResource TextMutedBrush}"
-                                               FontSize="9" />
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
+                        <ItemsControl.ItemTemplate><DataTemplate><Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock Text="{Binding StatusText}" Foreground="{Binding Status, Converter={StaticResource LaunchStatusBrush}}" FontSize="10" FontWeight="SemiBold" /><StackPanel Grid.Column="1" Margin="8,0,8,0"><TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" /><TextBlock Text="{Binding Message}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" /></StackPanel><TextBlock Grid.Column="2" Text="{Binding DurationText}" Foreground="{StaticResource TextMutedBrush}" FontSize="9" /></Grid></DataTemplate></ItemsControl.ItemTemplate>
                     </ItemsControl>
-
-                    <TextBlock Text="{loc:Loc Key=instances.command}"
-                               Style="{StaticResource LabelText}"
-                               Margin="0,14,0,6" />
-                    <TextBox Style="{StaticResource MonoTextBox}"
-                             Text="{Binding LaunchCommandPreview, Mode=OneWay}"
-                             Height="100" />
+                    <TextBlock Text="{loc:Loc Key=instances.command}" Style="{StaticResource LabelText}" Margin="0,14,0,6" /><TextBox Style="{StaticResource MonoTextBox}" Text="{Binding LaunchCommandPreview, Mode=OneWay}" Height="90" />
                 </StackPanel>
             </Border>
-
-            <!-- Configuration workspace -->
-            <TextBlock Text="{loc:Loc Key=instances.createTitle}"
-                       Style="{StaticResource SectionText}"
-                       Margin="0,0,0,10" />
-
+            <TextBlock Text="{loc:Loc Key=instances.createTitle}" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
             <Grid Margin="0,0,0,14">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1*" />
-                    <ColumnDefinition Width="14" />
-                    <ColumnDefinition Width="1*" />
-                </Grid.ColumnDefinitions>
-
-                <!-- Account -->
-                <Border Style="{StaticResource Card}">
-                    <StackPanel>
-                        <TextBlock Text="{loc:Loc Key=instances.accountTitle}" Style="{StaticResource LabelText}" />
-                        <Grid Margin="0,8,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="10" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <ComboBox ItemsSource="{Binding Accounts}"
-                                      SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
-                                      DisplayMemberPath="DisplayName" />
-                            <TextBox Grid.Column="2"
-                                     Text="{Binding NewAccountName, UpdateSourceTrigger=PropertyChanged}"
-                                     ToolTip="{loc:Loc Key=instances.accountNamePlaceholder}" />
-                        </Grid>
-                        <Button Content="{loc:Loc Key=instances.addAccount}"
-                                Command="{Binding AddAccountCommand}"
-                                Style="{StaticResource PrimaryButton}"
-                                HorizontalAlignment="Left"
-                                Margin="0,10,0,0" />
-                        <TextBlock Text="{Binding StatusMessage}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="11"
-                                   Margin="0,10,0,0"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-
-                <!-- Java -->
-                <Border Grid.Column="2" Style="{StaticResource Card}">
-                    <StackPanel>
-                        <TextBlock Text="{loc:Loc Key=instances.java.title}" Style="{StaticResource LabelText}" />
-                        <Grid Margin="0,8,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="8" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <ComboBox ItemsSource="{Binding JavaOptions}"
-                                      SelectedItem="{Binding SelectedJavaOption, Mode=TwoWay}"
-                                      DisplayMemberPath="DisplayName"
-                                      IsEnabled="{Binding HasSelection}" />
-                            <Button Grid.Column="2"
-                                    Content="{loc:Loc Key=instances.java.refresh}"
-                                    Command="{Binding RefreshJavaCommand}"
-                                    Style="{StaticResource GhostButton}"
-                                    IsEnabled="{Binding HasSelection}" />
-                        </Grid>
-                        <Button Content="{loc:Loc Key=instances.java.download}"
-                                Command="{Binding DownloadJavaCommand}"
-                                Style="{StaticResource PrimaryButton}"
-                                HorizontalAlignment="Left"
-                                Margin="0,10,0,0"
-                                IsEnabled="{Binding HasSelection}" />
-                        <CheckBox Content="{loc:Loc Key=option.instance.disableJavaCheck.name}"
-                                  IsChecked="{Binding DisableJavaCompatibilityCheck, Mode=TwoWay}"
-                                  IsEnabled="{Binding HasSelection}"
-                                  Margin="0,12,0,0" />
-                        <TextBlock Text="{Binding JavaStatus}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="11"
-                                   Margin="0,8,0,0"
-                                   TextWrapping="Wrap" />
-                        <ProgressBar Height="4"
-                                     Margin="0,8,0,0"
-                                     Minimum="0"
-                                     Maximum="100"
-                                     Value="{Binding JavaDownloadProgressValue}"
-                                     IsIndeterminate="{Binding JavaDownloadIndeterminate}"
-                                     Visibility="{Binding IsDownloadingJava, Converter={StaticResource BoolToVisibility}}" />
-                        <TextBlock Text="{Binding JavaDownloadStatus}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="11"
-                                   Margin="0,7,0,0"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <Border Style="{StaticResource Card}"><StackPanel>
+                    <TextBlock Text="{loc:Loc Key=instances.accountTitle}" Style="{StaticResource LabelText}" />
+                    <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><ComboBox ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount, Mode=TwoWay}" DisplayMemberPath="DisplayName" /><TextBox Grid.Column="2" Text="{Binding NewAccountName, UpdateSourceTrigger=PropertyChanged}" ToolTip="{loc:Loc Key=instances.accountNamePlaceholder}" /></Grid>
+                    <Button Content="{loc:Loc Key=instances.addAccount}" Command="{Binding AddAccountCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,10,0,0" /><TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap" />
+                </StackPanel></Border>
+                <Border Grid.Column="2" Style="{StaticResource Card}"><StackPanel>
+                    <TextBlock Text="{loc:Loc Key=instances.java.title}" Style="{StaticResource LabelText}" />
+                    <Grid Margin="0,8,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><ComboBox ItemsSource="{Binding JavaOptions}" SelectedItem="{Binding SelectedJavaOption, Mode=TwoWay}" DisplayMemberPath="DisplayName" IsEnabled="{Binding HasSelection}" /><Button Grid.Column="2" Content="{loc:Loc Key=instances.java.refresh}" Command="{Binding RefreshJavaCommand}" Style="{StaticResource GhostButton}" IsEnabled="{Binding HasSelection}" /></Grid>
+                    <Button Content="{loc:Loc Key=instances.java.download}" Command="{Binding DownloadJavaCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,10,0,0" IsEnabled="{Binding HasSelection}" /><CheckBox Content="{loc:Loc Key=option.instance.disableJavaCheck.name}" IsChecked="{Binding DisableJavaCompatibilityCheck, Mode=TwoWay}" IsEnabled="{Binding HasSelection}" Margin="0,12,0,0" /><TextBlock Text="{Binding JavaStatus}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap" /><ProgressBar Height="4" Margin="0,8,0,0" Minimum="0" Maximum="100" Value="{Binding JavaDownloadProgressValue}" IsIndeterminate="{Binding JavaDownloadIndeterminate}" Visibility="{Binding IsDownloadingJava, Converter={StaticResource BoolToVisibility}}" /><TextBlock Text="{Binding JavaDownloadStatus}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,7,0,0" TextWrapping="Wrap" /><StackPanel Orientation="Horizontal" Margin="0,8,0,0" Visibility="{Binding CanPauseDownload, Converter={StaticResource BoolToVisibility}}"><Button Content="{Binding DownloadPauseButtonText}" Command="{Binding ToggleDownloadPauseCommand}" Style="{StaticResource GhostButton}" /><TextBlock Text="{Binding DownloadSpeedText}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="12,0,0,0" VerticalAlignment="Center" /></StackPanel>
+                </StackPanel></Border>
             </Grid>
-
-            <!-- Create instance -->
-            <Border Style="{StaticResource Card}" Margin="0,0,0,18">
-                <StackPanel>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="180" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="{loc:Loc Key=instances.name}" Style="{StaticResource LabelText}" />
-                            <TextBox Text="{Binding NewInstanceName, UpdateSourceTrigger=PropertyChanged}"
-                                     ToolTip="{loc:Loc Key=instances.namePlaceholder}" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="{loc:Loc Key=instances.version}" Style="{StaticResource LabelText}" />
-                            <TextBox Text="{Binding NewInstanceVersion, UpdateSourceTrigger=PropertyChanged}"
-                                     ToolTip="{loc:Loc Key=instances.versionPlaceholder}" />
-                        </StackPanel>
-                        <Button Grid.Column="4"
-                                Content="{loc:Loc Key=common.create}"
-                                Command="{Binding CreateInstanceCommand}"
-                                Style="{StaticResource PrimaryButton}"
-                                VerticalAlignment="Bottom" />
-                    </Grid>
-
-                    <Grid Margin="0,12,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="180" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="8" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="{loc:Loc Key=instances.loader.title}" Style="{StaticResource LabelText}" />
-                            <ComboBox ItemsSource="{Binding LoaderChoices}"
-                                      SelectedItem="{Binding SelectedNewLoader, Mode=TwoWay}"
-                                      DisplayMemberPath="DisplayName" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="{loc:Loc Key=instances.loader.version}" Style="{StaticResource LabelText}" />
-                            <ComboBox ItemsSource="{Binding LoaderVersions}"
-                                      SelectedItem="{Binding SelectedLoaderVersion, Mode=TwoWay}"
-                                      DisplayMemberPath="DisplayName" />
-                        </StackPanel>
-                        <Button Grid.Column="4"
-                                Content="{loc:Loc Key=instances.loader.refresh}"
-                                Command="{Binding RefreshComponentsCommand}"
-                                Style="{StaticResource GhostButton}"
-                                VerticalAlignment="Bottom" />
-                    </Grid>
-
-                    <TextBlock Text="{loc:Loc Key=instances.fabricApi.notice}"
-                               Foreground="{StaticResource AccentBrush}"
-                               FontSize="11"
-                               FontWeight="SemiBold"
-                               Margin="0,12,0,0"
-                               TextWrapping="Wrap"
-                               Visibility="{Binding ShowFabricApiNotice, Converter={StaticResource BoolToVisibility}}" />
-                    <Grid Margin="0,10,0,0"
-                          Visibility="{Binding ShowFabricApiNotice, Converter={StaticResource BoolToVisibility}}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="180" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="{loc:Loc Key=instances.fabricApi.title}"
-                                   Style="{StaticResource LabelText}"
-                                   VerticalAlignment="Center" />
-                        <ComboBox Grid.Column="2"
-                                  ItemsSource="{Binding FabricApiVersions}"
-                                  SelectedItem="{Binding SelectedFabricApiVersion, Mode=TwoWay}"
-                                  DisplayMemberPath="DisplayName" />
-                    </Grid>
-                    <Grid Margin="0,10,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="180" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="{loc:Loc Key=instances.optifine.title}"
-                                   Style="{StaticResource LabelText}"
-                                   VerticalAlignment="Center" />
-                        <ComboBox Grid.Column="2"
-                                  ItemsSource="{Binding OptiFineVersions}"
-                                  SelectedItem="{Binding SelectedOptiFineVersion, Mode=TwoWay}"
-                                  DisplayMemberPath="DisplayName"
-                                  IsEnabled="{Binding OptiFineEnabled}" />
-                    </Grid>
-                    <TextBlock Text="{loc:Loc Key=instances.optifine.disabled}"
-                               Foreground="{StaticResource TextMutedBrush}"
-                               FontSize="10"
-                               Margin="0,6,0,0"
-                               TextWrapping="Wrap" />
-                    <ProgressBar Height="4"
-                                 Margin="0,10,0,0"
-                                 Minimum="0"
-                                 Maximum="100"
-                                 IsIndeterminate="True"
-                                 Visibility="{Binding IsLoadingComponents, Converter={StaticResource BoolToVisibility}}" />
-                    <TextBlock Text="{Binding ComponentStatus}"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               FontSize="11"
-                               Margin="0,6,0,0"
-                               TextWrapping="Wrap" />
-                </StackPanel>
-            </Border>
-
-            <!-- Diagnostics -->
-            <Border Style="{StaticResource Card}"
-                    Margin="0,0,0,18"
-                    Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}">
-                <StackPanel>
-                    <TextBlock Text="{loc:Loc Key=diagnostics.title}" Style="{StaticResource SectionText}" />
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Content="{loc:Loc Key=diagnostics.analyze}"
-                                Command="{Binding AnalyzeCrashCommand}"
-                                Style="{StaticResource GhostButton}" />
-                        <Button Content="{loc:Loc Key=diagnostics.export}"
-                                Command="{Binding ExportDiagnosticsCommand}"
-                                Style="{StaticResource GhostButton}"
-                                Margin="8,0,0,0" />
-                    </StackPanel>
-                    <ProgressBar Height="3"
-                                 Margin="0,8,0,0"
-                                 IsIndeterminate="True"
-                                 Visibility="{Binding IsAnalyzingCrash, Converter={StaticResource BoolToVisibility}}" />
-                    <ScrollViewer MaxHeight="220"
-                                  VerticalScrollBarVisibility="Auto"
-                                  Margin="0,8,0,0">
-                        <TextBlock Text="{Binding CrashAnalysisText}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="11"
-                                   TextWrapping="Wrap" />
-                    </ScrollViewer>
-                    <TextBlock Text="{Binding DiagnosticStatus}"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               FontSize="11"
-                               Margin="0,6,0,0"
-                               TextWrapping="Wrap" />
-                </StackPanel>
-            </Border>
+            <Border Style="{StaticResource Card}" Margin="0,0,0,18"><StackPanel>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="180" /><ColumnDefinition Width="12" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="{loc:Loc Key=instances.name}" Style="{StaticResource LabelText}" /><TextBox Text="{Binding NewInstanceName, UpdateSourceTrigger=PropertyChanged}" ToolTip="{loc:Loc Key=instances.namePlaceholder}" /></StackPanel><StackPanel Grid.Column="2"><TextBlock Text="{loc:Loc Key=instances.version}" Style="{StaticResource LabelText}" /><TextBox Text="{Binding NewInstanceVersion, UpdateSourceTrigger=PropertyChanged}" ToolTip="{loc:Loc Key=instances.versionPlaceholder}" /></StackPanel><Button Grid.Column="4" Content="{loc:Loc Key=common.create}" Command="{Binding CreateInstanceCommand}" Style="{StaticResource PrimaryButton}" VerticalAlignment="Bottom" /></Grid>
+                <Grid Margin="0,12,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><StackPanel><TextBlock Text="{loc:Loc Key=instances.loader.title}" Style="{StaticResource LabelText}" /><ComboBox ItemsSource="{Binding LoaderChoices}" SelectedItem="{Binding SelectedNewLoader, Mode=TwoWay}" DisplayMemberPath="DisplayName" /></StackPanel><StackPanel Grid.Column="2"><TextBlock Text="{loc:Loc Key=instances.loader.version}" Style="{StaticResource LabelText}" /><ComboBox ItemsSource="{Binding LoaderVersions}" SelectedItem="{Binding SelectedLoaderVersion, Mode=TwoWay}" DisplayMemberPath="DisplayName" /></StackPanel><Button Grid.Column="4" Content="{loc:Loc Key=instances.loader.refresh}" Command="{Binding RefreshComponentsCommand}" Style="{StaticResource GhostButton}" VerticalAlignment="Bottom" /></Grid>
+                <TextBlock Text="{loc:Loc Key=instances.fabricApi.notice}" Foreground="{StaticResource AccentBrush}" FontSize="11" FontWeight="SemiBold" Margin="0,12,0,0" TextWrapping="Wrap" Visibility="{Binding ShowFabricApiNotice, Converter={StaticResource BoolToVisibility}}" />
+                <Grid Margin="0,10,0,0" Visibility="{Binding ShowFabricApiNotice, Converter={StaticResource BoolToVisibility}}"><Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="{loc:Loc Key=instances.fabricApi.title}" Style="{StaticResource LabelText}" VerticalAlignment="Center" /><ComboBox Grid.Column="2" ItemsSource="{Binding FabricApiVersions}" SelectedItem="{Binding SelectedFabricApiVersion, Mode=TwoWay}" DisplayMemberPath="DisplayName" /></Grid>
+                <Grid Margin="0,10,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Text="{loc:Loc Key=instances.optifine.title}" Style="{StaticResource LabelText}" VerticalAlignment="Center" /><ComboBox Grid.Column="2" ItemsSource="{Binding OptiFineVersions}" SelectedItem="{Binding SelectedOptiFineVersion, Mode=TwoWay}" DisplayMemberPath="DisplayName" IsEnabled="{Binding OptiFineEnabled}" /></Grid>
+                <TextBlock Text="{loc:Loc Key=instances.optifine.disabled}" Foreground="{StaticResource TextMutedBrush}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap" /><ProgressBar Height="4" Margin="0,10,0,0" IsIndeterminate="True" Visibility="{Binding IsLoadingComponents, Converter={StaticResource BoolToVisibility}}" /><TextBlock Text="{Binding ComponentStatus}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap" />
+            </StackPanel></Border>
+            <Border Style="{StaticResource Card}" Margin="0,0,0,18" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}"><StackPanel>
+                <TextBlock Text="{loc:Loc Key=diagnostics.title}" Style="{StaticResource SectionText}" /><StackPanel Orientation="Horizontal" Margin="0,10,0,0"><Button Content="{loc:Loc Key=diagnostics.analyze}" Command="{Binding AnalyzeCrashCommand}" Style="{StaticResource GhostButton}" /><Button Content="{loc:Loc Key=diagnostics.export}" Command="{Binding ExportDiagnosticsCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" /></StackPanel><ProgressBar Height="3" Margin="0,8,0,0" IsIndeterminate="True" Visibility="{Binding IsAnalyzingCrash, Converter={StaticResource BoolToVisibility}}" /><ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0"><TextBlock Text="{Binding CrashAnalysisText}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" /></ScrollViewer><TextBlock Text="{Binding DiagnosticStatus}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap" />
+            </StackPanel></Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>
