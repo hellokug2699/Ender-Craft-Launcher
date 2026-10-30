@@ -26,6 +26,7 @@
                         <TextBlock Text="{Binding SelectedInstanceComponents}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}" />
                     </StackPanel>
                     <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                        <Button Content="打开实例工作区" Command="{Binding OpenInstanceDetailsCommand}" Style="{StaticResource GhostButton}" MinWidth="128" Height="38" IsEnabled="{Binding HasSelection}" Margin="0,0,0,8" />
                         <Button Content="{loc:Loc Key=instances.launch}" Command="{Binding LaunchCommand}" Style="{StaticResource PrimaryButton}" MinWidth="128" Height="42" IsEnabled="{Binding HasSelection}" />
                         <TextBlock Text="{loc:Loc Key=instances.installMovedHint}"
                                    Foreground="{DynamicResource TextMutedBrush}"
