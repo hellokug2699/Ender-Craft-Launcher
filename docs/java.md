@@ -89,7 +89,7 @@ Linux ARM64 在 Mojang 来源下会返回“平台不支持”；切换到 Adopt
 
 ## 6. JVM 参数预设
 
-`java.jvmPreset`（全局）与 `instance.java.jvmPreset`（实例覆盖）支持：
+`java.jvmPreset`（全局）与 `instance.java.jvmPreset`（实例覆盖）支持。全局默认值为 `g1`（推荐）；实例留空时继承全局预设：
 
 | 预设 | 内容 |
 | --- | --- |
@@ -148,6 +148,6 @@ ecl launch <实例ID> --dry-run
 
 ## 9. 限制与后续
 
-- JVM 预设目前是内置组合，尚不支持用户自定义/保存预设。
+- 内置预设之外可通过自定义 JSON 文件加载参数；尚不支持在 UI 中编辑并保存新的命名预设。
 - 32/64 位与内存校验只给出警告，不强制阻止启动。
 - Microsoft 账户体系（原 v0.3）因 OAuth 审核限制暂缓，不影响本地离线启动。
