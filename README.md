@@ -1,131 +1,122 @@
-# Ender Craft Launcher
+# Ender Craft Launcher（ECL）
 
-> 一个面向 Windows 的 Minecraft 启动器，使用 C# / .NET 10 / WPF 构建。
+> **nightly 开发分支说明** · 面向 Windows 的 Minecraft 启动器，使用 C#、.NET 10 与 WPF 构建。
 
-ECL 的目标是达到 HMCL、PCL2 级别的完整度，同时在配置系统、启动流程和交互上做出自己的设计。当前仓库处于 **v0.8 可靠性与功能闭环** 阶段（v0.3 账户体系因 Microsoft OAuth 审核限制暂时跳过），已接入 CurseForge 与 Modrinth、统一下载页与可配置实例目录：能够安装原版、Fabric（含 Fabric API）、Forge、NeoForge 与 Cleanroom，管理 Java 运行时、Mod、整合包、数据包、资源包与光影包，完成真实启动，并提供 ECL 深色界面、崩溃分析与脱敏诊断包。首次启动向导本阶段暂缓。
+ECL 致力于提供完整、可靠且易于维护的 Minecraft 实例管理与启动体验。项目以成熟启动器为参考，同时建立自己的配置、安装、下载和诊断体系。
 
-WPF 已完成 **launcher-first UI 重构**：主窗口采用持久侧栏 + 内容画布，页面为「主页 / 下载 / 实例 / 内容 / 设置 / 关于」。主页只负责启动游戏与新版本情报；实例下载、Mod、整合包、数据包、资源包与光影包下载全部合并到「下载」页；实例页只做管理与启动；内容页只管理已安装内容。UI 重构原则是不复制业务逻辑，并以 Windows WPF CI 作为最终验收门槛。
+本分支是持续开发中的 nightly 版本，功能、界面和内部结构都可能调整。请勿将 nightly 视为稳定发行版；使用前建议备份实例目录和重要游戏数据。
 
-## 现在能做什么
+## 项目现状
 
-- WPF 桌面壳：主页、下载、实例、内容、设置、关于六个页面，采用 ECL 深色主题、内嵌 HarmonyOS Sans SC 字体与统一控件样式（按钮 / 输入框 / 下拉框 / 页签 / 列表选中态）。
-- **主页**：只保留启动游戏与新版本情报（读取 Mojang 版本清单），为以后的新闻源预留固定入口。
-- **下载页**：实例下载（新建/安装/补全/Java）与 Mod、整合包、数据包、资源包、光影包下载合并；支持「全部 / 仅 CurseForge / 仅 Modrinth」来源过滤；没有实例时也能搜索并下载文件，整合包还能“下载并新建实例导入”。
-- 多实例管理：创建/列出/删除实例，每个实例有独立目录与元数据；版本隔离始终开启且不出现在设置中。
-- **可配置实例下载位置**：设置中可指定 .minecraft 目录（`launcher.minecraftDirectory`），实例与游戏文件写入该目录；修改后需重启。
-- **Modrinth**：v2 API 搜索、版本/依赖解析、文件下载、整合包 `.mrpack` 下载与导入。
-- 离线账户：按 Java `UUID.nameUUIDFromBytes` 规则生成 UUID，可设默认账户。
-- 元数据驱动配置：全局设置与实例覆盖，自动生成设置页，支持校验、可见性依赖、来源标记。
-- **原版安装**：版本清单、版本 JSON、继承链合并、客户端、依赖库、资源索引与资源对象、日志配置下载；SHA-1 校验、断点续传、并发下载、失败重试。
-- **四档下载源策略**：只官方 / 优先官方 / 优先镜像 / 只镜像，默认优先官方、其次 BMCLAPI。
-- **Java 管理**：逐实例选择/自动选择 Java，显示兼容性状态；只检查最低版本、不限制最高版本；版本过低时弹窗提示，可逐实例关闭兼容性检验；没有 Java 时提示并支持从 Mojang、Adoptium、Zulu 或 Liberica 自动下载 Java 运行时（含 32/64 位与内存需求警告）；支持 G1 / ZGC / Aikar's flags 预设，并支持导入自定义 JSON JVM 预设。
-- **EULA**：首次真实启动时弹窗要求同意 Minecraft EULA；同意后额外提示“多人联机功能不由启动器提供”的免责声明，并写入 `eula.txt`。
-- **加载器安装**：Fabric（Meta profile JSON，强制安装 Fabric API，默认最新 API）、Forge（安装器 spec 0 直接解压，spec 1+ 运行 processors）、NeoForge（1.20.1 旧产物与 1.20.2+/26.x）与 Cleanroom（1.12.2，从官方安装器提取版本 JSON，Java 25）；支持选择加载器/Fabric API/OptiFine 版本并显示更新时间；安装失败自动清理本次文件并写入诊断 JSON。
-- **OptiFine**：仅在 Forge 或 Cleanroom + 用户显式选择时安装，默认不安装，遵守分发限制；Fabric、NeoForge 与原版下禁用。
-- **Mod 管理**：解析 `fabric.mod.json` / `mods.toml` / `neoforge.mods.toml` / `mcmod.info`；检测重复 Mod、缺失/禁用依赖、冲突与加载器不匹配；支持单个/批量启用禁用、导入、删除，WPF 与 CLI 均可操作。
-- **整合包与资源包**：导入 Modrinth `.mrpack` 与 CurseForge `.zip`（完整下载 `files[]`、SHA-1 校验、解压 overrides）；导出为 Modrinth `.mrpack`；列出、导入、删除、启用/禁用资源包与光影包（以 `options.txt` 为唯一事实来源，缺失/重复/未识别条目只提示，不静默改写，写入前备份并原子替换）。
-- **CurseForge**：与 Modrinth 一起接入统一搜索；按实例游戏版本与加载器搜索、查看文件、一键安装（递归安装必需依赖），支持项目 ID / slug / 链接；API key 只存在于 ECL 代理服务端。
-- **统一下载执行**：整合包下载为归档后复用导入流程；Modrinth Mod 会补齐必需依赖；资源包/光影包/数据包按类型落盘。
-- **真实启动**：检查文件完整性（大小 + SHA-1，含资源对象存在性）、解压 natives、按规则过滤库、构建命令并启动进程；支持 Fabric `arguments.jvm`、Forge/NeoForge `${library_directory}`/`--launchTarget` 与 Cleanroom `--tweakClass`；`arguments.jvm`/`arguments.game` 按 OS/架构/feature 规则过滤。
-- **诊断**：解析 `crash-reports` / `latest.log`，按崩溃堆栈与 Mod 元数据排序可疑 Mod；导出包含日志、崩溃报告、安装诊断和系统信息的脱敏 zip，不包含账户文件。
-- **下载控制**：安装与 Java 下载显示实时速度，支持暂停/继续；Mod 删除与资源包区域已接入 WPF。
-- 启动流水线：校验 → 读取版本 → 解析 Java → 检查文件 → 解压 natives → 检查 EULA → 构建命令 → 启动/干跑；失败可定位到具体步骤。
-- CLI：无 GUI 环境下安装游戏、管理 Java/实例/账户/配置、Mod/整合包/资源包、CurseForge Mod，并预览启动命令。
-- 单元测试：209 个测试覆盖下载源、HTTP 下载、Java 需求/选择/安装/第三方提供方/归档解压/平台校验/JVM 预设、配置、账户、Java 探测、EULA、实例隔离、加载器目录、Forge/NeoForge 安装器解析、Cleanroom 安装器解析、库规则（含 `arch: x64`）、版本继承、arguments 规则/占位符、安装回滚与诊断、Mod 元数据/扫描/启停、整合包导入导出、CurseForge 客户端/安装器/依赖、Modrinth 客户端/统一搜索/`.mrpack` 下载与导入、可配置游戏目录、资源包管理与安装/启动流水线、`options.txt` 解析与资源包/光影包启用状态。
+- **桌面界面**：Windows WPF，采用深色主题与持久侧栏，包含主页、下载、实例、内容、设置和关于页面。
+- **主页工作台**：选择并启动实例、预览启动命令、查看 Java 与账户状态、快速切换实例，并提供下载中心、实例管理和已安装内容入口。主页不展示 Minecraft 正式版或快照版更新资讯。
+- **下载中心**：统一搜索游戏版本、Mod、整合包、数据包、资源包和光影包；支持 CurseForge、Modrinth 来源筛选、游戏版本与加载器过滤、查看项目详情、下载或安装。
+- **实例管理**：创建、刷新和删除实例；实例拥有独立元数据与游戏目录，可配置 Minecraft 根目录。
+- **游戏安装**：支持原版、Fabric、Forge、NeoForge 与 Cleanroom 的安装流程，并处理对应的版本元数据、依赖库和启动参数。
+- **Java 管理**：探测本机 Java，按实例选择运行时；支持自动下载运行时、版本兼容性检查和 JVM 参数预设。
+- **账户**：支持离线账户与默认账户设置。
+- **内容管理**：解析 Mod 元数据，检查重复项、依赖缺失、冲突和加载器不匹配；支持导入、启用、禁用与删除。
+- **整合包**：支持导入 Modrinth .mrpack 与 CurseForge .zip，并提供 Modrinth 格式导出；导入过程包含文件校验与安全解压保护。
+- **资源与光影**：管理资源包、光影包和数据包；相关启用状态与 Minecraft 配置保持同步。
+- **CurseForge / Modrinth**：统一搜索与安装入口；Modrinth 依赖可递归解析，CurseForge 请求通过项目代理服务处理。
+- **启动与诊断**：执行启动前检查、版本解析、Java 选择、文件校验、原生库解压和进程启动；支持崩溃日志分析及脱敏诊断包导出。
+- **下载控制**：下载任务显示进度与速度，并支持暂停和继续。
+- **命令行**：提供无图形界面的安装、实例、Java、Mod、整合包、配置与启动命令。
+- **自动化测试**：核心逻辑由单元测试覆盖；每次推送以 GitHub Actions 中的构建和测试结果为准。
 
-## 尚未实现
+## 尚未实现或仍有限制
 
-- Microsoft 登录 / authlib-injector 第三方认证（v0.3，暂时跳过）。
-- Quilt / Legacy Fabric。
-- CurseForge 作者禁止第三方分发的文件无法下载；Modrinth/CurseForge 的可选依赖尚未提供选择界面；暂不做 Mod 更新检查。
-- 首次启动向导（本阶段暂缓）。
-- 资源包/光影包的启用状态只写入 `options.txt`；使用独立配置文件的光影实现不会被同步。
-- 启动器自更新、安装包与签名发布。
-- 托盘、完整 i18n 热切换、更多无障碍细节等体验项。
+- Microsoft 正式账户登录及第三方认证尚未接入。
+- Quilt、Legacy Fabric 等加载器尚未支持。
+- Mod 更新检查与可选依赖交互选择尚未完成。
+- CurseForge 作者限制第三方分发的文件无法由启动器代为分发。
+- 启动器自动更新、正式安装包和代码签名发布尚未完成。
+- 首次启动向导、托盘和完整的语言热切换等体验功能仍在规划中。
 
-路线图见 [docs/roadmap.md](docs/roadmap.md)。
+具体开发优先级以 [开发路线图](docs/roadmap.md) 为准。文档描述可能落后于 nightly 实际代码；若有冲突，以代码和自动化测试为准。
 
 ## 环境要求
 
-- Windows 10 1809+ / Windows 11（WPF 运行）
-- .NET 10 SDK（当前锁定 10.0.4xx）
-- 可选：Java 8/17/21/25，用于启动 Minecraft
+- Windows 10 1809 或更高版本 / Windows 11（运行 WPF 桌面程序）
+- .NET 10 SDK（仓库使用 global.json 锁定 SDK）
+- Java 运行时：根据 Minecraft 版本选择 Java 8、17、21、25 等兼容版本；也可由 ECL 协助下载
 
-Linux/macOS 可以构建 Core、CLI 和测试；WPF 项目通过 `EnableWindowsTargeting` 可交叉编译，但无法运行。
+Linux 和 macOS 可用于构建 Core、CLI 与测试项目；WPF 桌面程序仅面向 Windows。
 
-## 构建与运行
+## 获取代码
 
-```powershell
+~~~powershell
+git clone https://github.com/hellokug2699/Ender-Craft-Launcher.git
+cd Ender-Craft-Launcher
+git switch nightly
+~~~
+
+## 构建、测试与运行
+
+在仓库根目录执行：
+
+~~~powershell
 dotnet restore ECL.sln
 dotnet build ECL.sln -c Release
 dotnet format ECL.sln --verify-no-changes
-dotnet test tests/ECL.Tests/ECL.Tests.csproj -c Release --no-build
+dotnet test tests/ECL.Tests/ECL.Tests.csproj -c Release
 dotnet run --project src/ECL.App
-```
+~~~
 
-CLI：
+运行命令行工具示例：
 
-```powershell
+~~~powershell
 dotnet run --project src/ECL.Cli -- version
 dotnet run --project src/ECL.Cli -- account add-offline Steve --default
 dotnet run --project src/ECL.Cli -- instance create "Survival" --version 1.21.1
 dotnet run --project src/ECL.Cli -- instance create "Fabric" --version 1.21.1 --loader fabric
-dotnet run --project src/ECL.Cli -- instance create "Forge" --version 1.20.1 --loader forge
-dotnet run --project src/ECL.Cli -- instance create "NeoForge" --version 1.21.1 --loader neoforge
-dotnet run --project src/ECL.Cli -- loader list --version 1.20.1 --type forge
 dotnet run --project src/ECL.Cli -- install <实例ID>
 dotnet run --project src/ECL.Cli -- java install <实例ID>
 dotnet run --project src/ECL.Cli -- launch <实例ID> --dry-run
-dotnet run --project src/ECL.Cli -- crash <实例ID>
-dotnet run --project src/ECL.Cli -- diagnostics export <实例ID>
 dotnet run --project src/ECL.Cli -- mod list <实例ID>
 dotnet run --project src/ECL.Cli -- mod check <实例ID>
-dotnet run --project src/ECL.Cli -- mod import <实例ID> "C:\mods\example.jar"
 dotnet run --project src/ECL.Cli -- modpack import <实例ID> "C:\packs\example.mrpack"
-dotnet run --project src/ECL.Cli -- modpack import <实例ID> "C:\packs\example.zip"
-dotnet run --project src/ECL.Cli -- curseforge status --check
-dotnet run --project src/ECL.Cli -- curseforge search jei --game-version 1.20.1 --loader forge
-dotnet run --project src/ECL.Cli -- curseforge install <实例ID> jei
-dotnet run --project src/ECL.Cli -- pack list <实例ID>
-dotnet run --project src/ECL.Cli -- pack enable <实例ID> "example.zip"
-dotnet run --project src/ECL.Cli -- pack disable <实例ID> "example.zip"
-dotnet run --project src/ECL.Cli -- settings set java.jvmPreset aikar
-dotnet run --project src/ECL.Cli -- settings set java.runtimeProvider adoptium
-dotnet run --project src/ECL.Cli -- settings list
-```
+dotnet run --project src/ECL.Cli -- diagnostics export <实例ID>
+~~~
 
-使用 `--data-dir <目录>` 可以隔离数据目录；使用 `--lang zh-CN|en-US` 覆盖语言。
+可使用 --data-dir <目录> 指定独立数据目录，使用 --lang zh-CN|en-US 指定界面语言。
 
 ## 仓库结构
 
-```
+~~~text
 src/
-  ECL.Core/            基础设施：路径、结果类型、JSON、日志、本地化
-  ECL.Configuration/   元数据驱动配置：定义、注册表、作用域、持久化
-  ECL.Download/        HTTP 下载、镜像映射、四档下载源策略、校验与续传
-  ECL.Auth/            账户模型、离线 UUID、账户存储
-  ECL.Java/            Java 版本解析、运行时探测、Java 需求/兼容性、运行时下载
-  ECL.Minecraft/       实例、版本、安装器、Java 选择、Mod、CurseForge、诊断、启动流水线、进程启动
-  ECL.App/             WPF 外壳（MVVM）
+  ECL.Core/            通用基础设施、本地化、路径与结果类型
+  ECL.Configuration/   元数据驱动配置系统
+  ECL.Download/        HTTP 下载、镜像策略、校验与续传
+  ECL.Auth/            账户模型与离线账户
+  ECL.Java/            Java 探测、兼容性与运行时安装
+  ECL.Minecraft/       实例、版本、加载器、内容、诊断与启动流程
+  ECL.App/             WPF 桌面界面（MVVM）
   ECL.Cli/             命令行入口
 tests/
-  ECL.Tests/           单元测试
-docs/                  架构、配置、启动流程、仓库策略、路线图、ADR
-build/                 构建、打包、签名脚本
-```
+  ECL.Tests/           自动化单元测试
+docs/                  架构文档、使用说明、路线图与 ADR
+build/                 构建与发布脚本
+~~~
 
-## 数据目录
+## 数据位置
 
-默认位于 `%LOCALAPPDATA%\EnderCraftLauncher`；实例与游戏文件默认也在其中，可在设置中改为任意 `.minecraft` 目录（环境变量 `ECL_GAME_DIR` 可覆盖）。完整布局见 [docs/architecture.md](docs/architecture.md)。
+默认数据目录位于：
 
-## 仓库拆分
+~~~text
+%LOCALAPPDATA%\EnderCraftLauncher
+~~~
 
-- 本仓库 `Ender-Craft-Launcher`（public）：全部源码、文档、构建脚本与公开配置，GPL-3.0-or-later。
-- `Ender-Craft-Launcher-Core`（private）：只放代码签名证书、私钥、OAuth/上传凭据等极私密材料。
+实例和游戏文件默认保存在该目录下，也可以在设置中指定其他 .minecraft 目录。环境变量 ECL_GAME_DIR 可覆盖游戏目录。详细布局见 [架构说明](docs/architecture.md)。
 
-**本仓库的构建不依赖 Core 仓库。** 签名材料通过环境变量从 Core 仓库注入；CurseForge 请求经私有代理转发，key 只保存在代理服务端，构建与客户端都不读取，详见 [docs/repository-policy.md](docs/repository-policy.md) 与 [docs/curseforge.md](docs/curseforge.md)。
+## 仓库与敏感信息
 
-## 文档
+- [Ender-Craft-Launcher](https://github.com/hellokug2699/Ender-Craft-Launcher)：公开仓库，存放源代码、文档、构建脚本和公开配置。
+- [Ender-Craft-Launcher-Core](https://github.com/hellokug2699/Ender-Craft-Launcher-Core)：私有仓库，仅用于存放不应公开的签名材料及其他敏感内容。
+
+公开仓库的常规构建不依赖私有 Core 仓库。不得将证书私钥、OAuth 凭据、API 密钥或其他秘密提交到公开仓库。具体规则见 [仓库与保密策略](docs/repository-policy.md)。
+
+## 文档索引
 
 - [架构总览](docs/architecture.md)
 - [配置系统](docs/configuration.md)
@@ -137,11 +128,13 @@ build/                 构建、打包、签名脚本
 - [崩溃分析与诊断包](docs/diagnostics.md)
 - [启动流水线](docs/launch-pipeline.md)
 - [仓库与保密策略](docs/repository-policy.md)
-- [路线图](docs/roadmap.md)
-- [ADR](docs/adr)
+- [开发路线图](docs/roadmap.md)
+- [架构决策记录（ADR）](docs/adr)
 
 ## 许可证
 
-GPL-3.0-or-later。Minecraft 是 Mojang Studios 的商标，本项目与 Mojang 或 Microsoft 无关联。
+本项目采用 GPL-3.0-or-later，详见 [LICENSE](LICENSE)。
 
-界面字体 HarmonyOS Sans SC（Regular / Bold）版权归 Huawei Device Co., Ltd.，依据 HarmonyOS Sans Fonts License Agreement 随程序内嵌分发且未做修改；许可证全文见 [src/ECL.App/Fonts/HarmonyOS_Sans_LICENSE.txt](src/ECL.App/Fonts/HarmonyOS_Sans_LICENSE.txt)。字体不是 GPL 源代码的一部分，其使用条件以该许可证为准。
+Minecraft 是 Mojang Studios 的商标。本项目与 Mojang Studios 或 Microsoft 无关联。
+
+界面字体 HarmonyOS Sans SC 的版权归 Huawei Device Co., Ltd. 所有，并依据其字体许可协议随程序分发；许可全文见 [字体许可文件](src/ECL.App/Fonts/HarmonyOS_Sans_LICENSE.txt)。
