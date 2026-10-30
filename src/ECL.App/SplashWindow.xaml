@@ -38,8 +38,7 @@
                        Margin="0,0,0,56"
                        FontSize="13"
                        FontWeight="SemiBold"
-                       Foreground="#A98BC7"
-                       CharacterSpacing="80" />
+                       Foreground="#A98BC7" />
             <TextBlock Text="INITIALIZING..."
                        HorizontalAlignment="Center"
                        VerticalAlignment="Bottom"
