@@ -743,10 +743,41 @@ public sealed class ModpackService(
         archive.Entries.FirstOrDefault(entry =>
             string.Equals(entry.FullName, name, StringComparison.OrdinalIgnoreCase));
 
+    private const long MaxMetadataEntryBytes = 4L * 1024 * 1024;
+
     private static string ReadText(ZipArchiveEntry entry)
     {
-        using var stream = entry.Open();
-        using var reader = new StreamReader(stream);
+        if (entry.Length < 0 || entry.Length > MaxMetadataEntryBytes)
+        {
+            throw new InvalidDataException(
+                $"整合包元数据条目过大：{entry.FullName}（上限 {MaxMetadataEntryBytes / (1024 * 1024)} MiB）。");
+        }
+
+        using var source = entry.Open();
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        long totalBytes = 0;
+
+        while (true)
+        {
+            var read = source.Read(chunk, 0, chunk.Length);
+            if (read == 0)
+            {
+                break;
+            }
+
+            if (read > MaxMetadataEntryBytes - totalBytes)
+            {
+                throw new InvalidDataException(
+                    $"整合包元数据条目过大：{entry.FullName}（上限 {MaxMetadataEntryBytes / (1024 * 1024)} MiB）。");
+            }
+
+            buffer.Write(chunk, 0, read);
+            totalBytes += read;
+        }
+
+        buffer.Position = 0;
+        using var reader = new StreamReader(buffer);
         return reader.ReadToEnd();
     }
 
