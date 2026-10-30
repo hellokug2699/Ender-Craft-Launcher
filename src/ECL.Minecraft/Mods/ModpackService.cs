@@ -801,4 +801,9 @@ public sealed class ModpackService(
         using var stream = entry.Open();
         stream.Write(content);
     }
+
+    private sealed class ForwardingProgress<T>(Action<T> callback) : IProgress<T>
+    {
+        public void Report(T value) => callback(value);
+    }
 }
