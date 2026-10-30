@@ -56,6 +56,7 @@ public sealed class ContentInstallService(
     ILogger<ContentInstallService> logger) : IContentInstallService
 {
     private const int MaxDependencyDepth = 4;
+    private const int MaxDependencyFiles = 128;
     private const string ModrinthHost = "modrinth.com";
 
     public async Task<Result<ContentInstallReport>> InstallAsync(
@@ -535,6 +536,17 @@ public sealed class ContentInstallService(
         int depth,
         CancellationToken cancellationToken)
     {
+        if (files.Count >= MaxDependencyFiles)
+        {
+            const string warning = "Modrinth 必需依赖数量超过 128 个，已停止继续解析；请手动检查整合包依赖。";
+            if (!warnings.Contains(warning, StringComparer.Ordinal))
+            {
+                warnings.Add(warning);
+            }
+
+            return;
+        }
+
         if (depth >= MaxDependencyDepth || string.IsNullOrWhiteSpace(file.VersionId))
         {
             if (depth >= MaxDependencyDepth)
@@ -555,6 +567,16 @@ public sealed class ContentInstallService(
         foreach (var dependency in version.Value!.Dependencies)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (files.Count >= MaxDependencyFiles)
+            {
+                const string warning = "Modrinth 必需依赖数量超过 128 个，已停止继续解析；请手动检查整合包依赖。";
+                if (!warnings.Contains(warning, StringComparer.Ordinal))
+                {
+                    warnings.Add(warning);
+                }
+
+                return;
+            }
             if (!string.Equals(dependency.DependencyType, "required", StringComparison.OrdinalIgnoreCase) ||
                 string.IsNullOrWhiteSpace(dependency.ProjectId))
             {
