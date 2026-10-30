@@ -9,7 +9,6 @@
                   HorizontalScrollBarVisibility="Disabled"
                   KeyboardNavigation.TabNavigation="Cycle">
         <StackPanel>
-            <!-- Page heading -->
             <Grid Margin="0,0,0,22">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -17,24 +16,20 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel>
                     <TextBlock Text="{loc:Loc Key=home.title}" Style="{StaticResource TitleText}" />
-                    <TextBlock Text="{loc:Loc Key=home.subtitle}"
+                    <TextBlock Text="管理实例、检查运行环境，并从这里开始你的游戏与内容工作流。"
                                Style="{StaticResource SubtitleText}" Margin="0,6,0,0" />
                 </StackPanel>
-                <Button Grid.Column="1"
-                        Content="{loc:Loc Key=common.refresh}"
+                <Button Grid.Column="1" Content="{loc:Loc Key=common.refresh}"
                         Command="{Binding Launcher.RefreshCommand}"
-                        Style="{StaticResource GhostButton}"
-                        VerticalAlignment="Top" />
+                        Style="{StaticResource GhostButton}" VerticalAlignment="Top" />
             </Grid>
 
-            <!-- Launch hero + runtime context -->
             <Grid Margin="0,0,0,18">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="1.7*" />
                     <ColumnDefinition Width="14" />
                     <ColumnDefinition Width="1*" />
                 </Grid.ColumnDefinitions>
-
                 <Border Grid.Column="0" Style="{StaticResource HeroCard}" Padding="26">
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -42,15 +37,13 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="{loc:Loc Key=home.launchLabel}"
-                                       Style="{StaticResource LabelText}"
+                            <TextBlock Text="准备启动" Style="{StaticResource LabelText}"
                                        Foreground="{DynamicResource AccentBrush}" />
                             <TextBlock Text="{Binding Launcher.SelectedInstanceName}"
                                        FontSize="30" FontWeight="SemiBold" Margin="0,4,0,0"
                                        TextTrimming="CharacterEllipsis"
                                        Visibility="{Binding Launcher.HasSelection, Converter={StaticResource BoolToVisibility}}" />
-                            <TextBlock Text="{loc:Loc Key=home.noInstance}"
-                                       FontSize="24" FontWeight="SemiBold" Margin="0,4,0,0"
+                            <TextBlock Text="还没有选择实例" FontSize="24" FontWeight="SemiBold" Margin="0,4,0,0"
                                        Visibility="{Binding Launcher.HasSelection, Converter={StaticResource InverseBoolToVisibility}}" />
                             <TextBlock Text="{Binding Launcher.SelectedInstanceMeta}"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
@@ -58,26 +51,20 @@
                                        Visibility="{Binding Launcher.HasSelection, Converter={StaticResource BoolToVisibility}}" />
                             <TextBlock Text="{Binding Launcher.SelectedInstanceComponents}"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="11" Margin="0,4,0,0"
-                                       TextWrapping="Wrap"
+                                       FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
                                        Visibility="{Binding Launcher.HasSelection, Converter={StaticResource BoolToVisibility}}" />
                             <ComboBox ItemsSource="{Binding Launcher.Instances}"
                                       SelectedItem="{Binding Launcher.SelectedInstance, Mode=TwoWay}"
                                       ItemTemplate="{StaticResource NameItemTemplate}"
-                                      Margin="0,16,0,0" MaxWidth="360"
-                                      HorizontalAlignment="Left"
+                                      Margin="0,16,0,0" MaxWidth="360" HorizontalAlignment="Left"
                                       Visibility="{Binding Launcher.HasSelection, Converter={StaticResource BoolToVisibility}}" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="22,0,0,0">
-                            <Button Content="{loc:Loc Key=home.play}"
-                                    Command="{Binding Launcher.LaunchCommand}"
-                                    Style="{StaticResource PrimaryButton}"
-                                    MinWidth="142" Height="46" FontSize="14"
+                            <Button Content="{loc:Loc Key=home.play}" Command="{Binding Launcher.LaunchCommand}"
+                                    Style="{StaticResource PrimaryButton}" MinWidth="142" Height="46" FontSize="14"
                                     IsEnabled="{Binding Launcher.HasSelection}" />
-                            <Button Content="{loc:Loc Key=home.dryRun}"
-                                    Command="{Binding Launcher.DryRunCommand}"
-                                    Style="{StaticResource GhostButton}"
-                                    MinWidth="142" Margin="0,8,0,0"
+                            <Button Content="预览启动命令" Command="{Binding Launcher.DryRunCommand}"
+                                    Style="{StaticResource GhostButton}" MinWidth="142" Margin="0,8,0,0"
                                     IsEnabled="{Binding Launcher.HasSelection}" />
                         </StackPanel>
                     </Grid>
@@ -85,31 +72,28 @@
 
                 <Border Grid.Column="2" Style="{StaticResource Card}" Padding="18">
                     <StackPanel>
+                        <TextBlock Text="运行环境" Style="{StaticResource SectionText}" />
                         <TextBlock Text="{loc:Loc Key=instances.java.title}"
-                                   Style="{StaticResource SectionText}" />
+                                   Foreground="{DynamicResource TextMutedBrush}" FontSize="10"
+                                   FontWeight="SemiBold" Margin="0,12,0,0" />
                         <TextBlock Text="{Binding Launcher.JavaStatus}"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
-                                   FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0" />
+                                   FontSize="11" TextWrapping="Wrap" Margin="0,5,0,0" />
                         <Border Height="1" Background="{DynamicResource BorderSoftBrush}" Margin="0,14,0,12" />
                         <TextBlock Text="{loc:Loc Key=instances.accountTitle}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10" FontWeight="SemiBold" />
+                                   Foreground="{DynamicResource TextMutedBrush}" FontSize="10" FontWeight="SemiBold" />
                         <TextBlock Text="{Binding Launcher.SelectedAccount.DisplayName}"
                                    FontSize="12" Margin="0,5,0,0" TextWrapping="Wrap" />
                         <Border Height="1" Background="{DynamicResource BorderSoftBrush}" Margin="0,14,0,12" />
                         <TextBlock Text="{Binding Launcher.SelectedInstanceCreated}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10" />
+                                   Foreground="{DynamicResource TextMutedBrush}" FontSize="10" />
                         <TextBlock Text="{Binding Launcher.SelectedInstancePath}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="9" Margin="0,5,0,0"
-                                   TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding Launcher.SelectedInstancePath}" />
+                                   Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="0,5,0,0"
+                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding Launcher.SelectedInstancePath}" />
                     </StackPanel>
                 </Border>
             </Grid>
 
-            <!-- Recent instances: switch selection directly from the home page -->
             <Grid Margin="0,4,0,10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -117,26 +101,20 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel>
                     <TextBlock Text="{loc:Loc Key=instances.listTitle}" Style="{StaticResource SectionText}" />
-                    <TextBlock Text="{Binding Launcher.Instances.Count, StringFormat={}{0} 实例}"
+                    <TextBlock Text="{Binding Launcher.Instances.Count, StringFormat={}{0} 个实例}"
                                Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,4,0,0" />
                 </StackPanel>
-                <TextBlock Grid.Column="1"
-                           Text="{loc:Loc Key=instances.createMovedHint}"
-                           Foreground="{DynamicResource TextMutedBrush}"
-                           FontSize="9" VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis" />
+                <Button Grid.Column="1" Content="管理实例" Command="{Binding OpenInstancesCommand}"
+                        Style="{StaticResource GhostButton}" VerticalAlignment="Center" />
             </Grid>
             <ListBox ItemsSource="{Binding Launcher.Instances}"
                      SelectedItem="{Binding Launcher.SelectedInstance, Mode=TwoWay}"
                      ItemContainerStyle="{StaticResource InstanceItemStyle}"
                      Background="Transparent" BorderThickness="0"
                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                     Margin="0,0,0,12">
+                     ScrollViewer.VerticalScrollBarVisibility="Disabled" Margin="0,0,0,18">
                 <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal" />
-                    </ItemsPanelTemplate>
+                    <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
                 </ListBox.ItemsPanel>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
@@ -144,11 +122,9 @@
                             <StackPanel>
                                 <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
                                            TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding VersionText}"
-                                           Foreground="{DynamicResource AccentBrush}"
+                                <TextBlock Text="{Binding VersionText}" Foreground="{DynamicResource AccentBrush}"
                                            FontSize="10" Margin="0,6,0,0" />
-                                <TextBlock Text="{Binding LastPlayedText}"
-                                           Foreground="{DynamicResource TextMutedBrush}"
+                                <TextBlock Text="{Binding LastPlayedText}" Foreground="{DynamicResource TextMutedBrush}"
                                            FontSize="9" Margin="0,8,0,0" />
                             </StackPanel>
                         </Border>
@@ -156,13 +132,53 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
-            <!-- Launch diagnostics -->
+            <TextBlock Text="ECL 工作区" Style="{StaticResource SectionText}" Margin="0,2,0,10" />
+            <UniformGrid Columns="3" Margin="0,0,0,18">
+                <Border Style="{StaticResource Card}" Padding="16" Margin="0,0,10,0">
+                    <StackPanel>
+                        <TextBlock Text="发现内容" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="搜索 Mod、整合包、数据包、资源包与光影包。"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10"
+                                   TextWrapping="Wrap" Margin="0,7,0,12" />
+                        <Button Content="打开下载中心" Command="{Binding OpenDownloadsCommand}"
+                                Style="{StaticResource PrimaryButton}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}" Padding="16" Margin="0,0,10,0">
+                    <StackPanel>
+                        <TextBlock Text="实例管理" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="创建实例、安装游戏与加载器，管理 Java 运行环境。"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10"
+                                   TextWrapping="Wrap" Margin="0,7,0,12" />
+                        <Button Content="管理实例" Command="{Binding OpenInstancesCommand}"
+                                Style="{StaticResource GhostButton}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}" Padding="16">
+                    <StackPanel>
+                        <TextBlock Text="已安装内容" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="检查 Mod 状态、依赖与冲突，管理已安装的内容。"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10"
+                                   TextWrapping="Wrap" Margin="0,7,0,12" />
+                        <Button Content="管理内容" Command="{Binding OpenContentCommand}"
+                                Style="{StaticResource GhostButton}" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
             <Border Style="{StaticResource Card}" Margin="0,0,0,18"
                     Visibility="{Binding Launcher.HasSelection, Converter={StaticResource BoolToVisibility}}">
                 <StackPanel>
-                    <TextBlock Text="{Binding Launcher.LaunchStatus}"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               FontSize="11" TextWrapping="Wrap" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="最近一次启动诊断" Style="{StaticResource SectionText}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Launcher.LaunchStatus}"
+                                   Foreground="{DynamicResource TextMutedBrush}" FontSize="10"
+                                   VerticalAlignment="Center" TextWrapping="Wrap" />
+                    </Grid>
                     <ItemsControl ItemsSource="{Binding Launcher.LaunchSteps}" Margin="0,8,0,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -177,8 +193,7 @@
                                                FontSize="10" FontWeight="SemiBold" />
                                     <StackPanel Grid.Column="1" Margin="8,0,8,0">
                                         <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding Message}"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                        <TextBlock Text="{Binding Message}" Foreground="{DynamicResource TextSecondaryBrush}"
                                                    FontSize="10" TextWrapping="Wrap" />
                                     </StackPanel>
                                     <TextBlock Grid.Column="2" Text="{Binding DurationText}"
@@ -190,56 +205,9 @@
                 </StackPanel>
             </Border>
 
-            <!-- Version news -->
-            <Grid Margin="0,4,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel>
-                    <TextBlock Text="{loc:Loc Key=home.news.title}" Style="{StaticResource SectionText}" />
-                    <TextBlock Text="{Binding NewsStatus}"
-                               Foreground="{DynamicResource TextMutedBrush}"
-                               FontSize="10" Margin="0,4,0,0" />
-                </StackPanel>
-                <Button Grid.Column="1" Content="{loc:Loc Key=common.refresh}"
-                        Command="{Binding RefreshNewsCommand}"
-                        Style="{StaticResource GhostButton}" VerticalAlignment="Center" />
-            </Grid>
-            <ProgressBar Height="3" IsIndeterminate="True"
-                         Visibility="{Binding IsLoadingNews, Converter={StaticResource BoolToVisibility}}" />
-            <ItemsControl ItemsSource="{Binding News}" Margin="0,10,0,0">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <UniformGrid Columns="2" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Style="{StaticResource Card}" Padding="16" Margin="0,0,10,10">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Version}" FontSize="16" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding DateText}"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               FontSize="10" Margin="0,4,0,0" />
-                                </StackPanel>
-                                <Border Grid.Column="1" Style="{StaticResource Badge}" VerticalAlignment="Top">
-                                    <TextBlock Text="{Binding TypeLabel}" FontSize="9" />
-                                </Border>
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
-            <TextBlock Text="{loc:Loc Key=home.footer}"
-                       Foreground="{DynamicResource TextMutedBrush}"
-                       FontSize="9" Margin="0,10,0,0" TextWrapping="Wrap" />
+            <TextBlock Text="ECL 专注于实例、安装与内容管理。主页展示本地运行状态和可执行入口，不混入 Minecraft 版本发布公告。"
+                       Foreground="{DynamicResource TextMutedBrush}" FontSize="9"
+                       Margin="0,4,0,0" TextWrapping="Wrap" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>
