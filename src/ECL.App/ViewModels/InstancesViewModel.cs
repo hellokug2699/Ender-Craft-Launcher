@@ -991,6 +991,41 @@ public sealed partial class InstancesViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void BrowseJava()
+    {
+        if (SelectedInstance is null)
+        {
+            return;
+        }
+
+        var path = _dialogs.PickOpenFile(
+            "选择此实例使用的 Java",
+            "Java 可执行文件 (java.exe)|java.exe|可执行文件 (*.exe)|*.exe|所有文件 (*.*)|*.*");
+        if (path is null)
+        {
+            return;
+        }
+
+        var runtime = _javaLocator.FromPath(path);
+        if (runtime is null)
+        {
+            StatusMessage = "所选文件无法识别为有效的 Java 运行时。";
+            return;
+        }
+
+        var option = JavaOptions.FirstOrDefault(item =>
+            string.Equals(item.Runtime?.ExecutablePath, runtime.ExecutablePath, StringComparison.OrdinalIgnoreCase));
+        if (option is null)
+        {
+            option = new JavaOptionViewModel(runtime, FormatJava(runtime));
+            JavaOptions.Add(option);
+        }
+
+        SelectedJavaOption = option;
+        StatusMessage = $"已为当前实例选择 {runtime.DisplayName}。";
+    }
+
+    [RelayCommand]
     private void SaveInstanceRuntimeSettings()
     {
         if (SelectedInstance is null)
@@ -1067,6 +1102,13 @@ public sealed partial class InstancesViewModel : ObservableObject
         if (!File.Exists(source))
         {
             StatusMessage = "该实例尚无 latest.log；请先运行一次游戏。";
+            return;
+        }
+
+        if (!_dialogs.Confirm(
+                "导出运行日志",
+                "latest.log 可能包含服务器地址、玩家名称或其他运行环境信息。请确认目标文件仅分享给可信任的人。"))
+        {
             return;
         }
 
