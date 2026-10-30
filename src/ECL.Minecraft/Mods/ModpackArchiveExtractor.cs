@@ -30,6 +30,7 @@ internal static class ModpackArchiveExtractor
 
         var count = 0;
         long extractedBytes = 0;
+        var destinations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in archive.Entries)
         {
             var normalized = NormalizeEntryName(entry.FullName);
@@ -65,11 +66,13 @@ internal static class ModpackArchiveExtractor
                 throw new InvalidDataException($"整合包包含非法路径：{entry.FullName}");
             }
 
-            var directory = Path.GetDirectoryName(destination);
-            if (!string.IsNullOrEmpty(directory))
+            if (!destinations.Add(destination))
             {
-                Directory.CreateDirectory(directory);
+                throw new InvalidDataException($"整合包包含重复目标路径：{entry.FullName}");
             }
+
+            EnsureSafeDirectoryTree(gameDirectory, Path.GetDirectoryName(destination));
+            EnsureSafeExistingFile(destination);
 
             entry.ExtractToFile(destination, overwrite: true);
             extractedBytes += entry.Length;
@@ -122,5 +125,70 @@ internal static class ModpackArchiveExtractor
         return full.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
             ? full
             : null;
+    }
+
+    private static void EnsureSafeDirectoryTree(string root, string? directory)
+    {
+        var rootFull = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+        EnsureNotReparsePoint(rootFull, "整合包目标目录");
+
+        if (string.IsNullOrEmpty(directory))
+        {
+            return;
+        }
+
+        var directoryFull = Path.GetFullPath(directory);
+        if (!directoryFull.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("整合包目标目录超出游戏目录范围。");
+        }
+
+        var relative = Path.GetRelativePath(rootFull, directoryFull);
+        var current = rootFull;
+        foreach (var segment in relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        {
+            if (string.IsNullOrEmpty(segment) || segment == ".")
+            {
+                continue;
+            }
+
+            current = Path.Combine(current, segment);
+            if (!Directory.Exists(current))
+            {
+                Directory.CreateDirectory(current);
+            }
+
+            EnsureNotReparsePoint(current, "整合包目标目录");
+        }
+    }
+
+    private static void EnsureSafeExistingFile(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return;
+        }
+
+        EnsureNotReparsePoint(path, "整合包目标文件");
+    }
+
+    private static void EnsureNotReparsePoint(string path, string description)
+    {
+        try
+        {
+            var attributes = File.GetAttributes(path);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new InvalidDataException($"{description}包含符号链接或其他 reparse point：{path}");
+            }
+        }
+        catch (FileNotFoundException)
+        {
+            // The caller may create the path immediately afterwards.
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // The caller may create the path immediately afterwards.
+        }
     }
 }
