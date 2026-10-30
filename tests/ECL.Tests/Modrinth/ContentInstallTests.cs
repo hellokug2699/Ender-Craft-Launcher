@@ -3,6 +3,7 @@
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using Ecl.Core;
 using Ecl.Download;
 using Ecl.Minecraft.Content;
 using Ecl.Minecraft.CurseForge;
