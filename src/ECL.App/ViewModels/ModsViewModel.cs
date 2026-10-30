@@ -171,7 +171,8 @@ public sealed partial class ModsViewModel : ObservableObject
                     instance.Id,
                     instance.Name,
                     instance.GameVersion,
-                    instance.Loader));
+                    instance.Loader,
+                    instance.LoaderVersion));
             }
 
             SelectedInstance = Instances.FirstOrDefault(item => item.Id == selectedId)
@@ -687,7 +688,22 @@ public sealed partial class ModsViewModel : ObservableObject
     }
 }
 
-public sealed record ModInstanceChoice(string Id, string Name, string GameVersion, string Loader);
+public sealed record ModInstanceChoice(string Id, string Name, string GameVersion, string Loader, string? LoaderVersion)
+{
+    public string LoaderDisplay => Loader.ToLowerInvariant() switch
+    {
+        "vanilla" => "Vanilla",
+        "fabric" => "Fabric",
+        "forge" => "Forge",
+        "neoforge" => "NeoForge",
+        "cleanroom" => "Cleanroom",
+        _ => Loader,
+    };
+
+    public string LoaderVersionDisplay => string.IsNullOrWhiteSpace(LoaderVersion)
+        ? LoaderDisplay
+        : $"{LoaderDisplay} {LoaderVersion}";
+}
 
 public sealed record PackTypeChoice(ContentPackKind Kind, string Title);
 
@@ -741,6 +757,15 @@ public sealed class ModItemViewModel
 
     public string? ModId => _entry.Metadata?.ModId;
 
+    public string PlatformText => _entry.Metadata?.Platform switch
+    {
+        ModPlatform.Fabric => _localizer.Get("mods.platform.fabric"),
+        ModPlatform.Forge => _localizer.Get("mods.platform.forge"),
+        ModPlatform.NeoForge => _localizer.Get("mods.platform.neoforge"),
+        ModPlatform.LegacyForge => _localizer.Get("mods.platform.legacyForge"),
+        _ => _localizer.Get("mods.platform.unknown"),
+    };
+
     public IReadOnlyList<ModIssue> Issues => _entry.Issues;
 
     public bool Enabled => _entry.Enabled;
@@ -754,8 +779,8 @@ public sealed class ModItemViewModel
     public string Name => _entry.Metadata?.Name ?? _entry.FileName;
 
     public string Meta => _entry.Metadata is null
-        ? _entry.FileName
-        : $"{_entry.Metadata.ModId} · {_entry.Metadata.Version} · {_entry.Metadata.Platform}";
+        ? $"{_entry.FileName} · {PlatformText}"
+        : $"{_entry.Metadata.ModId} · {_entry.Metadata.Version} · {PlatformText}";
 
     public string IssuesText => string.Join(
         Environment.NewLine,
