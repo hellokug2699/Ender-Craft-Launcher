@@ -61,6 +61,10 @@
                         </Grid>
                         <TextBlock Text="{Binding Instances.JavaStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
                         <CheckBox Content="{loc:Loc Key=instance.detail.disableJavaCheck}" IsChecked="{Binding Instances.DisableJavaCompatibilityCheck, Mode=TwoWay}" Margin="0,10,0,0" />
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <Button Content="{loc:Loc Key=instances.java.download}" Command="{Binding Instances.DownloadJavaCommand}" Style="{StaticResource PrimaryButton}" />
+                            <Button Content="{loc:Loc Key=instances.java.refresh}" Command="{Binding Instances.RefreshJavaCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -126,6 +130,35 @@
                         <Button Content="{loc:Loc Key=instance.detail.deleteMod}" Command="{Binding Mods.DeleteSelectedCommand}" Style="{StaticResource DangerButton}" Margin="8,0,0,0" />
                         <Button Content="{loc:Loc Key=instance.detail.importModpack}" Command="{Binding Mods.ImportModpackCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
                         <Button Content="{loc:Loc Key=instance.detail.exportModpack}" Command="{Binding Mods.ExportModpackCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
+                    </StackPanel>
+                    <Border Height="1" Background="{DynamicResource BorderSoftBrush}" Margin="0,14,0,12" />
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="资源包与光影" Style="{StaticResource LabelText}" />
+                            <TextBlock Text="{Binding Mods.PackSummary}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="0,3,0,0" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding Mods.PackTypes}" SelectedItem="{Binding Mods.SelectedPackType, Mode=TwoWay}" DisplayMemberPath="Title" Width="150" />
+                    </Grid>
+                    <TextBlock Text="{Binding Mods.PackWarning}" Foreground="{DynamicResource WarningBrush}" FontSize="9" Margin="0,6,0,0" TextWrapping="Wrap" />
+                    <ListBox ItemsSource="{Binding Mods.Packs}" SelectedItem="{Binding Mods.SelectedPack, Mode=TwoWay}" Height="130" Margin="0,8,0,0" BorderBrush="{DynamicResource BorderSoftBrush}" Background="{DynamicResource SurfaceBrush}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="5,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}" FontSize="10" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="9" VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Content="导入资源包/光影" Command="{Binding Mods.ImportPackCommand}" Style="{StaticResource GhostButton}" />
+                        <Button Content="启用/禁用所选" Command="{Binding Mods.TogglePackCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
+                        <Button Content="删除所选" Command="{Binding Mods.DeletePackCommand}" Style="{StaticResource DangerButton}" Margin="8,0,0,0" />
                     </StackPanel>
                     <TextBlock Text="{Binding Mods.StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
                 </StackPanel>
