@@ -259,15 +259,55 @@ public sealed class ContentInstallService(
             return Result<ModpackImportResult>.Fail(createResult.Error!);
         }
 
+        var createdInstance = createResult.Value!;
         progress?.Report(new ContentProgress("import", "正在导入整合包…"));
-        var import = await ImportArchiveAsync(createResult.Value!, archive.Value!, progress, cancellationToken)
-            .ConfigureAwait(false);
+
+        Result<ModpackImportResult> import;
+        try
+        {
+            import = await ImportArchiveAsync(createdInstance, archive.Value!, progress, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await RollbackCreatedInstanceAsync(createdInstance.Id).ConfigureAwait(false);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            await RollbackCreatedInstanceAsync(createdInstance.Id).ConfigureAwait(false);
+            logger.LogError(exception, "整合包导入抛出异常，已尝试回滚新建实例 {InstanceId}。", createdInstance.Id);
+            return Result<ModpackImportResult>.Fail(
+                "modpack.import_failed",
+                $"导入整合包失败：{exception.Message}");
+        }
+
         if (!import.IsSuccess)
         {
+            await RollbackCreatedInstanceAsync(createdInstance.Id).ConfigureAwait(false);
             return import;
         }
 
-        return Result<ModpackImportResult>.Ok(import.Value! with { InstanceId = createResult.Value!.Id });
+        return Result<ModpackImportResult>.Ok(import.Value! with { InstanceId = createdInstance.Id });
+    }
+
+    private async Task RollbackCreatedInstanceAsync(string instanceId)
+    {
+        try
+        {
+            var rollback = await instances.DeleteAsync(instanceId, CancellationToken.None).ConfigureAwait(false);
+            if (!rollback.IsSuccess)
+            {
+                logger.LogError(
+                    "回滚整合包实例 {InstanceId} 失败：{Error}",
+                    instanceId,
+                    rollback.Error);
+            }
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "回滚整合包实例 {InstanceId} 时发生异常。", instanceId);
+        }
     }
 
     private async Task<Result<ModpackImportResult>> ImportArchiveAsync(
