@@ -4,56 +4,93 @@
              xmlns:loc="clr-namespace:Ecl.App.Localization">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel>
-            <TextBlock Text="{loc:Loc Key=about.title}" Style="{StaticResource TitleText}" />
-            <TextBlock Text="{loc:Loc Key=about.subtitle}" Style="{StaticResource SubtitleText}" Margin="0,6,0,0" />
-
-            <Border Style="{StaticResource Card}" Margin="0,20,0,14">
+            <Grid Margin="0,0,0,22">
                 <StackPanel>
-                    <TextBlock Text="ECL" FontSize="28" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
-                    <TextBlock Text="{loc:Loc Key=about.description}"
-                               Style="{StaticResource SubtitleText}"
-                               Margin="0,8,0,0" />
+                    <TextBlock Text="{loc:Loc Key=about.title}" Style="{StaticResource TitleText}" />
+                    <TextBlock Text="{loc:Loc Key=about.subtitle}" Style="{StaticResource SubtitleText}" Margin="0,6,0,0" />
+                </StackPanel>
+            </Grid>
 
-                    <Grid Margin="0,18,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="150" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+            <Border Style="{StaticResource HeroCard}" Margin="0,0,0,16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="18" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="74" Height="74" CornerRadius="18"
+                            Background="{StaticResource BackgroundBrush}"
+                            BorderBrush="#3A2B5C"
+                            BorderThickness="1"
+                            Padding="13">
+                        <Image Source="{StaticResource EclCompactIcon}" Stretch="Uniform" />
+                    </Border>
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                        <TextBlock Text="ECL" FontSize="30" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                        <TextBlock Text="ENDER CRAFT LAUNCHER"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Margin="0,2,0,0" />
+                        <TextBlock Text="{loc:Loc Key=about.description}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Margin="0,8,0,0" />
+                    </StackPanel>
+                </Grid>
+            </Border>
 
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
                         <TextBlock Text="{loc:Loc Key=about.version}" Style="{StaticResource LabelText}" />
-                        <TextBlock Grid.Column="1" Text="{Binding Version}" FontSize="12" />
+                        <TextBlock Text="{Binding Version}" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock Text="{loc:Loc Key=about.runtime}" Style="{StaticResource LabelText}" Margin="0,16,0,0" />
+                        <TextBlock Text="{Binding Runtime}" FontSize="12" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Loc Key=about.os}" Style="{StaticResource LabelText}" />
+                        <TextBlock Text="{Binding OperatingSystem}" FontSize="12" TextWrapping="Wrap" />
+                        <TextBlock Text="{loc:Loc Key=about.license}" Style="{StaticResource LabelText}" Margin="0,16,0,0" />
+                        <TextBlock Text="GPL-3.0-or-later" FontSize="12" />
+                    </StackPanel>
+                </Border>
+            </Grid>
 
-                        <TextBlock Grid.Row="1" Text="{loc:Loc Key=about.runtime}" Style="{StaticResource LabelText}" />
-                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Runtime}" FontSize="12" />
-
-                        <TextBlock Grid.Row="2" Text="{loc:Loc Key=about.os}" Style="{StaticResource LabelText}" />
-                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding OperatingSystem}" FontSize="12" TextWrapping="Wrap" />
-
-                        <TextBlock Grid.Row="3" Text="{loc:Loc Key=about.dataDirectory}" Style="{StaticResource LabelText}" />
-                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding DataDirectory}" FontSize="11" TextWrapping="Wrap" />
-
-                        <TextBlock Grid.Row="4" Text="{loc:Loc Key=about.repository}" Style="{StaticResource LabelText}" />
-                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding RepositoryUrl}" FontSize="11" TextWrapping="Wrap" />
-                    </Grid>
-
-                    <TextBlock Text="{loc:Loc Key=about.license}"
-                               Foreground="{StaticResource TextSecondaryBrush}"
+            <Border Style="{StaticResource Card}" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="{loc:Loc Key=about.dataDirectory}" Style="{StaticResource LabelText}" />
+                    <TextBlock Text="{Binding DataDirectory}"
+                               FontFamily="Consolas"
                                FontSize="11"
-                               Margin="0,18,0,0" />
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="{loc:Loc Key=about.repository}" Style="{StaticResource LabelText}" Margin="0,16,0,0" />
+                    <TextBlock Text="{Binding RepositoryUrl}"
+                               FontSize="11"
+                               Foreground="{StaticResource AccentHoverBrush}"
+                               TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
 
-            <TextBlock Text="{loc:Loc Key=about.disclaimer}"
-                       Foreground="{StaticResource TextMutedBrush}"
-                       FontSize="10"
-                       TextWrapping="Wrap" />
+            <Border Background="{StaticResource SurfaceAltBrush}"
+                    BorderBrush="{StaticResource BorderSoftBrush}"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    Padding="14">
+                <TextBlock Text="{loc:Loc Key=about.disclaimer}"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           FontSize="10"
+                           TextWrapping="Wrap" />
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>
