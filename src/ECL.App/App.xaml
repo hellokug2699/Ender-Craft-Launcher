@@ -14,6 +14,7 @@
 
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
             <conv:LaunchStatusToBrushConverter x:Key="LaunchStatusBrush" />
+            <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibility" />
 
             <DataTemplate DataType="{x:Type vm:InstancesViewModel}">
                 <views:InstancesView />
