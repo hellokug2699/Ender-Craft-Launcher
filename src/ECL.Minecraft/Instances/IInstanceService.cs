@@ -19,6 +19,15 @@ public interface IInstanceService
         string? optiFineVersion = null,
         CancellationToken cancellationToken = default);
 
+    Task<Result<GameInstance>> UpdateConfigurationAsync(
+        string instanceId,
+        string gameVersion,
+        string loader,
+        string? loaderVersion = null,
+        string? fabricApiVersion = null,
+        string? optiFineVersion = null,
+        CancellationToken cancellationToken = default);
+
     Task<Result> DeleteAsync(string instanceId, CancellationToken cancellationToken = default);
 
     Task TouchLastPlayedAsync(string instanceId, CancellationToken cancellationToken = default);
