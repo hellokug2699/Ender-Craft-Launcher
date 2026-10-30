@@ -304,7 +304,7 @@
   "instances.java.installFirst": "请先安装/补全版本，再检查 Java。",
   "instances.java.usingGameVersion": "版本 JSON 尚未生成，将按游戏版本 {0} 推断 Java 要求。",
   "instances.java.downloadTitle": "缺少 Java",
-  "instances.java.downloadPrompt": "未找到可用 Java。是否现在下载 Mojang 提供的 Java 运行时？",
+  "instances.java.downloadPrompt": "当前没有可用的 Java。ECL 将按实例所需版本，通过设置中的运行时来源自动下载并配置 Java。是否继续？",
   "instances.java.downloading": "正在下载 Java…",
   "instances.java.downloadSucceeded": "Java 已下载，可用于启动。",
   "instances.java.downloadFailed": "Java 下载失败。",
@@ -544,7 +544,7 @@
   "instance.detail.lastPlayed": "最近启动",
   "instance.detail.delete": "删除此实例…",
   "instance.detail.java": "Java 运行环境",
-  "instance.detail.javaDesc": "Java 版本选择会覆盖全局 Java；选择“自动”则继承全局策略。",
+  "instance.detail.javaDesc": "ECL 会按实例要求自动下载并管理 Java，无需单独安装；实例选择可覆盖全局 Java，选择“自动”则继承全局策略。",
   "instance.detail.disableJavaCheck": "关闭 Java 兼容性检查",
   "instance.detail.jvm": "JVM 与内存",
   "instance.detail.jvmDesc": "实例未设置的项目会继承全局配置。实例额外参数会覆盖全局额外参数，不会拼接。",
@@ -568,5 +568,6 @@
   "instance.detail.analyzeCrash": "分析最近崩溃",
   "instance.detail.exportDiagnostics": "导出诊断包",
   "instance.detail.latestLaunch": "最近一次启动",
-  "instance.detail.commandPreview": "启动命令预览"
+  "instance.detail.commandPreview": "启动命令预览",
+  "instances.manageModIssues": "查看 / 修复模组问题"
 }

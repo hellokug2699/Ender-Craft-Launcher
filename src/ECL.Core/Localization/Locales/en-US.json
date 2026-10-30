@@ -304,7 +304,7 @@
   "instances.java.installFirst": "Install/complete the version before checking Java.",
   "instances.java.usingGameVersion": "The version JSON is not available yet; Java requirement is inferred from game version {0}.",
   "instances.java.downloadTitle": "Java required",
-  "instances.java.downloadPrompt": "No usable Java was found. Download the Java runtime provided by Mojang now?",
+  "instances.java.downloadPrompt": "No suitable Java runtime was found. ECL will download and configure the required version using your selected runtime provider. Continue?",
   "instances.java.downloading": "Downloading Java…",
   "instances.java.downloadSucceeded": "Java downloaded and ready to use.",
   "instances.java.downloadFailed": "Java download failed.",
@@ -544,7 +544,7 @@
   "instance.detail.lastPlayed": "Last played",
   "instance.detail.delete": "Delete instance…",
   "instance.detail.java": "Java runtime",
-  "instance.detail.javaDesc": "An instance Java selection overrides the global Java; choose Auto to inherit the global strategy.",
+  "instance.detail.javaDesc": "ECL can download and manage the Java version required by this instance; no separate Java installation is needed. An instance selection overrides the global Java, while Auto inherits the global strategy.",
   "instance.detail.disableJavaCheck": "Disable Java compatibility check",
   "instance.detail.jvm": "JVM and memory",
   "instance.detail.jvmDesc": "Unset instance values inherit global settings. Instance extra arguments replace, rather than append to, global extra arguments.",
@@ -568,5 +568,6 @@
   "instance.detail.analyzeCrash": "Analyze latest crash",
   "instance.detail.exportDiagnostics": "Export diagnostics",
   "instance.detail.latestLaunch": "Latest launch",
-  "instance.detail.commandPreview": "Launch command preview"
+  "instance.detail.commandPreview": "Launch command preview",
+  "instances.manageModIssues": "Review / fix mod issues"
 }
