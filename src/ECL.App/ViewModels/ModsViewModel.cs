@@ -26,6 +26,10 @@ public sealed partial class ModsViewModel : ObservableObject
 
     public ObservableCollection<ModItemViewModel> Mods { get; } = [];
 
+    public ObservableCollection<ModItemViewModel> FilteredMods { get; } = [];
+
+    public ObservableCollection<ModFilterChoice> ModFilters { get; } = [];
+
     public ObservableCollection<PackTypeChoice> PackTypes { get; } = [];
 
     public ObservableCollection<ContentPackItemViewModel> Packs { get; } = [];
@@ -35,6 +39,12 @@ public sealed partial class ModsViewModel : ObservableObject
 
     [ObservableProperty]
     private ModItemViewModel? _selectedMod;
+
+    [ObservableProperty]
+    private string _modSearchText = string.Empty;
+
+    [ObservableProperty]
+    private ModFilterChoice? _selectedModFilter;
 
     [ObservableProperty]
     private PackTypeChoice? _selectedPackType;
@@ -74,6 +84,12 @@ public sealed partial class ModsViewModel : ObservableObject
         _contentPacks = contentPacks;
         _dialogs = dialogs;
         _localizer = localizer;
+
+        ModFilters.Add(new ModFilterChoice("all", localizer.Get("mods.filter.all")));
+        ModFilters.Add(new ModFilterChoice("enabled", localizer.Get("mods.filter.enabled")));
+        ModFilters.Add(new ModFilterChoice("disabled", localizer.Get("mods.filter.disabled")));
+        ModFilters.Add(new ModFilterChoice("issues", localizer.Get("mods.filter.issues")));
+        _selectedModFilter = ModFilters[0];
 
         PackTypes.Add(new PackTypeChoice(ContentPackKind.ResourcePack, localizer.Get("mods.resourcePacks")));
         PackTypes.Add(new PackTypeChoice(ContentPackKind.ShaderPack, localizer.Get("mods.shaderPacks")));
@@ -157,6 +173,7 @@ public sealed partial class ModsViewModel : ObservableObject
         if (SelectedInstance is null)
         {
             Mods.Clear();
+            RefreshFilteredMods();
             Summary = _localizer.Get("mods.noInstance");
             return;
         }
@@ -178,6 +195,7 @@ public sealed partial class ModsViewModel : ObservableObject
                 Mods.Add(new ModItemViewModel(mod, _localizer));
             }
 
+            RefreshFilteredMods();
             Summary = _localizer.Get(
                 "mods.summary",
                 report.EnabledCount,
@@ -521,6 +539,41 @@ public sealed partial class ModsViewModel : ObservableObject
             : result.Error?.ToString() ?? _localizer.Get("mods.exportFailed");
     }
 
+    partial void OnModSearchTextChanged(string value) => RefreshFilteredMods();
+
+    partial void OnSelectedModFilterChanged(ModFilterChoice? value) => RefreshFilteredMods();
+
+    private void RefreshFilteredMods()
+    {
+        var selectedFileName = SelectedMod?.FileName;
+        var search = ModSearchText.Trim();
+        var filter = SelectedModFilter?.Key ?? "all";
+
+        var matches = Mods.Where(mod =>
+        {
+            var matchesSearch = search.Length == 0
+                || mod.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || mod.FileName.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || mod.Meta.Contains(search, StringComparison.OrdinalIgnoreCase);
+            var matchesFilter = filter switch
+            {
+                "enabled" => mod.Enabled,
+                "disabled" => !mod.Enabled,
+                "issues" => mod.HasIssues,
+                _ => true,
+            };
+            return matchesSearch && matchesFilter;
+        }).ToArray();
+
+        FilteredMods.Clear();
+        foreach (var mod in matches)
+        {
+            FilteredMods.Add(mod);
+        }
+
+        SelectedMod = FilteredMods.FirstOrDefault(mod => mod.FileName == selectedFileName);
+    }
+
     partial void OnSelectedInstanceChanged(ModInstanceChoice? value)
     {
 
@@ -543,6 +596,8 @@ public sealed partial class ModsViewModel : ObservableObject
 public sealed record ModInstanceChoice(string Id, string Name, string GameVersion, string Loader);
 
 public sealed record PackTypeChoice(ContentPackKind Kind, string Title);
+
+public sealed record ModFilterChoice(string Key, string Title);
 
 public sealed class ContentPackItemViewModel
 {

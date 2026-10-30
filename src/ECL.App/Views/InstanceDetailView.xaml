@@ -110,7 +110,12 @@
                             <Button Content="{loc:Loc Key=instance.detail.refresh}" Command="{Binding Mods.RefreshCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
                         </StackPanel>
                     </Grid>
-                    <ListBox ItemsSource="{Binding Mods.Mods}" SelectedItem="{Binding Mods.SelectedMod, Mode=TwoWay}" Height="230" Margin="0,12,0,0" BorderBrush="{DynamicResource BorderSoftBrush}" Background="{DynamicResource SurfaceBrush}">
+                    <Grid Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="150" /></Grid.ColumnDefinitions>
+                        <TextBox Text="{Binding Mods.ModSearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="{loc:Loc Key=mods.searchPlaceholder}" />
+                        <ComboBox Grid.Column="2" ItemsSource="{Binding Mods.ModFilters}" SelectedItem="{Binding Mods.SelectedModFilter, Mode=TwoWay}" DisplayMemberPath="Title" />
+                    </Grid>
+                    <ListBox ItemsSource="{Binding Mods.FilteredMods}" SelectedItem="{Binding Mods.SelectedMod, Mode=TwoWay}" Height="230" Margin="0,12,0,0" BorderBrush="{DynamicResource BorderSoftBrush}" Background="{DynamicResource SurfaceBrush}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid Margin="5,4">
