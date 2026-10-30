@@ -5,11 +5,12 @@
     <UserControl.InputBindings>
         <KeyBinding Key="F5" Command="{Binding ReloadCommand}" />
     </UserControl.InputBindings>
+
     <ScrollViewer VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled"
                   KeyboardNavigation.TabNavigation="Cycle">
         <StackPanel>
-            <Grid Margin="0,0,0,20">
+            <Grid Margin="0,0,0,22">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -25,117 +26,159 @@
                         VerticalAlignment="Top" />
             </Grid>
 
-            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
-                <StackPanel>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="8" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="8" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="8" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <ComboBox ItemsSource="{Binding Instances}"
-                                  SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
-                                  DisplayMemberPath="Name" />
-                        <Button Grid.Column="2"
-                                Content="{loc:Loc Key=mods.toggle}"
-                                Command="{Binding ToggleSelectedCommand}"
-                                Style="{StaticResource PrimaryButton}" />
-                        <Button Grid.Column="4"
-                                Content="{loc:Loc Key=mods.enableAll}"
-                                Command="{Binding EnableAllCommand}"
-                                Style="{StaticResource GhostButton}" />
-                        <Button Grid.Column="6"
-                                Content="{loc:Loc Key=mods.disableAll}"
-                                Command="{Binding DisableAllCommand}"
-                                Style="{StaticResource GhostButton}" />
-                    </Grid>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Content="{loc:Loc Key=mods.import}"
-                                Command="{Binding ImportModsCommand}"
-                                Style="{StaticResource GhostButton}" />
-                        <Button Content="{loc:Loc Key=common.delete}"
-                                Command="{Binding DeleteSelectedCommand}"
-                                Style="{StaticResource DangerButton}"
-                                Margin="8,0,0,0" />
-                        <Button Content="{loc:Loc Key=mods.importPack}"
-                                Command="{Binding ImportModpackCommand}"
-                                Style="{StaticResource GhostButton}"
-                                Margin="8,0,0,0" />
-                        <Button Content="{loc:Loc Key=mods.exportPack}"
-                                Command="{Binding ExportModpackCommand}"
-                                Style="{StaticResource GhostButton}"
-                                Margin="8,0,0,0" />
+            <!-- Instance control / quick actions -->
+            <Border Style="{StaticResource HeroCard}" Margin="0,0,0,16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="{loc:Loc Key=mods.title}" Style="{StaticResource SectionText}" />
+                        <TextBlock Text="{Binding Summary}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   Margin="0,5,0,0" />
+                        <TextBlock Text="{Binding StatusMessage}"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0" />
                     </StackPanel>
-
-                    <TextBlock Text="{Binding Summary}"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               FontSize="11"
-                               Margin="0,12,0,0" />
-                    <TextBlock Text="{Binding StatusMessage}"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               FontSize="11"
-                               Margin="0,6,0,0"
-                               TextWrapping="Wrap" />
-                    <ProgressBar Height="4"
-                                 Margin="0,8,0,0"
-                                 IsIndeterminate="True"
-                                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
-                </StackPanel>
+                    <ComboBox Grid.Column="1"
+                              Width="250"
+                              ItemsSource="{Binding Instances}"
+                              SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
+                              DisplayMemberPath="Name"
+                              VerticalAlignment="Center" />
+                </Grid>
             </Border>
 
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button Content="{loc:Loc Key=mods.toggle}"
+                        Command="{Binding ToggleSelectedCommand}"
+                        Style="{StaticResource PrimaryButton}" />
+                <Button Grid.Column="2"
+                        Content="{loc:Loc Key=mods.enableAll}"
+                        Command="{Binding EnableAllCommand}"
+                        Style="{StaticResource GhostButton}" />
+                <Button Grid.Column="4"
+                        Content="{loc:Loc Key=mods.disableAll}"
+                        Command="{Binding DisableAllCommand}"
+                        Style="{StaticResource GhostButton}" />
+                <Button Grid.Column="6"
+                        Content="{loc:Loc Key=mods.import}"
+                        Command="{Binding ImportModsCommand}"
+                        Style="{StaticResource GhostButton}" />
+            </Grid>
+
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button Content="{loc:Loc Key=mods.importPack}"
+                        Command="{Binding ImportModpackCommand}"
+                        Style="{StaticResource GhostButton}" />
+                <Button Grid.Column="2"
+                        Content="{loc:Loc Key=mods.exportPack}"
+                        Command="{Binding ExportModpackCommand}"
+                        Style="{StaticResource GhostButton}" />
+                <Button Grid.Column="4"
+                        Content="{loc:Loc Key=common.delete}"
+                        Command="{Binding DeleteSelectedCommand}"
+                        Style="{StaticResource DangerButton}" />
+            </Grid>
+
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{loc:Loc Key=mods.title}" Style="{StaticResource SectionText}" />
+                <TextBlock Grid.Column="1"
+                           Text="{Binding Summary}"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           FontSize="10"
+                           VerticalAlignment="Center" />
+            </Grid>
+
             <ListBox ItemsSource="{Binding Mods}"
-                     SelectedItem="{Binding SelectedMod, Mode=TwoWay}">
+                     SelectedItem="{Binding SelectedMod, Mode=TwoWay}"
+                     Margin="0,0,0,18">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Border Style="{StaticResource Card}" Padding="14" Margin="0,0,0,8">
+                        <Border Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource BorderSoftBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Padding="14"
+                                Margin="0,0,0,8">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" />
                                     <TextBlock Text="{Binding Meta}"
                                                Foreground="{StaticResource TextSecondaryBrush}"
-                                               FontSize="11"
+                                               FontSize="10"
                                                Margin="0,4,0,0" />
                                     <TextBlock Text="{Binding IssuesText}"
                                                Foreground="{StaticResource WarningBrush}"
                                                FontSize="10"
-                                               Margin="0,4,0,0"
                                                TextWrapping="Wrap"
+                                               Margin="0,5,0,0"
                                                Visibility="{Binding HasIssues, Converter={StaticResource BoolToVisibility}}" />
                                 </StackPanel>
-                                <TextBlock Grid.Column="1"
-                                           Text="{Binding StatusText}"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                           FontSize="11"
-                                           VerticalAlignment="Top" />
+                                <Border Grid.Column="1"
+                                        Style="{StaticResource Badge}"
+                                        VerticalAlignment="Top">
+                                    <TextBlock Text="{Binding StatusText}" FontSize="9" />
+                                </Border>
                             </Grid>
                         </Border>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
 
-            <Border Style="{StaticResource Card}" Margin="0,14,0,0">
+            <!-- CurseForge -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,16">
                 <StackPanel>
-                    <TextBlock Text="{loc:Loc Key=mods.curseforge.title}" Style="{StaticResource LabelText}" />
-                    <TextBlock Text="{loc:Loc Key=mods.curseforge.subtitle}"
-                               Foreground="{StaticResource TextMutedBrush}"
-                               FontSize="10"
-                               TextWrapping="Wrap"
-                               Margin="0,4,0,0" />
-                    <Grid Margin="0,10,0,0">
+                    <Grid>
+                        <StackPanel>
+                            <TextBlock Text="{loc:Loc Key=mods.curseforge.title}" Style="{StaticResource SectionText}" />
+                            <TextBlock Text="{loc:Loc Key=mods.curseforge.subtitle}"
+                                       Foreground="{StaticResource TextMutedBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,4,0,0" />
+                        </StackPanel>
+                        <Border HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Style="{StaticResource Badge}">
+                            <TextBlock Text="CurseForge" FontSize="9" Foreground="{StaticResource AccentHoverBrush}" />
+                        </Border>
+                    </Grid>
+                    <Grid Margin="0,12,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="10" />
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="10" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBox Text="{Binding CurseForgeQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -160,25 +203,30 @@
                              Margin="0,10,0,0">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Margin="0,3">
+                                <Border Background="{StaticResource SurfaceAltBrush}"
+                                        CornerRadius="7"
+                                        Padding="10"
+                                        Margin="0,0,0,5">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" />
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding Summary}"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="10"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Margin="0,2,0,0" />
+                                        </StackPanel>
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding Meta}"
                                                    Foreground="{StaticResource TextMutedBrush}"
-                                                   FontSize="9" />
+                                                   FontSize="9"
+                                                   VerticalAlignment="Top" />
                                     </Grid>
-                                    <TextBlock Text="{Binding Summary}"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
-                                               FontSize="10"
-                                               TextTrimming="CharacterEllipsis"
-                                               TextWrapping="NoWrap"
-                                               Margin="0,2,0,0" />
-                                </StackPanel>
+                                </Border>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
@@ -190,20 +238,15 @@
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource Card}" Margin="0,14,0,0">
+            <!-- Resource packs / shaders -->
+            <Border Style="{StaticResource Card}">
                 <StackPanel>
-                    <TextBlock Text="{loc:Loc Key=mods.packsTitle}" Style="{StaticResource LabelText}" />
-                    <Grid Margin="0,8,0,0">
+                    <TextBlock Text="{loc:Loc Key=mods.packsTitle}" Style="{StaticResource SectionText}" />
+                    <Grid Margin="0,10,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="180" />
-                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="10" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="8" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="8" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="8" />
-                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <ComboBox ItemsSource="{Binding PackTypes}"
                                   SelectedItem="{Binding SelectedPackType, Mode=TwoWay}"
@@ -213,27 +256,13 @@
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    FontSize="11"
                                    VerticalAlignment="Center" />
-                        <Button Grid.Column="4"
-                                Content="{loc:Loc Key=mods.packToggle}"
-                                Command="{Binding TogglePackCommand}"
-                                Style="{StaticResource GhostButton}" />
-                        <Button Grid.Column="6"
-                                Content="{loc:Loc Key=mods.packImport}"
-                                Command="{Binding ImportPackCommand}"
-                                Style="{StaticResource GhostButton}" />
-                        <Button Grid.Column="8"
-                                Content="{loc:Loc Key=common.delete}"
-                                Command="{Binding DeletePackCommand}"
-                                Style="{StaticResource DangerButton}" />
                     </Grid>
-
                     <TextBlock Text="{Binding PackWarning}"
                                Foreground="{StaticResource WarningBrush}"
-                               FontSize="11"
+                               FontSize="10"
                                TextWrapping="Wrap"
                                Margin="0,8,0,0"
                                Visibility="{Binding PackHasWarning, Converter={StaticResource BoolToVisibility}}" />
-
                     <ListBox ItemsSource="{Binding Packs}"
                              SelectedItem="{Binding SelectedPack, Mode=TwoWay}"
                              Margin="0,10,0,0">
@@ -246,21 +275,18 @@
                                         <ColumnDefinition Width="12" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="1"
-                                               Text="{Binding StatusText}"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
-                                               FontSize="10"
-                                               VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="3"
-                                               Text="{Binding Meta}"
-                                               Foreground="{StaticResource TextMutedBrush}"
-                                               FontSize="10"
-                                               VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Name}" FontSize="12" />
+                                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" />
+                                    <TextBlock Grid.Column="3" Text="{Binding Meta}" Foreground="{StaticResource TextMutedBrush}" FontSize="10" />
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Content="{loc:Loc Key=mods.packToggle}" Command="{Binding TogglePackCommand}" Style="{StaticResource PrimaryButton}" />
+                        <Button Content="{loc:Loc Key=mods.packImport}" Command="{Binding ImportPackCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
+                        <Button Content="{loc:Loc Key=common.delete}" Command="{Binding DeletePackCommand}" Style="{StaticResource DangerButton}" Margin="8,0,0,0" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
         </StackPanel>
