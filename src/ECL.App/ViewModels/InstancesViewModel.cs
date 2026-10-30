@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -45,6 +47,9 @@ public sealed partial class InstancesViewModel : ObservableObject
     private bool _suppressAccountSelection;
     private bool _suppressJavaSelection;
     private bool _suppressJavaCheck;
+
+    /// <summary>打开内容管理页时，将目标实例同步到 Mod 管理页。</summary>
+    public Action<string>? NavigateToContent { get; set; }
 
     public ObservableCollection<InstanceItemViewModel> Instances { get; } = [];
 
@@ -133,6 +138,12 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _disableJavaCompatibilityCheck;
+
+    [ObservableProperty]
+    private string _instanceJvmArguments = string.Empty;
+
+    [ObservableProperty]
+    private string _instanceMemoryMbText = string.Empty;
 
     [ObservableProperty]
     private bool _isDownloadingJava;
@@ -979,6 +990,125 @@ public sealed partial class InstancesViewModel : ObservableObject
         _ = RefreshComponentsAsync();
     }
 
+    [RelayCommand]
+    private void SaveInstanceRuntimeSettings()
+    {
+        if (SelectedInstance is null)
+        {
+            return;
+        }
+
+        var memoryText = InstanceMemoryMbText.Trim();
+        if (memoryText.Length > 0 &&
+            (!int.TryParse(memoryText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var memoryMb) ||
+             memoryMb is < 1024 or > 65536))
+        {
+            StatusMessage = "实例内存必须是 1024 至 65536 MB 之间的整数；留空则继承全局设置。";
+            return;
+        }
+
+        var instanceId = SelectedInstance.Model.Id;
+        if (!_settings.TrySetRaw("instance.java.extraArguments", InstanceJvmArguments, instanceId, out var jvmError))
+        {
+            StatusMessage = jvmError ?? "保存实例 JVM 参数失败。";
+            return;
+        }
+
+        if (!_settings.TrySetRaw("instance.java.memoryMb", memoryText, instanceId, out var memoryError))
+        {
+            StatusMessage = memoryError ?? "保存实例内存设置失败。";
+            return;
+        }
+
+        StatusMessage = "实例运行设置已保存。";
+    }
+
+    private void LoadInstanceRuntimeSettings()
+    {
+        if (SelectedInstance is null)
+        {
+            InstanceJvmArguments = string.Empty;
+            InstanceMemoryMbText = string.Empty;
+            return;
+        }
+
+        var instanceId = SelectedInstance.Model.Id;
+        InstanceJvmArguments = _settings.Get<string?>("instance.java.extraArguments", instanceId) ?? string.Empty;
+        InstanceMemoryMbText = _settings.Get<int?>("instance.java.memoryMb", instanceId)?
+            .ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+    }
+
+    [RelayCommand]
+    private void OpenInstanceFolder() => OpenSelectedDirectory(
+        SelectedInstance is null ? null : _paths.GetInstanceDirectory(SelectedInstance.Model.Id));
+
+    [RelayCommand]
+    private void OpenModsFolder() => OpenSelectedDirectory(
+        SelectedInstance is null ? null : Path.Combine(_paths.GetInstanceGameDirectory(SelectedInstance.Model.Id), "mods"));
+
+    [RelayCommand]
+    private void ManageInstanceMods()
+    {
+        if (SelectedInstance is not null)
+        {
+            NavigateToContent?.Invoke(SelectedInstance.Model.Id);
+        }
+    }
+
+    [RelayCommand]
+    private void ExportLatestLog()
+    {
+        if (SelectedInstance is null)
+        {
+            return;
+        }
+
+        var source = Path.Combine(_paths.GetInstanceGameDirectory(SelectedInstance.Model.Id), "logs", "latest.log");
+        if (!File.Exists(source))
+        {
+            StatusMessage = "该实例尚无 latest.log；请先运行一次游戏。";
+            return;
+        }
+
+        var destination = _dialogs.PickSaveFile(
+            "导出最近一次运行日志",
+            "日志文件 (*.log)|*.log|所有文件 (*.*)|*.*",
+            $"{SelectedInstance.Name}-latest.log");
+        if (destination is null)
+        {
+            return;
+        }
+
+        try
+        {
+            File.Copy(source, destination, overwrite: true);
+            StatusMessage = $"日志已导出：{destination}";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            StatusMessage = $"导出日志失败：{exception.Message}";
+        }
+    }
+
+    private void OpenSelectedDirectory(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(path);
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            StatusMessage = $"无法打开目录：{exception.Message}";
+        }
+    }
+
     partial void OnSelectedInstanceChanged(InstanceItemViewModel? value)
     {
         OnPropertyChanged(nameof(HasSelection));
@@ -996,6 +1126,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         InstallIndeterminate = false;
         JavaDownloadStatus = string.Empty;
 
+        LoadInstanceRuntimeSettings();
         if (JavaOptions.Count > 0)
         {
             _ = RefreshJavaSelectionAsync();
