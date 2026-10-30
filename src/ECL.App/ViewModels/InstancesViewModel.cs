@@ -51,6 +51,12 @@ public sealed partial class InstancesViewModel : ObservableObject
     /// <summary>打开内容管理页时，将目标实例同步到 Mod 管理页。</summary>
     public Action<string>? NavigateToContent { get; set; }
 
+    /// <summary>打开当前实例的独立工作区页面。</summary>
+    public Action<string>? NavigateToDetails { get; set; }
+
+    /// <summary>从实例工作区返回实例列表。</summary>
+    public Action? NavigateBackFromDetails { get; set; }
+
     public ObservableCollection<InstanceItemViewModel> Instances { get; } = [];
 
     public ObservableCollection<AccountItemViewModel> Accounts { get; } = [];
@@ -66,6 +72,8 @@ public sealed partial class InstancesViewModel : ObservableObject
     public ObservableCollection<VersionChoiceViewModel> FabricApiVersions { get; } = [];
 
     public ObservableCollection<VersionChoiceViewModel> OptiFineVersions { get; } = [];
+
+    public ObservableCollection<JvmPresetOptionViewModel> InstanceJvmPresetOptions { get; } = [];
 
     [ObservableProperty]
     private InstanceItemViewModel? _selectedInstance;
@@ -141,6 +149,9 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     [ObservableProperty]
     private string _instanceJvmArguments = string.Empty;
+
+    [ObservableProperty]
+    private string _instanceJvmPreset = string.Empty;
 
     [ObservableProperty]
     private string _instanceMemoryMbText = string.Empty;
@@ -275,6 +286,12 @@ public sealed partial class InstancesViewModel : ObservableObject
         LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.NeoForge, _localizer.Get("instances.loader.neoforge")));
         LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Cleanroom, _localizer.Get("instances.loader.cleanroom")));
         _selectedNewLoader = LoaderChoices[0];
+
+        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel(string.Empty, _localizer.Get("common.inherit")));
+        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel("default", _localizer.Get("option.java.jvmPreset.default")));
+        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel("g1", _localizer.Get("option.java.jvmPreset.g1")));
+        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel("zgc", _localizer.Get("option.java.jvmPreset.zgc")));
+        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel("aikar", _localizer.Get("option.java.jvmPreset.aikar")));
     }
 
     public async Task InitializeAsync()
@@ -1046,6 +1063,12 @@ public sealed partial class InstancesViewModel : ObservableObject
             return;
         }
 
+        if (!_settings.TrySetRaw("instance.java.jvmPreset", InstanceJvmPreset, instanceId, out var presetError))
+        {
+            StatusMessage = presetError ?? "保存实例 JVM 预设失败。";
+            return;
+        }
+
         if (!_settings.TrySetRaw("instance.java.memoryMb", memoryText, instanceId, out var memoryError))
         {
             StatusMessage = memoryError ?? "保存实例内存设置失败。";
@@ -1060,15 +1083,29 @@ public sealed partial class InstancesViewModel : ObservableObject
         if (SelectedInstance is null)
         {
             InstanceJvmArguments = string.Empty;
+            InstanceJvmPreset = string.Empty;
             InstanceMemoryMbText = string.Empty;
             return;
         }
 
         var instanceId = SelectedInstance.Model.Id;
         InstanceJvmArguments = _settings.Get<string?>("instance.java.extraArguments", instanceId) ?? string.Empty;
+        InstanceJvmPreset = _settings.Get<string?>("instance.java.jvmPreset", instanceId) ?? string.Empty;
         InstanceMemoryMbText = _settings.Get<int?>("instance.java.memoryMb", instanceId)?
             .ToString(CultureInfo.InvariantCulture) ?? string.Empty;
     }
+
+    [RelayCommand]
+    private void OpenInstanceDetails()
+    {
+        if (SelectedInstance is not null)
+        {
+            NavigateToDetails?.Invoke(SelectedInstance.Model.Id);
+        }
+    }
+
+    [RelayCommand]
+    private void BackToInstances() => NavigateBackFromDetails?.Invoke();
 
     [RelayCommand]
     private void OpenInstanceFolder() => OpenSelectedDirectory(
@@ -1574,6 +1611,8 @@ public sealed partial class AccountItemViewModel : ObservableObject
 }
 
 public sealed record JavaOptionViewModel(JavaRuntime? Runtime, string DisplayName);
+
+public sealed record JvmPresetOptionViewModel(string Value, string DisplayName);
 
 public sealed record LoaderChoiceViewModel(string Id, string DisplayName);
 
