@@ -59,10 +59,21 @@ public sealed class LaunchService : ILaunchService
         }
 
         var account = await _accounts.GetDefaultAccountAsync(cancellationToken).ConfigureAwait(false);
-        if (account is null)
+        if (account is null && !dryRun)
         {
             return Failure("account", _localizer.Get("launch.account.missing"), dryRun, total);
         }
+
+        // Health checks validate the machine/game pipeline, not the user's identity.
+        // A synthetic offline identity is used only to construct a dry-run command;
+        // real launches still require a configured account.
+        account ??= new Account
+        {
+            Id = "ecl-health-check",
+            Type = AccountType.Offline,
+            Name = "ECLHealthCheck",
+            Uuid = OfflineUuid.Create("ECLHealthCheck"),
+        };
 
         var context = new LaunchContext
         {

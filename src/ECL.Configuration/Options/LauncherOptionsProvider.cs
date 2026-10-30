@@ -88,6 +88,19 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
 
         yield return new OptionDefinition<string>
         {
+            Key = "auth.microsoftClientId",
+            Kind = OptionKind.Text,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.auth",
+            DisplayNameKey = "option.auth.microsoftClientId.name",
+            DescriptionKey = "option.auth.microsoftClientId.desc",
+            Default = string.Empty,
+            Order = 10,
+            Validate = value => string.IsNullOrWhiteSpace(value) || Guid.TryParse(value.Trim(), out _),
+        };
+
+        yield return new OptionDefinition<string>
+        {
             Key = "network.downloadSource",
             Kind = OptionKind.Select,
             Scope = OptionScope.Global,

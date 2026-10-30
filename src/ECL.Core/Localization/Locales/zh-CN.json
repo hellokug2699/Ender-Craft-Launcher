@@ -569,5 +569,10 @@
   "instance.detail.exportDiagnostics": "导出诊断包",
   "instance.detail.latestLaunch": "最近一次启动",
   "instance.detail.commandPreview": "启动命令预览",
-  "instances.manageModIssues": "查看 / 修复模组问题"
+  "instances.manageModIssues": "查看 / 修复模组问题",
+  "category.auth": "账户与身份验证",
+  "option.auth.microsoftClientId.name": "Microsoft OAuth Client ID",
+  "option.auth.microsoftClientId.desc": "填写 Microsoft Entra 应用注册中的 Application (client) ID。此字段目前仅保存配置；Microsoft 登录流程尚未接入。无需填写 Client Secret。",
+  "instances.healthAccountMissing": "账户状态：尚未添加账户。机器环境检查不受影响；正式启动前仍需添加可用账户。",
+  "instances.healthAccountReady": "账户状态：已配置 {0}。健康检查不会验证账户令牌是否有效。"
 }

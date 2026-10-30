@@ -942,6 +942,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         HealthReportText = _localizer.Get("instances.healthChecking");
         try
         {
+            var account = await _accounts.GetDefaultAccountAsync().ConfigureAwait(true);
             var report = await _launchService
                 .LaunchAsync(SelectedInstance.Model.Id, dryRun: true)
                 .ConfigureAwait(true);
@@ -957,7 +958,10 @@ public sealed partial class InstancesViewModel : ObservableObject
             var modSummary = GetModHealthSummary is null
                 ? _localizer.Get("instances.healthModsUnavailable")
                 : await GetModHealthSummary(SelectedInstance.Model.Id).ConfigureAwait(true);
-            HealthReportText = $"{LaunchStatus}{Environment.NewLine}{modSummary}";
+            var accountStatus = account is null
+                ? _localizer.Get("instances.healthAccountMissing")
+                : _localizer.Get("instances.healthAccountReady", account.Name);
+            HealthReportText = $"{accountStatus}{Environment.NewLine}{modSummary}";
         }
         catch (Exception exception)
         {

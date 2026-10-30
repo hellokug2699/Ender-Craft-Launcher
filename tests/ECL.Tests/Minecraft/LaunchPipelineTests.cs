@@ -328,6 +328,24 @@ public sealed class LaunchPipelineTests
     }
 
     [Fact]
+    public async Task DryRunCanValidateEnvironmentWithoutAnAccount()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+
+        var instance = await CreateInstanceAsync(provider);
+        ConfigureFakeJava(environment, provider);
+        Assert.True(provider.GetRequiredService<IEulaService>().Accept().IsSuccess);
+        WriteVersion(environment, instance.VersionId, instance.VersionId, "net.minecraft.client.main.Main");
+
+        var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: true);
+
+        Assert.True(report.Success, string.Join(Environment.NewLine, report.Steps.Select(step => $"{step.StepId}: {step.Message}")));
+        Assert.NotNull(report.CommandLine);
+        Assert.Contains("ECLHealthCheck", report.CommandLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RealLaunchFailsWhenAssetObjectIsMissing()
     {
         using var environment = new TestEnvironment();

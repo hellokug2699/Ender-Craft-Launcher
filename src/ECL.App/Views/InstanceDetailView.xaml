@@ -203,6 +203,10 @@
                     <TextBlock Text="{loc:Loc Key=instance.detail.latestLaunch}" Style="{StaticResource SectionText}" />
                     <TextBlock Text="{Binding Instances.HealthReportText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
                     <Button Content="{loc:Loc Key=instances.manageModIssues}" Command="{Binding Instances.ManageInstanceModsCommand}" Style="{StaticResource GhostButton}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Content="{loc:Loc Key=instances.java.download}" Command="{Binding Instances.DownloadJavaCommand}" Style="{StaticResource PrimaryButton}" />
+                        <Button Content="{loc:Loc Key=instances.repairFiles}" Command="{Binding Instances.RepairFilesCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
+                    </StackPanel>
                     <TextBlock Text="{Binding Instances.LaunchStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
                     <ItemsControl ItemsSource="{Binding Instances.LaunchSteps}" Margin="0,8,0,0">
                         <ItemsControl.ItemTemplate>
