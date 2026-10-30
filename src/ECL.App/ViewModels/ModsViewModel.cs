@@ -411,7 +411,7 @@ public sealed partial class ModsViewModel : ObservableObject
         }
 
         var dependencyId = SelectedMod.Issues
-            .Where(issue => issue.Kind is ModIssueKind.MissingDependency or ModIssueKind.DisabledDependency)
+            .Where(issue => issue.Kind == ModIssueKind.MissingDependency)
             .Select(issue => issue.RelatedModId)
             .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id));
         if (dependencyId is null)
