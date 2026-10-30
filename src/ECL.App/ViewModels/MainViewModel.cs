@@ -9,7 +9,8 @@ namespace Ecl.App.ViewModels;
 
 public sealed partial class MainViewModel : ObservableObject
 {
-    private readonly InstancesViewModel _instances;
+    private readonly HomeViewModel _home;
+    private readonly DownloadViewModel _download;
     private readonly ModsViewModel _mods;
     private readonly SettingsViewModel _settings;
 
@@ -22,7 +23,11 @@ public sealed partial class MainViewModel : ObservableObject
 
     public string DataDirectory { get; }
 
+    public string GameDirectory { get; }
+
     public MainViewModel(
+        HomeViewModel home,
+        DownloadViewModel download,
         InstancesViewModel instances,
         ModsViewModel mods,
         SettingsViewModel settings,
@@ -30,37 +35,48 @@ public sealed partial class MainViewModel : ObservableObject
         IAppPaths paths,
         ILocalizer localizer)
     {
-        _instances = instances;
+        _home = home;
+        _download = download;
         _mods = mods;
         _settings = settings;
 
         NavItems =
         [
-            new NavItemViewModel(localizer.Get("nav.instances"), instances),
-            new NavItemViewModel(localizer.Get("nav.mods"), mods),
-            new NavItemViewModel(localizer.Get("nav.settings"), settings),
-            new NavItemViewModel(localizer.Get("nav.about"), about),
+            new NavItemViewModel("home", localizer.Get("nav.home"), home),
+            new NavItemViewModel("download", localizer.Get("nav.download"), download),
+            new NavItemViewModel("instances", localizer.Get("nav.instances"), instances),
+            new NavItemViewModel("mods", localizer.Get("nav.content"), mods),
+            new NavItemViewModel("settings", localizer.Get("nav.settings"), settings),
+            new NavItemViewModel("about", localizer.Get("nav.about"), about),
         ];
 
         _selectedNavItem = NavItems[0];
         VersionText = $"ECL {typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0"}";
         DataDirectory = paths.Root;
+        GameDirectory = paths.GameRoot;
     }
 
     public async Task InitializeAsync()
     {
-        await _instances.InitializeAsync().ConfigureAwait(true);
+        await _home.Launcher.InitializeAsync().ConfigureAwait(true);
+        await _download.InitializeAsync().ConfigureAwait(true);
         await _mods.InitializeAsync().ConfigureAwait(true);
         await _settings.InitializeAsync().ConfigureAwait(true);
+        await _home.InitializeAsync().ConfigureAwait(true);
     }
 
     partial void OnSelectedNavItemChanged(NavItemViewModel value)
     {
-        if (value.Page is ModsViewModel mods)
+        switch (value.Page)
         {
-            _ = mods.ActivateAsync();
+            case ModsViewModel mods:
+                _ = mods.ActivateAsync();
+                break;
+            case DownloadViewModel download:
+                _ = download.ActivateAsync();
+                break;
         }
     }
 }
 
-public sealed record NavItemViewModel(string Title, object Page);
+public sealed record NavItemViewModel(string Key, string Title, object Page);

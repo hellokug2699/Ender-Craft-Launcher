@@ -23,9 +23,21 @@ public sealed record GameInstance
     /// <summary>用户显式选择的 OptiFine 版本键（type:patch）；为空表示不安装。Forge 与 Cleanroom 可用。</summary>
     public string? OptiFineVersion { get; init; }
 
+    /// <summary>
+    /// 版本隔离。ECL 始终为每个实例使用独立的 <c>minecraft</c> 游戏目录，
+    /// 该值为 <see langword="true"/> 且不提供关闭入口（UI 中不显示该选项）。
+    /// </summary>
+    public bool VersionIsolation { get; init; } = InstanceIsolation.Enabled;
+
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset? LastPlayedAt { get; init; }
 
     public string? Notes { get; init; }
+}
+
+/// <summary>实例隔离策略。版本隔离是启动器行为，不暴露为用户可关闭的选项。</summary>
+public static class InstanceIsolation
+{
+    public const bool Enabled = true;
 }

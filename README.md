@@ -2,14 +2,18 @@
 
 > 一个面向 Windows 的 Minecraft 启动器，使用 C# / .NET 10 / WPF 构建。
 
-ECL 的目标是达到 HMCL、PCL2 级别的完整度，同时在配置系统、启动流程和交互上做出自己的设计。当前仓库处于 **v0.8 可靠性与功能闭环** 阶段（进行中；v0.3 账户体系因 Microsoft OAuth 审核限制暂时跳过），已补全 CurseForge API 集成与资源包/光影包启用状态：能够安装原版、Fabric（含 Fabric API）、Forge、NeoForge 与 Cleanroom，管理 Java 运行时、Mod、整合包、资源包与光影包，完成真实启动，并提供 ECL 深色界面、崩溃分析与脱敏诊断包。首次启动向导本阶段暂缓。
+ECL 的目标是达到 HMCL、PCL2 级别的完整度，同时在配置系统、启动流程和交互上做出自己的设计。当前仓库处于 **v0.8 可靠性与功能闭环** 阶段（v0.3 账户体系因 Microsoft OAuth 审核限制暂时跳过），已接入 CurseForge 与 Modrinth、统一下载页与可配置实例目录：能够安装原版、Fabric（含 Fabric API）、Forge、NeoForge 与 Cleanroom，管理 Java 运行时、Mod、整合包、数据包、资源包与光影包，完成真实启动，并提供 ECL 深色界面、崩溃分析与脱敏诊断包。首次启动向导本阶段暂缓。
 
-当前 WPF 正在进行第一轮 **launcher-first UI 重构**：主窗口采用持久侧栏 + 内容画布，实例页优先围绕“选中实例 → 启动”，Mod 页围绕“实例 → 快速操作 → 内容管理”，关于页统一品牌与运行环境信息。UI 重构原则是只改变呈现层，不复制业务逻辑、不修改既有 ViewModel API，并以 Windows WPF CI 作为最终验收门槛。
+WPF 已完成 **launcher-first UI 重构**：主窗口采用持久侧栏 + 内容画布，页面为「主页 / 下载 / 实例 / 内容 / 设置 / 关于」。主页只负责启动游戏与新版本情报；实例下载、Mod、整合包、数据包、资源包与光影包下载全部合并到「下载」页；实例页只做管理与启动；内容页只管理已安装内容。UI 重构原则是不复制业务逻辑，并以 Windows WPF CI 作为最终验收门槛。
 
 ## 现在能做什么
 
-- WPF 桌面壳：实例库、Mod 管理、设置、关于四个页面，采用 ECL 深色主题、内嵌 HarmonyOS Sans SC 字体与统一控件样式（按钮 / 输入框 / 下拉框 / 列表选中态）。
-- 多实例管理：创建/列出/删除实例，每个实例有独立目录与元数据。
+- WPF 桌面壳：主页、下载、实例、内容、设置、关于六个页面，采用 ECL 深色主题、内嵌 HarmonyOS Sans SC 字体与统一控件样式（按钮 / 输入框 / 下拉框 / 页签 / 列表选中态）。
+- **主页**：只保留启动游戏与新版本情报（读取 Mojang 版本清单），为以后的新闻源预留固定入口。
+- **下载页**：实例下载（新建/安装/补全/Java）与 Mod、整合包、数据包、资源包、光影包下载合并；支持「全部 / 仅 CurseForge / 仅 Modrinth」来源过滤；没有实例时也能搜索并下载文件，整合包还能“下载并新建实例导入”。
+- 多实例管理：创建/列出/删除实例，每个实例有独立目录与元数据；版本隔离始终开启且不出现在设置中。
+- **可配置实例下载位置**：设置中可指定 .minecraft 目录（`launcher.minecraftDirectory`），实例与游戏文件写入该目录；修改后需重启。
+- **Modrinth**：v2 API 搜索、版本/依赖解析、文件下载、整合包 `.mrpack` 下载与导入。
 - 离线账户：按 Java `UUID.nameUUIDFromBytes` 规则生成 UUID，可设默认账户。
 - 元数据驱动配置：全局设置与实例覆盖，自动生成设置页，支持校验、可见性依赖、来源标记。
 - **原版安装**：版本清单、版本 JSON、继承链合并、客户端、依赖库、资源索引与资源对象、日志配置下载；SHA-1 校验、断点续传、并发下载、失败重试。
@@ -20,19 +24,20 @@ ECL 的目标是达到 HMCL、PCL2 级别的完整度，同时在配置系统、
 - **OptiFine**：仅在 Forge 或 Cleanroom + 用户显式选择时安装，默认不安装，遵守分发限制；Fabric、NeoForge 与原版下禁用。
 - **Mod 管理**：解析 `fabric.mod.json` / `mods.toml` / `neoforge.mods.toml` / `mcmod.info`；检测重复 Mod、缺失/禁用依赖、冲突与加载器不匹配；支持单个/批量启用禁用、导入、删除，WPF 与 CLI 均可操作。
 - **整合包与资源包**：导入 Modrinth `.mrpack` 与 CurseForge `.zip`（完整下载 `files[]`、SHA-1 校验、解压 overrides）；导出为 Modrinth `.mrpack`；列出、导入、删除、启用/禁用资源包与光影包（以 `options.txt` 为唯一事实来源，缺失/重复/未识别条目只提示，不静默改写，写入前备份并原子替换）。
-- **CurseForge**：按实例游戏版本与加载器搜索、查看文件、一键安装（递归安装必需依赖），支持项目 ID / slug / 链接；API key 从环境变量或发布版构建元数据读取，缺省时明确提示。
+- **CurseForge**：与 Modrinth 一起接入统一搜索；按实例游戏版本与加载器搜索、查看文件、一键安装（递归安装必需依赖），支持项目 ID / slug / 链接；API key 只存在于 ECL 代理服务端。
+- **统一下载执行**：整合包下载为归档后复用导入流程；Modrinth Mod 会补齐必需依赖；资源包/光影包/数据包按类型落盘。
 - **真实启动**：检查文件完整性（大小 + SHA-1，含资源对象存在性）、解压 natives、按规则过滤库、构建命令并启动进程；支持 Fabric `arguments.jvm`、Forge/NeoForge `${library_directory}`/`--launchTarget` 与 Cleanroom `--tweakClass`；`arguments.jvm`/`arguments.game` 按 OS/架构/feature 规则过滤。
 - **诊断**：解析 `crash-reports` / `latest.log`，按崩溃堆栈与 Mod 元数据排序可疑 Mod；导出包含日志、崩溃报告、安装诊断和系统信息的脱敏 zip，不包含账户文件。
 - **下载控制**：安装与 Java 下载显示实时速度，支持暂停/继续；Mod 删除与资源包区域已接入 WPF。
 - 启动流水线：校验 → 读取版本 → 解析 Java → 检查文件 → 解压 natives → 检查 EULA → 构建命令 → 启动/干跑；失败可定位到具体步骤。
 - CLI：无 GUI 环境下安装游戏、管理 Java/实例/账户/配置、Mod/整合包/资源包、CurseForge Mod，并预览启动命令。
-- 单元测试：194 个测试覆盖下载源、HTTP 下载、Java 需求/选择/安装/第三方提供方/归档解压/平台校验/JVM 预设、配置、账户、Java 探测、EULA、实例、加载器目录、Forge/NeoForge 安装器解析、Cleanroom 安装器解析、库规则（含 `arch: x64`）、版本继承、arguments 规则/占位符、安装回滚与诊断、Mod 元数据/扫描/启停、整合包导入导出、CurseForge 客户端/安装器/依赖、资源包管理与安装/启动流水线、`options.txt` 解析与资源包/光影包启用状态。
+- 单元测试：209 个测试覆盖下载源、HTTP 下载、Java 需求/选择/安装/第三方提供方/归档解压/平台校验/JVM 预设、配置、账户、Java 探测、EULA、实例隔离、加载器目录、Forge/NeoForge 安装器解析、Cleanroom 安装器解析、库规则（含 `arch: x64`）、版本继承、arguments 规则/占位符、安装回滚与诊断、Mod 元数据/扫描/启停、整合包导入导出、CurseForge 客户端/安装器/依赖、Modrinth 客户端/统一搜索/`.mrpack` 下载与导入、可配置游戏目录、资源包管理与安装/启动流水线、`options.txt` 解析与资源包/光影包启用状态。
 
 ## 尚未实现
 
 - Microsoft 登录 / authlib-injector 第三方认证（v0.3，暂时跳过）。
 - Quilt / Legacy Fabric。
-- CurseForge 作者禁止第三方分发的文件无法下载；暂不做 Mod 更新检查与可选依赖选择界面。
+- CurseForge 作者禁止第三方分发的文件无法下载；Modrinth/CurseForge 的可选依赖尚未提供选择界面；暂不做 Mod 更新检查。
 - 首次启动向导（本阶段暂缓）。
 - 资源包/光影包的启用状态只写入 `options.txt`；使用独立配置文件的光影实现不会被同步。
 - 启动器自更新、安装包与签名发布。
@@ -111,7 +116,7 @@ build/                 构建、打包、签名脚本
 
 ## 数据目录
 
-默认位于 `%LOCALAPPDATA%\EnderCraftLauncher`。完整布局见 [docs/architecture.md](docs/architecture.md)。
+默认位于 `%LOCALAPPDATA%\EnderCraftLauncher`；实例与游戏文件默认也在其中，可在设置中改为任意 `.minecraft` 目录（环境变量 `ECL_GAME_DIR` 可覆盖）。完整布局见 [docs/architecture.md](docs/architecture.md)。
 
 ## 仓库拆分
 
@@ -128,6 +133,7 @@ build/                 构建、打包、签名脚本
 - [加载器与组件](docs/loaders.md)
 - [Mod、整合包与资源包](docs/mods.md)
 - [CurseForge 集成](docs/curseforge.md)
+- [Modrinth 集成](docs/modrinth.md)
 - [崩溃分析与诊断包](docs/diagnostics.md)
 - [启动流水线](docs/launch-pipeline.md)
 - [仓库与保密策略](docs/repository-policy.md)

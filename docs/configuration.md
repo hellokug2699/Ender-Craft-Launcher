@@ -66,11 +66,17 @@ internal sealed class MyOptionsProvider : IOptionProvider
 - 影响所有实例。
 - 全局选项不能写入实例作用域。
 
+`launcher.minecraftDirectory`（实例下载位置）是启动早期读取的全局选项：它把实例与游戏文件的根目录从默认数据目录切换到任意 `.minecraft` 目录。修改后标记为需要重启；已有实例不会自动迁移。启动时还会读取环境变量 `ECL_GAME_DIR` 作为相同语义的覆盖（优先级高于设置）。
+
 ### Instance
 
-- 存储在 `<data>/instances/<id>/settings.json`。
+- 存储在 `<game>/instances/<id>/settings.json`。
 - 只对当前实例生效。
 - 空值表示“未设置/继承”，不会写入文件。
+
+### 版本隔离
+
+版本隔离不是可配置项，因此不会出现在设置页。`GameInstance.VersionIsolation` 恒为 `true`，每个实例的游戏目录固定为 `<game>/instances/<id>/minecraft`；`mods`、`saves`、`config`、`resourcepacks` 等互不共享。
 
 当前实例选项包括：
 

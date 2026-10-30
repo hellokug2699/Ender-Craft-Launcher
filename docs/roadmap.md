@@ -20,15 +20,17 @@ ECL 是面向 Windows 的 Minecraft 启动器，长期目标是达到 HMCL / PCL
 
 ## 当前基线
 
-当前仓库已实现原版安装与启动、Java 管理、Fabric / Forge / NeoForge / Cleanroom、OptiFine 显式安装、Mod 管理、Modrinth / CurseForge 整合包导入导出、CurseForge 搜索与安装、资源包和光影包文件管理及启用状态（写入 `options.txt`）、崩溃分析、脱敏诊断包、下载暂停/恢复、自定义 JVM 预设、WPF 与 CLI、单元测试及 CI。
+当前仓库已实现原版安装与启动、Java 管理、Fabric / Forge / NeoForge / Cleanroom、OptiFine 显式安装、Mod 管理、Modrinth / CurseForge 整合包导入导出、CurseForge 与 Modrinth 搜索和安装、统一来源过滤、`.mrpack` 下载/自动建实例导入、可配置实例下载位置（.minecraft 目录）、自动版本隔离、资源包和光影包文件管理及启用状态（写入 `options.txt`）、崩溃分析、脱敏诊断包、下载暂停/恢复、自定义 JVM 预设、WPF 与 CLI、单元测试及 CI。
 
-WPF 外壳已完成第一轮 launcher-first 视觉重构：主窗口采用持久侧栏与内容画布，实例页优先展示选中实例与启动动作，Mod 管理页、设置页与关于页统一到同一套卡片、Hero、状态徽标与操作层级。控件级主题（按钮、输入框、下拉框、复选框、列表选中态、滚动条与提示框）已统一为 ECL 深色视觉，并内嵌 HarmonyOS Sans SC 作为界面字体；浅色模式已移除。该轮 UI 工作只调整呈现层，保留既有 ViewModel 绑定与业务命令。
+WPF 外壳已完成 launcher-first 重构：页面为「主页 / 下载 / 实例 / 内容 / 设置 / 关于」。主页只保留启动与新版本情报；下载页合并实例下载与 Mod/整合包/数据包/资源包/光影包下载，并提供「全部 / 仅 CurseForge / 仅 Modrinth」来源过滤；实例页只负责管理与启动；内容页只管理已安装内容。控件级主题（按钮、输入框、下拉框、复选框、页签、列表选中态、滚动条与提示框）已统一为 ECL 深色视觉，并内嵌 HarmonyOS Sans SC 作为界面字体；浅色模式已移除。
 
 已知未完成或受限项：
 
 - [!] Microsoft OAuth 及 Xbox / XSTS / Minecraft Services 认证链路：受应用注册 / OAuth 审核条件影响；不能以离线账户模拟替代真实认证。
 - [ ] authlib-injector 第三方认证。
 - [ ] Mod 更新检查、可选依赖选择及严格依赖版本范围语义。
+- [ ] 下载页分页 / 无限滚动与更细的结果筛选（分类、排序）。
+- [ ] 切换实例下载位置后的实例迁移向导。
 - [ ] 更完整的键盘导航、焦点与读屏支持。
 - [ ] 正式安装包、发布签名验证与自更新。
 - [-] Quilt / Legacy Fabric：当前不纳入近期交付范围。

@@ -179,7 +179,7 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     public string SelectedInstancePath => SelectedInstance is null
         ? string.Empty
-        : _paths.GetInstanceDirectory(SelectedInstance.Model.Id);
+        : _paths.GetInstanceGameDirectory(SelectedInstance.Model.Id);
 
     public string SelectedInstanceCreated => SelectedInstance is null
         ? string.Empty

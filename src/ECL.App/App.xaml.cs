@@ -35,6 +35,9 @@ public partial class App : Application
         try
         {
             var paths = AppPaths.Create();
+
+            // 实例下载位置在建立 DI 容器之前读取：切换游戏目录需要重启启动器。
+            paths.SetGameRoot(SettingsBootstrap.ReadGlobalString(paths, "launcher.minecraftDirectory"));
             paths.EnsureCreated();
 
             var language = SettingsBootstrap.ReadGlobalString(paths, "launcher.language")
@@ -54,6 +57,8 @@ public partial class App : Application
             services.AddSingleton<IDialogService, DialogService>();
             services.AddSingleton<InstancesViewModel>();
             services.AddSingleton<ModsViewModel>();
+            services.AddSingleton<HomeViewModel>();
+            services.AddSingleton<DownloadViewModel>();
             services.AddSingleton<SettingsViewModel>();
             services.AddSingleton<AboutViewModel>();
             services.AddSingleton<MainViewModel>();

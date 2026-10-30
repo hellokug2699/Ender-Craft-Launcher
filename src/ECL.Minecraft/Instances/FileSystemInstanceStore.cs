@@ -63,6 +63,9 @@ internal sealed class FileSystemInstanceStore(IAppPaths paths, ILogger<FileSyste
 
         var directory = paths.GetInstanceDirectory(instance.Id);
         Directory.CreateDirectory(directory);
+
+        // 版本隔离始终开启：每个实例的游戏目录固定为 instances/<id>/minecraft，
+        // 与其它实例的 mods、saves、config 完全分开。
         Directory.CreateDirectory(paths.GetInstanceGameDirectory(instance.Id));
         foreach (var name in ManagedGameDirectories)
         {

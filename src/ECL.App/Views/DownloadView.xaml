@@ -1,0 +1,462 @@
+<UserControl x:Class="Ecl.App.Views.DownloadView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" KeyboardNavigation.TabNavigation="Cycle">
+        <StackPanel>
+            <Grid Margin="0,0,0,18">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="{loc:Loc Key=downloads.title}" Style="{StaticResource TitleText}" />
+                    <TextBlock Text="{loc:Loc Key=downloads.subtitle}" Style="{StaticResource SubtitleText}" Margin="0,6,0,0" />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Content="{loc:Loc Key=common.refresh}"
+                        Command="{Binding RefreshInstancesCommand}"
+                        Style="{StaticResource GhostButton}"
+                        VerticalAlignment="Top" />
+            </Grid>
+
+            <!-- 一级页签：实例下载 + 各类资源下载 -->
+            <ListBox ItemsSource="{Binding Tabs}"
+                     SelectedItem="{Binding SelectedTab, Mode=TwoWay}"
+                     ItemContainerStyle="{StaticResource TabStripItemStyle}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Margin="0,0,0,14">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" />
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- ==================== 游戏实例下载 ==================== -->
+            <StackPanel Visibility="{Binding IsGameTab, Converter={StaticResource BoolToVisibility}}">
+                <Border Style="{StaticResource Card}" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Loc Key=downloads.game.title}" Style="{StaticResource SectionText}" />
+                        <TextBlock Text="{loc:Loc Key=downloads.game.subtitle}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Margin="0,6,0,0" />
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{loc:Loc Key=downloads.game.location}" Style="{StaticResource LabelText}" VerticalAlignment="Center" Margin="0" />
+                            <TextBlock Grid.Column="2"
+                                       Text="{Binding GameRoot}"
+                                       FontFamily="Consolas"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding GameRoot}"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                        <TextBlock Text="{loc:Loc Key=downloads.game.isolation}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,6,0,0" />
+                        <TextBlock Text="{loc:Loc Key=downloads.game.locationHint}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource Card}" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Loc Key=downloads.game.existing}" Style="{StaticResource SectionText}" />
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox ItemsSource="{Binding TargetInstances}"
+                                      SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
+                                      ItemTemplate="{StaticResource NameItemTemplate}" />
+                            <Button Grid.Column="2"
+                                    Content="{loc:Loc Key=downloads.game.install}"
+                                    Command="{Binding InstallGameCommand}"
+                                    Style="{StaticResource PrimaryButton}"
+                                    IsEnabled="{Binding HasTargetInstance}" />
+                            <Button Grid.Column="4"
+                                    Content="{loc:Loc Key=instances.java.download}"
+                                    Command="{Binding DownloadJavaCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    IsEnabled="{Binding HasTargetInstance}" />
+                        </Grid>
+                        <TextBlock Text="{Binding TargetInstanceHint}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   Margin="0,6,0,0"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Game.JavaStatus}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   Margin="0,6,0,0"
+                                   TextWrapping="Wrap" />
+                        <ProgressBar Height="4" Margin="0,10,0,0" Minimum="0" Maximum="100"
+                                     Value="{Binding Game.InstallProgressValue}"
+                                     IsIndeterminate="{Binding Game.InstallIndeterminate}"
+                                     Visibility="{Binding Game.IsInstalling, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Text="{Binding Game.InstallStatus}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   Margin="0,6,0,0"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 新建实例（实例下载） -->
+                <Border Style="{StaticResource Card}" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Loc Key=instances.createTitle}" Style="{StaticResource SectionText}" />
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="180" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="{loc:Loc Key=instances.name}" Style="{StaticResource LabelText}" />
+                                <TextBox Text="{Binding Game.NewInstanceName, UpdateSourceTrigger=PropertyChanged}" ToolTip="{loc:Loc Key=instances.namePlaceholder}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="{loc:Loc Key=instances.version}" Style="{StaticResource LabelText}" />
+                                <TextBox Text="{Binding Game.NewInstanceVersion, UpdateSourceTrigger=PropertyChanged}" ToolTip="{loc:Loc Key=instances.versionPlaceholder}" />
+                            </StackPanel>
+                            <Button Grid.Column="4"
+                                    Content="{loc:Loc Key=common.create}"
+                                    Command="{Binding CreateGameInstanceCommand}"
+                                    Style="{StaticResource PrimaryButton}"
+                                    VerticalAlignment="Bottom" />
+                        </Grid>
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="180" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="{loc:Loc Key=instances.loader.title}" Style="{StaticResource LabelText}" />
+                                <ComboBox ItemsSource="{Binding Game.LoaderChoices}" SelectedItem="{Binding Game.SelectedNewLoader, Mode=TwoWay}" ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="{loc:Loc Key=instances.loader.version}" Style="{StaticResource LabelText}" />
+                                <ComboBox ItemsSource="{Binding Game.LoaderVersions}" SelectedItem="{Binding Game.SelectedLoaderVersion, Mode=TwoWay}" ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
+                            </StackPanel>
+                            <Button Grid.Column="4"
+                                    Content="{loc:Loc Key=instances.loader.refresh}"
+                                    Command="{Binding Game.RefreshComponentsCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    VerticalAlignment="Bottom" />
+                        </Grid>
+                        <TextBlock Text="{loc:Loc Key=instances.fabricApi.notice}"
+                                   Foreground="{DynamicResource AccentBrush}"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Margin="0,12,0,0"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding Game.ShowFabricApiNotice, Converter={StaticResource BoolToVisibility}}" />
+                        <Grid Margin="0,10,0,0" Visibility="{Binding Game.ShowFabricApiNotice, Converter={StaticResource BoolToVisibility}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="180" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{loc:Loc Key=instances.fabricApi.title}" Style="{StaticResource LabelText}" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="2" ItemsSource="{Binding Game.FabricApiVersions}" SelectedItem="{Binding Game.SelectedFabricApiVersion, Mode=TwoWay}" ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
+                        </Grid>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="180" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{loc:Loc Key=instances.optifine.title}" Style="{StaticResource LabelText}" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="2" ItemsSource="{Binding Game.OptiFineVersions}" SelectedItem="{Binding Game.SelectedOptiFineVersion, Mode=TwoWay}" ItemTemplate="{StaticResource DisplayNameItemTemplate}" IsEnabled="{Binding Game.OptiFineEnabled}" />
+                        </Grid>
+                        <TextBlock Text="{loc:Loc Key=instances.optifine.disabled}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap" />
+                        <ProgressBar Height="4" Margin="0,10,0,0" IsIndeterminate="True" Visibility="{Binding Game.IsLoadingComponents, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Text="{Binding Game.ComponentStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- ==================== 内容下载 ==================== -->
+            <StackPanel Visibility="{Binding IsContentTab, Converter={StaticResource BoolToVisibility}}">
+                <Border Style="{StaticResource Card}" Margin="0,0,0,16">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Text="{Binding Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="{loc:Loc Key=downloads.searchPlaceholder}" />
+                            <Button Grid.Column="2"
+                                    Content="{loc:Loc Key=downloads.search}"
+                                    Command="{Binding SearchCommand}"
+                                    Style="{StaticResource PrimaryButton}" />
+                        </Grid>
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="{loc:Loc Key=downloads.source.label}" Style="{StaticResource LabelText}" />
+                                <ListBox ItemsSource="{Binding Sources}"
+                                         SelectedItem="{Binding SelectedSource, Mode=TwoWay}"
+                                         ItemContainerStyle="{StaticResource PillItemStyle}"
+                                         Background="Transparent"
+                                         BorderThickness="0">
+                                    <ListBox.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ListBox.ItemsPanel>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Title}" FontSize="10" FontWeight="SemiBold" />
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </StackPanel>
+                        </Grid>
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="140" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="150" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="{loc:Loc Key=downloads.targetInstance}" Style="{StaticResource LabelText}" />
+                                <ComboBox ItemsSource="{Binding TargetInstances}"
+                                          SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
+                                          ItemTemplate="{StaticResource NameItemTemplate}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="{loc:Loc Key=instances.version}" Style="{StaticResource LabelText}" />
+                                <TextBox Text="{Binding GameVersion, UpdateSourceTrigger=PropertyChanged}" ToolTip="{loc:Loc Key=downloads.versionHint}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Text="{loc:Loc Key=instances.loader.title}" Style="{StaticResource LabelText}" />
+                                <ComboBox ItemsSource="{Binding LoaderFilters}"
+                                          SelectedItem="{Binding SelectedLoaderFilter, Mode=TwoWay}"
+                                          ItemTemplate="{StaticResource TitleItemTemplate}" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="{Binding TargetInstanceHint}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   Margin="0,8,0,0"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="{Binding ResultSummary}" Style="{StaticResource SectionText}" />
+                        <TextBlock Text="{Binding SearchWarnings}"
+                                   Foreground="{DynamicResource WarningBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0"
+                                   Visibility="{Binding SearchWarnings, Converter={StaticResource StringToVisibility}}" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding StatusMessage}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="10"
+                               VerticalAlignment="Center" />
+                </Grid>
+                <ProgressBar Height="3" IsIndeterminate="True"
+                             Visibility="{Binding IsSearching, Converter={StaticResource BoolToVisibility}}" />
+
+                <ListBox ItemsSource="{Binding Results}"
+                         SelectedItem="{Binding SelectedResult, Mode=TwoWay}"
+                         MaxHeight="380"
+                         Margin="0,8,0,14"
+                         BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Padding="12" Margin="0,0,0,6" Background="{DynamicResource SurfaceAltBrush}"
+                                    BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" CornerRadius="10">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="44" />
+                                        <ColumnDefinition Width="12" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="40" Height="40" CornerRadius="8" Background="{DynamicResource InputBrush}"
+                                            BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1"
+                                            VerticalAlignment="Top">
+                                        <Image Source="{Binding IconUrl}" Stretch="Uniform" Margin="2" />
+                                    </Border>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Summary}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   FontSize="10"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Margin="0,3,0,0" />
+                                        <TextBlock Text="{Binding AuthorText}"
+                                                   Foreground="{DynamicResource TextMutedBrush}"
+                                                   FontSize="9"
+                                                   Margin="0,4,0,0" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="3" VerticalAlignment="Top" HorizontalAlignment="Right">
+                                        <Border Style="{StaticResource Badge}">
+                                            <TextBlock Text="{Binding SourceLabel}" FontSize="9">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsModrinth}" Value="True">
+                                                                <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Border>
+                                        <TextBlock Text="{Binding Meta}"
+                                                   Foreground="{DynamicResource TextMutedBrush}"
+                                                   FontSize="9"
+                                                   HorizontalAlignment="Right"
+                                                   Margin="0,4,0,0" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Border Style="{StaticResource Card}" Margin="0,0,0,14"
+                        Visibility="{Binding HasSelectedResult, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="{Binding SelectedResult.Name}" FontSize="17" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding SelectedResult.AuthorText}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="10"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Content="{loc:Loc Key=downloads.openPage}"
+                                    Command="{Binding OpenPageCommand}"
+                                    Style="{StaticResource GhostButton}" />
+                        </Grid>
+                        <TextBlock Text="{Binding SelectedResult.Summary}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Margin="0,10,0,0" />
+                        <WrapPanel Margin="0,14,0,0">
+                            <Button Content="{loc:Loc Key=downloads.installToInstance}"
+                                    Command="{Binding InstallCommand}"
+                                    Style="{StaticResource PrimaryButton}"
+                                    IsEnabled="{Binding CanInstallToInstance}"
+                                    Margin="0,0,8,8" />
+                            <Button Content="{loc:Loc Key=downloads.downloadOnly}"
+                                    Command="{Binding DownloadCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    Margin="0,0,8,8" />
+                            <Button Content="{loc:Loc Key=downloads.createInstanceAndImport}"
+                                    Command="{Binding InstallAsNewInstanceCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    Margin="0,0,8,8"
+                                    Visibility="{Binding CanCreateInstanceFromPack, Converter={StaticResource BoolToVisibility}}" />
+                        </WrapPanel>
+                        <TextBlock Text="{loc:Loc Key=downloads.installHint}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource Card}" Margin="0,0,0,14"
+                        Visibility="{Binding ShowProgress, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <ProgressBar Height="5" Minimum="0" Maximum="100"
+                                     Value="{Binding ProgressValue}"
+                                     IsIndeterminate="{Binding ProgressIndeterminate}" />
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding ProgressText}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="11"
+                                       TextWrapping="Wrap" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <TextBlock Text="{Binding DownloadSpeedText}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="11"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,10,0" />
+                                <Button Content="{Binding DownloadPauseButtonText}"
+                                        Command="{Binding ToggleDownloadPauseCommand}"
+                                        Style="{StaticResource GhostButton}"
+                                        Visibility="{Binding CanPauseDownload, Converter={StaticResource BoolToVisibility}}" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource Card}"
+                        Visibility="{Binding HasReport, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Loc Key=downloads.reportTitle}" Style="{StaticResource SectionText}" />
+                        <TextBlock Text="{Binding ReportText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

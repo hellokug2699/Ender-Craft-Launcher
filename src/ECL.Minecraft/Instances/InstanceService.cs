@@ -125,6 +125,7 @@ public sealed partial class InstanceService : IInstanceService
                 ? fabricApiVersion
                 : null,
             OptiFineVersion = optiFineVersion,
+            VersionIsolation = InstanceIsolation.Enabled,
             CreatedAt = DateTimeOffset.UtcNow,
         };
 

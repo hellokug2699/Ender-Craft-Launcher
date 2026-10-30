@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.Configuration;
+using Ecl.Minecraft.Content;
 using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Diagnostics;
 using Ecl.Minecraft.Eula;
@@ -10,7 +11,9 @@ using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Launch;
 using Ecl.Minecraft.Launch.Steps;
 using Ecl.Minecraft.Loaders;
+using Ecl.Minecraft.Modrinth;
 using Ecl.Minecraft.Mods;
+using Ecl.Minecraft.News;
 using Ecl.Minecraft.Versions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -34,7 +37,11 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IModpackService, ModpackService>();
         services.AddSingleton<ICurseForgeClient, CurseForgeClient>();
         services.AddSingleton<ICurseForgeService, CurseForgeService>();
+        services.AddSingleton<IModrinthClient, ModrinthClient>();
+        services.AddSingleton<IContentSearchService, ContentSearchService>();
+        services.AddSingleton<IContentInstallService, ContentInstallService>();
         services.AddSingleton<IContentPackService, ContentPackService>();
+        services.AddSingleton<IVersionNewsService, MojangVersionNewsService>();
         services.AddSingleton<ICrashReportService, CrashReportService>();
         services.AddSingleton<IDiagnosticPackageService, DiagnosticPackageService>();
 

@@ -11,7 +11,7 @@ ECL 是一个 Windows 优先的 Minecraft 启动器，目标能力对齐 HMCL / 
 
 同时保留自己的设计空间：配置项由元数据驱动、启动流程分阶段可观测、模块边界清晰、UI 只是薄壳。
 
-当前版本（v0.7）已完成原版安装、Java 管理与加载器安装：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查、Mojang/Adoptium/Zulu/Liberica Java 运行时下载、Fabric（含 Fabric API）、Forge/NeoForge（含安装器 processors）与 Cleanroom 安装、OptiFine 显式安装；v0.6 的 Mod/整合包/资源包管理、CurseForge 搜索与远程下载，以及 v0.7 的崩溃分析、脱敏诊断包、下载暂停/速度与自定义 JVM 预设也已接入。v0.3 账户体系因 Microsoft OAuth 审核限制暂缓；首次启动向导本阶段暂缓。
+当前版本（v0.8）已完成原版安装、Java 管理与加载器安装：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查、Mojang/Adoptium/Zulu/Liberica Java 运行时下载、Fabric（含 Fabric API）、Forge/NeoForge（含安装器 processors）与 Cleanroom 安装、OptiFine 显式安装；Mod/整合包/资源包管理、CurseForge 与 Modrinth 搜索/远程下载、崩溃分析、脱敏诊断包、下载暂停/速度与自定义 JVM 预设也已接入。UI 在 v0.8 完成 launcher-first 重构：主页只负责启动与版本情报，所有下载集中到「下载」页。v0.3 账户体系因 Microsoft OAuth 审核限制暂缓；首次启动向导本阶段暂缓。
 
 ## 2. 设计原则
 
@@ -79,8 +79,8 @@ flowchart TD
 | `ECL.Download` | 下载源策略、官方↔BMCLAPI 映射、并发/重试/续传、哈希校验 | `DownloadSourceResolver`, `IDownloadService`, `DownloadRequest` |
 | `ECL.Auth` | 账户模型、离线 UUID、账户文件 | `Account`, `IAccountService`, `OfflineUuid` |
 | `ECL.Java` | Java 版本解析、运行时探测、需求/兼容性/32-64 位与内存校验、JVM 预设、Mojang/Adoptium/Zulu/Liberica 下载与解压 | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `JvmPresets`, `IJavaInstallService` |
-| `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动、Mod/整合包/资源包管理、CurseForge API 与安装 | `GameInstance`, `VanillaInstallService`, `ILoaderCatalog`, `IJavaSelectionService`, `IModService`, `IModpackService`, `ICurseForgeClient`, `ICurseForgeService`, `ILaunchStep` |
-| `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框 | `MainViewModel`, `InstancesViewModel`, `ModsViewModel`, `SettingsViewModel` |
+| `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动、Mod/整合包/资源包管理、CurseForge/Modrinth API、统一搜索与下载、版本情报 | `GameInstance`, `VanillaInstallService`, `ILoaderCatalog`, `IJavaSelectionService`, `IModService`, `IModpackService`, `ICurseForgeClient`, `ICurseForgeService`, `IModrinthClient`, `IContentSearchService`, `IContentInstallService`, `IVersionNewsService`, `ILaunchStep` |
+| `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框 | `MainViewModel`, `HomeViewModel`, `DownloadViewModel`, `InstancesViewModel`, `ModsViewModel`, `SettingsViewModel` |
 | `ECL.Cli` | 无 GUI 管理、调试启动链路 | `CliApplication`, `ParsedCommandLine` |
 | `ECL.Tests` | 单元测试与临时数据目录 | `TestEnvironment`, `FakeProcessLauncher` |
 
@@ -100,48 +100,47 @@ services.AddEclMinecraft();
 
 - 配置注册表在首次解析时聚合所有 `IOptionProvider`，因此新模块可以在自己的 `Add...` 中追加选项。
 - 启动步骤通过 `IEnumerable<ILaunchStep>` 注入并按 `Order` 排序，新增步骤不需要改启动器。
-- App 启动顺序：创建 `AppPaths` → 读取语言 → 建立本地化器 → 构建容器 → 显示主窗口 → 异步加载实例与设置。
+- App 启动顺序：创建 `AppPaths` → 读取语言与实例下载位置 → 建立本地化器 → 构建容器 → 显示主窗口 → 异步加载实例、设置与版本情报。
 - 语言切换标记为“需要重启”，XAML 中的静态文本由 `LocExtension` 在加载时解析。
 
 ## 6. 数据目录
 
-默认 `%LOCALAPPDATA%\EnderCraftLauncher`，可通过以下优先级覆盖：
+数据目录默认 `%LOCALAPPDATA%\EnderCraftLauncher`，可通过以下优先级覆盖：显式 `--data-dir`（CLI）→ 环境变量 `ECL_DATA_DIR` → 可执行文件旁存在 `portable.flag`（`<程序目录>/data`）→ 用户本地数据目录。
 
-1. 显式 `--data-dir`（CLI）。
-2. 环境变量 `ECL_DATA_DIR`。
-3. 可执行文件旁存在 `portable.flag` → `<程序目录>/data`。
-4. 用户本地数据目录。
+“实例下载位置（.minecraft 目录）”是独立的 `<game>` 根目录，由全局设置 `launcher.minecraftDirectory` 控制（环境变量 `ECL_GAME_DIR` 可覆盖），默认等于数据目录。修改后需要重启；版本隔离始终开启，每个实例在 `<game>/instances/<id>/minecraft` 拥有独立游戏目录。
 
 ```text
-<data>/
+<data>/                            # 启动器数据（配置、账户、日志、下载缓存）
 ├─ config/
 │  ├─ global.json                  # 全局配置
 │  └─ eula.json                    # EULA 同意记录
 ├─ accounts/
 │  └─ accounts.json                # 账户与默认账户
+├─ downloads/                      # 无实例时的文件下载目录
+│  ├─ mods/  resourcepacks/  shaderpacks/  datapacks/  modpacks/
+├─ java/                           # 启动器托管的 Java 运行时
+├─ cache/                          # Cleanroom/Java/Forge 安装缓存
+└─ logs/                           # ecl-YYYYMMDD.log 与 install/ 安装失败诊断
+
+<game>/                            # 实例下载位置（.minecraft 目录）
 ├─ instances/
 │  └─ <instance-id>/
-│     ├─ instance.json             # 实例元数据（含加载器、Fabric API、OptiFine 版本）
+│     ├─ instance.json             # 实例元数据（含加载器、组件版本、versionIsolation=true）
 │     ├─ settings.json             # 实例作用域配置（按需创建）
 │     ├─ logs/
-│     └─ minecraft/                # 游戏工作目录
+│     └─ minecraft/                # 版本隔离后的游戏工作目录
 │        ├─ mods/                  # *.jar 启用，*.jar.disabled 禁用
 │        ├─ config/
 │        ├─ saves/
 │        ├─ resourcepacks/
 │        ├─ shaderpacks/
+│        ├─ datapacks/
 │        ├─ logs/
 │        ├─ natives/
 │        └─ .ecl-modpack.json      # 整合包导入标记（按需创建）
 ├─ versions/<version-id>/          # 共享版本 JSON 与 jar
 ├─ libraries/                      # 共享 Maven 库
-├─ assets/                         # 共享资源
-├─ java/                           # 启动器托管的 Java 运行时（java/<component> 或 <provider>-<component>）
-├─ cache/
-│  ├─ cleanroom/                   # Cleanroom 安装器缓存
-│  ├─ java/                        # 第三方 Java 安装包缓存
-│  └─ forge/                       # Forge/NeoForge 安装器与解压的 data 文件
-└─ logs/                           # ecl-YYYYMMDD.log 与 install/ 安装失败诊断
+└─ assets/                         # 共享资源
 ```
 
 实例 ID 采用 `slug-6位十六进制` 形式（例如 `survival-a1b2c3`），只允许小写字母、数字、点、下划线、连字符，避免路径穿越；显示名称与目录名解耦。
@@ -214,6 +213,14 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 5. `ModpackService` 对 CurseForge `.zip` 批量解析 `manifest.json` 的 `files[]`，下载、校验、解压 overrides，并写入 `.ecl-modpack.json`。
 6. WPF 与 CLI 只调用 `ICurseForgeService` / `ICurseForgeClient`，不直接拼 HTTP。
 
+### 7.8 Modrinth 与统一下载
+
+1. `ModrinthClient` 访问 `https://api.modrinth.com/v2`，只负责搜索、项目/版本、依赖与文件 URL；只接受 `modrinth.com` / `*.modrinth.com` 的 HTTPS 文件地址。
+2. `ContentSearchService` 把 CurseForge 与 Modrinth 的结果映射为统一的 `ContentHit`；来源过滤支持「全部 / 仅 CurseForge / 仅 Modrinth」，「全部」下两个平台并行请求并交错排列，不跨平台去重。
+3. `ContentInstallService` 统一执行安装/下载：资源包、光影包、数据包按类型落入实例或 `<data>/downloads`；Modrinth Mod 递归补齐必需依赖；CurseForge Mod 复用 `CurseForgeService` 的依赖逻辑。
+4. 整合包无论来源先下载为归档（`.mrpack` / CurseForge `.zip`），再交给 `IModpackService` 导入；没有实例时可仅下载，或由 `ModpackArchiveInspector` 读取包内 `dependencies`/`manifest.json` 自动创建实例后导入。
+5. `MojangVersionNewsService` 读取 Mojang 版本清单，为「主页 → 新版本情报」提供数据；主页不承载任何下载动作。
+
 ## 8. 横切关注点
 
 ### 错误模型
@@ -247,7 +254,7 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - 账户令牌计划使用 DPAPI 加密（规划中），当前仅实现离线账户。
 - 签名证书、私钥、OAuth 机密只存在于 private Core 仓库；public 仓库构建不读取它。
 - CurseForge API key 只保存在私有代理服务端；ECL 客户端、构建产物、日志与诊断包都不含 key。代理实现与部署材料只在 private Core 仓库。
-- CurseForge 下载只接受官方 CDN（`*.forgecdn.net` / `*.curseforge.com`），避免 API 响应被滥用为任意 URL。
+- CurseForge 下载只接受官方 CDN（`*.forgecdn.net` / `*.curseforge.com`）；Modrinth 只接受 `modrinth.com` / `*.modrinth.com` 的 HTTPS 地址，避免 API 响应被滥用为任意 URL。
 
 ### 测试
 
@@ -295,7 +302,9 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - 未实现下载限速；并发、重试、续传、暂停/恢复已生效。
 - 界面固定为 ECL 深色主题（浅色模式已移除），内嵌 HarmonyOS Sans SC 字体；主题刷子统一使用 `DynamicResource`，避免样式解析时捕获旧颜色。托盘、完整 i18n 热切换与更细的无障碍仍在路线图中。
 - 崩溃分析基于日志/崩溃报告文本与 Mod 元数据排序，不是完整的符号化解析；日志导出已做脱敏。
-- CurseForge 搜索、一键安装与整合包远程下载已完成；不做 Mod 更新检查、可选依赖选择，作者禁止第三方分发的文件无法下载。
+- CurseForge 与 Modrinth 的搜索、一键安装、整合包远程下载与 `.mrpack` 自动建实例导入已完成；不做 Mod 更新检查、可选依赖选择，作者禁止第三方分发或无 CDN 地址的文件无法下载。
+- 实例下载位置（.minecraft 目录）修改后需要重启，已有实例不会自动迁移。
+- 下载页当前为单页结果（PageSize=40），分页与无限滚动仍在路线图中。
 - 资源包/光影包以 `options.txt` 为启用状态唯一事实来源，支持启用/禁用、缺失/重复/未识别条目提示与原子写入；独立配置文件的 shader 实现不会被同步。
 - 首次启动向导本阶段暂缓。
 

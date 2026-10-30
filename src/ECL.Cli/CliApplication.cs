@@ -69,6 +69,7 @@ internal sealed class CliApplication
         Console.WriteLine($"Runtime : {RuntimeInformation.FrameworkDescription}");
         Console.WriteLine($"OS      : {RuntimeInformation.OSDescription}");
         Console.WriteLine($"Data    : {paths.Root}");
+        Console.WriteLine($"Game    : {paths.GameRoot}");
         Console.WriteLine("License : GPL-3.0-or-later");
         return 0;
     }

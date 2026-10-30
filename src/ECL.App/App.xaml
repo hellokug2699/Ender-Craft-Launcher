@@ -15,7 +15,14 @@
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
             <conv:LaunchStatusToBrushConverter x:Key="LaunchStatusBrush" />
             <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibility" />
+            <conv:StringToVisibilityConverter x:Key="StringToVisibility" />
 
+            <DataTemplate DataType="{x:Type vm:HomeViewModel}">
+                <views:HomeView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:DownloadViewModel}">
+                <views:DownloadView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:InstancesViewModel}">
                 <views:InstancesView />
             </DataTemplate>

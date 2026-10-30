@@ -34,7 +34,7 @@ ECL ── GET /v1/... ──▶ ECL 代理 ── x-api-key ──▶ https://a
 - 响应 JSON 解析失败 → `curseforge.invalid_response`；
 - 不做磁盘缓存：CurseForge 3rd Party API 条款对 API 数据的缓存有限制。
 
-搜索固定使用 `gameId=432`、`classId=6`（Mod），默认按热度排序，`pageSize` 上限 50（API 限制）。按实例过滤时同时传 `gameVersion` 与 `modLoaderType`：
+搜索固定使用 `gameId=432`，`classId` 由下载页的资源类型决定（Mod=6、整合包=4471、资源包=12、光影包=6552、数据包=6945），默认按热度排序，`pageSize` 上限 50（API 限制）。按实例过滤时同时传 `gameVersion` 与 `modLoaderType`（资源包/光影包/数据包不传加载器）：
 
 | 实例加载器 | `modLoaderType` |
 | --- | --- |

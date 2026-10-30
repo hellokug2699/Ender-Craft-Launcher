@@ -28,6 +28,20 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             ],
         };
 
+        yield return new OptionDefinition<string>
+        {
+            Key = "launcher.minecraftDirectory",
+            Kind = OptionKind.Path,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.minecraftDirectory.name",
+            DescriptionKey = "option.launcher.minecraftDirectory.desc",
+            Default = string.Empty,
+            RequiresRestart = true,
+            Order = 20,
+            Validate = path => string.IsNullOrWhiteSpace(path) || Path.IsPathFullyQualified(path),
+        };
+
         yield return new OptionDefinition<bool>
         {
             Key = "launcher.checkUpdates",

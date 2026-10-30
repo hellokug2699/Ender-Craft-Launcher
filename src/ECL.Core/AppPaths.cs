@@ -6,10 +6,20 @@ namespace Ecl.Core;
 
 /// <summary>
 /// 应用的数据目录布局。所有模块只通过这里获取路径，避免各自拼接。
+/// <para>
+/// <see cref="Root"/> 是启动器的数据目录（配置、账户、日志、缓存），
+/// <see cref="GameRoot"/> 是实例与游戏文件的根目录，也就是用户在设置里看到的
+/// “实例下载位置（.minecraft 目录）”。两者分离后，游戏目录可以放到容量更大的磁盘，
+/// 而账户与配置仍留在数据目录中。
+/// </para>
 /// </summary>
 public interface IAppPaths
 {
     string Root { get; }
+
+    /// <summary>实例与 .minecraft 文件所在的根目录。</summary>
+    string GameRoot { get; }
+
     string ConfigDirectory { get; }
     string AccountsDirectory { get; }
     string InstancesDirectory { get; }
@@ -19,6 +29,7 @@ public interface IAppPaths
     string JavaDirectory { get; }
     string LogsDirectory { get; }
     string CacheDirectory { get; }
+    string DownloadsDirectory { get; }
     string GlobalSettingsFile { get; }
     string AccountsFile { get; }
 
@@ -29,6 +40,12 @@ public interface IAppPaths
     string GetInstanceNativesDirectory(string instanceId);
     string GetInstanceLogsDirectory(string instanceId);
 
+    /// <summary>
+    /// 切换实例下载位置。传空表示恢复默认（数据目录本身）。
+    /// 应在注册服务之前调用；运行期切换目录需要重启启动器。
+    /// </summary>
+    void SetGameRoot(string? path);
+
     void EnsureCreated();
 }
 
@@ -37,21 +54,26 @@ public sealed partial class AppPaths : IAppPaths
     public const string ProductDirectoryName = "EnderCraftLauncher";
     public const string PortableMarkerFileName = "portable.flag";
     public const string DataDirectoryEnvironmentVariable = "ECL_DATA_DIR";
+    public const string GameDirectoryEnvironmentVariable = "ECL_GAME_DIR";
 
     public string Root { get; }
+
+    public string GameRoot { get; private set; }
+
     public string ConfigDirectory => Path.Combine(Root, "config");
     public string AccountsDirectory => Path.Combine(Root, "accounts");
-    public string InstancesDirectory => Path.Combine(Root, "instances");
-    public string VersionsDirectory => Path.Combine(Root, "versions");
-    public string LibrariesDirectory => Path.Combine(Root, "libraries");
-    public string AssetsDirectory => Path.Combine(Root, "assets");
+    public string InstancesDirectory => Path.Combine(GameRoot, "instances");
+    public string VersionsDirectory => Path.Combine(GameRoot, "versions");
+    public string LibrariesDirectory => Path.Combine(GameRoot, "libraries");
+    public string AssetsDirectory => Path.Combine(GameRoot, "assets");
     public string JavaDirectory => Path.Combine(Root, "java");
     public string LogsDirectory => Path.Combine(Root, "logs");
     public string CacheDirectory => Path.Combine(Root, "cache");
+    public string DownloadsDirectory => Path.Combine(Root, "downloads");
     public string GlobalSettingsFile => Path.Combine(ConfigDirectory, "global.json");
     public string AccountsFile => Path.Combine(AccountsDirectory, "accounts.json");
 
-    public AppPaths(string root)
+    public AppPaths(string root, string? gameRoot = null)
     {
         if (string.IsNullOrWhiteSpace(root))
         {
@@ -59,28 +81,32 @@ public sealed partial class AppPaths : IAppPaths
         }
 
         Root = Path.GetFullPath(root);
+        GameRoot = NormalizeGameRoot(gameRoot) ?? Root;
     }
 
     /// <summary>
     /// 优先级：显式参数 &gt; ECL_DATA_DIR &gt; 便携模式 &gt; 用户本地数据目录。
+    /// 游戏目录额外支持 ECL_GAME_DIR，便于测试与高级用户隔离存档。
     /// </summary>
     public static AppPaths Create(string? root = null)
     {
         if (!string.IsNullOrWhiteSpace(root))
         {
-            return new AppPaths(root);
+            return new AppPaths(root, Environment.GetEnvironmentVariable(GameDirectoryEnvironmentVariable));
         }
 
         var fromEnvironment = Environment.GetEnvironmentVariable(DataDirectoryEnvironmentVariable);
         if (!string.IsNullOrWhiteSpace(fromEnvironment))
         {
-            return new AppPaths(fromEnvironment);
+            return new AppPaths(fromEnvironment, Environment.GetEnvironmentVariable(GameDirectoryEnvironmentVariable));
         }
 
         var portableMarker = Path.Combine(AppContext.BaseDirectory, PortableMarkerFileName);
         if (File.Exists(portableMarker))
         {
-            return new AppPaths(Path.Combine(AppContext.BaseDirectory, "data"));
+            return new AppPaths(
+                Path.Combine(AppContext.BaseDirectory, "data"),
+                Environment.GetEnvironmentVariable(GameDirectoryEnvironmentVariable));
         }
 
         var localData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -89,7 +115,14 @@ public sealed partial class AppPaths : IAppPaths
             localData = Path.Combine(AppContext.BaseDirectory, "data");
         }
 
-        return new AppPaths(Path.Combine(localData, ProductDirectoryName));
+        return new AppPaths(
+            Path.Combine(localData, ProductDirectoryName),
+            Environment.GetEnvironmentVariable(GameDirectoryEnvironmentVariable));
+    }
+
+    public void SetGameRoot(string? path)
+    {
+        GameRoot = NormalizeGameRoot(path) ?? Root;
     }
 
     public string GetInstanceDirectory(string instanceId)
@@ -113,17 +146,30 @@ public sealed partial class AppPaths : IAppPaths
         Directory.CreateDirectory(Root);
         Directory.CreateDirectory(ConfigDirectory);
         Directory.CreateDirectory(AccountsDirectory);
+        Directory.CreateDirectory(LogsDirectory);
+        Directory.CreateDirectory(CacheDirectory);
+        Directory.CreateDirectory(DownloadsDirectory);
+
+        // 实例与游戏文件可以位于另一个磁盘；目录不存在时一并创建。
+        Directory.CreateDirectory(GameRoot);
         Directory.CreateDirectory(InstancesDirectory);
         Directory.CreateDirectory(VersionsDirectory);
         Directory.CreateDirectory(LibrariesDirectory);
         Directory.CreateDirectory(AssetsDirectory);
-        Directory.CreateDirectory(JavaDirectory);
-        Directory.CreateDirectory(LogsDirectory);
-        Directory.CreateDirectory(CacheDirectory);
     }
 
     public static bool IsValidInstanceId(string? instanceId) =>
         !string.IsNullOrWhiteSpace(instanceId) && InstanceIdRegex().IsMatch(instanceId);
+
+    private static string? NormalizeGameRoot(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        return Path.GetFullPath(Environment.ExpandEnvironmentVariables(path.Trim()));
+    }
 
     private static void EnsureValidInstanceId(string instanceId)
     {
