@@ -39,6 +39,15 @@
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    FontSize="11"
                                    Margin="0,5,0,0" />
+                        <WrapPanel Margin="0,8,0,0">
+                            <Border Style="{StaticResource Badge}" Margin="0,0,6,0">
+                                <TextBlock Text="{Binding SelectedInstance.LoaderVersionDisplay}" FontSize="10" />
+                            </Border>
+                            <TextBlock Text="{Binding SelectedInstance.GameVersion, StringFormat=Minecraft {0}}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       VerticalAlignment="Center" />
+                        </WrapPanel>
                         <TextBlock Text="{Binding StatusMessage}"
                                    Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="10"
