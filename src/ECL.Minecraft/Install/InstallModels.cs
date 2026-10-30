@@ -53,4 +53,15 @@ public interface IVersionInstallService
         string instanceId,
         IProgress<InstallProgress>? progress = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>变更实例游戏 / 加载器配置并安装目标版本；失败时恢复原实例元数据。</summary>
+    Task<Result<InstallReport>> ReconfigureAsync(
+        string instanceId,
+        string gameVersion,
+        string loader,
+        string? loaderVersion = null,
+        string? fabricApiVersion = null,
+        string? optiFineVersion = null,
+        IProgress<InstallProgress>? progress = null,
+        CancellationToken cancellationToken = default);
 }
