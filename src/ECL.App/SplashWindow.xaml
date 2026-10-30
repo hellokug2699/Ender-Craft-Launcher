@@ -8,6 +8,7 @@
         Background="Transparent"
         Width="720"
         Height="480"
+        FontFamily="{StaticResource UiFontFamily}"
         WindowStartupLocation="CenterScreen">
     <Border CornerRadius="28"
             Background="#070511"

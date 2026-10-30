@@ -2,13 +2,13 @@
 
 > 一个面向 Windows 的 Minecraft 启动器，使用 C# / .NET 10 / WPF 构建。
 
-ECL 的目标是达到 HMCL、PCL2 级别的完整度，同时在配置系统、启动流程和交互上做出自己的设计。当前仓库处于 **v0.8 可靠性与功能闭环** 阶段（进行中；v0.3 账户体系因 Microsoft OAuth 审核限制暂时跳过），已补全 CurseForge API 集成与资源包/光影包启用状态：能够安装原版、Fabric（含 Fabric API）、Forge、NeoForge 与 Cleanroom，管理 Java 运行时、Mod、整合包、资源包与光影包，完成真实启动，并提供主题切换、崩溃分析与脱敏诊断包。首次启动向导本阶段暂缓。
+ECL 的目标是达到 HMCL、PCL2 级别的完整度，同时在配置系统、启动流程和交互上做出自己的设计。当前仓库处于 **v0.8 可靠性与功能闭环** 阶段（进行中；v0.3 账户体系因 Microsoft OAuth 审核限制暂时跳过），已补全 CurseForge API 集成与资源包/光影包启用状态：能够安装原版、Fabric（含 Fabric API）、Forge、NeoForge 与 Cleanroom，管理 Java 运行时、Mod、整合包、资源包与光影包，完成真实启动，并提供 ECL 深色界面、崩溃分析与脱敏诊断包。首次启动向导本阶段暂缓。
 
 当前 WPF 正在进行第一轮 **launcher-first UI 重构**：主窗口采用持久侧栏 + 内容画布，实例页优先围绕“选中实例 → 启动”，Mod 页围绕“实例 → 快速操作 → 内容管理”，关于页统一品牌与运行环境信息。UI 重构原则是只改变呈现层，不复制业务逻辑、不修改既有 ViewModel API，并以 Windows WPF CI 作为最终验收门槛。
 
 ## 现在能做什么
 
-- WPF 桌面壳：实例库、Mod 管理、设置、关于四个页面，支持深色/浅色主题即时切换，并持续统一 launcher-first 视觉语言。
+- WPF 桌面壳：实例库、Mod 管理、设置、关于四个页面，采用 ECL 深色主题、内嵌 HarmonyOS Sans SC 字体与统一控件样式（按钮 / 输入框 / 下拉框 / 列表选中态）。
 - 多实例管理：创建/列出/删除实例，每个实例有独立目录与元数据。
 - 离线账户：按 Java `UUID.nameUUIDFromBytes` 规则生成 UUID，可设默认账户。
 - 元数据驱动配置：全局设置与实例覆盖，自动生成设置页，支持校验、可见性依赖、来源标记。
@@ -23,7 +23,7 @@ ECL 的目标是达到 HMCL、PCL2 级别的完整度，同时在配置系统、
 - **CurseForge**：按实例游戏版本与加载器搜索、查看文件、一键安装（递归安装必需依赖），支持项目 ID / slug / 链接；API key 从环境变量或发布版构建元数据读取，缺省时明确提示。
 - **真实启动**：检查文件完整性（大小 + SHA-1，含资源对象存在性）、解压 natives、按规则过滤库、构建命令并启动进程；支持 Fabric `arguments.jvm`、Forge/NeoForge `${library_directory}`/`--launchTarget` 与 Cleanroom `--tweakClass`；`arguments.jvm`/`arguments.game` 按 OS/架构/feature 规则过滤。
 - **诊断**：解析 `crash-reports` / `latest.log`，按崩溃堆栈与 Mod 元数据排序可疑 Mod；导出包含日志、崩溃报告、安装诊断和系统信息的脱敏 zip，不包含账户文件。
-- **下载控制**：安装与 Java 下载显示实时速度，支持暂停/继续；主题切换、Mod 删除与资源包区域已接入 WPF。
+- **下载控制**：安装与 Java 下载显示实时速度，支持暂停/继续；Mod 删除与资源包区域已接入 WPF。
 - 启动流水线：校验 → 读取版本 → 解析 Java → 检查文件 → 解压 natives → 检查 EULA → 构建命令 → 启动/干跑；失败可定位到具体步骤。
 - CLI：无 GUI 环境下安装游戏、管理 Java/实例/账户/配置、Mod/整合包/资源包、CurseForge Mod，并预览启动命令。
 - 单元测试：194 个测试覆盖下载源、HTTP 下载、Java 需求/选择/安装/第三方提供方/归档解压/平台校验/JVM 预设、配置、账户、Java 探测、EULA、实例、加载器目录、Forge/NeoForge 安装器解析、Cleanroom 安装器解析、库规则（含 `arch: x64`）、版本继承、arguments 规则/占位符、安装回滚与诊断、Mod 元数据/扫描/启停、整合包导入导出、CurseForge 客户端/安装器/依赖、资源包管理与安装/启动流水线、`options.txt` 解析与资源包/光影包启用状态。
@@ -137,3 +137,5 @@ build/                 构建、打包、签名脚本
 ## 许可证
 
 GPL-3.0-or-later。Minecraft 是 Mojang Studios 的商标，本项目与 Mojang 或 Microsoft 无关联。
+
+界面字体 HarmonyOS Sans SC（Regular / Bold）版权归 Huawei Device Co., Ltd.，依据 HarmonyOS Sans Fonts License Agreement 随程序内嵌分发且未做修改；许可证全文见 [src/ECL.App/Fonts/HarmonyOS_Sans_LICENSE.txt](src/ECL.App/Fonts/HarmonyOS_Sans_LICENSE.txt)。字体不是 GPL 源代码的一部分，其使用条件以该许可证为准。

@@ -101,8 +101,6 @@ UI 在每项下方展示“来源”，实例作用域下 `Default` 显示为“
 
 ### 下载源策略
 
-`launcher.theme` 是全局选项，支持 `dark` / `light`，保存后立即修改共享画刷颜色，不需要重启。
-
 `network.downloadSource` 是全局选项，提供四档候选顺序：
 
 | 值 | 行为 |

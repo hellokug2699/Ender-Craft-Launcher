@@ -5,7 +5,7 @@
              xmlns:sel="clr-namespace:Ecl.App.Selectors">
     <UserControl.Resources>
         <DataTemplate x:Key="Option.Boolean">
-            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
+            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -18,21 +18,21 @@
                                     Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="{loc:Loc Key=common.restartRequired}"
                                            FontSize="9"
-                                           Foreground="{StaticResource AccentHoverBrush}" />
+                                           Foreground="{DynamicResource AccentHoverBrush}" />
                             </Border>
                         </StackPanel>
                         <TextBlock Text="{Binding Description}"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="10"
                                    TextWrapping="Wrap"
                                    Margin="0,3,0,0" />
                         <TextBlock Text="{Binding HintText}"
-                                   Foreground="{StaticResource WarningBrush}"
+                                   Foreground="{DynamicResource WarningBrush}"
                                    FontSize="10"
                                    Visibility="{Binding HasHint, Converter={StaticResource BoolToVisibility}}"
                                    Margin="0,3,0,0" />
                         <TextBlock Text="{Binding SourceText}"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="9"
                                    Margin="0,4,0,0" />
                     </StackPanel>
@@ -44,7 +44,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="Option.Number">
-            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
+            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -57,21 +57,21 @@
                                     Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="{loc:Loc Key=common.restartRequired}"
                                            FontSize="9"
-                                           Foreground="{StaticResource AccentHoverBrush}" />
+                                           Foreground="{DynamicResource AccentHoverBrush}" />
                             </Border>
                         </StackPanel>
                         <TextBlock Text="{Binding Description}"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="10"
                                    TextWrapping="Wrap"
                                    Margin="0,3,0,0" />
                         <TextBlock Text="{Binding HintText}"
-                                   Foreground="{StaticResource WarningBrush}"
+                                   Foreground="{DynamicResource WarningBrush}"
                                    FontSize="10"
                                    Visibility="{Binding HasHint, Converter={StaticResource BoolToVisibility}}"
                                    Margin="0,3,0,0" />
                         <TextBlock Text="{Binding SourceText}"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="9"
                                    Margin="0,4,0,0" />
                     </StackPanel>
@@ -79,7 +79,7 @@
                         <TextBox Width="120"
                                  Text="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         <TextBlock Text="{Binding Unit}"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="10"
                                    Margin="8,0,0,0"
                                    VerticalAlignment="Center" />
@@ -89,7 +89,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="Option.Text">
-            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
+            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -102,21 +102,21 @@
                                     Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="{loc:Loc Key=common.restartRequired}"
                                            FontSize="9"
-                                           Foreground="{StaticResource AccentHoverBrush}" />
+                                           Foreground="{DynamicResource AccentHoverBrush}" />
                             </Border>
                         </StackPanel>
                         <TextBlock Text="{Binding Description}"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="10"
                                    TextWrapping="Wrap"
                                    Margin="0,3,0,0" />
                         <TextBlock Text="{Binding HintText}"
-                                   Foreground="{StaticResource WarningBrush}"
+                                   Foreground="{DynamicResource WarningBrush}"
                                    FontSize="10"
                                    Visibility="{Binding HasHint, Converter={StaticResource BoolToVisibility}}"
                                    Margin="0,3,0,0" />
                         <TextBlock Text="{Binding SourceText}"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="9"
                                    Margin="0,4,0,0" />
                     </StackPanel>
@@ -129,7 +129,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="Option.Path">
-            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
+            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -142,21 +142,21 @@
                                     Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="{loc:Loc Key=common.restartRequired}"
                                            FontSize="9"
-                                           Foreground="{StaticResource AccentHoverBrush}" />
+                                           Foreground="{DynamicResource AccentHoverBrush}" />
                             </Border>
                         </StackPanel>
                         <TextBlock Text="{Binding Description}"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="10"
                                    TextWrapping="Wrap"
                                    Margin="0,3,0,0" />
                         <TextBlock Text="{Binding HintText}"
-                                   Foreground="{StaticResource WarningBrush}"
+                                   Foreground="{DynamicResource WarningBrush}"
                                    FontSize="10"
                                    Visibility="{Binding HasHint, Converter={StaticResource BoolToVisibility}}"
                                    Margin="0,3,0,0" />
                         <TextBlock Text="{Binding SourceText}"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="9"
                                    Margin="0,4,0,0" />
                     </StackPanel>
@@ -177,7 +177,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="Option.Select">
-            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
+            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -190,21 +190,21 @@
                                     Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="{loc:Loc Key=common.restartRequired}"
                                            FontSize="9"
-                                           Foreground="{StaticResource AccentHoverBrush}" />
+                                           Foreground="{DynamicResource AccentHoverBrush}" />
                             </Border>
                         </StackPanel>
                         <TextBlock Text="{Binding Description}"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="10"
                                    TextWrapping="Wrap"
                                    Margin="0,3,0,0" />
                         <TextBlock Text="{Binding HintText}"
-                                   Foreground="{StaticResource WarningBrush}"
+                                   Foreground="{DynamicResource WarningBrush}"
                                    FontSize="10"
                                    Visibility="{Binding HasHint, Converter={StaticResource BoolToVisibility}}"
                                    Margin="0,3,0,0" />
                         <TextBlock Text="{Binding SourceText}"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="9"
                                    Margin="0,4,0,0" />
                     </StackPanel>
@@ -212,7 +212,7 @@
                               Width="240"
                               VerticalAlignment="Center"
                               ItemsSource="{Binding Choices}"
-                              DisplayMemberPath="DisplayName"
+                              ItemTemplate="{StaticResource DisplayNameItemTemplate}"
                               SelectedValuePath="Value"
                               SelectedValue="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 </Grid>
@@ -260,11 +260,11 @@
                        Margin="0,0,8,0" />
             <ComboBox Grid.Column="1"
                       ItemsSource="{Binding Scopes}"
-                      DisplayMemberPath="Title"
+                      ItemTemplate="{StaticResource TitleItemTemplate}"
                       SelectedItem="{Binding SelectedScope, Mode=TwoWay}" />
             <ComboBox Grid.Column="3"
                       ItemsSource="{Binding InstanceChoices}"
-                      DisplayMemberPath="Name"
+                      ItemTemplate="{StaticResource NameItemTemplate}"
                       SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
                       Visibility="{Binding IsInstanceScope, Converter={StaticResource BoolToVisibility}}" />
             <Button Grid.Column="5"
@@ -280,7 +280,7 @@
 
         <TextBlock Grid.Row="2"
                    Text="{Binding StatusMessage}"
-                   Foreground="{StaticResource TextSecondaryBrush}"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
                    FontSize="11"
                    TextWrapping="Wrap"
                    Margin="0,0,0,12" />

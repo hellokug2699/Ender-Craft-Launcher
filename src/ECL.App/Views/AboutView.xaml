@@ -19,21 +19,21 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Border Width="74" Height="74" CornerRadius="18"
-                            Background="{StaticResource BackgroundBrush}"
-                            BorderBrush="#3A2B5C"
+                            Background="{DynamicResource BackgroundBrush}"
+                            BorderBrush="{DynamicResource AccentBorderBrush}"
                             BorderThickness="1"
                             Padding="13">
                         <Image Source="{StaticResource EclCompactIcon}" Stretch="Uniform" />
                     </Border>
                     <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                        <TextBlock Text="ECL" FontSize="30" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                        <TextBlock Text="ECL" FontSize="30" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
                         <TextBlock Text="ENDER CRAFT LAUNCHER"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                    FontSize="10"
                                    FontWeight="SemiBold"
                                    Margin="0,2,0,0" />
                         <TextBlock Text="{loc:Loc Key=about.description}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                    FontSize="11"
                                    TextWrapping="Wrap"
                                    Margin="0,8,0,0" />
@@ -61,6 +61,11 @@
                         <TextBlock Text="{Binding OperatingSystem}" FontSize="12" TextWrapping="Wrap" />
                         <TextBlock Text="{loc:Loc Key=about.license}" Style="{StaticResource LabelText}" Margin="0,16,0,0" />
                         <TextBlock Text="GPL-3.0-or-later" FontSize="12" />
+                        <TextBlock Text="{loc:Loc Key=about.fontsLabel}" Style="{StaticResource LabelText}" Margin="0,16,0,0" />
+                        <TextBlock Text="{loc:Loc Key=about.fonts}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -71,23 +76,23 @@
                     <TextBlock Text="{Binding DataDirectory}"
                                FontFamily="Consolas"
                                FontSize="11"
-                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap" />
                     <TextBlock Text="{loc:Loc Key=about.repository}" Style="{StaticResource LabelText}" Margin="0,16,0,0" />
                     <TextBlock Text="{Binding RepositoryUrl}"
                                FontSize="11"
-                               Foreground="{StaticResource AccentHoverBrush}"
+                               Foreground="{DynamicResource AccentHoverBrush}"
                                TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
 
-            <Border Background="{StaticResource SurfaceAltBrush}"
-                    BorderBrush="{StaticResource BorderSoftBrush}"
+            <Border Background="{DynamicResource SurfaceAltBrush}"
+                    BorderBrush="{DynamicResource BorderSoftBrush}"
                     BorderThickness="1"
                     CornerRadius="10"
                     Padding="14">
                 <TextBlock Text="{loc:Loc Key=about.disclaimer}"
-                           Foreground="{StaticResource TextMutedBrush}"
+                           Foreground="{DynamicResource TextMutedBrush}"
                            FontSize="10"
                            TextWrapping="Wrap" />
             </Border>
