@@ -147,6 +147,53 @@ public sealed class InstanceServiceTests
     }
 
     [Fact]
+    public async Task UpdatesLoaderConfigurationWithoutReplacingInstanceData()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+
+        var created = await instances.CreateAsync("Keep Data", "1.20.1", "forge", "47.3.0");
+        Assert.True(created.IsSuccess, created.Error?.ToString());
+        var instance = created.Value!;
+        var gameDirectory = environment.Paths.GetInstanceGameDirectory(instance.Id);
+        var saveFile = Path.Combine(gameDirectory, "saves", "world", "level.dat");
+        Directory.CreateDirectory(Path.GetDirectoryName(saveFile)!);
+        await File.WriteAllTextAsync(saveFile, "user-world");
+
+        var updated = await instances.UpdateConfigurationAsync(
+            instance.Id, "1.21.1", "fabric", "0.16.0", "0.116.0+1.21.1");
+
+        Assert.True(updated.IsSuccess, updated.Error?.ToString());
+        Assert.Equal(instance.Id, updated.Value!.Id);
+        Assert.Equal(instance.Name, updated.Value.Name);
+        Assert.Equal("1.21.1-fabric-0.16.0", updated.Value.VersionId);
+        Assert.Equal("fabric", updated.Value.Loader);
+        Assert.Equal("0.116.0+1.21.1", updated.Value.FabricApiVersion);
+        Assert.Null(updated.Value.OptiFineVersion);
+        Assert.Equal("user-world", await File.ReadAllTextAsync(saveFile));
+        Assert.Equal(instance.CreatedAt, updated.Value.CreatedAt);
+    }
+
+    [Fact]
+    public async Task CanRemoveLoaderByUpdatingToVanilla()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+
+        var created = await instances.CreateAsync("Remove Loader", "1.20.1", "forge", "47.3.0");
+        Assert.True(created.IsSuccess, created.Error?.ToString());
+
+        var updated = await instances.UpdateConfigurationAsync(created.Value!.Id, "1.20.1", "vanilla");
+
+        Assert.True(updated.IsSuccess, updated.Error?.ToString());
+        Assert.Equal("1.20.1", updated.Value!.VersionId);
+        Assert.Equal("vanilla", updated.Value.Loader);
+        Assert.Null(updated.Value.LoaderVersion);
+    }
+
+    [Fact]
     public async Task RequiresLoaderVersionForModdedInstances()
     {
         using var environment = new TestEnvironment();
