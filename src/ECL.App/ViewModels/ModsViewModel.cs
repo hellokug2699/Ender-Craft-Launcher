@@ -20,6 +20,7 @@ public sealed partial class ModsViewModel : ObservableObject
     private readonly ILocalizer _localizer;
     private bool _initialized;
     private bool _suppressSelectionRefresh;
+    private string? _pendingInstanceId;
 
     public ObservableCollection<ModInstanceChoice> Instances { get; } = [];
 
@@ -90,6 +91,19 @@ public sealed partial class ModsViewModel : ObservableObject
         }
     }
 
+    public void SelectInstance(string instanceId)
+    {
+        var match = Instances.FirstOrDefault(item => string.Equals(item.Id, instanceId, StringComparison.Ordinal));
+        if (match is null)
+        {
+            _pendingInstanceId = instanceId;
+            return;
+        }
+
+        _pendingInstanceId = null;
+        SelectedInstance = match;
+    }
+
     public async Task ActivateAsync()
     {
         if (!_initialized)
@@ -111,7 +125,7 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task ReloadInstancesAsync()
     {
-        var selectedId = SelectedInstance?.Id;
+        var selectedId = _pendingInstanceId ?? SelectedInstance?.Id;
         var instances = await _instances.GetInstancesAsync().ConfigureAwait(true);
 
         _suppressSelectionRefresh = true;
@@ -129,6 +143,7 @@ public sealed partial class ModsViewModel : ObservableObject
 
             SelectedInstance = Instances.FirstOrDefault(item => item.Id == selectedId)
                                ?? Instances.FirstOrDefault();
+            _pendingInstanceId = null;
         }
         finally
         {
