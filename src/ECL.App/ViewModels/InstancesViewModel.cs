@@ -57,6 +57,8 @@ public sealed partial class InstancesViewModel : ObservableObject
     /// <summary>从实例工作区返回实例列表。</summary>
     public Action? NavigateBackFromDetails { get; set; }
 
+    public Func<string, Task<string>>? GetModHealthSummary { get; set; }
+
     public ObservableCollection<InstanceItemViewModel> Instances { get; } = [];
 
     public ObservableCollection<AccountItemViewModel> Accounts { get; } = [];
@@ -185,6 +187,12 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     [ObservableProperty]
     private string _diagnosticStatus = string.Empty;
+
+    [ObservableProperty]
+    private string _healthReportText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isCheckingHealth;
 
     [ObservableProperty]
     private bool _isAnalyzingCrash;
@@ -893,6 +901,69 @@ public sealed partial class InstancesViewModel : ObservableObject
         catch (Exception exception)
         {
             DiagnosticStatus = exception.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task RepairFilesAsync()
+    {
+        if (SelectedInstance is null)
+        {
+            StatusMessage = _localizer.Get("instances.selectFirst");
+            return;
+        }
+
+        if (!_dialogs.Confirm(
+                _localizer.Get("instances.repairTitle"),
+                _localizer.Get("instances.repairConfirm", SelectedInstance.Name)))
+        {
+            return;
+        }
+
+        await InstallAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private async Task CheckHealthAsync()
+    {
+        if (SelectedInstance is null)
+        {
+            StatusMessage = _localizer.Get("instances.selectFirst");
+            return;
+        }
+
+        if (IsBusy || IsCheckingHealth)
+        {
+            return;
+        }
+
+        IsCheckingHealth = true;
+        HealthReportText = _localizer.Get("instances.healthChecking");
+        try
+        {
+            var report = await _launchService
+                .LaunchAsync(SelectedInstance.Model.Id, dryRun: true)
+                .ConfigureAwait(true);
+            LaunchSteps.Clear();
+            foreach (var step in report.Steps)
+            {
+                LaunchSteps.Add(new LaunchStepItemViewModel(step, _localizer));
+            }
+
+            LaunchCommandPreview = report.CommandLine ?? string.Empty;
+            LaunchStatus = _localizer.Get(report.Success ? "instances.healthLaunchReady" : "instances.healthLaunchIssues");
+            var modSummary = GetModHealthSummary is null
+                ? _localizer.Get("instances.healthModsUnavailable")
+                : await GetModHealthSummary(SelectedInstance.Model.Id).ConfigureAwait(true);
+            HealthReportText = $"{LaunchStatus}{Environment.NewLine}{modSummary}";
+        }
+        catch (Exception exception)
+        {
+            HealthReportText = _localizer.Get("instances.healthFailed", exception.Message);
+        }
+        finally
+        {
+            IsCheckingHealth = false;
         }
     }
 

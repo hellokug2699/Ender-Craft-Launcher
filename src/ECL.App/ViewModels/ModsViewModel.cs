@@ -109,6 +109,21 @@ public sealed partial class ModsViewModel : ObservableObject
         }
     }
 
+    public async Task<string> GetHealthSummaryAsync(string instanceId)
+    {
+        var result = await _mods.ScanAsync(instanceId).ConfigureAwait(true);
+        if (!result.IsSuccess)
+        {
+            return _localizer.Get("instances.healthModsFailed", result.Error?.Message ?? string.Empty);
+        }
+
+        var report = result.Value!;
+        return report.IssueCount == 0
+            ? _localizer.Get("instances.healthModsOk", report.EnabledCount, report.DisabledCount)
+            : _localizer.Get("instances.healthModsIssues", report.EnabledCount, report.DisabledCount, report.IssueCount,
+                string.Join(Environment.NewLine, report.Issues.Take(12).Select(issue => $"{issue.FileName}: {issue.Kind} ({issue.RelatedModId ?? issue.Detail ?? issue.ModId ?? string.Empty})")));
+    }
+
     public void SelectInstance(string instanceId)
     {
         var match = Instances.FirstOrDefault(item => string.Equals(item.Id, instanceId, StringComparison.Ordinal));

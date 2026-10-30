@@ -24,7 +24,8 @@
                     </StackPanel>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <Button Content="{loc:Loc Key=instance.detail.launch}" Command="{Binding Instances.LaunchCommand}" Style="{StaticResource PrimaryButton}" MinWidth="132" Height="42" IsEnabled="{Binding Instances.HasSelection}" />
-                        <Button Content="Dry Run" Command="{Binding Instances.DryRunCommand}" Style="{StaticResource GhostButton}" Margin="0,8,0,0" IsEnabled="{Binding Instances.HasSelection}" />
+                        <Button Content="{loc:Loc Key=instances.healthCheck}" Command="{Binding Instances.CheckHealthCommand}" Style="{StaticResource GhostButton}" Margin="0,8,0,0" IsEnabled="{Binding Instances.HasSelection}" />
+                        <Button Content="{loc:Loc Key=instances.repairFiles}" Command="{Binding Instances.RepairFilesCommand}" Style="{StaticResource GhostButton}" Margin="0,8,0,0" IsEnabled="{Binding Instances.HasSelection}" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -200,6 +201,7 @@
             <Border Style="{StaticResource Card}" Margin="0,0,0,18">
                 <StackPanel>
                     <TextBlock Text="{loc:Loc Key=instance.detail.latestLaunch}" Style="{StaticResource SectionText}" />
+                    <TextBlock Text="{Binding Instances.HealthReportText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
                     <TextBlock Text="{Binding Instances.LaunchStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
                     <ItemsControl ItemsSource="{Binding Instances.LaunchSteps}" Margin="0,8,0,0">
                         <ItemsControl.ItemTemplate>
@@ -218,6 +220,7 @@
                     </ItemsControl>
                     <TextBlock Text="{loc:Loc Key=instance.detail.commandPreview}" Style="{StaticResource LabelText}" Margin="0,12,0,6" />
                     <TextBox Style="{StaticResource MonoTextBox}" Text="{Binding Instances.LaunchCommandPreview, Mode=OneWay}" Height="72" />
+                    <TextBlock Text="{Binding Instances.InstallStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
         </StackPanel>

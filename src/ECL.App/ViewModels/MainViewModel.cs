@@ -59,6 +59,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         _selectedNavItem = NavItems[0];
         _home.Navigate = NavigateTo;
+        _instances.GetModHealthSummary = _mods.GetHealthSummaryAsync;
         _mods.SearchDependency = OpenDependencySearch;
         _instances.NavigateToContent = OpenContentForInstance;
         _instances.NavigateToDetails = OpenInstanceDetails;
