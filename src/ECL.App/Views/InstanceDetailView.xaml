@@ -1,0 +1,183 @@
+<UserControl x:Class="Ecl.App.Views.InstanceDetailView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+            <Grid Margin="0,0,0,22">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="实例工作区" Style="{StaticResource TitleText}" />
+                    <TextBlock Text="将此实例的运行环境、内容、文件与诊断集中管理。" Style="{StaticResource SubtitleText}" Margin="0,6,0,0" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="返回实例列表" Command="{Binding Instances.BackToInstancesCommand}" Style="{StaticResource GhostButton}" />
+            </Grid>
+
+            <Border Style="{StaticResource HeroCard}" Padding="24" Margin="0,0,0,18">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Instances.SelectedInstanceName}" FontSize="27" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Instances.SelectedInstanceMeta}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,6,0,0" />
+                        <TextBlock Text="{Binding Instances.SelectedInstanceComponents}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Instances.SelectedInstancePath}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Instances.SelectedInstancePath}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <Button Content="启动游戏" Command="{Binding Instances.LaunchCommand}" Style="{StaticResource PrimaryButton}" MinWidth="132" Height="42" IsEnabled="{Binding Instances.HasSelection}" />
+                        <Button Content="Dry Run" Command="{Binding Instances.DryRunCommand}" Style="{StaticResource GhostButton}" Margin="0,8,0,0" IsEnabled="{Binding Instances.HasSelection}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid Margin="0,0,0,14">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="基本信息" Style="{StaticResource SectionText}" />
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="110" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <TextBlock Text="Minecraft" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" />
+                            <TextBlock Grid.Column="1" Text="{Binding Instances.SelectedInstance.Model.GameVersion}" FontSize="11" />
+                            <TextBlock Grid.Row="1" Text="加载器" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,8,0,0" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Instances.SelectedInstance.Model.Loader}" FontSize="11" Margin="0,8,0,0" />
+                            <TextBlock Grid.Row="2" Text="创建时间" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,8,0,0" />
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Instances.SelectedInstanceCreated}" FontSize="11" Margin="0,8,0,0" />
+                            <TextBlock Grid.Row="3" Text="最近启动" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,8,0,0" />
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Instances.SelectedInstance.LastPlayedText}" FontSize="11" Margin="0,8,0,0" />
+                        </Grid>
+                        <Button Content="删除此实例…" Command="{Binding Instances.DeleteInstanceCommand}" Style="{StaticResource DangerButton}" HorizontalAlignment="Left" Margin="0,16,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="Java 运行环境" Style="{StaticResource SectionText}" />
+                        <TextBlock Text="Java 版本选择会覆盖全局 Java；选择“自动”则继承全局策略。" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,5,0,10" TextWrapping="Wrap" />
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <ComboBox ItemsSource="{Binding Instances.JavaOptions}" SelectedItem="{Binding Instances.SelectedJavaOption, Mode=TwoWay}" DisplayMemberPath="DisplayName" />
+                            <Button Grid.Column="2" Content="选择 Java…" Command="{Binding Instances.BrowseJavaCommand}" Style="{StaticResource GhostButton}" />
+                        </Grid>
+                        <TextBlock Text="{Binding Instances.JavaStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
+                        <CheckBox Content="关闭 Java 兼容性检查" IsChecked="{Binding Instances.DisableJavaCompatibilityCheck, Mode=TwoWay}" Margin="0,10,0,0" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="JVM 与内存" Style="{StaticResource SectionText}" />
+                    <TextBlock Text="实例未设置的项目会继承全局配置。实例参数是额外参数覆盖，不会与全局额外参数拼接。" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,5,0,12" TextWrapping="Wrap" />
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="JVM 预设" Style="{StaticResource LabelText}" />
+                            <ComboBox ItemsSource="{Binding Instances.InstanceJvmPresetOptions}" SelectedValue="{Binding Instances.InstanceJvmPreset, Mode=TwoWay}" SelectedValuePath="Value" DisplayMemberPath="DisplayName" Margin="0,6,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="最大内存（MB）" Style="{StaticResource LabelText}" />
+                            <TextBox Text="{Binding Instances.InstanceMemoryMbText, UpdateSourceTrigger=PropertyChanged}" Margin="0,6,0,0" ToolTip="1024-65536；留空继承全局" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="4">
+                            <TextBlock Text="预设说明" Style="{StaticResource LabelText}" />
+                            <TextBlock Text="推荐：G1 GC。适合大多数现代 Minecraft Java 版本；可按实际环境切换。" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Text="额外 JVM 参数" Style="{StaticResource LabelText}" Margin="0,14,0,6" />
+                    <TextBox Text="{Binding Instances.InstanceJvmArguments, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MonoTextBox}" MinHeight="76" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Content="保存运行设置" Command="{Binding Instances.SaveInstanceRuntimeSettingsCommand}" Style="{StaticResource PrimaryButton}" />
+                        <TextBlock Text="{Binding Instances.StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="模组与内容" Style="{StaticResource SectionText}" />
+                            <TextBlock Text="{Binding Mods.Summary}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,4,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <Button Content="导入模组" Command="{Binding Mods.ImportModsCommand}" Style="{StaticResource GhostButton}" />
+                            <Button Content="刷新" Command="{Binding Mods.RefreshCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
+                        </StackPanel>
+                    </Grid>
+                    <ListBox ItemsSource="{Binding Mods.Mods}" SelectedItem="{Binding Mods.SelectedMod, Mode=TwoWay}" Height="230" Margin="0,12,0,0" BorderBrush="{DynamicResource BorderSoftBrush}" Background="{DynamicResource SurfaceBrush}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="5,4">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="0,3,0,0" />
+                                        <TextBlock Text="{Binding IssuesText}" Foreground="{DynamicResource DangerBrush}" FontSize="9" TextWrapping="Wrap" Visibility="{Binding HasIssues, Converter={StaticResource BoolToVisibility}}" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="9" VerticalAlignment="Center" Margin="10,0,0,0" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="启用/禁用所选" Command="{Binding Mods.ToggleSelectedCommand}" Style="{StaticResource GhostButton}" />
+                        <Button Content="删除所选" Command="{Binding Mods.DeleteSelectedCommand}" Style="{StaticResource DangerButton}" Margin="8,0,0,0" />
+                        <Button Content="导入整合包" Command="{Binding Mods.ImportModpackCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
+                        <Button Content="导出整合包" Command="{Binding Mods.ExportModpackCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Mods.StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Grid Margin="0,0,0,14">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="文件与目录" Style="{StaticResource SectionText}" />
+                        <WrapPanel Margin="0,12,0,0">
+                            <Button Content="打开实例目录" Command="{Binding Instances.OpenInstanceFolderCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                            <Button Content="打开 Mods" Command="{Binding Instances.OpenModsFolderCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="日志与诊断" Style="{StaticResource SectionText}" />
+                        <WrapPanel Margin="0,12,0,0">
+                            <Button Content="导出 latest.log" Command="{Binding Instances.ExportLatestLogCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                            <Button Content="分析最近崩溃" Command="{Binding Instances.AnalyzeCrashCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                            <Button Content="导出诊断包" Command="{Binding Instances.ExportDiagnosticsCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                        </WrapPanel>
+                        <TextBlock Text="{Binding Instances.CrashAnalysisText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Instances.DiagnosticStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Border Style="{StaticResource Card}" Margin="0,0,0,18">
+                <StackPanel>
+                    <TextBlock Text="最近一次启动" Style="{StaticResource SectionText}" />
+                    <TextBlock Text="{Binding Instances.LaunchStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding Instances.LaunchSteps}" Margin="0,8,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding StatusText}" Foreground="{Binding Status, Converter={StaticResource LaunchStatusBrush}}" FontSize="10" FontWeight="SemiBold" />
+                                    <StackPanel Grid.Column="1" Margin="8,0,8,0">
+                                        <TextBlock Text="{Binding Title}" FontSize="10" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Message}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="9" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{Binding DurationText}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="启动命令预览" Style="{StaticResource LabelText}" Margin="0,12,0,6" />
+                    <TextBox Style="{StaticResource MonoTextBox}" Text="{Binding Instances.LaunchCommandPreview, Mode=OneWay}" Height="72" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
