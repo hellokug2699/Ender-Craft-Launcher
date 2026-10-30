@@ -123,6 +123,7 @@
                                     <StackPanel>
                                         <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" />
                                         <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="0,3,0,0" />
+                                        <TextBlock Text="{Binding RecommendationText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="9" TextWrapping="Wrap" Visibility="{Binding HasIssues, Converter={StaticResource BoolToVisibility}}" />
                                         <TextBlock Text="{Binding IssuesText}" Foreground="{DynamicResource DangerBrush}" FontSize="9" TextWrapping="Wrap" Visibility="{Binding HasIssues, Converter={StaticResource BoolToVisibility}}" />
                                     </StackPanel>
                                     <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="9" VerticalAlignment="Center" Margin="10,0,0,0" />
@@ -131,6 +132,7 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="{loc:Loc Key=mods.enableDependencies}" Command="{Binding Mods.EnableSelectedDependenciesCommand}" Style="{StaticResource PrimaryButton}" />
                         <Button Content="{loc:Loc Key=instance.detail.toggleMod}" Command="{Binding Mods.ToggleSelectedCommand}" Style="{StaticResource GhostButton}" />
                         <Button Content="{loc:Loc Key=instance.detail.deleteMod}" Command="{Binding Mods.DeleteSelectedCommand}" Style="{StaticResource DangerButton}" Margin="8,0,0,0" />
                         <Button Content="{loc:Loc Key=instance.detail.importModpack}" Command="{Binding Mods.ImportModpackCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />

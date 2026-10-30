@@ -345,6 +345,61 @@ public sealed partial class ModsViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task EnableSelectedDependenciesAsync()
+    {
+        if (SelectedInstance is null || SelectedMod is null)
+        {
+            StatusMessage = _localizer.Get("mods.selectMod");
+            return;
+        }
+
+        var dependencyIds = SelectedMod.Issues
+            .Where(issue => issue.Kind == ModIssueKind.DisabledDependency && !string.IsNullOrWhiteSpace(issue.RelatedModId))
+            .Select(issue => issue.RelatedModId!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var dependencies = dependencyIds
+            .Select(id => Mods.FirstOrDefault(mod => string.Equals(mod.ModId, id, StringComparison.OrdinalIgnoreCase)))
+            .Where(mod => mod is not null && !mod.Enabled)
+            .Cast<ModItemViewModel>()
+            .ToArray();
+
+        if (dependencies.Length == 0)
+        {
+            StatusMessage = _localizer.Get("mods.dependenciesNone");
+            return;
+        }
+
+        var names = string.Join(", ", dependencies.Select(mod => mod.Name));
+        if (!_dialogs.Confirm(
+                _localizer.Get("mods.enableDependenciesTitle"),
+                _localizer.Get("mods.enableDependenciesConfirm", names)))
+        {
+            return;
+        }
+
+        var enabled = 0;
+        var errors = new List<string>();
+        foreach (var dependency in dependencies)
+        {
+            var result = await _mods.SetEnabledAsync(SelectedInstance.Id, dependency.FileName, true).ConfigureAwait(true);
+            if (result.IsSuccess)
+            {
+                enabled++;
+            }
+            else
+            {
+                errors.Add($"{dependency.FileName}: {result.Error?.Message}");
+            }
+        }
+
+        StatusMessage = errors.Count == 0
+            ? _localizer.Get("mods.dependenciesEnabled", enabled)
+            : _localizer.Get("mods.dependenciesEnabledWithErrors", enabled, string.Join("; ", errors));
+        await RefreshAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
     private async Task DeleteSelectedAsync()
     {
         if (SelectedInstance is null || SelectedMod is null)
@@ -645,7 +700,11 @@ public sealed class ModItemViewModel
 
     public string FileName => _entry.FileName;
 
+    public string? ModId => _entry.Metadata?.ModId;
+
     public bool Enabled => _entry.Enabled;
+
+    public string RecommendationText => string.Join(Environment.NewLine, _entry.Issues.Select(Recommend));
 
     public string StatusText => Enabled
         ? _localizer.Get("mods.enabledLabel")
@@ -662,6 +721,17 @@ public sealed class ModItemViewModel
         _entry.Issues.Select(issue => Describe(issue)));
 
     public bool HasIssues => _entry.Issues.Count > 0;
+
+    private string Recommend(ModIssue issue) => issue.Kind switch
+    {
+        ModIssueKind.DisabledDependency => _localizer.Get("mod.recommend.disabledDependency", issue.RelatedModId ?? "?"),
+        ModIssueKind.MissingDependency => _localizer.Get("mod.recommend.missingDependency", issue.RelatedModId ?? "?"),
+        ModIssueKind.Conflict => _localizer.Get("mod.recommend.conflict", issue.RelatedModId ?? "?"),
+        ModIssueKind.LoaderMismatch => _localizer.Get("mod.recommend.loaderMismatch", issue.Detail ?? "?"),
+        ModIssueKind.InvalidMetadata => _localizer.Get("mod.recommend.invalidMetadata"),
+        ModIssueKind.DuplicateModId => _localizer.Get("mod.recommend.duplicate"),
+        _ => string.Empty,
+    };
 
     private string Describe(ModIssue issue) => issue.Kind switch
     {

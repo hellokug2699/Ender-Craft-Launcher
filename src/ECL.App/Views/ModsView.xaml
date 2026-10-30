@@ -55,6 +55,7 @@
             </Border>
 
             <WrapPanel Margin="0,0,0,8">
+                <Button Content="{loc:Loc Key=mods.enableDependencies}" Command="{Binding EnableSelectedDependenciesCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc Key=mods.toggle}"
                         Command="{Binding ToggleSelectedCommand}"
                         Style="{StaticResource PrimaryButton}"
@@ -142,6 +143,7 @@
                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                FontSize="10"
                                                Margin="0,4,0,0" />
+                                    <TextBlock Text="{Binding RecommendationText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,5,0,0" Visibility="{Binding HasIssues, Converter={StaticResource BoolToVisibility}}" />
                                     <TextBlock Text="{Binding IssuesText}"
                                                Foreground="{DynamicResource WarningBrush}"
                                                FontSize="10"
