@@ -938,6 +938,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
 
         IsCheckingHealth = true;
+        IsBusy = true;
         HealthReportText = _localizer.Get("instances.healthChecking");
         try
         {
@@ -951,7 +952,8 @@ public sealed partial class InstancesViewModel : ObservableObject
             }
 
             LaunchCommandPreview = report.CommandLine ?? string.Empty;
-            LaunchStatus = _localizer.Get(report.Success ? "instances.healthLaunchReady" : "instances.healthLaunchIssues");
+            var launchReady = report.Success && report.Steps.All(step => step.Status is LaunchStepStatus.Success or LaunchStepStatus.Skipped);
+            LaunchStatus = _localizer.Get(launchReady ? "instances.healthLaunchReady" : "instances.healthLaunchIssues");
             var modSummary = GetModHealthSummary is null
                 ? _localizer.Get("instances.healthModsUnavailable")
                 : await GetModHealthSummary(SelectedInstance.Model.Id).ConfigureAwait(true);
@@ -964,6 +966,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         finally
         {
             IsCheckingHealth = false;
+            IsBusy = false;
         }
     }
 
