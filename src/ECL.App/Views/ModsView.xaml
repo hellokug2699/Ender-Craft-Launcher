@@ -43,7 +43,7 @@
                             <Border Style="{StaticResource Badge}" Margin="0,0,6,0">
                                 <TextBlock Text="{Binding SelectedInstance.LoaderVersionDisplay}" FontSize="10" />
                             </Border>
-                            <TextBlock Text="{Binding SelectedInstance.GameVersion, StringFormat=Minecraft {0}}"
+                            <TextBlock Text="{Binding SelectedInstance.GameVersionDisplay}"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        FontSize="10"
                                        VerticalAlignment="Center" />
