@@ -59,12 +59,24 @@ public sealed partial class MainViewModel : ObservableObject
 
         _selectedNavItem = NavItems[0];
         _home.Navigate = NavigateTo;
+        _mods.SearchDependency = OpenDependencySearch;
         _instances.NavigateToContent = OpenContentForInstance;
         _instances.NavigateToDetails = OpenInstanceDetails;
         _instances.NavigateBackFromDetails = BackToInstances;
         VersionText = $"ECL {typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0"}";
         DataDirectory = paths.Root;
         GameDirectory = paths.GameRoot;
+    }
+
+    private void OpenDependencySearch(string dependencyId, string instanceId)
+    {
+        _ = OpenDependencySearchAsync(dependencyId, instanceId);
+    }
+
+    private async Task OpenDependencySearchAsync(string dependencyId, string instanceId)
+    {
+        await _download.SearchDependencyAsync(dependencyId, instanceId).ConfigureAwait(true);
+        NavigateTo("download");
     }
 
     private void OpenContentForInstance(string instanceId)

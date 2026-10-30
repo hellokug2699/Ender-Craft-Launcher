@@ -22,6 +22,8 @@ public sealed partial class ModsViewModel : ObservableObject
     private bool _suppressSelectionRefresh;
     private string? _pendingInstanceId;
 
+    public Action<string, string>? SearchDependency { get; set; }
+
     public ObservableCollection<ModInstanceChoice> Instances { get; } = [];
 
     public ObservableCollection<ModItemViewModel> Mods { get; } = [];
@@ -397,6 +399,28 @@ public sealed partial class ModsViewModel : ObservableObject
             ? _localizer.Get("mods.dependenciesEnabled", enabled)
             : _localizer.Get("mods.dependenciesEnabledWithErrors", enabled, string.Join("; ", errors));
         await RefreshAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private void SearchSelectedDependency()
+    {
+        if (SelectedInstance is null || SelectedMod is null)
+        {
+            StatusMessage = _localizer.Get("mods.selectMod");
+            return;
+        }
+
+        var dependencyId = SelectedMod.Issues
+            .Where(issue => issue.Kind is ModIssueKind.MissingDependency or ModIssueKind.DisabledDependency)
+            .Select(issue => issue.RelatedModId)
+            .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id));
+        if (dependencyId is null)
+        {
+            StatusMessage = _localizer.Get("mods.noSearchableDependency");
+            return;
+        }
+
+        SearchDependency?.Invoke(dependencyId, SelectedInstance.Id);
     }
 
     [RelayCommand]

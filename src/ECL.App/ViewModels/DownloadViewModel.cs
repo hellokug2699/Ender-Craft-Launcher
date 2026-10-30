@@ -179,6 +179,24 @@ public sealed partial class DownloadViewModel : ObservableObject
         await RefreshInstancesAsync().ConfigureAwait(true);
     }
 
+    public async Task SearchDependencyAsync(string dependencyId, string instanceId)
+    {
+        await RefreshInstancesAsync().ConfigureAwait(true);
+        SelectedInstance = TargetInstances.FirstOrDefault(item => item.Id == instanceId);
+        if (SelectedInstance is null)
+        {
+            StatusMessage = _localizer.Get("downloads.selectInstanceFirst");
+            return;
+        }
+
+        Query = dependencyId;
+        SelectedTab = Tabs.FirstOrDefault(tab => tab.Kind == ContentKind.Mod) ?? Tabs[0];
+        GameVersion = SelectedInstance.GameVersion;
+        SelectedLoaderFilter = LoaderFilters.FirstOrDefault(item =>
+            string.Equals(item.Id, SelectedInstance.Loader, StringComparison.OrdinalIgnoreCase)) ?? LoaderFilters[0];
+        await SearchAsync().ConfigureAwait(true);
+    }
+
     public async Task ActivateAsync()
     {
         if (_initialized)

@@ -351,6 +351,8 @@
   "mods.filter.enabled": "已启用",
   "mods.filter.disabled": "已禁用",
   "mods.filter.issues": "存在问题",
+  "mods.searchDependency": "搜索缺失依赖",
+  "mods.noSearchableDependency": "当前选中的模组没有可搜索的缺失依赖。",
   "mods.enableDependencies": "启用缺失的依赖模组",
   "mods.enableDependenciesTitle": "启用依赖模组",
   "mods.enableDependenciesConfirm": "将启用以下已安装但被禁用的依赖模组：{0}。是否继续？",

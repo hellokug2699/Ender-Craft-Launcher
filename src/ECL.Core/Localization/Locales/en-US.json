@@ -351,6 +351,8 @@
   "mods.filter.enabled": "Enabled",
   "mods.filter.disabled": "Disabled",
   "mods.filter.issues": "With issues",
+  "mods.searchDependency": "Search missing dependency",
+  "mods.noSearchableDependency": "The selected mod has no searchable missing dependency.",
   "mods.enableDependencies": "Enable installed dependencies",
   "mods.enableDependenciesTitle": "Enable dependencies",
   "mods.enableDependenciesConfirm": "The following installed but disabled dependencies will be enabled: {0}. Continue?",
