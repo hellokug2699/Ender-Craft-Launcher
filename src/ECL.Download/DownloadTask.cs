@@ -36,6 +36,11 @@ public sealed record DownloadTask(
         : null;
 }
 
+public sealed class DownloadTaskChangedEventArgs(DownloadTask task) : EventArgs
+{
+    public DownloadTask Task { get; } = task;
+}
+
 /// <summary>
 /// 全局下载任务管理器的最小契约。
 /// 具体执行逻辑仍由现有 IDownloadService 负责，后续逐步迁移到这里。
@@ -44,7 +49,7 @@ public interface IDownloadTaskManager
 {
     IReadOnlyList<DownloadTask> Tasks { get; }
 
-    event EventHandler<DownloadTask>? TaskChanged;
+    event EventHandler<DownloadTaskChangedEventArgs>? TaskChanged;
 
     Task<DownloadTask> EnqueueAsync(
         DownloadRequest request,
