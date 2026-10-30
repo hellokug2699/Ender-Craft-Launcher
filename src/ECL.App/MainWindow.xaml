@@ -110,7 +110,7 @@
                          Fill="{DynamicResource AccentGlowBrush}"
                          Opacity="0.16"
                          IsHitTestVisible="False" />
-                <ContentControl Content="{Binding SelectedNavItem.Page}"
+                <ContentControl Content="{Binding CurrentPage}"
                                 Margin="38,32,38,32" />
             </Grid>
         </Border>
