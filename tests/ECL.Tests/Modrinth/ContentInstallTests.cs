@@ -17,6 +17,33 @@ namespace Ecl.Tests.Modrinth;
 public sealed class ContentInstallTests
 {
     [Fact]
+    public void ModpackArchiveInspectorRejectsOversizedMetadata()
+    {
+        var archivePath = Path.Combine(Path.GetTempPath(), $"ecl-oversized-{Guid.NewGuid():N}.mrpack");
+        try
+        {
+            using (var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+            {
+                var entry = archive.CreateEntry("modrinth.index.json");
+                using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
+                writer.Write(new string(' ', 4 * 1024 * 1024 + 1));
+            }
+
+            var result = ModpackArchiveInspector.Read(archivePath);
+
+            Assert.False(result.IsSuccess);
+            Assert.Equal("modpack.invalid_archive", result.Error!.Code);
+        }
+        finally
+        {
+            if (File.Exists(archivePath))
+            {
+                File.Delete(archivePath);
+            }
+        }
+    }
+
+    [Fact]
     public async Task DownloadsMrpackWithoutAnyInstance()
     {
         var payload = CreateMrpack();
