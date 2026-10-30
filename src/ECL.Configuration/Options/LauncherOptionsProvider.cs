@@ -216,7 +216,7 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             CategoryKey = "category.java",
             DisplayNameKey = "option.java.jvmPreset.name",
             DescriptionKey = "option.java.jvmPreset.desc",
-            Default = "default",
+            Default = "g1",
             Order = 35,
             Choices =
             [
