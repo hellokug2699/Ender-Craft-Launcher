@@ -94,7 +94,7 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             CategoryKey = "category.auth",
             DisplayNameKey = "option.auth.microsoftClientId.name",
             DescriptionKey = "option.auth.microsoftClientId.desc",
-            Default = string.Empty,
+            Default = "a1e97b44-9c00-4a60-8e32-1119fefe7aab",
             Order = 10,
             Validate = value => string.IsNullOrWhiteSpace(value) || Guid.TryParse(value.Trim(), out _),
         };
