@@ -726,6 +726,8 @@ public sealed class ModItemViewModel
 
     public string? ModId => _entry.Metadata?.ModId;
 
+    public IReadOnlyList<ModIssue> Issues => _entry.Issues;
+
     public bool Enabled => _entry.Enabled;
 
     public string RecommendationText => string.Join(Environment.NewLine, _entry.Issues.Select(Recommend));
