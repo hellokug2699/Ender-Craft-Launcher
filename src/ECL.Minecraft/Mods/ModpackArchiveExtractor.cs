@@ -130,6 +130,11 @@ internal static class ModpackArchiveExtractor
     private static void EnsureSafeDirectoryTree(string root, string? directory)
     {
         var rootFull = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+        if (!Directory.Exists(rootFull))
+        {
+            Directory.CreateDirectory(rootFull);
+        }
+
         EnsureNotReparsePoint(rootFull, "整合包目标目录");
 
         if (string.IsNullOrEmpty(directory))
