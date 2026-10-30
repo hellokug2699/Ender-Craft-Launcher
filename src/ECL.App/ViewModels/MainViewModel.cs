@@ -14,8 +14,12 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly ModsViewModel _mods;
     private readonly SettingsViewModel _settings;
     private readonly InstancesViewModel _instances;
+    private readonly InstanceDetailPageViewModel _instanceDetailPage;
+    private bool _showingInstanceDetails;
 
     public ObservableCollection<NavItemViewModel> NavItems { get; }
+
+    public object CurrentPage => _showingInstanceDetails ? _instanceDetailPage : SelectedNavItem.Page;
 
     [ObservableProperty]
     private NavItemViewModel _selectedNavItem;
@@ -41,6 +45,7 @@ public sealed partial class MainViewModel : ObservableObject
         _mods = mods;
         _settings = settings;
         _instances = instances;
+        _instanceDetailPage = new InstanceDetailPageViewModel(instances, mods);
 
         NavItems =
         [
@@ -55,6 +60,8 @@ public sealed partial class MainViewModel : ObservableObject
         _selectedNavItem = NavItems[0];
         _home.Navigate = NavigateTo;
         _instances.NavigateToContent = OpenContentForInstance;
+        _instances.NavigateToDetails = OpenInstanceDetails;
+        _instances.NavigateBackFromDetails = BackToInstances;
         VersionText = $"ECL {typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0"}";
         DataDirectory = paths.Root;
         GameDirectory = paths.GameRoot;
@@ -64,6 +71,19 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _mods.SelectInstance(instanceId);
         NavigateTo("content");
+    }
+
+    private void OpenInstanceDetails(string instanceId)
+    {
+        _mods.SelectInstance(instanceId);
+        _showingInstanceDetails = true;
+        OnPropertyChanged(nameof(CurrentPage));
+    }
+
+    private void BackToInstances()
+    {
+        _showingInstanceDetails = false;
+        OnPropertyChanged(nameof(CurrentPage));
     }
 
     private void NavigateTo(string key)
@@ -85,6 +105,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnSelectedNavItemChanged(NavItemViewModel value)
     {
+        _showingInstanceDetails = false;
+        OnPropertyChanged(nameof(CurrentPage));
+
         switch (value.Page)
         {
             case ModsViewModel mods:
@@ -98,3 +121,5 @@ public sealed partial class MainViewModel : ObservableObject
 }
 
 public sealed record NavItemViewModel(string Key, string Title, object Page);
+
+public sealed record InstanceDetailPageViewModel(InstancesViewModel Instances, ModsViewModel Mods);
