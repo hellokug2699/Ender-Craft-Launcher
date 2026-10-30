@@ -316,10 +316,7 @@ public sealed partial class InstancesViewModel : ObservableObject
             if (SelectedInstance is not null)
             {
                 var configured = _settings.Get<string?>("instance.java.executablePath", SelectedInstance.Model.Id);
-                SelectedJavaOption = JavaOptions.FirstOrDefault(option =>
-                    option.Runtime is not null &&
-                    string.Equals(option.Runtime.ExecutablePath, configured, StringComparison.OrdinalIgnoreCase))
-                    ?? JavaOptions[0];
+                SelectConfiguredJavaOption(configured);
             }
             else
             {
@@ -1299,6 +1296,25 @@ public sealed partial class InstancesViewModel : ObservableObject
             _localizer.Get("instances.java.incompatiblePrompt", actual, required));
     }
 
+    private void SelectConfiguredJavaOption(string? configuredPath)
+    {
+        var option = JavaOptions.FirstOrDefault(item =>
+            item.Runtime is not null &&
+            string.Equals(item.Runtime.ExecutablePath, configuredPath, StringComparison.OrdinalIgnoreCase));
+
+        if (option is null && !string.IsNullOrWhiteSpace(configuredPath))
+        {
+            var runtime = _javaLocator.FromPath(configuredPath);
+            if (runtime is not null)
+            {
+                option = new JavaOptionViewModel(runtime, FormatJava(runtime));
+                JavaOptions.Add(option);
+            }
+        }
+
+        SelectedJavaOption = option ?? JavaOptions.FirstOrDefault();
+    }
+
     private async Task RefreshJavaSelectionAsync()
     {
         if (SelectedInstance is null)
@@ -1312,10 +1328,7 @@ public sealed partial class InstancesViewModel : ObservableObject
             var instance = SelectedInstance.Model;
             _suppressJavaSelection = true;
             var configured = _settings.Get<string?>("instance.java.executablePath", instance.Id);
-            SelectedJavaOption = JavaOptions.FirstOrDefault(option =>
-                option.Runtime is not null &&
-                string.Equals(option.Runtime.ExecutablePath, configured, StringComparison.OrdinalIgnoreCase))
-                ?? JavaOptions.FirstOrDefault();
+            SelectConfiguredJavaOption(configured);
             _suppressJavaSelection = false;
 
             _suppressJavaCheck = true;
