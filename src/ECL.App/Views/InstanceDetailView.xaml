@@ -135,7 +135,7 @@
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="资源包与光影" Style="{StaticResource LabelText}" />
+                            <TextBlock Text="{loc:Loc Key=mods.packsTitle}" Style="{StaticResource LabelText}" />
                             <TextBlock Text="{Binding Mods.PackSummary}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="0,3,0,0" />
                         </StackPanel>
                         <ComboBox Grid.Column="1" ItemsSource="{Binding Mods.PackTypes}" SelectedItem="{Binding Mods.SelectedPackType, Mode=TwoWay}" DisplayMemberPath="Title" Width="150" />
@@ -156,9 +156,9 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                        <Button Content="导入资源包/光影" Command="{Binding Mods.ImportPackCommand}" Style="{StaticResource GhostButton}" />
-                        <Button Content="启用/禁用所选" Command="{Binding Mods.TogglePackCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
-                        <Button Content="删除所选" Command="{Binding Mods.DeletePackCommand}" Style="{StaticResource DangerButton}" Margin="8,0,0,0" />
+                        <Button Content="{loc:Loc Key=mods.packImport}" Command="{Binding Mods.ImportPackCommand}" Style="{StaticResource GhostButton}" />
+                        <Button Content="{loc:Loc Key=mods.packToggle}" Command="{Binding Mods.TogglePackCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
+                        <Button Content="{loc:Loc Key=common.delete}" Command="{Binding Mods.DeletePackCommand}" Style="{StaticResource DangerButton}" Margin="8,0,0,0" />
                     </StackPanel>
                     <TextBlock Text="{Binding Mods.StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
                 </StackPanel>
