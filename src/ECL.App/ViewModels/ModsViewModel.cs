@@ -703,6 +703,8 @@ public sealed record ModInstanceChoice(string Id, string Name, string GameVersio
     public string LoaderVersionDisplay => string.IsNullOrWhiteSpace(LoaderVersion)
         ? LoaderDisplay
         : $"{LoaderDisplay} {LoaderVersion}";
+
+    public string GameVersionDisplay => $"Minecraft {GameVersion}";
 }
 
 public sealed record PackTypeChoice(ContentPackKind Kind, string Title);
