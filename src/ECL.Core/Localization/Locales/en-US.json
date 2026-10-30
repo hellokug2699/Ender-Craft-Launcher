@@ -574,5 +574,10 @@
   "option.auth.microsoftClientId.name": "Microsoft OAuth Client ID",
   "option.auth.microsoftClientId.desc": "Enter the Application (client) ID from your Microsoft Entra app registration. This value is saved for future integration; Microsoft sign-in is not implemented yet. Do not enter a Client Secret.",
   "instances.healthAccountMissing": "Account status: no account is configured. Machine checks are unaffected; a usable account is still required to launch the game.",
-  "instances.healthAccountReady": "Account status: {0} is configured. Health checks do not validate account-token validity."
+  "instances.healthAccountReady": "Account status: {0} is configured. Health checks do not validate account-token validity.",
+  "mods.platform.fabric": "Fabric",
+  "mods.platform.forge": "Forge",
+  "mods.platform.neoforge": "NeoForge",
+  "mods.platform.legacyForge": "Legacy Forge",
+  "mods.platform.unknown": "Loader unknown"
 }
