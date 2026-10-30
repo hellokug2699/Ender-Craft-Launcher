@@ -90,7 +90,7 @@ internal static class ModpackArchiveExtractor
         }
 
         var normalized = value.Replace('\\', '/');
-        if (normalized.StartsWith('/', StringComparison.Ordinal) ||
+        if (normalized.StartsWith("/", StringComparison.Ordinal) ||
             Path.IsPathRooted(normalized) ||
             normalized.Contains('\0'))
         {
