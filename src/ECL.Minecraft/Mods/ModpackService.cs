@@ -52,6 +52,10 @@ public sealed class ModpackService(
 
             return report;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception exception) when (exception is InvalidDataException or IOException
                                               or UnauthorizedAccessException or JsonException)
         {
@@ -288,7 +292,7 @@ public sealed class ModpackService(
         }
 
         progress?.Report(new ModpackProgress("overrides", "解压整合包覆盖文件…", 0, 0, null));
-        var overrides = ExtractOverrides(archive, gameDirectory, ModrinthOverrideRoots);
+        var overrides = ModpackArchiveExtractor.ExtractOverrides(archive, gameDirectory, ModrinthOverrideRoots);
         WriteMarker(gameDirectory, name, version, archivePath, "modrinth", downloaded, skipped);
 
         logger.LogInformation(
@@ -476,7 +480,7 @@ public sealed class ModpackService(
 
         progress?.Report(new ModpackProgress("overrides", "解压 CurseForge 覆盖文件…", 0, 0, null));
         var overrideRoots = BuildCurseForgeOverrideRoots(GetString(root, "overrides"));
-        var overrides = ExtractOverrides(archive, gameDirectory, overrideRoots);
+        var overrides = ModpackArchiveExtractor.ExtractOverrides(archive, gameDirectory, overrideRoots);
         WriteMarker(gameDirectory, name, version, archivePath, "curseforge", downloaded, skipped);
 
         logger.LogInformation(
@@ -635,43 +639,7 @@ public sealed class ModpackService(
             }
             : null;
 
-    private static int ExtractOverrides(
-        ZipArchive archive,
-        string gameDirectory,
-        IReadOnlyList<string> overrideRoots)
-    {
-        var count = 0;
-        foreach (var entry in archive.Entries)
-        {
-            var normalized = entry.FullName.Replace('\\', '/');
-            var root = overrideRoots.FirstOrDefault(candidate =>
-                normalized.StartsWith(candidate, StringComparison.OrdinalIgnoreCase));
-            if (root is null || string.IsNullOrEmpty(entry.Name))
-            {
-                continue;
-            }
-
-            var relative = normalized[root.Length..];
-            var destination = ResolveSafePath(gameDirectory, relative);
-            if (destination is null)
-            {
-                continue;
-            }
-
-            var directory = Path.GetDirectoryName(destination);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            entry.ExtractToFile(destination, overwrite: true);
-            count++;
-        }
-
-        return count;
-    }
-
-    private void WriteMarker(
+    private static void WriteMarker(
         string gameDirectory,
         string name,
         string? version,
@@ -792,8 +760,7 @@ public sealed class ModpackService(
     private static void WriteEntry(ZipArchive archive, string name, string content)
     {
         var entry = archive.CreateEntry(name);
-        using var stream = entry.Open();
-        using var writer = new StreamWriter(stream);
+        using var writer = new StreamWriter(entry.Open());
         writer.Write(content);
     }
 
@@ -802,10 +769,5 @@ public sealed class ModpackService(
         var entry = archive.CreateEntry(name);
         using var stream = entry.Open();
         stream.Write(content);
-    }
-
-    private sealed class ForwardingProgress<T>(Action<T> callback) : IProgress<T>
-    {
-        public void Report(T value) => callback(value);
     }
 }
