@@ -45,15 +45,25 @@ public sealed partial class MainViewModel : ObservableObject
             new NavItemViewModel("home", localizer.Get("nav.home"), home),
             new NavItemViewModel("download", localizer.Get("nav.download"), download),
             new NavItemViewModel("instances", localizer.Get("nav.instances"), instances),
-            new NavItemViewModel("mods", localizer.Get("nav.content"), mods),
+            new NavItemViewModel("content", localizer.Get("nav.content"), mods),
             new NavItemViewModel("settings", localizer.Get("nav.settings"), settings),
             new NavItemViewModel("about", localizer.Get("nav.about"), about),
         ];
 
         _selectedNavItem = NavItems[0];
+        _home.Navigate = NavigateTo;
         VersionText = $"ECL {typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0"}";
         DataDirectory = paths.Root;
         GameDirectory = paths.GameRoot;
+    }
+
+    private void NavigateTo(string key)
+    {
+        var target = NavItems.FirstOrDefault(item => item.Key == key);
+        if (target is not null)
+        {
+            SelectedNavItem = target;
+        }
     }
 
     public async Task InitializeAsync()
@@ -62,7 +72,6 @@ public sealed partial class MainViewModel : ObservableObject
         await _download.InitializeAsync().ConfigureAwait(true);
         await _mods.InitializeAsync().ConfigureAwait(true);
         await _settings.InitializeAsync().ConfigureAwait(true);
-        await _home.InitializeAsync().ConfigureAwait(true);
     }
 
     partial void OnSelectedNavItemChanged(NavItemViewModel value)
