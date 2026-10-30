@@ -528,7 +528,8 @@ public sealed class ContentPackService(
     private static bool IsValidFileName(string? fileName) =>
         !string.IsNullOrWhiteSpace(fileName) &&
         string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal) &&
-        fileName is not "." and not "..";
+        fileName is not "." and not ".." &&
+        fileName.IndexOfAny(['/', '\\']) < 0;
 
     private static ContentPackEntry ReadEntry(
         string path,
