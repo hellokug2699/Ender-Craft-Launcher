@@ -11,7 +11,7 @@ ECL 是一个 Windows 优先的 Minecraft 启动器，目标能力对齐 HMCL / 
 
 同时保留自己的设计空间：配置项由元数据驱动、启动流程分阶段可观测、模块边界清晰、UI 只是薄壳。
 
-当前版本（v0.8）已完成原版安装、Java 管理与加载器安装：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查、Mojang/Adoptium/Zulu/Liberica Java 运行时下载、Fabric（含 Fabric API）、Forge/NeoForge（含安装器 processors）与 Cleanroom 安装、OptiFine 显式安装；Mod/整合包/资源包管理、CurseForge 与 Modrinth 搜索/远程下载、崩溃分析、脱敏诊断包、下载暂停/速度与自定义 JVM 预设也已接入。UI 在 v0.8 完成 launcher-first 重构：主页只负责启动与版本情报，所有下载集中到「下载」页。v0.3 账户体系因 Microsoft OAuth 审核限制暂缓；首次启动向导本阶段暂缓。
+当前版本（v0.8）已完成原版安装、Java 管理与加载器安装：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查、Mojang/Adoptium/Zulu/Liberica Java 运行时下载、Fabric（含 Fabric API）、Forge/NeoForge（含安装器 processors）与 Cleanroom 安装、OptiFine 显式安装；Mod/整合包/资源包管理、CurseForge 与 Modrinth 搜索/远程下载、崩溃分析、脱敏诊断包、下载暂停/速度与自定义 JVM 预设也已接入。UI 在 v0.8 完成 launcher-first 重构：主页只负责启动与版本情报，所有下载集中到「下载」页。Microsoft 与 Authlib-Injector/Yggdrasil 账户认证已实现；账户中心的注销、凭据清理与失效重认证体验仍待完善。首次启动向导本阶段暂缓。
 
 ## 2. 设计原则
 
@@ -120,7 +120,8 @@ services.AddEclMinecraft();
 │  ├─ global.json                  # 全局配置
 │  └─ eula.json                    # EULA 同意记录
 ├─ accounts/
-│  └─ accounts.json                # 账户与默认账户
+│  ├─ accounts.json                # 账户元数据与默认账户（不保存令牌）
+│  └─ credentials.dat.<account-id> # Windows DPAPI 加密的账户凭据
 ├─ downloads/                      # 无实例时的文件下载目录
 │  ├─ mods/  resourcepacks/  shaderpacks/  datapacks/  modpacks/
 ├─ java/                           # 启动器托管的 Java 运行时
@@ -204,14 +205,14 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 详见 [configuration.md](configuration.md)。概要：
 
 - 全局选项只看 `config/global.json`。
-- 实例选项只看 `instances/<id>/settings.json`；空值表示继承或未设置。
-- 每次读取返回“值 + 来源（Default/Global/Instance）”，UI 用来源标记帮助用户理解覆盖关系。
+- 实例选项只看 `instances/<id>/settings.json`；未设置时是否回退全局值由具体业务读取方显式决定，SettingsService 不自动合并两份配置。
+- `Get` 与 `GetSource` 分别读取值和来源；UI 可用来源标记帮助用户理解设置来自默认值、全局文件还是实例文件。
 
 ### 7.7 CurseForge
 
 详见 [curseforge.md](curseforge.md)。概要：
 
-1. 所有 CurseForge API 请求都发往 ECL 自建的代理（客户端路径与官方 API 一致，`/v1/...`），由代理注入 `x-api-key` 后转发到 `api.curseforge.com`。代理的源码、路由与部署材料不在本仓库。ECL 不读取、不发送也不嵌入 key，构建过程不注入任何凭据。
+1. 所有 CurseForge API 请求都发往 ECL 自建代理，客户端使用官方 API 路径（`/v1/...`），代理注入 `x-api-key` 后转发到 CurseForge。代理服务端源码、内部路由与部署材料不在本仓库；客户端必须公开 endpoint 常量，状态命令也会显示 endpoint。ECL 不读取、不发送也不嵌入 key，构建过程不注入凭据。
 2. 代理只转发 API；`edge.forgecdn.net` 等实际文件下载仍由 ECL 直接访问。
 3. `CurseForgeClient` 负责搜索、项目/文件解析、批量文件查询、下载 URL、限流重试；不做磁盘缓存；只接受 CurseForge CDN 下载地址。
 4. `CurseForgeService` 按实例游戏版本/加载器选择文件，递归安装必需依赖，写入 `minecraft/.ecl-curseforge.json`。
@@ -256,8 +257,8 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 ### 安全
 
 - 更新包与安装包必须签名验证（规划中）。
-- 账户令牌计划使用 DPAPI 加密（规划中），当前仅实现离线账户。
-- 签名证书、私钥、OAuth 机密只存在于 private Core 仓库；public 仓库构建不读取它。
+- Microsoft 与第三方账户凭据在 Windows 上使用 DPAPI 加密存储；非 Windows 平台暂不支持该安全凭据存储。离线账户不需要远程令牌。
+- 签名证书、私钥与发布凭据只存在于 private Core 仓库；Microsoft 桌面 OAuth 使用 public client + PKCE，不需要 Client Secret。public 仓库构建不读取私有材料。
 - CurseForge API key 只保存在私有代理服务端；ECL 客户端、构建产物、日志与诊断包都不含 key。代理实现与部署材料只在 private Core 仓库。
 - CurseForge 下载只接受官方 CDN（`*.forgecdn.net` / `*.curseforge.com`）；Modrinth 只接受 `modrinth.com` / `*.modrinth.com` 的 HTTPS 地址，避免 API 响应被滥用为任意 URL。
 
@@ -302,15 +303,15 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - Fabric/Forge/NeoForge 生成的继承链已按 `inheritsFrom` 合并；Forge/NeoForge 的 processors 产物（client jar）位于共享 `libraries/`。
 - 已处理 library `rules`、natives classifier、日志配置路径；已使用版本 JSON 的 `arguments.jvm` 与加载器专属 `arguments.game` 参数（标准游戏参数仍由启动器生成）。
 - Java 自动下载支持 Mojang、Adoptium、Zulu 与 Liberica；32/64 位与内存提示、JVM 预设已接入。
-- 未实现 Microsoft OAuth、authlib-injector、令牌加密（v0.3 暂缓）。
+- Microsoft OAuth / Xbox / XSTS / Minecraft Services 与 Authlib-Injector/Yggdrasil 均已实现；Windows DPAPI 凭据保护已实现，跨平台安全凭据存储仍是缺口。账户管理 UI 的注销、凭据清理与失效重认证体验仍待完善。
 - 未实现更新器与签名验证；签名脚本已预留。
 - 未实现下载限速；并发、重试、续传、暂停/恢复已生效。
 - 界面固定为 ECL 深色主题（浅色模式已移除），内嵌 HarmonyOS Sans SC 字体；主题刷子统一使用 `DynamicResource`，避免样式解析时捕获旧颜色。托盘、完整 i18n 热切换与更细的无障碍仍在路线图中。
-- 崩溃分析基于日志/崩溃报告文本与 Mod 元数据排序，不是完整的符号化解析；日志导出已做脱敏。
+- 崩溃分析基于日志/崩溃报告文本与 Mod 元数据排序，不是完整的符号化解析；诊断包导出已做脱敏，详见 [diagnostics.md](diagnostics.md)。
 - CurseForge 与 Modrinth 的搜索、一键安装、整合包远程下载与 `.mrpack` 自动建实例导入已完成；不做 Mod 更新检查、可选依赖选择，作者禁止第三方分发或无 CDN 地址的文件无法下载。
 - 实例下载位置（.minecraft 目录）修改后需要重启，已有实例不会自动迁移。
 - 导入实例回归（P1 1.1）已覆盖扫描有效性、导入只读性、共享/隔离启动、缺失文件诊断与内容路径；详见 [instance-import.md](instance-import.md)。目录所有权/共享引用检查（P1 1.2）与迁移（P1 1.3）尚未实现。
-- 统一任务中心（Operation）已接入下载：流式字节进度、速度/ETA、停滞/重试/失败归因、当前/最近任务条、取消与失败重试、诊断详情；安装、整合包、Java、备份等任务尚未迁移，详见 [operations.md](operations.md)。
+- 统一任务中心（Operation）已接入下载批次：流式字节进度、速度/ETA、停滞/重试/失败归因、当前/最近任务条、取消与失败重试、诊断详情；安装、整合包、Java、备份与启动等业务尚未全部迁移，CLI 也尚未消费任务中心，详见 [operations.md](operations.md)。
 - 下载页当前为单页结果（PageSize=40），分页与无限滚动仍在路线图中。
 - 资源包/光影包以 `options.txt` 为启用状态唯一事实来源，支持启用/禁用、缺失/重复/未识别条目提示与原子写入；独立配置文件的 shader 实现不会被同步。
 - 首次启动向导本阶段暂缓。

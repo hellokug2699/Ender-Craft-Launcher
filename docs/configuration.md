@@ -1,11 +1,6 @@
 # 配置系统
 
-配置是 ECL 的差异化重点。目标不是“写一堆 POCO 再手写设置页”，而是：
-
-1. 每个选项只声明一次。
-2. 校验、默认值、作用域、可见性、本地化都由定义派生。
-3. UI 自动生成设置页，CLI 自动获得 `settings list/get/set`。
-4. 全局设置与实例覆盖天然分层，来源可解释。
+配置由统一的选项定义驱动。每个选项声明一次，UI 与 CLI 复用定义、校验和持久化规则；全局选项与实例选项使用不同 Key 和不同配置文件。实例选项是否继承全局值由具体业务读取方显式处理，`SettingsService.Get` 本身不会自动跨作用域回退。
 
 ## 1. 模型
 
@@ -72,7 +67,7 @@ internal sealed class MyOptionsProvider : IOptionProvider
 
 - 存储在 `<game>/instances/<id>/settings.json`。
 - 只对当前实例生效。
-- 空值表示“未设置/继承”，不会写入文件。
+- 空值/清除表示“未设置”，不会写入文件。需要继承全局值的业务由调用方显式回退到对应全局选项。
 
 ### 版本隔离
 
@@ -90,7 +85,7 @@ internal sealed class MyOptionsProvider : IOptionProvider
 | `instance.java.jvmPreset` | 覆盖全局 JVM 预设；留空继承 |
 | `instance.game.extraArguments` | 覆盖全局游戏参数；留空继承 |
 
-启动流水线读取实例值时使用 `ISettingsService.Get<T>(key, instanceId)`，为 `null` 时回退全局值。例如：
+需要继承全局值的业务读取方分别读取实例键与全局键，并显式执行回退。例如 Java 内存设置：
 
 ```csharp
 var memory = settings.Get<int?>("instance.java.memoryMb", instance.Id)
@@ -105,7 +100,7 @@ var memory = settings.Get<int?>("instance.java.memoryMb", instance.Id)
 - `Global`：全局文件中存在显式值。
 - `Instance`：实例文件中存在显式值。
 
-UI 在每项下方展示“来源”，实例作用域下 `Default` 显示为“继承全局”，帮助用户理解优先级。
+UI 根据配置来源展示“默认 / 全局 / 实例”等状态。对于由业务读取方实现回退的实例选项，未设置时表示该业务将使用对应全局值；这不是 SettingsService 自动合并两份 JSON。
 
 ### 下载源策略
 
@@ -258,9 +253,9 @@ ecl settings list --json
 ## 7. 敏感配置
 
 - 密码、令牌、证书口令**不应**作为普通配置项存储。
-- 若未来需要存储令牌，使用单独的加密存储（DPAPI），并通过 `IsSecret` 防止日志泄漏。
+- Microsoft 与第三方账户令牌不存放在普通设置 JSON 中；Windows 使用独立的 DPAPI 加密凭据存储。非 Windows 平台当前不支持该凭据持久化，详见 [authentication.md](authentication.md)。`IsSecret` 仅用于普通配置项的敏感信息标记，不替代凭据存储。
 - CurseForge 不读取任何本地 API key 设置，也不存在构建时注入：请求固定经 ECL 自建的代理转发，key 只存在于代理服务端（部署材料在 private Core 仓库）；详见 [curseforge.md](curseforge.md)。
-- 代码签名证书、私钥与 OAuth 机密只放 private Core 仓库，详见 [repository-policy.md](repository-policy.md)。
+- 代码签名证书、私钥、发布凭据与代理服务端秘密只放 private Core / 服务端环境，详见 [repository-policy.md](repository-policy.md)。Microsoft 桌面 OAuth 使用 public client + PKCE，不要求客户端内置 Client Secret。
 
 ## 8. 设计取舍
 

@@ -84,6 +84,10 @@ ECL 支持通过 Authlib-Injector / Yggdrasil 兼容服务器登录第三方账�
 
 ## 当前边界
 
+- Microsoft 与第三方账户的凭据持久化当前依赖 Windows DPAPI；在非 Windows 平台，安全凭据存储会返回不支持错误，不能把普通 JSON 文件当作替代方案。
+- `accounts.json` 只保存账户元数据；令牌和第三方 client token 保存在独立的 DPAPI 加密凭据文件中。
+- 账户中心仍需完善注销、凭据彻底清理、失效重认证状态与跨平台安全凭据存储；认证协议已实现不代表这些管理体验全部完成。
+
 - 已实现：Microsoft OAuth、PKCE、浏览器回调、Xbox Live、XSTS、Minecraft Services、Java Edition entitlement、Minecraft profile、Authlib-Injector 第三方账户、Windows DPAPI、安全 token 脱敏、静默刷新。
 - 已完成：真实账户端到端实机验证。
 - 仍需完善：账户注销 / 凭据彻底清理体验、refresh token 失效后的重新授权状态、跨平台安全凭据存储，以及完整账户管理 UI。

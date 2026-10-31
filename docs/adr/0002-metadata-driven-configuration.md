@@ -13,7 +13,7 @@
 2. `OptionRegistry` 聚合所有 `IOptionProvider`，启动时检测重复 Key。
 3. `SettingsService` 负责作用域解析、`JsonElement` 持久化、来源（Default/Global/Instance）与校验。
 4. WPF 设置页根据 `OptionKind` 自动选择模板；CLI 自动提供 `settings list/get/set`。
-5. 实例覆盖采用独立键 `instance.*`，空值表示继承。
+5. 实例选项采用独立键 `instance.*` 和独立 settings 文件；清除值表示未显式设置。是否回退到全局值由具体业务读取方显式实现，SettingsService 不自动合并全局与实例作用域。
 
 ## 后果
 
