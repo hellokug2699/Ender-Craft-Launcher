@@ -73,8 +73,9 @@ public sealed class MicrosoftAuthenticationService : IMicrosoftAuthenticationSer
             ["code_challenge_method"] = "S256",
         });
 
+        var contextTask = listener.GetContextAsync().WaitAsync(cancellationToken);
         await openBrowser(authorize.Uri).ConfigureAwait(false);
-        var context = await listener.GetContextAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+        var context = await contextTask.ConfigureAwait(false);
         var query = context.Request.QueryString;
         var returnedState = query["state"];
         var error = query["error"];
