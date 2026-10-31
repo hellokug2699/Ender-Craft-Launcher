@@ -87,39 +87,39 @@ public sealed class MicrosoftAuthenticationService : IMicrosoftAuthenticationSer
         }
 
         var microsoftToken = await ExchangeCodeAsync(options, code, redirectUri, verifier, cancellationToken).ConfigureAwait(false);
-        if (!microsoftToken.Success)
+        if (!microsoftToken.IsSuccess)
         {
-            return Result<Account>.Fail(microsoftToken.ErrorCode!, microsoftToken.ErrorMessage!);
+            return Result<Account>.Fail(microsoftToken.Error!.Code, microsoftToken.Error.Message);
         }
 
         var xbox = await AuthenticateXboxAsync(microsoftToken.Value!, cancellationToken).ConfigureAwait(false);
-        if (!xbox.Success)
+        if (!xbox.IsSuccess)
         {
-            return Result<Account>.Fail(xbox.ErrorCode!, xbox.ErrorMessage!);
+            return Result<Account>.Fail(xbox.Error!.Code, xbox.Error.Message);
         }
 
         var xsts = await GetXstsAsync(xbox.Value!, cancellationToken).ConfigureAwait(false);
-        if (!xsts.Success)
+        if (!xsts.IsSuccess)
         {
-            return Result<Account>.Fail(xsts.ErrorCode!, xsts.ErrorMessage!);
+            return Result<Account>.Fail(xsts.Error!.Code, xsts.Error.Message);
         }
 
         var minecraft = await LoginMinecraftAsync(xsts.Value!, cancellationToken).ConfigureAwait(false);
-        if (!minecraft.Success)
+        if (!minecraft.IsSuccess)
         {
-            return Result<Account>.Fail(minecraft.ErrorCode!, minecraft.ErrorMessage!);
+            return Result<Account>.Fail(minecraft.Error!.Code, minecraft.Error.Message);
         }
 
         var entitlements = await GetEntitlementsAsync(minecraft.Value!, cancellationToken).ConfigureAwait(false);
-        if (!entitlements.Success)
+        if (!entitlements.IsSuccess)
         {
-            return Result<Account>.Fail(entitlements.ErrorCode!, entitlements.ErrorMessage!);
+            return Result<Account>.Fail(entitlements.Error!.Code, entitlements.Error.Message);
         }
 
         var profile = await GetProfileAsync(minecraft.Value!, cancellationToken).ConfigureAwait(false);
-        if (!profile.Success)
+        if (!profile.IsSuccess)
         {
-            return Result<Account>.Fail(profile.ErrorCode!, profile.ErrorMessage!);
+            return Result<Account>.Fail(profile.Error!.Code, profile.Error.Message);
         }
 
         var account = new Account
@@ -182,7 +182,7 @@ public sealed class MicrosoftAuthenticationService : IMicrosoftAuthenticationSer
         using var request = new HttpRequestMessage(HttpMethod.Get, EntitlementsEndpoint);
         request.Headers.Authorization = new("Bearer", token.AccessToken);
         var result = await SendJsonAsync<JsonElement>(request, "auth.entitlements", cancellationToken).ConfigureAwait(false);
-        if (!result.Success)
+        if (!result.IsSuccess)
         {
             return result;
         }
