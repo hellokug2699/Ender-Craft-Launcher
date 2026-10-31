@@ -70,7 +70,7 @@ ecl pack delete <实例ID> <文件名> [--type resource|shader]
 
 - 资源包读取 `pack.mcmeta` 的 `pack_format` 与 `description`。
 - 光影包按 `shaderpacks/` 目录管理。
-- WPF **Mods** 页面的“资源包 / 光影包”区域提供类型选择、启用/禁用、列表、导入与删除，并显示启用状态与配置警告。
+- WPF **内容** 页面的“资源包 / 光影包”区域提供类型选择、启用/禁用、列表、导入与删除，并显示启用状态与配置警告。
 
 ### 启用状态的唯一事实来源
 
@@ -96,7 +96,7 @@ ecl pack delete <实例ID> <文件名> [--type resource|shader]
 
 ## CurseForge 搜索与一键安装
 
-- WPF **Mods** 页面的 CurseForge 区域按当前实例的游戏版本与加载器搜索；选中结果后可安装或打开项目页。
+- WPF **下载** 页面的 CurseForge 区域按当前实例的游戏版本与加载器搜索；选中结果后可安装或打开项目页。
 - CLI `curseforge search|files|install` 提供同样的能力，支持 `--json`。
 - 默认安装所选文件的最新稳定版（没有稳定版才选 Beta/Alpha），并递归安装 `RequiredDependency`；`--no-dependencies` 可关闭。
 - 安装记录写入 `minecraft/.ecl-curseforge.json`，用于去重与后续更新。
