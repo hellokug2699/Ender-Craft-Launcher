@@ -64,7 +64,8 @@ dotnet test tests/ECL.Tests/ECL.Tests.csproj
   损坏/不完整版本 JSON 仍可导入且启动失败缺少原因；多层继承时 `GameVersion` 会被写成加载器配置名。
 - 测试使用假 Java 可执行文件与 `IProcessLauncher`，不下载、不启动真实 Minecraft；
   真实账户、真实游戏与真实共享 `.minecraft` 的实机验收仍需按路线图门槛单独执行。
-- Windows / Linux CI 结果以 `nightly` 分支的最新 `CI` 运行记录为准。
+- Windows / Linux CI：[run #163](https://github.com/hellokug2699/Ender-Craft-Launcher/actions/runs/41182107585)，
+  提交 `c505cde`，`completed` / `success`（Windows 构建、格式检查、测试；Linux 测试）。
 
 ## 5. 已知限制
 
