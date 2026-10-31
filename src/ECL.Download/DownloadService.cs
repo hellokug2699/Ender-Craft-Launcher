@@ -58,10 +58,12 @@ public sealed class DownloadService(
         var failureKinds = new ConcurrentBag<OperationErrorKind>();
 
         var concurrency = Math.Clamp(settings.Get<int>("network.maxConcurrentDownloads"), 1, 64);
+        using var batchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var token = batchCts.Token;
         var parallelOptions = new ParallelOptions
         {
             MaxDegreeOfParallelism = concurrency,
-            CancellationToken = cancellationToken,
+            CancellationToken = token,
         };
 
         using var client = httpClientProvider.CreateClient();
@@ -73,17 +75,26 @@ public sealed class DownloadService(
             allSizesKnown,
             () => IsPaused);
 
+        if (tracker.OperationId is { } operationId)
+        {
+            operations?.AttachControl(
+                operationId,
+                new DownloadBatchControl(
+                    batchCts,
+                    retryToken => DownloadAsync(uniqueRequests, progress, retryToken)));
+        }
+
         tracker.ReportInitial();
 
         try
         {
-            await Parallel.ForEachAsync(uniqueRequests, parallelOptions, async (request, token) =>
+            await Parallel.ForEachAsync(uniqueRequests, parallelOptions, async (request, fileToken) =>
             {
                 var displayName = request.DisplayName ?? Path.GetFileName(request.DestinationPath);
 
                 try
                 {
-                    if (await IsExistingValidAsync(request, token).ConfigureAwait(false))
+                    if (await IsExistingValidAsync(request, fileToken).ConfigureAwait(false))
                     {
                         var size = request.Size ?? GetFileLength(request.DestinationPath);
                         Interlocked.Increment(ref skippedFiles);
@@ -93,14 +104,14 @@ public sealed class DownloadService(
                         return;
                     }
 
-                    await DownloadOneAsync(client, request, tracker, token).ConfigureAwait(false);
+                    await DownloadOneAsync(client, request, tracker, fileToken).ConfigureAwait(false);
                     Interlocked.Increment(ref downloadedFiles);
                     Interlocked.Increment(ref completedFiles);
                     var completedSize = request.Size ?? GetFileLength(request.DestinationPath);
                     Interlocked.Add(ref completedBytes, completedSize);
                     tracker.FileCompleted(displayName, completedSize, skipped: false);
                 }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
                     throw;
                 }
@@ -109,7 +120,7 @@ public sealed class DownloadService(
                     failures.Add($"{displayName}: {exception.Message}");
                     failureKinds.Add(exception is DownloadException download
                         ? download.Kind
-                        : ClassifyFailure(exception, cancellationToken));
+                        : ClassifyFailure(exception, token));
                     logger.LogError(exception, "下载失败：{File}", request.DestinationPath);
                 }
             }).ConfigureAwait(false);
@@ -130,7 +141,7 @@ public sealed class DownloadService(
                 Volatile.Read(ref skippedFiles),
                 Volatile.Read(ref completedBytes));
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             tracker.Cancel();
             throw;
@@ -501,6 +512,30 @@ public sealed class DownloadService(
     private static long GetFileLength(string path) => File.Exists(path) ? new FileInfo(path).Length : 0;
 
     /// <summary>
+    /// 把任务中心的任务绑定到下载批次：取消会触发本批次的内部取消源，
+    /// 重试则重新执行同一个批次（生成新的 Operation，保留旧失败记录）。
+    /// </summary>
+    private sealed class DownloadBatchControl(
+        CancellationTokenSource cancellation,
+        Func<CancellationToken, Task> retry) : IOperationControl
+    {
+        public bool TryCancel()
+        {
+            try
+            {
+                cancellation.Cancel();
+                return true;
+            }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
+        }
+
+        public Func<CancellationToken, Task>? Retry => retry;
+    }
+
+    /// <summary>
     /// 把一个下载批次的进度同时写入旧 <see cref="DownloadProgress"/> 与统一任务中心。
     /// 进度按时间节流，避免每读 80 KB 就触发一次 UI 更新。
     /// </summary>
@@ -563,6 +598,8 @@ public sealed class DownloadService(
                 PublishLocked();
             }
         }
+
+        public Guid? OperationId => _operation?.Id;
 
         public void FileStarted(string file, long? totalBytes, long initialBytes)
         {

@@ -24,6 +24,7 @@ public sealed class OperationService : IOperationService, IOperationStore, IDisp
 {
     private readonly object _gate = new();
     private readonly Dictionary<Guid, OperationEntry> _entries = [];
+    private readonly Dictionary<Guid, IOperationControl> _controls = [];
     private readonly OperationServiceOptions _options;
     private readonly ITimer? _stallTimer;
 
@@ -98,10 +99,85 @@ public sealed class OperationService : IOperationService, IOperationStore, IDisp
         return new OperationHandle(this, id);
     }
 
+    public bool AttachControl(Guid operationId, IOperationControl control)
+    {
+        ArgumentNullException.ThrowIfNull(control);
+        lock (_gate)
+        {
+            if (!_entries.TryGetValue(operationId, out var entry) || entry.IsTerminal)
+            {
+                return false;
+            }
+
+            _controls[operationId] = control;
+            entry.CanRetry = control.Retry is not null;
+            return true;
+        }
+    }
+
+    public bool TryCancel(Guid operationId)
+    {
+        IOperationControl? control;
+        OperationSnapshot? snapshot = null;
+        lock (_gate)
+        {
+            if (!_entries.TryGetValue(operationId, out var entry) || entry.IsTerminal ||
+                !_controls.TryGetValue(operationId, out control))
+            {
+                return false;
+            }
+        }
+
+        if (!control.TryCancel())
+        {
+            return false;
+        }
+
+        lock (_gate)
+        {
+            if (_entries.TryGetValue(operationId, out var entry) && !entry.IsTerminal)
+            {
+                entry.CanCancel = false;
+                entry.UpdatedAt = _options.TimeProvider.GetUtcNow();
+                snapshot = entry.ToSnapshot(entry.UpdatedAt, _options.StallAfter);
+            }
+        }
+
+        RaiseChanged(snapshot);
+        return true;
+    }
+
+    public async Task<bool> RetryAsync(Guid operationId, CancellationToken cancellationToken = default)
+    {
+        Func<CancellationToken, Task>? retry;
+        OperationSnapshot? snapshot = null;
+        lock (_gate)
+        {
+            if (!_entries.TryGetValue(operationId, out var entry) ||
+                entry.State != OperationState.Failed ||
+                !_controls.TryGetValue(operationId, out var control) ||
+                control.Retry is not { } factory)
+            {
+                return false;
+            }
+
+            retry = factory;
+            _controls.Remove(operationId);
+            entry.CanRetry = false;
+            entry.UpdatedAt = _options.TimeProvider.GetUtcNow();
+            snapshot = entry.ToSnapshot(entry.UpdatedAt, _options.StallAfter);
+        }
+
+        RaiseChanged(snapshot);
+        await retry(cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
     public bool Remove(Guid operationId)
     {
         lock (_gate)
         {
+            _controls.Remove(operationId);
             return _entries.Remove(operationId);
         }
     }
@@ -117,6 +193,7 @@ public sealed class OperationService : IOperationService, IOperationStore, IDisp
             foreach (var id in expired)
             {
                 _entries.Remove(id);
+                _controls.Remove(id);
             }
 
             return expired.Length;
@@ -230,6 +307,9 @@ public sealed class OperationService : IOperationService, IOperationStore, IDisp
             entry.State = OperationState.Completed;
             entry.IsPaused = false;
             entry.IsStalled = false;
+            entry.CanCancel = false;
+            entry.CanRetry = false;
+            _controls.Remove(id);
             entry.UpdatedAt = now;
             entry.LastActivityAt = now;
             snapshot = entry.ToSnapshot(now, _options.StallAfter);
@@ -255,6 +335,13 @@ public sealed class OperationService : IOperationService, IOperationStore, IDisp
             entry.Error = error;
             entry.IsPaused = false;
             entry.IsStalled = false;
+            entry.CanCancel = false;
+            if (entry.State == OperationState.Cancelled)
+            {
+                entry.CanRetry = false;
+                _controls.Remove(id);
+            }
+
             entry.UpdatedAt = now;
             snapshot = entry.ToSnapshot(now, _options.StallAfter);
         }
@@ -280,6 +367,9 @@ public sealed class OperationService : IOperationService, IOperationStore, IDisp
                 "任务在结束前被释放。");
             entry.IsPaused = false;
             entry.IsStalled = false;
+            entry.CanCancel = false;
+            entry.CanRetry = false;
+            _controls.Remove(id);
             entry.UpdatedAt = now;
             snapshot = entry.ToSnapshot(now, _options.StallAfter);
         }
@@ -331,6 +421,7 @@ public sealed class OperationService : IOperationService, IOperationStore, IDisp
             }
 
             _entries.Remove(victim.Id);
+            _controls.Remove(victim.Id);
         }
     }
 
@@ -417,9 +508,9 @@ public sealed class OperationService : IOperationService, IOperationStore, IDisp
 
         public string? RetryReason { get; set; }
 
-        public bool CanCancel { get; }
+        public bool CanCancel { get; set; }
 
-        public bool CanRetry { get; }
+        public bool CanRetry { get; set; }
 
         public bool IsPaused { get; set; }
 

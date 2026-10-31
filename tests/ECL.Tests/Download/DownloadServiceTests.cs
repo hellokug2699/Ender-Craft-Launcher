@@ -486,6 +486,84 @@ public sealed class DownloadServiceTests
         Assert.Equal(OperationState.Completed, snapshot.State);
     }
 
+    [Fact]
+    public async Task CancelThroughOperationServiceStopsTheBatch()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var handler = new StubHandler();
+        var operations = new OperationService();
+        var service = CreateService(provider.GetRequiredService<ISettingsService>(), handler, operations);
+        var content = Encoding.UTF8.GetBytes("cancel this");
+        handler.Respond = _ => Ok(content);
+
+        var requested = false;
+        var progress = new CallbackProgress(_ =>
+        {
+            if (requested)
+            {
+                return;
+            }
+
+            var running = operations.Snapshots.FirstOrDefault(snapshot => !snapshot.IsTerminal);
+            if (running is not null)
+            {
+                requested = operations.TryCancel(running.Id);
+            }
+        });
+
+        var request = new DownloadRequest(
+            Path.Combine(environment.Root, "downloads", "cancel-via-operation.bin"),
+            [new Uri("https://example.com/cancel-via-operation.bin")],
+            Size: content.Length);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => service.DownloadAsync([request], progress));
+
+        Assert.True(requested);
+        var snapshot = Assert.Single(operations.Snapshots);
+        Assert.Equal(OperationState.Cancelled, snapshot.State);
+        Assert.False(snapshot.CanCancel);
+    }
+
+    [Fact]
+    public async Task FailedDownloadCanBeRetriedThroughOperationService()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var handler = new StubHandler();
+        var operations = new OperationService();
+        var service = CreateService(provider.GetRequiredService<ISettingsService>(), handler, operations);
+        var content = Encoding.UTF8.GetBytes("retry via operation");
+        var fail = true;
+        handler.Respond = _ => fail
+            ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            : Ok(content);
+
+        var request = new DownloadRequest(
+            Path.Combine(environment.Root, "downloads", "retry-operation.bin"),
+            [new Uri("https://example.com/retry-operation.bin")],
+            Size: content.Length);
+
+        await Assert.ThrowsAsync<DownloadException>(() => service.DownloadAsync([request]));
+
+        var failed = Assert.Single(operations.Snapshots);
+        Assert.Equal(OperationState.Failed, failed.State);
+        Assert.True(failed.CanRetry);
+
+        fail = false;
+        Assert.True(await operations.RetryAsync(failed.Id));
+
+        Assert.Equal(2, operations.Snapshots.Count);
+        Assert.Contains(operations.Snapshots, snapshot => snapshot.State == OperationState.Completed);
+        Assert.Contains(operations.Snapshots, snapshot => snapshot.Id == failed.Id && !snapshot.CanRetry);
+    }
+
+    private sealed class CallbackProgress(Action<DownloadProgress> callback) : IProgress<DownloadProgress>
+    {
+        public void Report(DownloadProgress value) => callback(value);
+    }
+
     private static DownloadService CreateService(
         ISettingsService settings,
         StubHandler handler,

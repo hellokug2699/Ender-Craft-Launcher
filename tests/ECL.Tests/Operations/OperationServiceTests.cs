@@ -244,6 +244,74 @@ public sealed class OperationServiceTests
     }
 
     [Fact]
+    public async Task AttachedControlCanCancelAndRetryAFailedOperation()
+    {
+        using var service = new OperationService();
+        var handle = service.Begin(new OperationStart
+        {
+            Kind = OperationKind.Download,
+            Title = "controllable",
+            CanCancel = true,
+        });
+
+        var retries = 0;
+        var controller = new TestControl
+        {
+            Retry = _ =>
+            {
+                retries++;
+                service.Begin(new OperationStart { Kind = OperationKind.Download, Title = "retried" });
+                return Task.CompletedTask;
+            },
+        };
+        Assert.True(service.AttachControl(handle.Id, controller));
+        Assert.True(handle.Snapshot.CanRetry);
+
+        // 失败前不能重试。
+        Assert.False(await service.RetryAsync(handle.Id));
+
+        Assert.True(service.TryCancel(handle.Id));
+        Assert.Equal(1, controller.CancelCalls);
+
+        handle.Fail(new OperationError(OperationErrorKind.Network, "download.network", "down"));
+        Assert.True(handle.Snapshot.CanRetry);
+
+        Assert.True(await service.RetryAsync(handle.Id));
+        Assert.Equal(1, retries);
+        Assert.Contains(service.Snapshots, snapshot => snapshot.Title == "retried" && snapshot.State == OperationState.Running);
+        Assert.False(handle.Snapshot.CanRetry);
+
+        // 重试只允许启动一次。
+        Assert.False(await service.RetryAsync(handle.Id));
+        handle.Dispose();
+    }
+
+    [Fact]
+    public void AttachingControlToAFinishedOperationIsRejected()
+    {
+        using var service = new OperationService();
+        var handle = service.Begin(new OperationStart { Kind = OperationKind.Generic, Title = "done" });
+        handle.Complete();
+
+        Assert.False(service.AttachControl(handle.Id, new TestControl()));
+        Assert.False(service.TryCancel(handle.Id));
+        handle.Dispose();
+    }
+
+    private sealed class TestControl : IOperationControl
+    {
+        public int CancelCalls { get; private set; }
+
+        public Func<CancellationToken, Task>? Retry { get; init; }
+
+        public bool TryCancel()
+        {
+            CancelCalls++;
+            return true;
+        }
+    }
+
+    [Fact]
     public void RemovesOperationById()
     {
         using var service = new OperationService();
