@@ -26,7 +26,7 @@ internal sealed class WindowsDpapiCredentialStore(IAppPaths paths, ILogger<Windo
             return Result.Fail("auth.secure_storage.unsupported", "当前平台暂不支持 Microsoft 账户安全存储。请在 Windows 上完成登录。");
         }
 
-        if (!AppPaths.IsValidInstanceId(accountId))
+        if (!IsValidAccountId(accountId))
         {
             return Result.Fail("auth.secure_storage.invalid_id", "账户 ID 无效。");
         }
@@ -57,7 +57,7 @@ internal sealed class WindowsDpapiCredentialStore(IAppPaths paths, ILogger<Windo
             return Result<AccountCredentials>.Fail("auth.secure_storage.unsupported", "当前平台暂不支持 Microsoft 账户安全存储。");
         }
 
-        if (!AppPaths.IsValidInstanceId(accountId))
+        if (!IsValidAccountId(accountId))
         {
             return Result<AccountCredentials>.Fail("auth.secure_storage.invalid_id", "账户 ID 无效。");
         }
@@ -91,7 +91,7 @@ internal sealed class WindowsDpapiCredentialStore(IAppPaths paths, ILogger<Windo
             return Task.FromResult(Result.Fail("auth.secure_storage.unsupported", "当前平台暂不支持 Microsoft 账户安全存储。"));
         }
 
-        if (!AppPaths.IsValidInstanceId(accountId))
+        if (!IsValidAccountId(accountId))
         {
             return Task.FromResult(Result.Fail("auth.secure_storage.invalid_id", "账户 ID 无效。"));
         }
@@ -111,17 +111,20 @@ internal sealed class WindowsDpapiCredentialStore(IAppPaths paths, ILogger<Windo
 
     private string GetPath(string accountId) => Path.Combine(paths.AccountsDirectory, $"{FileName}.{accountId}");
 
+    private static bool IsValidAccountId(string accountId) =>
+        !string.IsNullOrWhiteSpace(accountId) && accountId.Length <= 128 && accountId.All(char.IsLetterOrDigit);
+
     private static byte[] Protect(byte[] payload)
     {
-        return CryptProtectData(payload, Entropy, out var errorCode);
+        return CryptProtectData(payload, Entropy);
     }
 
     private static byte[] Unprotect(byte[] payload)
     {
-        return CryptUnprotectData(payload, Entropy, out var errorCode);
+        return CryptUnprotectData(payload, Entropy);
     }
 
-    private static byte[] CryptProtectData(byte[] payload, byte[] entropy, out int errorCode)
+    private static byte[] CryptProtectData(byte[] payload, byte[] entropy)
     {
         var input = CreateBlob(payload);
         var optionalEntropy = CreateBlob(entropy);
@@ -129,11 +132,9 @@ internal sealed class WindowsDpapiCredentialStore(IAppPaths paths, ILogger<Windo
         {
             if (!CryptProtectData(ref input, "ECL account credentials", ref optionalEntropy, IntPtr.Zero, IntPtr.Zero, 0, out var output))
             {
-                errorCode = Marshal.GetLastWin32Error();
-                throw new Win32Exception(errorCode);
+                throw new Win32Exception(Marshal.GetLastWin32Error());
             }
 
-            errorCode = 0;
             return CopyAndFree(output);
         }
         finally
@@ -143,7 +144,7 @@ internal sealed class WindowsDpapiCredentialStore(IAppPaths paths, ILogger<Windo
         }
     }
 
-    private static byte[] CryptUnprotectData(byte[] payload, byte[] entropy, out int errorCode)
+    private static byte[] CryptUnprotectData(byte[] payload, byte[] entropy)
     {
         var input = CreateBlob(payload);
         var optionalEntropy = CreateBlob(entropy);
@@ -151,11 +152,9 @@ internal sealed class WindowsDpapiCredentialStore(IAppPaths paths, ILogger<Windo
         {
             if (!CryptUnprotectData(ref input, IntPtr.Zero, ref optionalEntropy, IntPtr.Zero, IntPtr.Zero, 0, out var output))
             {
-                errorCode = Marshal.GetLastWin32Error();
-                throw new Win32Exception(errorCode);
+                throw new Win32Exception(Marshal.GetLastWin32Error());
             }
 
-            errorCode = 0;
             return CopyAndFree(output);
         }
         finally
@@ -190,9 +189,11 @@ internal sealed class WindowsDpapiCredentialStore(IAppPaths paths, ILogger<Windo
     {
         if (blob.pbData != IntPtr.Zero)
         {
-            CryptographicOperations.ZeroMemory(Marshal.PtrToStructure<byte[]>(blob.pbData));
+            var zero = new byte[blob.cbData];
+            Marshal.Copy(zero, 0, blob.pbData, zero.Length);
             Marshal.FreeHGlobal(blob.pbData);
             blob.pbData = IntPtr.Zero;
+            blob.cbData = 0;
         }
     }
 
