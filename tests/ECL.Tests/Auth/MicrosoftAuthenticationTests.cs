@@ -32,8 +32,8 @@ public sealed class MicrosoftAuthenticationTests
         Assert.InRange((result.Value.MinecraftTokenExpiresAt!.Value - DateTimeOffset.UtcNow).TotalSeconds, 3500, 3600);
 
         Assert.Equal("old-refresh-token", handler.RefreshTokenReceived);
-        Assert.Equal("minecraft-access-token", handler.AuthorizationTokenReceived);
         Assert.Equal("XboxLive.signin offline_access", handler.ScopeReceived);
+        Assert.Equal("XBL3.0 x=user-hash;xsts-token", handler.IdentityTokenReceived);
         Assert.True(handler.XboxRequestWasPascalCase);
         Assert.True(handler.XstsRequestWasPascalCase);
     }
@@ -78,7 +78,7 @@ public sealed class MicrosoftAuthenticationTests
         public int RequestCount { get; private set; }
         public string? RefreshTokenReceived { get; private set; }
         public string? ScopeReceived { get; private set; }
-        public string? AuthorizationTokenReceived { get; private set; }
+        public string? IdentityTokenReceived { get; private set; }
         public bool XboxRequestWasPascalCase { get; private set; }
         public bool XstsRequestWasPascalCase { get; private set; }
 
@@ -140,8 +140,7 @@ public sealed class MicrosoftAuthenticationTests
             {
                 var json = await request.Content!.ReadAsStringAsync(cancellationToken);
                 using var document = JsonDocument.Parse(json);
-                Assert.Equal("XBL3.0 x=user-hash;xsts-token", document.RootElement.GetProperty("identityToken").GetString());
-                AuthorizationTokenReceived = request.Headers.Authorization?.Parameter;
+                IdentityTokenReceived = document.RootElement.GetProperty("identityToken").GetString();
                 return Json(HttpStatusCode.OK, new { access_token = "minecraft-access-token", expires_in = 3600 });
             }
 
