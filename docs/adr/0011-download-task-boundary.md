@@ -2,7 +2,7 @@
 
 ## 状态
 
-Nightly / Proposed
+Superseded（已被 `ECL.Operations` 统一任务模型取代）
 
 ## 背景
 
@@ -10,29 +10,17 @@ Nightly / Proposed
 
 这会导致下载生命周期与页面生命周期耦合：离开下载页后，任务状态没有一个明确的应用层事实来源，后续也容易形成 ViewModel → ViewModel 的依赖。
 
-## 决策
+## 后续决策
 
-引入 `DownloadTask` 与 `IDownloadTaskManager` 作为应用层下载任务边界。
+后续实现没有继续采用本 ADR 提出的 `DownloadTask` / `IDownloadTaskManager` 专用模型，而是采用跨业务的 `ECL.Operations`：
 
-- `IDownloadService`：负责实际的 HTTP / 文件下载执行。
-- `IDownloadTaskManager`：负责任务生命周期、状态、暂停/继续/取消和任务集合。
-- ViewModel：只提交任务并观察任务状态，不直接拥有下载生命周期。
-- Home、Download、Instance 等页面共享同一任务状态，而不是互相调用 ViewModel。
+- `IOperationService` / `IOperationHandle`：任务创建、状态和进度写入。
+- `IOperationStore`：统一读取内存快照与变更事件。
+- 下载服务通过适配器发布 Operation；UI 消费快照，不直接依赖 `DownloadService`。
+- 暂停、取消和重试通过 `IOperationControl` 转交给任务提供者。
+- 安装、Java、整合包、备份等业务逐步迁移到统一模型，不再另建下载专属任务中心。
 
-任务状态固定为：
-
-`Queued → Downloading → Paused → Downloading → Completed`
-
-以及失败 / 取消终态：
-
-`Failed` / `Cancelled`。
-
-## 后续迁移
-
-1. 为现有 `IDownloadController` 建立 `IDownloadTaskManager` 实现。
-2. 将 `DownloadViewModel` 的暂停/继续逻辑迁移到任务管理器。
-3. 将 Java、游戏安装、Content 安装产生的下载统一登记为任务。
-4. 最终禁止 `ViewModel -> ViewModel` 的业务调用。
+当前实际实现与限制以 [operations.md](../operations.md) 为准。
 
 ## 非目标
 
