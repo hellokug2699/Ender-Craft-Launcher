@@ -14,6 +14,8 @@ public interface IAccountService
 
     Task<Result<Account>> AddAsync(Account account, bool makeDefault = false, CancellationToken cancellationToken = default);
 
+    Task<Result<Account>> AddMicrosoftAsync(Account account, AccountCredentials credentials, bool makeDefault = false, CancellationToken cancellationToken = default);
+
     Task<Result> RemoveAsync(string accountId, CancellationToken cancellationToken = default);
 
     Task<Result> SetDefaultAsync(string accountId, CancellationToken cancellationToken = default);
