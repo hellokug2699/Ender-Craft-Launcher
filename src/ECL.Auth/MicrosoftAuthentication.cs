@@ -87,37 +87,37 @@ public sealed class MicrosoftAuthenticationService : IMicrosoftAuthenticationSer
         }
 
         var microsoftToken = await ExchangeCodeAsync(options, code, redirectUri, verifier, cancellationToken).ConfigureAwait(false);
-        if (!microsoftToken.IsSuccess)
+        if (!microsoftToken.Success)
         {
             return Result<Account>.Fail(microsoftToken.Error!.Code, microsoftToken.Error.Message);
         }
 
         var xbox = await AuthenticateXboxAsync(microsoftToken.Value!, cancellationToken).ConfigureAwait(false);
-        if (!xbox.IsSuccess)
+        if (!xbox.Success)
         {
             return Result<Account>.Fail(xbox.Error!.Code, xbox.Error.Message);
         }
 
         var xsts = await GetXstsAsync(xbox.Value!, cancellationToken).ConfigureAwait(false);
-        if (!xsts.IsSuccess)
+        if (!xsts.Success)
         {
             return Result<Account>.Fail(xsts.Error!.Code, xsts.Error.Message);
         }
 
         var minecraft = await LoginMinecraftAsync(xsts.Value!, cancellationToken).ConfigureAwait(false);
-        if (!minecraft.IsSuccess)
+        if (!minecraft.Success)
         {
             return Result<Account>.Fail(minecraft.Error!.Code, minecraft.Error.Message);
         }
 
         var entitlements = await GetEntitlementsAsync(minecraft.Value!, cancellationToken).ConfigureAwait(false);
-        if (!entitlements.IsSuccess)
+        if (!entitlements.Success)
         {
             return Result<Account>.Fail(entitlements.Error!.Code, entitlements.Error.Message);
         }
 
         var profile = await GetProfileAsync(minecraft.Value!, cancellationToken).ConfigureAwait(false);
-        if (!profile.IsSuccess)
+        if (!profile.Success)
         {
             return Result<Account>.Fail(profile.Error!.Code, profile.Error.Message);
         }
@@ -151,24 +151,32 @@ public sealed class MicrosoftAuthenticationService : IMicrosoftAuthenticationSer
 
     private async Task<Result<XboxToken>> AuthenticateXboxAsync(OAuthToken token, CancellationToken cancellationToken)
     {
-        using var content = JsonContent.Create(new
+        using var request = new HttpRequestMessage(HttpMethod.Post, XboxUserAuthEndpoint)
         {
-            Properties = new { AuthMethod = "RPS", SiteName = "user.auth.xboxlive.com", RpsTicket = $"d={token.AccessToken}" },
-            RelyingParty = "http://auth.xboxlive.com",
-            TokenType = "JWT",
-        });
-        return await SendJsonAsync<XboxToken>(HttpMethod.Post, XboxUserAuthEndpoint, content, "auth.xbox", cancellationToken).ConfigureAwait(false);
+            Content = JsonContent.Create(new
+            {
+                Properties = new { AuthMethod = "RPS", SiteName = "user.auth.xboxlive.com", RpsTicket = $"d={token.AccessToken}" },
+                RelyingParty = "http://auth.xboxlive.com",
+                TokenType = "JWT",
+            }),
+        };
+        request.Headers.TryAddWithoutValidation("x-xbl-contract-version", "1");
+        return await SendJsonAsync<XboxToken>(request, "auth.xbox", cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<Result<XstsToken>> GetXstsAsync(XboxToken token, CancellationToken cancellationToken)
     {
-        using var content = JsonContent.Create(new
+        using var request = new HttpRequestMessage(HttpMethod.Post, XstsEndpoint)
         {
-            Properties = new { SandboxId = "RETAIL", UserTokens = new[] { token.Token } },
-            RelyingParty = "rp://api.minecraftservices.com/",
-            TokenType = "JWT",
-        });
-        return await SendJsonAsync<XstsToken>(HttpMethod.Post, XstsEndpoint, content, "auth.xsts", cancellationToken).ConfigureAwait(false);
+            Content = JsonContent.Create(new
+            {
+                Properties = new { SandboxId = "RETAIL", UserTokens = new[] { token.Token } },
+                RelyingParty = "rp://api.minecraftservices.com/",
+                TokenType = "JWT",
+            }),
+        };
+        request.Headers.TryAddWithoutValidation("x-xbl-contract-version", "1");
+        return await SendJsonAsync<XstsToken>(request, "auth.xsts", cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<Result<MinecraftToken>> LoginMinecraftAsync(XstsToken token, CancellationToken cancellationToken)
@@ -182,7 +190,7 @@ public sealed class MicrosoftAuthenticationService : IMicrosoftAuthenticationSer
         using var request = new HttpRequestMessage(HttpMethod.Get, EntitlementsEndpoint);
         request.Headers.Authorization = new("Bearer", token.AccessToken);
         var result = await SendJsonAsync<JsonElement>(request, "auth.entitlements", cancellationToken).ConfigureAwait(false);
-        if (!result.IsSuccess)
+        if (!result.Success)
         {
             return result;
         }
