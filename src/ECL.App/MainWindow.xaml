@@ -82,6 +82,11 @@
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        FontSize="10"
                                        FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding BuildTimeText}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="9"
+                                       Margin="0,2,0,0"
+                                       Visibility="{Binding BuildTimeText, Converter={StaticResource StringToVisibility}}" />
                             <TextBlock Text="{Binding DataDirectory}"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        FontSize="9"

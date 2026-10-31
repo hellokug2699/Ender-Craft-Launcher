@@ -2,6 +2,7 @@
   "app.name": "Ender Craft Launcher",
   "app.tagline": "Your own way to launch Minecraft",
   "nav.instances": "Instances",
+  "app.buildTime": "Built {0}",
   "nav.settings": "Settings",
   "nav.about": "About",
   "common.refresh": "Refresh",

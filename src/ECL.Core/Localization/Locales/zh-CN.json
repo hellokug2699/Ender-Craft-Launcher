@@ -2,6 +2,7 @@
   "app.name": "Ender Craft Launcher",
   "app.tagline": "属于你的 Minecraft 启动方式",
   "nav.instances": "实例",
+  "app.buildTime": "构建于 {0}",
   "nav.settings": "设置",
   "nav.about": "关于",
   "common.refresh": "刷新",
