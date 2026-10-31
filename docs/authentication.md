@@ -1,31 +1,80 @@
 # Microsoft 账户接入说明
 
-> 当前状态：仅预留 Client ID 配置项，Microsoft OAuth / Xbox Live / Minecraft Services 登录尚未实现。
+> 当前状态：Microsoft 正式账户认证链已经在 Windows 11 实机完成验证。ECL 使用 Microsoft OAuth Authorization Code + PKCE，经 Xbox Live、XSTS、Minecraft Services 完成 Java Edition 权益与档案验证，并使用 Windows DPAPI 保存敏感凭据。令牌刷新在不打开浏览器的情况下完成。
 
 ## Client ID 填写位置
 
-打开 ECL **设置 → 全局 → 账户与身份验证 → Microsoft OAuth Client ID**，
-填写 Microsoft Entra 管理中心中应用注册的 **Application (client) ID**（GUID 格式）。
+打开 ECL **设置 → 全局 → 账户与身份验证 → Microsoft OAuth Client ID**，填写 Microsoft Entra 管理中心中应用注册的 **Application (client) ID**（GUID 格式）。
 
-该设置会保存到 ECL 全局配置，但当前版本尚无登录流程读取它，因此填写后不会出现微软登录按钮，
-也不会把离线账户转换为微软账户。
+ECL 桌面应用属于 public client，不配置、不分发 Client Secret。当前公开仓库中的 Client ID 只是应用标识符，不是秘密。
 
-## 应用注册建议
+## 登录流程
 
-正式实现登录时，推荐：
+用户主动点击 Microsoft 登录后，ECL：
 
-- Supported account types：按 ECL 面向的用户群体选择个人 Microsoft 账户（Minecraft 玩家通常需要个人账户）。
-- Platform：Mobile and desktop applications / Public client。
-- OAuth：Authorization Code + PKCE。
-- Redirect URI：桌面应用回环地址，例如 `http://localhost`，并与代码中使用的 URI 完全一致。
-- 不配置、不分发 Client Secret。桌面客户端属于 public client，无法安全保密静态密钥。
+1. 生成 OAuth `state` 与 PKCE `code_verifier`。
+2. 使用 `code_challenge_method=S256` 打开系统默认浏览器。
+3. 使用本地回环地址接收授权回调，并校验返回的 `state`。
+4. 使用 authorization code + `code_verifier` 换取 Microsoft access token 与 refresh token。
+5. 使用 Microsoft token 完成 Xbox Live User Authentication。
+6. 使用 Xbox token 请求 XSTS，relying party 为 `rp://api.minecraftservices.com/`。
+7. 使用 `XBL3.0 x=<userHash>;<xstsToken>` 调用 Minecraft Services `login_with_xbox`。
+8. 检查 Minecraft Java Edition entitlement。
+9. 读取 Minecraft profile，创建 Microsoft 类型账户。
 
-微软登录后仍需完成 Xbox Live、XSTS、Minecraft Services 身份验证和 Minecraft Java Edition 档案检查。
-仅完成 Microsoft OAuth 不代表用户拥有可启动的 Minecraft Java Edition。
+Xbox Live 与 XSTS 请求使用服务端要求的 `x-xbl-contract-version: 1`，请求 JSON 属性名保持协议要求的 PascalCase；Microsoft token 响应中的 `access_token` / `refresh_token` 等 snake_case 字段显式映射。
 
-## 当前实现边界
+## 回环地址
 
-- 已有：全局 Client ID 设置字段、账户模型中的 Microsoft 类型占位。
-- 尚无：浏览器授权、PKCE、回调监听、token 刷新、安全令牌存储、Xbox/XSTS/Minecraft 令牌交换、
-  正版档案验证和 Microsoft 账户管理 UI。
-- 因此不要把 Client ID 或任何 token 写入源代码，也不要把当前字段描述为已可用的微软登录功能。
+当前桌面授权使用 `localhost` 回环地址。Microsoft Entra 对桌面应用的 localhost 回环地址具有特殊匹配规则；不要在不确认配置与平台行为的情况下把它改回 `127.0.0.1`。
+
+## 凭据存储
+
+Microsoft access token、refresh token 和 Minecraft token 的过期时间不会写入普通账户 JSON。Windows 环境使用 DPAPI 加密存储，并在账户重新加载时恢复到内存。
+
+诊断包、CLI 输出、GUI 启动命令预览不会输出完整 access token；敏感 token 在需要展示时仅保留首尾少量字符。
+
+不要把任何 token、authorization code、Client Secret 或密码提交到 Git 仓库，也不要写入普通日志。
+
+## 静默刷新
+
+启动或其他需要有效 Minecraft token 的操作可以检查 token 剩余有效期。默认在距离 Minecraft token 过期不足 30 分钟时静默刷新；如果过期时间未知，优先从 token 自身的 `exp` claim 推断。
+
+刷新流程为：
+
+```text
+Microsoft refresh token
+        ↓
+Microsoft access token
+        ↓
+Xbox Live
+        ↓
+XSTS
+        ↓
+Minecraft Services
+        ↓
+新的 Minecraft access token
+```
+
+如果 Microsoft 返回轮换后的 refresh token，ECL 会持久化新的 refresh token。刷新不应自动打开浏览器；只有 refresh token 无法继续使用并需要重新授权时，才应提示用户重新登录。
+
+## 实机验证
+
+认证链已经在 Windows 11、通过 Microsoft/Mojang AppID allow list 审核的 Client ID 和真实 Minecraft 账户上完成实机验证。验证过程中发现并修复了以下真实环境问题：
+
+- Microsoft token JSON 字段未正确映射为 C# 属性，导致 token 实际为 `null`。
+- Xbox Live / XSTS 请求 JSON 大小写不符合服务端要求，导致 HTTP 400。
+- Entra loopback 地址使用 `127.0.0.1` 时触发 `invalid_request`，改为 `localhost`。
+- 同名但不同类型的账户不能共存。
+- access token 出现在 CLI、GUI 命令预览和诊断输出中，现已脱敏。
+
+这些问题均以修复提交进入 `nightly`，并应通过回归测试持续保护。
+
+## 当前边界
+
+- 已实现：Microsoft OAuth、PKCE、浏览器回调、Xbox Live、XSTS、Minecraft Services、Java Edition entitlement、Minecraft profile、Windows DPAPI、安全 token 脱敏、静默刷新。
+- 已完成：真实账户端到端实机验证。
+- 仍需完善：账户注销 / 凭据彻底清理体验、refresh token 失效后的重新授权状态、跨平台安全凭据存储，以及完整账户管理 UI。
+- 尚无：authlib-injector 第三方认证。
+
+仅完成 Microsoft OAuth 不代表用户拥有可启动的 Minecraft Java Edition；ECL 必须继续完成 Xbox / XSTS / Minecraft Services 和 Java Edition entitlement 检查。
