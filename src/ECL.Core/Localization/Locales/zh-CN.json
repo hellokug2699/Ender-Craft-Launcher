@@ -285,7 +285,7 @@
   "about.license": "许可证：GPL-3.0-or-later",
   "about.disclaimer": "Minecraft 是 Mojang Studios 的商标。本项目与 Mojang 或 Microsoft 无关联。",
   "about.fontsLabel": "界面字体",
-  "about.fonts": "HarmonyOS Sans SC（© Huawei Device Co., Ltd.，HarmonyOS Sans Fonts License Agreement）",
+  "about.fonts": "HarmonyOS Sans SC（Regular / Medium / Bold，© Huawei Device Co., Ltd.，HarmonyOS Sans Fonts License Agreement）",
   "option.network.downloadSource.officialOnly": "只使用官方源",
   "option.network.downloadSource.officialFirst": "优先官方，其次镜像",
   "option.network.downloadSource.mirrorFirst": "优先镜像，其次官方",

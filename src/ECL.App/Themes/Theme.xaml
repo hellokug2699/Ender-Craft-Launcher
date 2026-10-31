@@ -68,10 +68,13 @@
     <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="{StaticResource ScrollThumbHoverColor}" />
 
     <!--
-        内嵌 UI 字体：HarmonyOS Sans SC（Regular / Bold），随程序分发且未做任何修改。
+        内嵌 UI 字体：HarmonyOS Sans SC（Regular / Medium / Bold 三个静态字面），
+        随程序分发且未做任何修改。Medium 的内部家族名为 “HarmonyOS Sans SC Medium”，
+        因此必须使用独立的 FontFamily 资源，不能只设置 FontWeight=Medium 让 WPF 合成。
         字体许可证见 Fonts/HarmonyOS_Sans_LICENSE.txt；缺失字符时由 WPF 回退到系统字体。
     -->
     <FontFamily x:Key="UiFontFamily">pack://application:,,,/Fonts/#HarmonyOS Sans SC</FontFamily>
+    <FontFamily x:Key="UiMediumFontFamily">pack://application:,,,/Fonts/#HarmonyOS Sans SC Medium</FontFamily>
 
     <Style TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -80,11 +83,21 @@
         <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
     </Style>
 
+    <!-- 强调/次要标题：使用真实 Medium 字面，避免合成粗细。 -->
+    <Style x:Key="EmphasisText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontFamily" Value="{StaticResource UiMediumFontFamily}" />
+    </Style>
+
+    <!-- 页面主标题/强强调：使用真实 Bold 字面。 -->
+    <Style x:Key="HeadingText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+
     <Style x:Key="TitleText" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
         <Setter Property="FontSize" Value="28" />
-        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontWeight" Value="Bold" />
     </Style>
 
     <Style x:Key="SubtitleText" TargetType="TextBlock">
@@ -96,16 +109,14 @@
 
     <Style x:Key="SectionText" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
+        <Setter Property="FontFamily" Value="{StaticResource UiMediumFontFamily}" />
         <Setter Property="FontSize" Value="14" />
-        <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <Style x:Key="LabelText" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
+        <Setter Property="FontFamily" Value="{StaticResource UiMediumFontFamily}" />
         <Setter Property="FontSize" Value="11" />
-        <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Margin" Value="0,0,0,7" />
     </Style>
 
@@ -132,7 +143,7 @@
         <Setter Property="Padding" Value="16,8" />
         <Setter Property="MinHeight" Value="36" />
         <Setter Property="FontSize" Value="12" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
+        <Setter Property="FontFamily" Value="{StaticResource UiMediumFontFamily}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -176,7 +187,6 @@
         <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="18,8" />
-        <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">

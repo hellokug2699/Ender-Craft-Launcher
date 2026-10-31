@@ -32,7 +32,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="{Binding Title}"
                                    FontSize="12"
-                                   FontWeight="SemiBold"
+                                   Style="{StaticResource EmphasisText}"
                                    TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1"
@@ -152,7 +152,7 @@
                             <TextBlock Text="ENDER CRAFT LAUNCHER"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        FontSize="8"
-                                       FontWeight="SemiBold"
+                                       Style="{StaticResource EmphasisText}"
                                        Margin="0,1,0,0" />
                         </StackPanel>
                     </Grid>
@@ -163,7 +163,7 @@
                     <TextBlock Text="NAVIGATION"
                                Foreground="{DynamicResource TextMutedBrush}"
                                FontSize="9"
-                               FontWeight="SemiBold"
+                               Style="{StaticResource EmphasisText}"
                                Margin="12,0,0,7" />
                     <ListBox ItemsSource="{Binding NavItems}"
                              SelectedItem="{Binding SelectedNavItem, Mode=TwoWay}"
@@ -189,7 +189,7 @@
                             <TextBlock Text="{Binding VersionText}"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        FontSize="10"
-                                       FontWeight="SemiBold" />
+                                       Style="{StaticResource EmphasisText}" />
                             <TextBlock Text="{Binding BuildTimeText}"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        FontSize="9"
@@ -238,7 +238,7 @@
                         <TextBlock Text="{loc:Loc Key=operations.active}"
                                    Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="9"
-                                   FontWeight="SemiBold"
+                                   Style="{StaticResource EmphasisText}"
                                    Margin="0,0,0,2" />
                         <ItemsControl ItemsSource="{Binding OperationCenter.ActiveOperations}"
                                       ItemTemplate="{StaticResource OperationItemTemplate}" />
@@ -248,7 +248,7 @@
                         <TextBlock Text="{loc:Loc Key=operations.recent}"
                                    Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="9"
-                                   FontWeight="SemiBold"
+                                   Style="{StaticResource EmphasisText}"
                                    Margin="0,0,0,2" />
                         <ItemsControl ItemsSource="{Binding OperationCenter.RecentOperations}"
                                       ItemTemplate="{StaticResource OperationItemTemplate}" />

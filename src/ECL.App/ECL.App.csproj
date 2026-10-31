@@ -25,6 +25,7 @@
     <Resource Include="ECL.ico" />
     <!-- HarmonyOS Sans SC：随程序内嵌，未做任何修改；许可证文本随输出分发。 -->
     <Resource Include="Fonts\HarmonyOS_Sans_SC_Regular.ttf" />
+    <Resource Include="Fonts\HarmonyOS_Sans_SC_Medium.ttf" />
     <Resource Include="Fonts\HarmonyOS_Sans_SC_Bold.ttf" />
     <Content Include="Fonts\HarmonyOS_Sans_LICENSE.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

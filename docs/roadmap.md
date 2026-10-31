@@ -211,6 +211,7 @@ flowchart TD
 ### 3.3 可访问性与诊断
 
 - [ ] 完善键盘导航、焦点顺序、焦点可见性和读屏名称。
+- [x] 字体排版：接入 HarmonyOS Sans SC Regular / Medium / Bold 三个静态字面，正文、强调与标题使用共享 token；详见 [typography.md](typography.md)。
 - [x] 页面滚动：嵌套 `ListBox` / 内层滚动区不再吞掉滚轮；内层到边界后转交页面根 `ScrollViewer`。
 - [ ] 为安装 / 启动失败提供稳定错误代码、原因和下一步建议。
 - [ ] 检查日志、诊断包、CLI 输出和命令预览的凭据脱敏。

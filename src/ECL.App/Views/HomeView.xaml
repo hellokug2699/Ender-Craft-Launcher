@@ -42,10 +42,10 @@
                             <TextBlock Text="准备启动" Style="{StaticResource LabelText}"
                                        Foreground="{DynamicResource AccentBrush}" />
                             <TextBlock Text="{Binding Launcher.SelectedInstanceName}"
-                                       FontSize="30" FontWeight="SemiBold" Margin="0,4,0,0"
+                                       FontSize="30" Style="{StaticResource HeadingText}" Margin="0,4,0,0"
                                        TextTrimming="CharacterEllipsis"
                                        Visibility="{Binding Launcher.HasSelection, Converter={StaticResource BoolToVisibility}}" />
-                            <TextBlock Text="还没有选择实例" FontSize="24" FontWeight="SemiBold" Margin="0,4,0,0"
+                            <TextBlock Text="还没有选择实例" FontSize="24" Style="{StaticResource HeadingText}" Margin="0,4,0,0"
                                        Visibility="{Binding Launcher.HasSelection, Converter={StaticResource InverseBoolToVisibility}}" />
                             <TextBlock Text="{Binding Launcher.SelectedInstanceMeta}"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
@@ -77,13 +77,13 @@
                         <TextBlock Text="运行环境" Style="{StaticResource SectionText}" />
                         <TextBlock Text="{loc:Loc Key=instances.java.title}"
                                    Foreground="{DynamicResource TextMutedBrush}" FontSize="10"
-                                   FontWeight="SemiBold" Margin="0,12,0,0" />
+                                   Style="{StaticResource EmphasisText}" Margin="0,12,0,0" />
                         <TextBlock Text="{Binding Launcher.JavaStatus}"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    FontSize="11" TextWrapping="Wrap" Margin="0,5,0,0" />
                         <Border Height="1" Background="{DynamicResource BorderSoftBrush}" Margin="0,14,0,12" />
                         <TextBlock Text="{loc:Loc Key=instances.accountTitle}"
-                                   Foreground="{DynamicResource TextMutedBrush}" FontSize="10" FontWeight="SemiBold" />
+                                   Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Style="{StaticResource EmphasisText}" />
                         <TextBlock Text="{Binding Launcher.SelectedAccount.DisplayName}"
                                    FontSize="12" Margin="0,5,0,0" TextWrapping="Wrap" />
                         <Border Height="1" Background="{DynamicResource BorderSoftBrush}" Margin="0,14,0,12" />
@@ -122,7 +122,7 @@
                     <DataTemplate>
                         <Border Style="{StaticResource Card}" Width="220" Padding="14" Margin="0,0,10,0">
                             <StackPanel>
-                                <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
+                                <TextBlock Text="{Binding Name}" FontSize="12" Style="{StaticResource EmphasisText}"
                                            TextTrimming="CharacterEllipsis" />
                                 <TextBlock Text="{Binding VersionText}" Foreground="{DynamicResource AccentBrush}"
                                            FontSize="10" Margin="0,6,0,0" />
@@ -138,7 +138,7 @@
             <UniformGrid Columns="3" Margin="0,0,0,18">
                 <Border Style="{StaticResource Card}" Padding="16" Margin="0,0,10,0">
                     <StackPanel>
-                        <TextBlock Text="发现内容" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="发现内容" FontSize="14" Style="{StaticResource EmphasisText}" />
                         <TextBlock Text="搜索 Mod、整合包、数据包、资源包与光影包。"
                                    Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10"
                                    TextWrapping="Wrap" Margin="0,7,0,12" />
@@ -148,7 +148,7 @@
                 </Border>
                 <Border Style="{StaticResource Card}" Padding="16" Margin="0,0,10,0">
                     <StackPanel>
-                        <TextBlock Text="实例管理" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="实例管理" FontSize="14" Style="{StaticResource EmphasisText}" />
                         <TextBlock Text="创建实例、安装游戏与加载器，管理 Java 运行环境。"
                                    Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10"
                                    TextWrapping="Wrap" Margin="0,7,0,12" />
@@ -158,7 +158,7 @@
                 </Border>
                 <Border Style="{StaticResource Card}" Padding="16">
                     <StackPanel>
-                        <TextBlock Text="已安装内容" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="已安装内容" FontSize="14" Style="{StaticResource EmphasisText}" />
                         <TextBlock Text="在实例工作区中检查 Mod 状态、依赖与冲突，管理已安装的内容。"
                                    Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10"
                                    TextWrapping="Wrap" Margin="0,7,0,12" />
@@ -192,9 +192,9 @@
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="{Binding StatusText}"
                                                Foreground="{Binding Status, Converter={StaticResource LaunchStatusBrush}}"
-                                               FontSize="10" FontWeight="SemiBold" />
+                                               FontSize="10" Style="{StaticResource EmphasisText}" />
                                     <StackPanel Grid.Column="1" Margin="8,0,8,0">
-                                        <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Title}" FontSize="11" Style="{StaticResource EmphasisText}" />
                                         <TextBlock Text="{Binding Message}" Foreground="{DynamicResource TextSecondaryBrush}"
                                                    FontSize="10" TextWrapping="Wrap" />
                                     </StackPanel>

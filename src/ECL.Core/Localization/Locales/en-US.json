@@ -285,7 +285,7 @@
   "about.license": "License: GPL-3.0-or-later",
   "about.disclaimer": "Minecraft is a trademark of Mojang Studios. This project is not affiliated with Mojang or Microsoft.",
   "about.fontsLabel": "UI font",
-  "about.fonts": "HarmonyOS Sans SC (© Huawei Device Co., Ltd., HarmonyOS Sans Fonts License Agreement)",
+  "about.fonts": "HarmonyOS Sans SC (Regular / Medium / Bold, © Huawei Device Co., Ltd., HarmonyOS Sans Fonts License Agreement)",
   "option.network.downloadSource.officialOnly": "Official only",
   "option.network.downloadSource.officialFirst": "Official first, then mirror",
   "option.network.downloadSource.mirrorFirst": "Mirror first, then official",

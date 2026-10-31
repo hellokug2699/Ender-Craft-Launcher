@@ -342,7 +342,7 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - Microsoft OAuth / Xbox / XSTS / Minecraft Services 与 Authlib-Injector/Yggdrasil 均已实现；Windows DPAPI 凭据保护已实现，跨平台安全凭据存储仍是缺口。账户管理 UI 的注销、凭据清理与失效重认证体验仍待完善。
 - 未实现更新器与签名验证；签名脚本已预留。
 - 未实现下载限速；并发、重试、续传、暂停/恢复已生效。
-- 界面固定为 ECL 深色主题（浅色模式已移除），内嵌 HarmonyOS Sans SC 字体；主题刷子统一使用 `DynamicResource`，避免样式解析时捕获旧颜色。托盘、完整 i18n 热切换与更细的无障碍仍在路线图中。
+- 界面固定为 ECL 深色主题（浅色模式已移除），内嵌 HarmonyOS Sans SC 的 Regular / Medium / Bold 三个静态字面；正文、强调与标题通过共享排版 token 区分，主题刷子统一使用 `DynamicResource`。字体与许可细节见 [typography.md](typography.md)。托盘、完整 i18n 热切换与更细的无障碍仍在路线图中。
 - 崩溃分析基于日志/崩溃报告文本与 Mod 元数据排序，不是完整的符号化解析；诊断包导出已做脱敏，详见 [diagnostics.md](diagnostics.md)。
 - CurseForge 与 Modrinth 的搜索、一键安装、整合包远程下载与 `.mrpack` 自动建实例导入已完成；不做 Mod 更新检查、可选依赖选择，作者禁止第三方分发或无 CDN 地址的文件无法下载。实例工作区可按 Mod 元数据精确匹配并下载缺失的强制依赖；无法匹配时只提示手动搜索。
 - 实例创建页从 Mojang 版本清单选择正式版 / 快照版 / 愚人节版；愚人节版本依赖固定 ID 列表识别，新版本出现时需要更新列表。旧版 alpha/beta 不参与实例创建。

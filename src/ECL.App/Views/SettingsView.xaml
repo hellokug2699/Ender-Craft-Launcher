@@ -14,7 +14,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Margin="0,0,16,0">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding DisplayName}" FontSize="12" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding DisplayName}" FontSize="12" Style="{StaticResource EmphasisText}" />
                             <Border Style="{StaticResource Badge}"
                                     Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="{loc:Loc Key=common.restartRequired}"
@@ -53,7 +53,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Margin="0,0,16,0">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding DisplayName}" FontSize="12" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding DisplayName}" FontSize="12" Style="{StaticResource EmphasisText}" />
                             <Border Style="{StaticResource Badge}"
                                     Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="{loc:Loc Key=common.restartRequired}"
@@ -98,7 +98,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Margin="0,0,16,0">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding DisplayName}" FontSize="12" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding DisplayName}" FontSize="12" Style="{StaticResource EmphasisText}" />
                             <Border Style="{StaticResource Badge}"
                                     Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="{loc:Loc Key=common.restartRequired}"
@@ -138,7 +138,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Margin="0,0,16,0">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding DisplayName}" FontSize="12" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding DisplayName}" FontSize="12" Style="{StaticResource EmphasisText}" />
                             <Border Style="{StaticResource Badge}"
                                     Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="{loc:Loc Key=common.restartRequired}"
@@ -186,7 +186,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel Margin="0,0,16,0">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding DisplayName}" FontSize="12" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding DisplayName}" FontSize="12" Style="{StaticResource EmphasisText}" />
                             <Border Style="{StaticResource Badge}"
                                     Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
                                 <TextBlock Text="{loc:Loc Key=common.restartRequired}"
@@ -295,7 +295,7 @@
                             <StackPanel>
                                 <TextBlock Text="{Binding Title}"
                                            FontSize="15"
-                                           FontWeight="SemiBold"
+                                           Style="{StaticResource EmphasisText}"
                                            Margin="0,0,0,4" />
                                 <ItemsControl ItemsSource="{Binding Options}"
                                               ItemTemplateSelector="{StaticResource OptionTemplateSelector}">

@@ -67,7 +67,7 @@
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Name}" FontSize="16" Style="{StaticResource EmphasisText}" TextTrimming="CharacterEllipsis" />
                                     <WrapPanel Margin="0,8,0,0">
                                         <Border Style="{StaticResource Badge}" Margin="0,0,6,0">
                                             <TextBlock Text="{Binding MinecraftVersionText}" FontSize="10" Foreground="{DynamicResource AccentHoverBrush}" />

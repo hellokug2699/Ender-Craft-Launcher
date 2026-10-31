@@ -19,7 +19,7 @@
                 <Grid>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Text="{Binding Instances.SelectedInstanceName}" FontSize="27" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Instances.SelectedInstanceName}" FontSize="27" Style="{StaticResource HeadingText}" />
                         <TextBlock Text="{Binding Instances.SelectedInstanceMeta}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,6,0,0" />
                         <TextBlock Text="{Binding Instances.SelectedInstanceComponents}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" />
                         <TextBlock Text="{Binding Instances.SelectedInstancePath}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Instances.SelectedInstancePath}" />
@@ -177,7 +177,7 @@
                                 <Grid Margin="5,4">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                     <StackPanel>
-                                        <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Name}" FontSize="11" Style="{StaticResource EmphasisText}" />
                                         <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="0,3,0,0" />
                                         <TextBlock Text="{Binding RecommendationText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="9" TextWrapping="Wrap" Visibility="{Binding HasIssues, Converter={StaticResource BoolToVisibility}}" />
                                         <TextBlock Text="{Binding IssuesText}" Foreground="{DynamicResource DangerBrush}" FontSize="9" TextWrapping="Wrap" Visibility="{Binding HasIssues, Converter={StaticResource BoolToVisibility}}" />
@@ -197,7 +197,7 @@
                         <Expander.Header>
                             <TextBlock Text="{loc:Loc Key=mods.section.dependencies}"
                                        FontSize="12"
-                                       FontWeight="SemiBold" />
+                                       Style="{StaticResource EmphasisText}" />
                         </Expander.Header>
                         <StackPanel>
                             <TextBlock Text="{loc:Loc Key=mods.dependenciesHint}"
@@ -237,7 +237,7 @@
                         <Expander.Header>
                             <TextBlock Text="{loc:Loc Key=mods.section.modpack}"
                                        FontSize="12"
-                                       FontWeight="SemiBold" />
+                                       Style="{StaticResource EmphasisText}" />
                         </Expander.Header>
                         <WrapPanel Margin="0,4,0,0">
                             <Button Content="{loc:Loc Key=instance.detail.importModpack}"
@@ -256,7 +256,7 @@
                         <Expander.Header>
                             <TextBlock Text="{loc:Loc Key=mods.section.packs}"
                                        FontSize="12"
-                                       FontWeight="SemiBold" />
+                                       Style="{StaticResource EmphasisText}" />
                         </Expander.Header>
                         <StackPanel>
                             <Grid Margin="0,4,0,0">
@@ -274,7 +274,7 @@
                                         <Grid Margin="5,3">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                             <StackPanel>
-                                                <TextBlock Text="{Binding Name}" FontSize="10" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Name}" FontSize="10" Style="{StaticResource EmphasisText}" />
                                                 <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
                                             </StackPanel>
                                             <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="9" VerticalAlignment="Center" />
@@ -329,9 +329,9 @@
                             <DataTemplate>
                                 <Grid Margin="0,3">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="58" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding StatusText}" Foreground="{Binding Status, Converter={StaticResource LaunchStatusBrush}}" FontSize="10" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding StatusText}" Foreground="{Binding Status, Converter={StaticResource LaunchStatusBrush}}" FontSize="10" Style="{StaticResource EmphasisText}" />
                                     <StackPanel Grid.Column="1" Margin="8,0,8,0">
-                                        <TextBlock Text="{Binding Title}" FontSize="10" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Title}" FontSize="10" Style="{StaticResource EmphasisText}" />
                                         <TextBlock Text="{Binding Message}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="9" TextWrapping="Wrap" />
                                     </StackPanel>
                                     <TextBlock Grid.Column="2" Text="{Binding DurationText}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />

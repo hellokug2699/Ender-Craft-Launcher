@@ -32,7 +32,7 @@
                         <TextBlock Text="ENDER CRAFT LAUNCHER"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    FontSize="10"
-                                   FontWeight="SemiBold"
+                                   Style="{StaticResource EmphasisText}"
                                    Margin="0,2,0,0" />
                         <TextBlock Text="{loc:Loc Key=about.description}"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
@@ -52,7 +52,7 @@
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <TextBlock Text="{loc:Loc Key=about.version}" Style="{StaticResource LabelText}" />
-                        <TextBlock Text="{Binding Version}" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Version}" FontSize="16" Style="{StaticResource HeadingText}" />
                         <TextBlock Text="{loc:Loc Key=about.runtime}" Style="{StaticResource LabelText}" Margin="0,16,0,0" />
                         <TextBlock Text="{Binding Runtime}" FontSize="12" />
                     </StackPanel>
