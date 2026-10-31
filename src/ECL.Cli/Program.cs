@@ -117,6 +117,11 @@ internal static class Program
           account login-microsoft [--default]
                                           打开浏览器完成 Microsoft 登录（实机验证用）
           account refresh [账户ID]        静默刷新 Microsoft 凭据（不打开浏览器）
+          account login-thirdparty <服务器ID|地址> --username <用户名> [--default]
+                                          使用第三方认证服务器登录（密码不回显）
+          authserver list [--json]        列出已添加的认证服务器
+          authserver add <地址>           添加认证服务器并校验元数据
+          authserver remove <ID>          删除认证服务器
           account remove <账户ID>         删除账户
           account default <账户ID>        设为默认账户
 

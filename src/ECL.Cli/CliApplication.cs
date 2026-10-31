@@ -56,6 +56,7 @@ internal sealed class CliApplication
             "settings" => SettingsCommand(rest),
             "java" => await JavaCommandAsync(rest).ConfigureAwait(false),
             "account" => await AccountCommandAsync(rest).ConfigureAwait(false),
+            "authserver" => await AuthServerCommandAsync(rest).ConfigureAwait(false),
             "help" => PrintHelp(),
             _ => UsageError($"未知命令：{command}"),
         };
@@ -775,6 +776,55 @@ internal sealed class CliApplication
                     return 0;
                 }
 
+            case "login-thirdparty":
+                {
+                    var servers = _provider.GetRequiredService<IAuthServerService>();
+                    var serverArg = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(serverArg))
+                    {
+                        return UsageError("account login-thirdparty 需要认证服务器 ID 或地址。");
+                    }
+
+                    var username = _commandLine.GetValue("username");
+                    if (string.IsNullOrWhiteSpace(username))
+                    {
+                        return UsageError("account login-thirdparty 需要 --username。");
+                    }
+
+                    var server = await servers.ResolveAsync(serverArg).ConfigureAwait(false);
+                    if (!server.IsSuccess)
+                    {
+                        return WriteError(server.Error);
+                    }
+
+                    // 密码只用于本次认证：不回显、不写入日志、不持久化。
+                    var password = ReadPassword(
+                        $"请输入 {username} 在 {server.Value!.Name} 的密码（不会回显，也不会保存）：");
+                    if (string.IsNullOrEmpty(password))
+                    {
+                        return WriteError(new EclError(
+                            "auth.thirdparty_credentials_required",
+                            "密码不能为空。"));
+                    }
+
+                    var signedIn = await accounts
+                        .SignInThirdPartyAsync(
+                            server.Value.Id,
+                            username,
+                            password,
+                            _commandLine.HasFlag("default"))
+                        .ConfigureAwait(false);
+                    if (!signedIn.IsSuccess)
+                    {
+                        return WriteError(signedIn.Error);
+                    }
+
+                    Console.WriteLine($"第三方登录成功：{signedIn.Value!.Name}");
+                    Console.WriteLine($"  UUID   : {signedIn.Value.Uuid}");
+                    Console.WriteLine($"  服务器 : {server.Value.Name} ({server.Value.Id})");
+                    return 0;
+                }
+
             case "login-microsoft":
                 {
                     var authentication = _provider.GetRequiredService<IMicrosoftAuthenticationService>();
@@ -907,8 +957,16 @@ internal sealed class CliApplication
     private async Task<int> ListAccountsAsync()
     {
         var accounts = _provider.GetRequiredService<IAccountService>();
+        var servers = _provider.GetRequiredService<IAuthServerService>();
         var list = await accounts.GetAccountsAsync().ConfigureAwait(false);
         var defaultAccount = await accounts.GetDefaultAccountAsync().ConfigureAwait(false);
+        var serverById = (await servers.GetServersAsync().ConfigureAwait(false))
+            .ToDictionary(server => server.Id, StringComparer.Ordinal);
+
+        string DescribeServer(Account account) =>
+            account.AuthServerId is { Length: > 0 } id
+                ? serverById.TryGetValue(id, out var server) ? server.Name : id
+                : string.Empty;
 
         if (_commandLine.HasFlag("json"))
         {
@@ -918,6 +976,8 @@ internal sealed class CliApplication
                 type = account.Type.ToString().ToLowerInvariant(),
                 account.Name,
                 account.Uuid,
+                account.AuthServerId,
+                authServer = DescribeServer(account),
                 isDefault = account.Id == defaultAccount?.Id,
             });
             Console.WriteLine(JsonSerializer.Serialize(items, EclJson.Indented));
@@ -933,10 +993,84 @@ internal sealed class CliApplication
         foreach (var account in list)
         {
             var marker = account.Id == defaultAccount?.Id ? "*" : " ";
-            Console.WriteLine($"{marker} {account.Id}  {account.Name}  {account.Type}  {account.Uuid}");
+            var server = DescribeServer(account);
+            var suffix = server.Length > 0 ? $"  @{server}" : string.Empty;
+            Console.WriteLine($"{marker} {account.Id}  {account.Name}  {account.Type}  {account.Uuid}{suffix}");
         }
 
         return 0;
+    }
+
+    private async Task<int> AuthServerCommandAsync(string[] args)
+    {
+        var servers = _provider.GetRequiredService<IAuthServerService>();
+
+        if (args.Length == 0 || string.Equals(args[0], "list", StringComparison.OrdinalIgnoreCase))
+        {
+            var list = await servers.GetServersAsync().ConfigureAwait(false);
+            if (_commandLine.HasFlag("json"))
+            {
+                Console.WriteLine(JsonSerializer.Serialize(list, EclJson.Indented));
+                return 0;
+            }
+
+            if (list.Count == 0)
+            {
+                Console.WriteLine("暂无认证服务器。使用 authserver add <地址> 添加。");
+                return 0;
+            }
+
+            foreach (var server in list)
+            {
+                Console.WriteLine($"{server.Id}  {server.Name}  {server.Url}");
+            }
+
+            return 0;
+        }
+
+        switch (args[0].ToLowerInvariant())
+        {
+            case "add":
+                {
+                    var url = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(url))
+                    {
+                        return UsageError("authserver add 需要认证服务器 API 根地址。");
+                    }
+
+                    var added = await servers.AddAsync(url).ConfigureAwait(false);
+                    if (!added.IsSuccess)
+                    {
+                        return WriteError(added.Error);
+                    }
+
+                    Console.WriteLine($"已添加认证服务器 {added.Value!.Name}");
+                    Console.WriteLine($"  ID  : {added.Value.Id}");
+                    Console.WriteLine($"  API : {added.Value.Url}");
+                    return 0;
+                }
+
+            case "remove":
+                {
+                    var id = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(id))
+                    {
+                        return UsageError("authserver remove 需要认证服务器 ID。");
+                    }
+
+                    var removed = await servers.RemoveAsync(id).ConfigureAwait(false);
+                    if (!removed.IsSuccess)
+                    {
+                        return WriteError(removed.Error);
+                    }
+
+                    Console.WriteLine($"已删除认证服务器 {id}");
+                    return 0;
+                }
+
+            default:
+                return UsageError($"未知的 authserver 子命令：{args[0]}");
+        }
     }
 
     private async Task<int> ModCommandAsync(string[] args)
@@ -1713,6 +1847,47 @@ internal sealed class CliApplication
         Console.WriteLine($"正在打开系统浏览器：{uri.GetLeftPart(UriPartial.Path)}");
         Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 读取密码：交互式终端下不回显；输入被重定向时按一行读取。
+    /// 密码只用于本次认证调用，不会写入日志或磁盘。
+    /// </summary>
+    private static string ReadPassword(string prompt)
+    {
+        Console.Write(prompt);
+        if (Console.IsInputRedirected)
+        {
+            var piped = Console.ReadLine();
+            Console.WriteLine();
+            return piped ?? string.Empty;
+        }
+
+        var buffer = new System.Text.StringBuilder();
+        while (true)
+        {
+            var key = Console.ReadKey(intercept: true);
+            if (key.Key == ConsoleKey.Enter)
+            {
+                Console.WriteLine();
+                return buffer.ToString();
+            }
+
+            if (key.Key == ConsoleKey.Backspace)
+            {
+                if (buffer.Length > 0)
+                {
+                    buffer.Length--;
+                }
+
+                continue;
+            }
+
+            if (!char.IsControl(key.KeyChar))
+            {
+                buffer.Append(key.KeyChar);
+            }
+        }
     }
 
     private int UsageError(string message)

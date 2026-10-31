@@ -280,7 +280,8 @@ public sealed partial class AccountService : IAccountService
         }
     }
 
-    private async Task<Result<Account>> AddNonMicrosoftAsync(Account account, bool makeDefault, CancellationToken cancellationToken)    {
+    private async Task<Result<Account>> AddNonMicrosoftAsync(Account account, bool makeDefault, CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(account.Id) || string.IsNullOrWhiteSpace(account.Name) || string.IsNullOrWhiteSpace(account.Uuid))
         {
             return Result<Account>.Fail("account.invalid", "账户资料不完整。");

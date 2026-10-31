@@ -28,6 +28,7 @@ public sealed partial class InstancesViewModel : ObservableObject
 {
     private readonly IInstanceService _instances;
     private readonly IAccountService _accounts;
+    private readonly IAuthServerService _authServers;
     private readonly IMicrosoftAuthenticationService _microsoftAuthentication;
     private readonly ILaunchService _launchService;
     private readonly IVersionInstallService _installService;
@@ -64,6 +65,8 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     public ObservableCollection<AccountItemViewModel> Accounts { get; } = [];
 
+    public ObservableCollection<AuthServerItemViewModel> AuthServers { get; } = [];
+
     public ObservableCollection<LaunchStepItemViewModel> LaunchSteps { get; } = [];
 
     public ObservableCollection<JavaOptionViewModel> JavaOptions { get; } = [];
@@ -83,6 +86,15 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     [ObservableProperty]
     private AccountItemViewModel? _selectedAccount;
+
+    [ObservableProperty]
+    private AuthServerItemViewModel? _selectedAuthServer;
+
+    [ObservableProperty]
+    private string _newAuthServerUrl = string.Empty;
+
+    [ObservableProperty]
+    private string _thirdPartyUsername = string.Empty;
 
     [ObservableProperty]
     private string _newInstanceName = string.Empty;
@@ -256,6 +268,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     public InstancesViewModel(
         IInstanceService instances,
         IAccountService accounts,
+        IAuthServerService authServers,
         IMicrosoftAuthenticationService microsoftAuthentication,
         ILaunchService launchService,
         IVersionInstallService installService,
@@ -275,6 +288,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     {
         _instances = instances;
         _accounts = accounts;
+        _authServers = authServers;
         _microsoftAuthentication = microsoftAuthentication;
         _launchService = launchService;
         _installService = installService;
@@ -316,6 +330,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
 
         _initialized = true;
+        await RefreshAuthServersAsync().ConfigureAwait(true);
         await RefreshAccountsAsync().ConfigureAwait(true);
         await RefreshInstancesAsync().ConfigureAwait(true);
         await RefreshJavaAsync().ConfigureAwait(true);
@@ -324,6 +339,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     [RelayCommand]
     private async Task RefreshAsync()
     {
+        await RefreshAuthServersAsync().ConfigureAwait(true);
         await RefreshAccountsAsync().ConfigureAwait(true);
         await RefreshInstancesAsync().ConfigureAwait(true);
         await RefreshJavaAsync().ConfigureAwait(true);
@@ -1155,6 +1171,131 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
+    private async Task AddAuthServerAsync()
+    {
+        var url = NewAuthServerUrl.Trim();
+        if (url.Length == 0)
+        {
+            StatusMessage = _localizer.Get("instances.authServerRequired");
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var result = await _authServers.AddAsync(url).ConfigureAwait(true);
+            if (!result.IsSuccess)
+            {
+                StatusMessage = _localizer.Get(
+                    "instances.authServerFailed",
+                    result.Error!.Code,
+                    result.Error.Message);
+                return;
+            }
+
+            NewAuthServerUrl = string.Empty;
+            await RefreshAuthServersAsync().ConfigureAwait(true);
+            SelectedAuthServer = AuthServers.FirstOrDefault(item => item.Id == result.Value!.Id) ?? SelectedAuthServer;
+            StatusMessage = _localizer.Get("instances.authServerAdded", result.Value!.Name);
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = _localizer.Get("instances.authServerFailed", "authserver.error", exception.Message);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task RemoveAuthServerAsync()
+    {
+        if (SelectedAuthServer is null)
+        {
+            StatusMessage = _localizer.Get("instances.authServerRequired");
+            return;
+        }
+
+        var result = await _authServers.RemoveAsync(SelectedAuthServer.Id).ConfigureAwait(true);
+        if (!result.IsSuccess)
+        {
+            StatusMessage = result.Error!.Message;
+            return;
+        }
+
+        await RefreshAuthServersAsync().ConfigureAwait(true);
+        await RefreshAccountsAsync().ConfigureAwait(true);
+        StatusMessage = _localizer.Get("instances.authServerRemoved");
+    }
+
+    /// <summary>
+    /// 第三方登录：由界面按钮触发，密码从 PasswordBox 传入，只用于这一次认证。
+    /// </summary>
+    public async Task SignInThirdPartyAsync(string password)
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        if (SelectedAuthServer is null)
+        {
+            StatusMessage = _localizer.Get("instances.authServerRequired");
+            return;
+        }
+
+        var username = ThirdPartyUsername.Trim();
+        if (username.Length == 0)
+        {
+            StatusMessage = _localizer.Get("instances.thirdPartyUsernameRequired");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(password))
+        {
+            StatusMessage = _localizer.Get("instances.thirdPartyPasswordRequired");
+            return;
+        }
+
+        IsBusy = true;
+        StatusMessage = _localizer.Get("instances.thirdPartySigningIn");
+        try
+        {
+            var result = await _accounts
+                .SignInThirdPartyAsync(
+                    SelectedAuthServer.Id,
+                    username,
+                    password,
+                    makeDefault: Accounts.Count == 0)
+                .ConfigureAwait(true);
+            if (!result.IsSuccess)
+            {
+                StatusMessage = _localizer.Get(
+                    "instances.thirdPartySignInFailed",
+                    result.Error!.Code,
+                    result.Error.Message);
+                return;
+            }
+
+            await RefreshAccountsAsync().ConfigureAwait(true);
+            SelectedAccount = Accounts.FirstOrDefault(item => item.Id == result.Value!.Id) ?? SelectedAccount;
+            StatusMessage = _localizer.Get("instances.thirdPartySignedIn", result.Value!.Name);
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = _localizer.Get(
+                "instances.thirdPartySignInFailed",
+                "auth.exception",
+                exception.Message);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private static Task OpenBrowserAsync(Uri uri)
     {
         Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
@@ -1695,6 +1836,20 @@ public sealed partial class InstancesViewModel : ObservableObject
         OnPropertyChanged(nameof(IsEmpty));
     }
 
+    private async Task RefreshAuthServersAsync()
+    {
+        var selectedId = SelectedAuthServer?.Id;
+        var servers = await _authServers.GetServersAsync().ConfigureAwait(true);
+
+        AuthServers.Clear();
+        foreach (var server in servers)
+        {
+            AuthServers.Add(new AuthServerItemViewModel(server));
+        }
+
+        SelectedAuthServer = AuthServers.FirstOrDefault(item => item.Id == selectedId) ?? AuthServers.FirstOrDefault();
+    }
+
     private async Task RefreshAccountsAsync()
     {
         _suppressAccountSelection = true;
@@ -1702,11 +1857,18 @@ public sealed partial class InstancesViewModel : ObservableObject
         {
             var accounts = await _accounts.GetAccountsAsync().ConfigureAwait(true);
             var defaultAccount = await _accounts.GetDefaultAccountAsync().ConfigureAwait(true);
+            var serverNames = AuthServers.ToDictionary(
+                server => server.Id,
+                server => server.DisplayName,
+                StringComparer.Ordinal);
 
             Accounts.Clear();
             foreach (var account in accounts)
             {
-                Accounts.Add(new AccountItemViewModel(account, account.Id == defaultAccount?.Id, _localizer));
+                var serverName = account.AuthServerId is { Length: > 0 } id && serverNames.TryGetValue(id, out var name)
+                    ? name
+                    : null;
+                Accounts.Add(new AccountItemViewModel(account, account.Id == defaultAccount?.Id, _localizer, serverName));
             }
 
             SelectedAccount = Accounts.FirstOrDefault(item => item.IsDefault) ?? Accounts.FirstOrDefault();
@@ -1765,17 +1927,20 @@ public sealed class InstanceItemViewModel
 
 public sealed partial class AccountItemViewModel : ObservableObject
 {
-    public AccountItemViewModel(Account model, bool isDefault, ILocalizer localizer)
+    public AccountItemViewModel(Account model, bool isDefault, ILocalizer localizer, string? authServerName = null)
     {
         Model = model;
         Id = model.Id;
         IsDefault = isDefault;
-        DisplayName = $"{model.Name} · {localizer.Get(model.Type switch
+        var typeLabel = localizer.Get(model.Type switch
         {
             AccountType.Microsoft => "accounts.microsoft",
             AccountType.ThirdParty => "accounts.thirdParty",
             _ => "accounts.offline",
-        })}";
+        });
+        DisplayName = model.Type == AccountType.ThirdParty && !string.IsNullOrWhiteSpace(authServerName)
+            ? $"{model.Name} · {typeLabel}（{authServerName}）"
+            : $"{model.Name} · {typeLabel}";
     }
 
     public Account Model { get; }
@@ -1786,6 +1951,20 @@ public sealed partial class AccountItemViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isDefault;
+}
+
+public sealed class AuthServerItemViewModel
+{
+    public AuthServerItemViewModel(AuthServer server)
+    {
+        Id = server.Id;
+        var host = Uri.TryCreate(server.Url, UriKind.Absolute, out var uri) ? uri.Host : server.Url;
+        DisplayName = $"{server.Name} · {host}";
+    }
+
+    public string Id { get; }
+
+    public string DisplayName { get; }
 }
 
 public sealed record JavaOptionViewModel(JavaRuntime? Runtime, string DisplayName);
