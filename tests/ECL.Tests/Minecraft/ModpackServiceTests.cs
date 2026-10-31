@@ -6,6 +6,7 @@ using Ecl.Download;
 using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Mods;
+using Ecl.Operations;
 using Ecl.Tests.CurseForge;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -36,6 +37,14 @@ public sealed class ModpackServiceTests
             Assert.True(File.Exists(Path.Combine(gameDirectory, "mods", "test.jar")));
             Assert.True(File.Exists(Path.Combine(gameDirectory, "config", "test.txt")));
             Assert.True(File.Exists(Path.Combine(gameDirectory, ".ecl-modpack.json")));
+
+            var snapshot = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
+            Assert.Equal(OperationKind.Import, snapshot.Kind);
+            Assert.Equal(OperationState.Completed, snapshot.State);
+            Assert.Equal(Path.GetFileName(archive), snapshot.Title);
+            Assert.Equal("Modrinth", snapshot.Source);
+            Assert.Equal("modpack.overrides", snapshot.StageId);
+            Assert.False(snapshot.CanCancel);
         }
         finally
         {
@@ -59,6 +68,12 @@ public sealed class ModpackServiceTests
 
             Assert.False(result.IsSuccess);
             Assert.Equal("modpack.game_version_mismatch", result.Error?.Code);
+
+            var snapshot = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
+            Assert.Equal(OperationKind.Import, snapshot.Kind);
+            Assert.Equal(OperationState.Failed, snapshot.State);
+            Assert.Equal("modpack.game_version_mismatch", snapshot.Error?.Code);
+            Assert.Equal(OperationErrorKind.Configuration, snapshot.Error?.Kind);
         }
         finally
         {

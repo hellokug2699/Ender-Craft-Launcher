@@ -36,7 +36,19 @@ Forge 的 `${file.jarVersion}` 会尝试从 `META-INF/MANIFEST.MF` 的 `Implemen
 - 导入：`mod import <实例ID> <文件...>`（复制 `*.jar` / `*.jar.disabled`，默认不覆盖）
 - 删除：`mod delete <实例ID> <文件名>`
 
-WPF 的 **内容** 页面提供同样的列表、启停、批量、导入、删除、整合包导入导出操作；页面刷新/切换时会重新加载实例下拉，新建/删除实例后无需重启启动器。搜索与远程下载已从内容页移到 **下载** 页（CurseForge + Modrinth，来源可过滤），内容页只处理已安装内容。
+WPF 不再提供独立的“内容”页面：Mod、资源包、光影包、整合包导入导出与缺失依赖处理都集中在 **实例 → 打开工作区 → 模组与内容**。列表、启停、批量启用/禁用、导入、删除等操作与 CLI 一致；工作区打开时会重新扫描实例，模组相关按钮按“所选 Mod / 依赖与修复 / 整合包 / 资源包与光影”折叠分组，避免同类操作分散。搜索与远程下载仍在 **下载** 页（CurseForge + Modrinth，来源可过滤）。
+
+### 下载缺失依赖
+
+“依赖与修复 → 下载缺失依赖”扫描当前实例中“已启用但缺少强制依赖”的 Mod，并交给 `IDependencyResolver` 生成依赖图：
+
+1. `DependencyResolver` 先按 project ID / slug 查询 Modrinth，确认项目类型为 Mod 且存在适配当前游戏版本与加载器的版本；
+2. Modrinth 未解析时按 slug 查询 CurseForge；只接受精确 slug，不再用项目名称兜底；
+3. 结果区分 `Resolved`、`NotFound`、`Ambiguous`、`Incompatible` 与 `Failed`；同一 slug 匹配多个 CurseForge 项目时报告歧义，不自动选择；
+4. `ResolvedDependency` 携带来源、项目 ID、slug、版本 ID、文件名、URL、SHA-1 与大小；安装阶段直接下载该文件（`IContentInstallService.InstallResolvedAsync`），不再按 mod id 做第二次解析；
+5. 无法解析的依赖只报告，不会用模糊搜索结果代替，避免装错 Mod；
+6. 只处理元数据中 `mandatory` 的依赖；可选依赖与平台内置依赖（`minecraft`、`fabricloader` 等）不会自动下载；
+7. 该动作登记为统一任务中心的一个任务，可取消与重试；结果以“安装 / 未匹配 / 失败”计数反馈，并自动重新扫描。
 
 ## 整合包
 
@@ -70,7 +82,7 @@ ecl pack delete <实例ID> <文件名> [--type resource|shader]
 
 - 资源包读取 `pack.mcmeta` 的 `pack_format` 与 `description`。
 - 光影包按 `shaderpacks/` 目录管理。
-- WPF **Mods** 页面的“资源包 / 光影包”区域提供类型选择、启用/禁用、列表、导入与删除，并显示启用状态与配置警告。
+- WPF **实例工作区 → 模组与内容 → 资源包与光影** 提供类型选择、启用/禁用、列表、导入与删除，并显示启用状态与配置警告；该区域默认折叠。
 
 ### 启用状态的唯一事实来源
 
@@ -96,7 +108,7 @@ ecl pack delete <实例ID> <文件名> [--type resource|shader]
 
 ## CurseForge 搜索与一键安装
 
-- WPF **Mods** 页面的 CurseForge 区域按当前实例的游戏版本与加载器搜索；选中结果后可安装或打开项目页。
+- WPF **下载** 页面的 CurseForge 区域按当前实例的游戏版本与加载器搜索；选中结果后可安装或打开项目页。
 - CLI `curseforge search|files|install` 提供同样的能力，支持 `--json`。
 - 默认安装所选文件的最新稳定版（没有稳定版才选 Beta/Alpha），并递归安装 `RequiredDependency`；`--no-dependencies` 可关闭。
 - 安装记录写入 `minecraft/.ecl-curseforge.json`，用于去重与后续更新。

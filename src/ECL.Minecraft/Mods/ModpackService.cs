@@ -4,9 +4,11 @@ using System.IO.Compression;
 using System.Text.Json;
 using Ecl.Core;
 using Ecl.Core.Json;
+using Ecl.Core.Localization;
 using Ecl.Download;
 using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Instances;
+using Ecl.Operations;
 using Microsoft.Extensions.Logging;
 
 namespace Ecl.Minecraft.Mods;
@@ -16,7 +18,9 @@ public sealed class ModpackService(
     IAppPaths paths,
     IDownloadService downloads,
     ICurseForgeClient curseForge,
-    ILogger<ModpackService> logger) : IModpackService
+    ILocalizer localizer,
+    ILogger<ModpackService> logger,
+    IOperationService? operations = null) : IModpackService
 {
     private static readonly string[] ModrinthOverrideRoots = ["overrides/", "client-overrides/"];
 
@@ -37,6 +41,24 @@ public sealed class ModpackService(
             return Result<ModpackImportReport>.Fail("modpack.not_found", $"整合包不存在：{archivePath}");
         }
 
+        using var operation = new OperationProgressBridge<ModpackProgress>(
+            operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Import,
+                Title = Path.GetFileName(archivePath),
+                StageId = "modpack",
+                Source = IsModrinthArchive(archivePath) ? "Modrinth" : "CurseForge",
+                CanCancel = true,
+                CanRetry = true,
+            },
+            progress,
+            MapModpackProgress);
+
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = cancellation.Token;
+        operation.AttachControl(cancellation, retryToken => ImportAsync(instanceId, archivePath, progress, retryToken));
+
         var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
         Directory.CreateDirectory(gameDirectory);
 
@@ -45,20 +67,31 @@ public sealed class ModpackService(
             using var archive = ZipFile.OpenRead(archivePath);
             var modrinthEntry = FindEntry(archive, "modrinth.index.json");
             var report = modrinthEntry is not null
-                ? await ImportModrinthAsync(archive, modrinthEntry, instance, gameDirectory, archivePath, progress, cancellationToken)
+                ? await ImportModrinthAsync(archive, modrinthEntry, instance, gameDirectory, archivePath, operation, cancellationToken)
                     .ConfigureAwait(false)
-                : await ImportCurseForgeAsync(archive, instance, gameDirectory, archivePath, progress, cancellationToken)
+                : await ImportCurseForgeAsync(archive, instance, gameDirectory, archivePath, operation, cancellationToken)
                     .ConfigureAwait(false);
+
+            if (report.IsSuccess)
+            {
+                operation.Complete();
+            }
+            else
+            {
+                operation.Fail(OperationErrors.FromCode(report.Error!.Code, report.Error.Message, report.Error.Detail));
+            }
 
             return report;
         }
         catch (OperationCanceledException)
         {
+            operation.Cancel();
             throw;
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException
                                               or UnauthorizedAccessException or JsonException)
         {
+            operation.Fail(OperationErrors.FromException("modpack.import_failed", exception));
             logger.LogError(exception, "导入整合包失败：{Path}", archivePath);
             return Result<ModpackImportReport>.Fail(
                 "modpack.import_failed",
@@ -268,14 +301,20 @@ public sealed class ModpackService(
         var downloaded = 0;
         if (requests.Count > 0)
         {
-            progress?.Report(new ModpackProgress("download", "下载整合包文件…", 0, requests.Count, null));
+            var downloading = localizer.Get("modpack.stage.download");
+            progress?.Report(new ModpackProgress("download", downloading, 0, requests.Count, null));
             var forwarding = new ForwardingProgress<DownloadProgress>(update =>
                 progress?.Report(new ModpackProgress(
                     "download",
-                    "下载整合包文件…",
+                    downloading,
                     update.CompletedFiles,
                     update.TotalFiles,
-                    update.CurrentFile)));
+                    update.CurrentFile)
+                {
+                    CompletedBytes = update.CompletedBytes,
+                    TotalBytes = update.IsTotalBytesKnown ? update.TotalBytes : 0,
+                    BytesPerSecond = update.BytesPerSecond,
+                }));
 
             try
             {
@@ -291,7 +330,7 @@ public sealed class ModpackService(
             }
         }
 
-        progress?.Report(new ModpackProgress("overrides", "解压整合包覆盖文件…", 0, 0, null));
+        progress?.Report(new ModpackProgress("overrides", localizer.Get("modpack.stage.overrides"), 0, 0, null));
         var overrides = ModpackArchiveExtractor.ExtractOverrides(archive, gameDirectory, ModrinthOverrideRoots);
         WriteMarker(gameDirectory, name, version, archivePath, "modrinth", downloaded, skipped);
 
@@ -391,7 +430,12 @@ public sealed class ModpackService(
 
         if (manifestFiles.Count > 0)
         {
-            progress?.Report(new ModpackProgress("resolve", "正在解析 CurseForge 文件…", 0, manifestFiles.Count, null));
+            progress?.Report(new ModpackProgress(
+                "resolve",
+                localizer.Get("modpack.stage.resolve"),
+                0,
+                manifestFiles.Count,
+                null));
             var metadataResult = await curseForge
                 .GetFilesAsync(
                     manifestFiles.Select(file => file.FileId).Distinct().ToArray(),
@@ -454,14 +498,20 @@ public sealed class ModpackService(
 
             if (requests.Count > 0)
             {
-                progress?.Report(new ModpackProgress("download", "下载 CurseForge 文件…", 0, requests.Count, null));
+                var downloading = localizer.Get("modpack.stage.download");
+                progress?.Report(new ModpackProgress("download", downloading, 0, requests.Count, null));
                 var forwarding = new ForwardingProgress<DownloadProgress>(update =>
                     progress?.Report(new ModpackProgress(
                         "download",
-                        "下载 CurseForge 文件…",
+                        downloading,
                         update.CompletedFiles,
                         update.TotalFiles,
-                        update.CurrentFile)));
+                        update.CurrentFile)
+                    {
+                        CompletedBytes = update.CompletedBytes,
+                        TotalBytes = update.IsTotalBytesKnown ? update.TotalBytes : 0,
+                        BytesPerSecond = update.BytesPerSecond,
+                    }));
 
                 try
                 {
@@ -478,7 +528,7 @@ public sealed class ModpackService(
             }
         }
 
-        progress?.Report(new ModpackProgress("overrides", "解压 CurseForge 覆盖文件…", 0, 0, null));
+        progress?.Report(new ModpackProgress("overrides", localizer.Get("modpack.stage.overrides"), 0, 0, null));
         var overrideRoots = BuildCurseForgeOverrideRoots(GetString(root, "overrides"));
         var overrides = ModpackArchiveExtractor.ExtractOverrides(archive, gameDirectory, overrideRoots);
         WriteMarker(gameDirectory, name, version, archivePath, "curseforge", downloaded, skipped);
@@ -801,6 +851,25 @@ public sealed class ModpackService(
         using var stream = entry.Open();
         stream.Write(content);
     }
+
+    /// <summary>
+    /// 整合包导入进度映射到任务中心：阶段（解析 / 下载 / 覆盖文件）作为稳定 StageId，
+    /// 下载阶段额外提供字节与速度。
+    /// </summary>
+    private static OperationProgressUpdate MapModpackProgress(ModpackProgress progress) => new()
+    {
+        StageId = $"modpack.{progress.Stage}",
+        StageText = progress.Message,
+        CurrentItem = progress.CurrentFile,
+        Completed = progress.Completed,
+        Total = progress.Total > 0 ? progress.Total : null,
+        BytesDownloaded = progress.CompletedBytes,
+        TotalBytes = progress.TotalBytes > 0 ? progress.TotalBytes : null,
+        BytesPerSecond = progress.BytesPerSecond > 0 ? progress.BytesPerSecond : null,
+    };
+
+    private static bool IsModrinthArchive(string archivePath) =>
+        string.Equals(Path.GetExtension(archivePath), ".mrpack", StringComparison.OrdinalIgnoreCase);
 
     private sealed class ForwardingProgress<T>(Action<T> callback) : IProgress<T>
     {

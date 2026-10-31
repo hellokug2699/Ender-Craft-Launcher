@@ -10,6 +10,7 @@ using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Modrinth;
 using Ecl.Minecraft.Mods;
+using Ecl.Operations;
 using Ecl.Tests.CurseForge;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -71,6 +72,53 @@ public sealed class ContentInstallTests
     }
 
     [Fact]
+    public async Task InstallsResolvedDependencyWithoutASecondModrinthLookup()
+    {
+        var payload = Encoding.UTF8.GetBytes("demo");
+        using var environment = new TestEnvironment();
+        var downloads = new PayloadDownloadService(payload);
+        var modrinth = new FakeModrinthClient();
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(downloads);
+            services.AddSingleton<IModrinthClient>(modrinth);
+        });
+
+        var instance = await CreateInstanceAsync(provider, "1.21.1", "fabric", "0.16.0");
+        var dependency = new ResolvedDependency(
+            "fabric-api",
+            DependencyResolutionStatus.Resolved,
+            ContentSource.Modrinth,
+            "P16",
+            "fabric-api",
+            "Fabric API",
+            "V116",
+            "0.116.0",
+            "fabric-api.jar",
+            new Uri("https://cdn.modrinth.com/data/P16/versions/V116/fabric-api.jar"),
+            null,
+            payload.Length);
+
+        var result = await provider.GetRequiredService<IContentInstallService>()
+            .InstallResolvedAsync(instance.Id, dependency);
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        var installed = Path.Combine(
+            environment.Paths.GetInstanceGameDirectory(instance.Id),
+            "mods",
+            "fabric-api.jar");
+        Assert.True(File.Exists(installed));
+        Assert.Equal(payload.Length, new FileInfo(installed).Length);
+        Assert.Single(downloads.Requests);
+        Assert.Equal(0, modrinth.VersionCalls);
+
+        var snapshot = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
+        Assert.Equal(OperationKind.Install, snapshot.Kind);
+        Assert.Equal(OperationState.Completed, snapshot.State);
+        Assert.Equal("Fabric API", snapshot.Title);
+    }
+
+    [Fact]
     public async Task DownloadsAndImportsMrpackIntoExistingInstance()
     {
         var payload = CreateMrpack();
@@ -96,6 +144,13 @@ public sealed class ContentInstallTests
         Assert.True(File.Exists(Path.Combine(
             environment.Paths.GetInstanceGameDirectory(instance.Id),
             ".ecl-modpack.json")));
+
+        // 内容安装 → 整合包导入 → 下载批次只登记一个任务。
+        var snapshot = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
+        Assert.Equal(OperationKind.Import, snapshot.Kind);
+        Assert.Equal(OperationState.Completed, snapshot.State);
+        Assert.Equal("Test Pack", snapshot.Title);
+        Assert.Equal("Modrinth", snapshot.Source);
     }
 
     [Fact]
@@ -116,6 +171,10 @@ public sealed class ContentInstallTests
 
         Assert.False(result.IsSuccess);
         Assert.Empty(await provider.GetRequiredService<IInstanceService>().GetInstancesAsync());
+
+        var snapshot = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
+        Assert.Equal(OperationState.Failed, snapshot.State);
+        Assert.Equal("test.import_failed", snapshot.Error?.Code);
     }
 
     [Fact]

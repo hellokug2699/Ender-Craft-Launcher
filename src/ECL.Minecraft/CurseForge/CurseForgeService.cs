@@ -3,8 +3,10 @@
 using System.Text.Json;
 using Ecl.Core;
 using Ecl.Core.Json;
+using Ecl.Core.Localization;
 using Ecl.Download;
 using Ecl.Minecraft.Instances;
+using Ecl.Operations;
 using Microsoft.Extensions.Logging;
 
 namespace Ecl.Minecraft.CurseForge;
@@ -35,7 +37,9 @@ public sealed class CurseForgeService(
     IAppPaths paths,
     ICurseForgeClient client,
     IDownloadService downloads,
-    ILogger<CurseForgeService> logger) : ICurseForgeService
+    ILocalizer localizer,
+    ILogger<CurseForgeService> logger,
+    IOperationService? operations = null) : ICurseForgeService
 {
     private const int MaxDependencyDepth = 6;
     private const string InstallStateFileName = ".ecl-curseforge.json";
@@ -74,8 +78,72 @@ public sealed class CurseForgeService(
                 "原版实例不能安装 CurseForge Mod，请先创建带加载器的实例。");
         }
 
-        progress?.Report(new CurseForgeProgress("resolve", "正在解析 CurseForge 项目…"));
-        var modResult = await ResolveModAsync(modReference, instance, loader.Value, cancellationToken)
+        using var operation = new OperationProgressBridge<CurseForgeProgress>(
+            operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Install,
+                Title = modReference.Trim(),
+                StageId = "curseforge",
+                Source = "CurseForge",
+                CanCancel = true,
+                CanRetry = true,
+            },
+            progress,
+            MapCurseForgeProgress);
+
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = cancellation.Token;
+        operation.AttachControl(
+            cancellation,
+            retryToken => InstallAsync(instanceId, modReference, fileId, includeDependencies, progress, retryToken));
+
+        try
+        {
+            var result = await InstallCoreAsync(
+                    instance,
+                    loader.Value,
+                    modReference,
+                    fileId,
+                    includeDependencies,
+                    operation,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            if (result.IsSuccess)
+            {
+                operation.Complete();
+            }
+            else
+            {
+                operation.Fail(OperationErrors.FromCode(result.Error!.Code, result.Error.Message, result.Error.Detail));
+            }
+
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            operation.Cancel();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            operation.Fail(OperationErrors.FromException("curseforge.install_failed", exception));
+            throw;
+        }
+    }
+
+    private async Task<Result<CurseForgeInstallReport>> InstallCoreAsync(
+        GameInstance instance,
+        CurseForgeModLoader loader,
+        string modReference,
+        int? fileId,
+        bool includeDependencies,
+        IProgress<CurseForgeProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        progress?.Report(new CurseForgeProgress("resolve", localizer.Get("curseforge.stage.resolve")));
+        var modResult = await ResolveModAsync(modReference, instance, loader, cancellationToken)
             .ConfigureAwait(false);
         if (!modResult.IsSuccess)
         {
@@ -83,7 +151,7 @@ public sealed class CurseForgeService(
         }
 
         var mod = modResult.Value!;
-        var fileResult = await ResolveFileAsync(mod, instance, loader.Value, fileId, cancellationToken)
+        var fileResult = await ResolveFileAsync(mod, instance, loader, fileId, cancellationToken)
             .ConfigureAwait(false);
         if (!fileResult.IsSuccess)
         {
@@ -106,7 +174,7 @@ public sealed class CurseForgeService(
             await AddDependenciesAsync(
                     primaryFile,
                     instance,
-                    loader.Value,
+                    loader,
                     knownProjects,
                     plan,
                     warnings,
@@ -161,13 +229,20 @@ public sealed class CurseForgeService(
 
         try
         {
-            progress?.Report(new CurseForgeProgress("download", "正在下载 CurseForge 文件…", 0, requests.Count));
+            var downloading = localizer.Get("curseforge.stage.download");
+            progress?.Report(new CurseForgeProgress("download", downloading, 0, requests.Count));
             var forwarding = new ForwardingProgress<DownloadProgress>(update =>
                 progress?.Report(new CurseForgeProgress(
                     "download",
-                    "正在下载 CurseForge 文件…",
+                    downloading,
                     update.CompletedFiles,
-                    update.TotalFiles)));
+                    update.TotalFiles)
+                {
+                    CompletedBytes = update.CompletedBytes,
+                    TotalBytes = update.IsTotalBytesKnown ? update.TotalBytes : 0,
+                    BytesPerSecond = update.BytesPerSecond,
+                    CurrentFile = update.CurrentFile,
+                }));
 
             await downloads.DownloadAsync(requests, forwarding, cancellationToken).ConfigureAwait(false);
         }
@@ -204,7 +279,11 @@ public sealed class CurseForgeService(
             logger.LogWarning(exception, "写入 CurseForge 安装记录失败：{Directory}", gameDirectory);
         }
 
-        progress?.Report(new CurseForgeProgress("done", "CurseForge Mod 安装完成。", downloadable.Count, downloadable.Count));
+        progress?.Report(new CurseForgeProgress(
+            "done",
+            localizer.Get("curseforge.stage.done"),
+            downloadable.Count,
+            downloadable.Count));
         var installedFiles = downloadable.Select(item => item.File.FileName).ToArray();
         logger.LogInformation(
             "已从 CurseForge 安装 {Mod}（项目 {ProjectId}，文件 {FileId}）到实例 {InstanceId}，共 {Count} 个文件。",
@@ -493,6 +572,22 @@ public sealed class CurseForgeService(
 
         public string InstalledAt { get; set; } = string.Empty;
     }
+
+    /// <summary>
+    /// CurseForge 安装进度映射到任务中心：解析、下载与完成阶段使用稳定 StageId，
+    /// 下载阶段提供字节、速度与当前文件。
+    /// </summary>
+    private static OperationProgressUpdate MapCurseForgeProgress(CurseForgeProgress progress) => new()
+    {
+        StageId = $"curseforge.{progress.Stage}",
+        StageText = progress.Message,
+        CurrentItem = progress.CurrentFile,
+        Completed = progress.Completed,
+        Total = progress.Total > 0 ? progress.Total : null,
+        BytesDownloaded = progress.CompletedBytes,
+        TotalBytes = progress.TotalBytes > 0 ? progress.TotalBytes : null,
+        BytesPerSecond = progress.BytesPerSecond > 0 ? progress.BytesPerSecond : null,
+    };
 
     private sealed class ForwardingProgress<T>(Action<T> callback) : IProgress<T>
     {

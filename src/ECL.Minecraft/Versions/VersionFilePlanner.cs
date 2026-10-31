@@ -17,6 +17,34 @@ public static class VersionFilePlanner
     public static string GetClientJarPath(IAppPaths paths, string versionId) =>
         Path.Combine(paths.VersionsDirectory, versionId, $"{versionId}.jar");
 
+    /// <summary>
+    /// 实际用于类路径与文件校验的 client jar。
+    /// ECL 安装的实例把 jar 放在自己的版本目录；其它启动器安装的加载器版本
+    /// （Fabric/Forge/NeoForge 等）通常没有自己的 jar，client jar 属于被继承的原版版本目录。
+    /// 两者都存在时优先使用实例自己的 jar，兼容由 ECL 安装流程生成的合并/修补 jar。
+    /// </summary>
+    public static string ResolveClientJarPath(IAppPaths paths, MinecraftVersion? version, string instanceVersionId)
+    {
+        var instanceJar = GetClientJarPath(paths, instanceVersionId);
+        if (File.Exists(instanceJar))
+        {
+            return instanceJar;
+        }
+
+        var ownerId = version?.ClientJarVersionId;
+        if (!string.IsNullOrWhiteSpace(ownerId) &&
+            !string.Equals(ownerId, instanceVersionId, StringComparison.Ordinal))
+        {
+            var inheritedJar = GetClientJarPath(paths, ownerId);
+            if (File.Exists(inheritedJar))
+            {
+                return inheritedJar;
+            }
+        }
+
+        return instanceJar;
+    }
+
     public static string GetVersionJsonPath(IAppPaths paths, string versionId) =>
         Path.Combine(paths.VersionsDirectory, versionId, $"{versionId}.json");
 
@@ -57,7 +85,7 @@ public static class VersionFilePlanner
         var checks = new List<VersionFileCheck>
         {
             new(
-                GetClientJarPath(paths, versionId),
+                ResolveClientJarPath(paths, version, versionId),
                 version.Downloads?.Client?.Size,
                 version.Downloads?.Client?.Sha1,
                 VerifyHash: true),

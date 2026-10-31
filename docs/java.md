@@ -143,6 +143,7 @@ Linux ARM64 在 Mojang 来源下会返回“平台不支持”；切换到 Adopt
 - “下载 Java”：按当前实例版本要求下载。
 - “关闭 Java 兼容性检验”：实例级开关。
 - 状态文本 + 下载进度。
+- 下载运行时同时登记统一任务中心的 `Java` 任务（阶段、字节、速度、失败归因、取消/重试），见 [operations.md](operations.md)。
 
 实例库只展示实例名称、Minecraft 版本、加载器与最近启动时间，并提供“打开工作区”入口；Java、JVM、账户、模组与诊断等设置都集中在实例工作区。
 
@@ -154,24 +155,11 @@ ecl java install <实例ID>
 ecl launch <实例ID> --dry-run
 ```
 
+`ecl java install` 的进度来自统一任务中心，写入标准错误；标准输出只保留最终结果。
+
 ## 9. 限制与后续
 
 - 内置预设之外可通过自定义 JSON 文件加载参数；尚不支持在 UI 中编辑并保存新的命名预设。
 - 32/64 位与内存校验只给出警告，不强制阻止启动。
-- Microsoft 账户体系（原 v0.3）因 OAuth 审核限制暂缓，不影响本地离线启动。
-
-
-## Microsoft 账户接入配置（预留）
-
-当前版本尚未实现 Microsoft OAuth / Xbox Live / Minecraft Services 登录链路。设置页的
-**账户与身份验证 → Microsoft OAuth Client ID** 可保存 Microsoft Entra 应用注册的
-Application (client) ID，但它目前不会启动登录，也不会创建 Microsoft 账户。此字段是为后续接入预留，
-不是“已经支持微软登录”的承诺。
-
-准备接入时建议使用 **Mobile and desktop applications / Public client** 类型，并采用
-Authorization Code + PKCE（桌面应用不应内置 Client Secret）。配置桌面端回环重定向 URI
-（例如 `http://localhost`），并启用公共客户端流程。Minecraft 登录还需要后续完成 Xbox Live、
-XSTS 与 Minecraft Services 的令牌交换和正版档案校验；仅有 OAuth access token 并不足以启动正版 Minecraft。
-
-配置位置：**设置 → 全局 → 账户与身份验证 → Microsoft OAuth Client ID**。
-Application (client) ID 是公开标识，不是密码；不要把 Client Secret 提交到仓库、配置文件或客户端程序中。
+- Mojang 运行时在不支持的平台/架构上可能不可用；可切换 Adoptium、Zulu 或 Liberica，具体构建取决于供应商发布情况。
+- Microsoft 账户登录需要 Windows DPAPI 安全凭据存储；非 Windows 平台暂不支持该凭据持久化。认证流程详见 [authentication.md](authentication.md)。

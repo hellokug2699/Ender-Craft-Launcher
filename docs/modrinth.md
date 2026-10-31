@@ -7,7 +7,7 @@ v0.8 接入 Modrinth v2 API，与 CurseForge 一起构成“下载”页的两�
 - 基础地址：`https://api.modrinth.com/v2`，请求带 `User-Agent: EnderCraftLauncher/<版本>`（Modrinth 要求可识别的 UA）。
 - 单请求 30 秒超时；404 → `modrinth.not_found`，429 读取 `Retry-After` 后重试，5xx/网络错误指数退避，最多 3 次；JSON 解析失败 → `modrinth.invalid_response`。
 - 文件下载只接受 `https://modrinth.com` 或 `*.modrinth.com` 地址，避免 API 响应被滥用为任意 URL。
-- 不做磁盘缓存，只缓存进程内不必要的数据；搜索结果与版本信息按需请求。
+- 当前客户端不实现 Modrinth API 响应的持久化缓存；搜索结果与版本信息按需请求。下载文件由统一下载服务处理，与 API 响应缓存是两回事。
 
 ## 2. 搜索
 

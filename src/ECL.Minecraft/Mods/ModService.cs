@@ -246,7 +246,8 @@ public sealed class ModService(
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(fileName) ||
-            !string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal))
+            !string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal) ||
+            fileName.IndexOfAny(['/', '\\']) >= 0)
         {
             return Result<ResolvedModFile>.Fail("mod.invalid_file", "Mod 文件名不合法。");
         }

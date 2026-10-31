@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Ecl.Download;
 using Ecl.Java;
+using Ecl.Operations;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -111,6 +112,13 @@ public sealed class JavaInstallServiceTests
         Assert.Contains(JavaInstallStage.Files, stages);
         Assert.Contains(JavaInstallStage.Completed, stages);
         Assert.NotEmpty(download.Requests);
+
+        var snapshot = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
+        Assert.Equal(OperationKind.Java, snapshot.Kind);
+        Assert.Equal(OperationState.Completed, snapshot.State);
+        Assert.Equal("Java 17 运行时", snapshot.Title);
+        Assert.Equal("java.completed", snapshot.StageId);
+        Assert.Equal("Mojang", snapshot.Source);
     }
 
     private sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>

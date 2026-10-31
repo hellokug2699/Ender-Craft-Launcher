@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace Ecl.Minecraft.Versions;
@@ -8,6 +9,14 @@ namespace Ecl.Minecraft.Versions;
 public sealed partial class MinecraftVersion
 {
     public string Id { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 继承链中声明 <c>downloads.client</c> 的版本 ID，也就是 client jar 真正所属的版本目录。
+    /// 由 <see cref="VersionResolver"/> 在合并后填写，只用于运行期定位 jar，不写入版本 JSON。
+    /// 其它启动器安装的加载器版本通常没有自己的 jar，客户端 jar 属于被继承的原版版本。
+    /// </summary>
+    [JsonIgnore]
+    public string? ClientJarVersionId { get; set; }
 
     public string? Type { get; set; }
 

@@ -3,11 +3,13 @@
 using System.IO.Compression;
 using System.Text.Json;
 using Ecl.Core;
+using Ecl.Core.Localization;
 using Ecl.Download;
 using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Modrinth;
 using Ecl.Minecraft.Mods;
+using Ecl.Operations;
 using Microsoft.Extensions.Logging;
 
 namespace Ecl.Minecraft.Content;
@@ -18,6 +20,16 @@ public interface IContentInstallService
     Task<Result<ContentInstallReport>> InstallAsync(
         string instanceId,
         ContentHit hit,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 安装已解析的依赖文件。不再按 mod id 进行第二次解析，直接使用
+    /// <see cref="ResolvedDependency"/> 中的来源、项目、版本与文件信息。
+    /// </summary>
+    Task<Result<ContentInstallReport>> InstallResolvedAsync(
+        string instanceId,
+        ResolvedDependency dependency,
         IProgress<ContentProgress>? progress = null,
         CancellationToken cancellationToken = default);
 
@@ -53,7 +65,9 @@ public sealed class ContentInstallService(
     IModrinthClient modrinth,
     IDownloadService downloads,
     IAppPaths paths,
-    ILogger<ContentInstallService> logger) : IContentInstallService
+    ILocalizer localizer,
+    ILogger<ContentInstallService> logger,
+    IOperationService? operations = null) : IContentInstallService
 {
     private const int MaxDependencyDepth = 4;
     private const int MaxDependencyFiles = 128;
@@ -71,16 +85,152 @@ public sealed class ContentInstallService(
             return Result<ContentInstallReport>.Fail("instance.not_found", "实例不存在。");
         }
 
+        // 整合包安装只登记一个任务；嵌套的导入与下载复用同一任务。
+        using var operation = new OperationProgressBridge<ContentProgress>(
+            operations,
+            new OperationStart
+            {
+                Kind = hit.Kind == ContentKind.ModPack ? OperationKind.Import : OperationKind.Install,
+                Title = hit.Name,
+                StageId = "content",
+                Source = hit.SourceLabel,
+                CanCancel = true,
+                CanRetry = true,
+            },
+            progress,
+            MapContentProgress);
+
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = cancellation.Token;
+        operation.AttachControl(cancellation, retryToken => InstallAsync(instanceId, hit, progress, retryToken));
+
+        try
+        {
+            var result = await InstallContentCoreAsync(instance, hit, operation, cancellationToken)
+                .ConfigureAwait(false);
+            Finish(operation, result);
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            operation.Cancel();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            operation.Fail(OperationErrors.FromException("content.install_failed", exception));
+            throw;
+        }
+    }
+
+    public async Task<Result<ContentInstallReport>> InstallResolvedAsync(
+        string instanceId,
+        ResolvedDependency dependency,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!dependency.IsResolved ||
+            dependency.Source is null ||
+            dependency.FileUrl is null ||
+            string.IsNullOrWhiteSpace(dependency.FileName))
+        {
+            return Result<ContentInstallReport>.Fail(
+                "dependency.not_resolved",
+                $"依赖 {dependency.DisplayName} 尚未解析完成，无法安装。");
+        }
+
+        var instance = await instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        if (instance is null)
+        {
+            return Result<ContentInstallReport>.Fail("instance.not_found", "实例不存在。");
+        }
+
+        using var operation = new OperationProgressBridge<ContentProgress>(
+            operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Install,
+                Title = dependency.DisplayName,
+                StageId = "dependency",
+                Source = dependency.Source == ContentSource.CurseForge ? "CurseForge" : "Modrinth",
+                CanCancel = true,
+                CanRetry = true,
+            },
+            progress,
+            MapContentProgress);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = cancellation.Token;
+        operation.AttachControl(
+            cancellation,
+            retryToken => InstallResolvedAsync(instanceId, dependency, progress, retryToken));
+
+        try
+        {
+            var targetDirectory = Path.Combine(
+                InstancePaths.GetGameDirectory(paths, instance),
+                ContentKinds.FolderName(ContentKind.Mod));
+            var installed = await DownloadFilesAsync(
+                    new ResolvedDownload(
+                        [
+                            new RemoteFile(
+                                dependency.FileName,
+                                dependency.FileUrl,
+                                dependency.Sha1,
+                                dependency.Size,
+                                dependency.VersionId,
+                                dependency.ProjectId),
+                        ],
+                        []),
+                    targetDirectory,
+                    operation,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!installed.IsSuccess)
+            {
+                Finish(operation, installed);
+                return Result<ContentInstallReport>.Fail(installed.Error!);
+            }
+
+            var files = installed.Value!;
+            var report = new ContentInstallReport(
+                dependency.DisplayName,
+                dependency.Source!.Value,
+                ContentKind.Mod,
+                instance.Id,
+                files.FirstOrDefault(),
+                files,
+                []);
+            Finish(operation, Result<ContentInstallReport>.Ok(report));
+            return Result<ContentInstallReport>.Ok(report);
+        }
+        catch (OperationCanceledException)
+        {
+            operation.Cancel();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            operation.Fail(OperationErrors.FromException("dependency.install_failed", exception));
+            throw;
+        }
+    }
+
+    private async Task<Result<ContentInstallReport>> InstallContentCoreAsync(
+        GameInstance instance,
+        ContentHit hit,
+        IProgress<ContentProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         if (hit.Kind == ContentKind.ModPack)
         {
-            var import = await ImportModpackAsync(instanceId, hit, progress, cancellationToken)
+            var import = await ImportModpackAsync(instance.Id, hit, progress, cancellationToken)
                 .ConfigureAwait(false);
             return import.IsSuccess
                 ? Result<ContentInstallReport>.Ok(new ContentInstallReport(
                     import.Value!.Name,
                     hit.Source,
                     ContentKind.ModPack,
-                    instanceId,
+                    instance.Id,
                     import.Value.ArchivePath,
                     [import.Value.ArchivePath],
                     import.Value.Warnings))
@@ -89,11 +239,17 @@ public sealed class ContentInstallService(
 
         if (hit.Source == ContentSource.CurseForge && hit.Kind == ContentKind.Mod)
         {
-            progress?.Report(new ContentProgress("resolve", "正在解析 CurseForge Mod…"));
+            progress?.Report(new ContentProgress("resolve", localizer.Get("content.stage.resolveCurseForge")));
             var forwarding = new ForwardingProgress<CurseForgeProgress>(update =>
-                progress?.Report(new ContentProgress(update.Stage, update.Message, update.Completed, update.Total)));
+                progress?.Report(new ContentProgress(update.Stage, update.Message, update.Completed, update.Total)
+                {
+                    CompletedBytes = update.CompletedBytes,
+                    TotalBytes = update.TotalBytes,
+                    BytesPerSecond = update.BytesPerSecond,
+                    CurrentFile = update.CurrentFile,
+                }));
             var result = await curseForgeService
-                .InstallAsync(instanceId, hit.Id, progress: forwarding, cancellationToken: cancellationToken)
+                .InstallAsync(instance.Id, hit.Id, progress: forwarding, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
             return result.IsSuccess
@@ -101,14 +257,14 @@ public sealed class ContentInstallService(
                     result.Value!.ModName,
                     ContentSource.CurseForge,
                     ContentKind.Mod,
-                    instanceId,
+                    instance.Id,
                     result.Value.FileName,
                     result.Value.InstalledFiles,
                     result.Value.Warnings))
                 : Result<ContentInstallReport>.Fail(result.Error!);
         }
 
-        progress?.Report(new ContentProgress("resolve", "正在解析文件…"));
+        progress?.Report(new ContentProgress("resolve", localizer.Get("content.stage.resolve")));
         var resolved = await ResolveFilesAsync(
                 hit,
                 instance.GameVersion,
@@ -140,14 +296,14 @@ public sealed class ContentInstallService(
             hit.Source,
             hit.Kind,
             hit.Name,
-            instanceId,
+            instance.Id,
             string.Join(", ", installedFiles));
 
         return Result<ContentInstallReport>.Ok(new ContentInstallReport(
             hit.Name,
             hit.Source,
             hit.Kind,
-            instanceId,
+            instance.Id,
             installedFiles.FirstOrDefault(),
             installedFiles,
             resolved.Value!.Warnings));
@@ -157,6 +313,47 @@ public sealed class ContentInstallService(
         ContentHit hit,
         IProgress<ContentProgress>? progress = null,
         CancellationToken cancellationToken = default)
+    {
+        using var operation = new OperationProgressBridge<ContentProgress>(
+            operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Download,
+                Title = hit.Name,
+                StageId = "content",
+                Source = hit.SourceLabel,
+                CanCancel = true,
+                CanRetry = true,
+            },
+            progress,
+            MapContentProgress);
+
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = cancellation.Token;
+        operation.AttachControl(cancellation, retryToken => DownloadAsync(hit, progress, retryToken));
+
+        try
+        {
+            var result = await DownloadCoreAsync(hit, operation, cancellationToken).ConfigureAwait(false);
+            Finish(operation, result);
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            operation.Cancel();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            operation.Fail(OperationErrors.FromException("content.download_failed", exception));
+            throw;
+        }
+    }
+
+    private async Task<Result<ContentDownloadReport>> DownloadCoreAsync(
+        ContentHit hit,
+        IProgress<ContentProgress>? progress,
+        CancellationToken cancellationToken)
     {
         var resolved = await ResolveFilesAsync(hit, null, null, cancellationToken).ConfigureAwait(false);
         if (!resolved.IsSuccess)
@@ -200,6 +397,49 @@ public sealed class ContentInstallService(
             return Result<ModpackImportResult>.Fail("instance.not_found", "实例不存在。");
         }
 
+        using var operation = new OperationProgressBridge<ContentProgress>(
+            operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Import,
+                Title = hit.Name,
+                StageId = "content",
+                Source = hit.SourceLabel,
+                CanCancel = true,
+                CanRetry = true,
+            },
+            progress,
+            MapContentProgress);
+
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = cancellation.Token;
+        operation.AttachControl(cancellation, retryToken => ImportModpackAsync(instanceId, hit, progress, retryToken));
+
+        try
+        {
+            var result = await ImportModpackCoreAsync(instance, hit, operation, cancellationToken)
+                .ConfigureAwait(false);
+            Finish(operation, result);
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            operation.Cancel();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            operation.Fail(OperationErrors.FromException("modpack.import_failed", exception));
+            throw;
+        }
+    }
+
+    private async Task<Result<ModpackImportResult>> ImportModpackCoreAsync(
+        GameInstance instance,
+        ContentHit hit,
+        IProgress<ContentProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         var archive = await DownloadModpackArchiveAsync(
                 hit,
                 instance.GameVersion,
@@ -221,6 +461,50 @@ public sealed class ContentInstallService(
         IProgress<ContentProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        using var operation = new OperationProgressBridge<ContentProgress>(
+            operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Import,
+                Title = hit.Name,
+                StageId = "content",
+                Source = hit.SourceLabel,
+                CanCancel = true,
+                CanRetry = true,
+            },
+            progress,
+            MapContentProgress);
+
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = cancellation.Token;
+        operation.AttachControl(
+            cancellation,
+            retryToken => CreateInstanceAndImportModpackAsync(hit, progress, retryToken));
+
+        try
+        {
+            var result = await CreateInstanceAndImportModpackCoreAsync(hit, operation, cancellationToken)
+                .ConfigureAwait(false);
+            Finish(operation, result);
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            operation.Cancel();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            operation.Fail(OperationErrors.FromException("modpack.import_failed", exception));
+            throw;
+        }
+    }
+
+    private async Task<Result<ModpackImportResult>> CreateInstanceAndImportModpackCoreAsync(
+        ContentHit hit,
+        IProgress<ContentProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         var archive = await DownloadModpackArchiveAsync(hit, null, null, progress, cancellationToken)
             .ConfigureAwait(false);
         if (!archive.IsSuccess)
@@ -228,7 +512,7 @@ public sealed class ContentInstallService(
             return Result<ModpackImportResult>.Fail(archive.Error!);
         }
 
-        progress?.Report(new ContentProgress("inspect", "正在读取整合包信息…"));
+        progress?.Report(new ContentProgress("inspect", localizer.Get("content.stage.inspect")));
         var metadata = ModpackArchiveInspector.Read(archive.Value!);
         if (!metadata.IsSuccess)
         {
@@ -260,7 +544,7 @@ public sealed class ContentInstallService(
         }
 
         var createdInstance = createResult.Value!;
-        progress?.Report(new ContentProgress("import", "正在导入整合包…"));
+        progress?.Report(new ContentProgress("import", localizer.Get("content.stage.import")));
 
         Result<ModpackImportResult> import;
         try
@@ -317,7 +601,13 @@ public sealed class ContentInstallService(
         CancellationToken cancellationToken)
     {
         var forwarding = new ForwardingProgress<ModpackProgress>(update =>
-            progress?.Report(new ContentProgress(update.Stage, update.Message, update.Completed, update.Total)));
+            progress?.Report(new ContentProgress(update.Stage, update.Message, update.Completed, update.Total)
+            {
+                CompletedBytes = update.CompletedBytes,
+                TotalBytes = update.TotalBytes,
+                BytesPerSecond = update.BytesPerSecond,
+                CurrentFile = update.CurrentFile,
+            }));
         var result = await modpacks
             .ImportAsync(instance.Id, archivePath, forwarding, cancellationToken)
             .ConfigureAwait(false);
@@ -709,14 +999,18 @@ public sealed class ContentInstallService(
                 file.FileName))
             .ToArray();
 
+        var downloading = localizer.Get("content.stage.download");
         var forwarding = new ForwardingProgress<DownloadProgress>(update =>
             progress?.Report(new ContentProgress(
                 "download",
-                "正在下载…",
+                downloading,
                 update.CompletedFiles,
                 update.TotalFiles)
             {
+                CompletedBytes = update.CompletedBytes,
+                TotalBytes = update.IsTotalBytesKnown ? update.TotalBytes : 0,
                 BytesPerSecond = update.BytesPerSecond,
+                CurrentFile = update.CurrentFile,
             }));
 
         try
@@ -777,6 +1071,33 @@ public sealed class ContentInstallService(
     private sealed record ResolvedDownload(
         IReadOnlyList<RemoteFile> Files,
         IReadOnlyList<string> Warnings);
+
+    /// <summary>
+    /// 内容安装/下载进度映射到任务中心：解析、下载、读取元数据、导入等阶段
+    /// 通过稳定 StageId 表达，下载阶段额外提供字节、速度与当前文件。
+    /// </summary>
+    private static OperationProgressUpdate MapContentProgress(ContentProgress progress) => new()
+    {
+        StageId = $"content.{progress.Stage}",
+        StageText = progress.Message,
+        CurrentItem = progress.CurrentFile,
+        Completed = progress.CompletedFiles,
+        Total = progress.TotalFiles > 0 ? progress.TotalFiles : null,
+        BytesDownloaded = progress.CompletedBytes,
+        TotalBytes = progress.TotalBytes > 0 ? progress.TotalBytes : null,
+        BytesPerSecond = progress.BytesPerSecond > 0 ? progress.BytesPerSecond : null,
+    };
+
+    private static void Finish<T>(OperationProgressBridge<ContentProgress> operation, Result<T> result)
+    {
+        if (result.IsSuccess)
+        {
+            operation.Complete();
+            return;
+        }
+
+        operation.Fail(OperationErrors.FromCode(result.Error!.Code, result.Error.Message, result.Error.Detail));
+    }
 
     private sealed class ForwardingProgress<T>(Action<T> callback) : IProgress<T>
     {

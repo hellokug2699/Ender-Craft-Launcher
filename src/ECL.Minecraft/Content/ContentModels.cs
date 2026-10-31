@@ -79,6 +79,12 @@ public sealed record ContentProgress(
     int TotalFiles = 0)
 {
     public double BytesPerSecond { get; init; }
+
+    public long CompletedBytes { get; init; }
+
+    public long TotalBytes { get; init; }
+
+    public string? CurrentFile { get; init; }
 }
 
 public sealed record ContentInstallReport(

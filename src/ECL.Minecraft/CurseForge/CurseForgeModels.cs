@@ -234,7 +234,16 @@ public sealed record CurseForgeProgress(
     string Stage,
     string Message,
     int Completed = 0,
-    int Total = 0);
+    int Total = 0)
+{
+    public double BytesPerSecond { get; init; }
+
+    public long CompletedBytes { get; init; }
+
+    public long TotalBytes { get; init; }
+
+    public string? CurrentFile { get; init; }
+}
 
 public sealed record CurseForgeInstallReport(
     string ModName,

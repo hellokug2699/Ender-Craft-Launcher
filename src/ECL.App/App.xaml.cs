@@ -61,6 +61,7 @@ public partial class App : Application
             services.AddSingleton<DownloadViewModel>();
             services.AddSingleton<SettingsViewModel>();
             services.AddSingleton<AboutViewModel>();
+            services.AddSingleton<OperationCenterViewModel>();
             services.AddSingleton<MainViewModel>();
             services.AddSingleton<MainWindow>();
 

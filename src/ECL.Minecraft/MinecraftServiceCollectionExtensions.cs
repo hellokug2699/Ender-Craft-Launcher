@@ -29,6 +29,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IInstanceStore, FileSystemInstanceStore>();
         services.AddSingleton<IInstanceService, InstanceService>();
         services.AddSingleton<IVersionResolver, VersionResolver>();
+        services.AddSingleton<IVersionCatalog, MojangVersionCatalog>();
         services.AddSingleton<IProcessLauncher, SystemProcessLauncher>();
         services.AddSingleton<ILoaderCatalog, LoaderCatalog>();
         services.AddSingleton<IForgeProcessorRunner, ForgeProcessorRunner>();
@@ -36,11 +37,13 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IJavaSelectionService, JavaSelectionService>();
         services.AddSingleton<IEulaService, FileEulaService>();
         services.AddSingleton<IModService, ModService>();
+        services.AddSingleton<IModDependencyInstaller, ModDependencyInstaller>();
         services.AddSingleton<IModpackService, ModpackService>();
         services.AddSingleton<ICurseForgeClient, CurseForgeClient>();
         services.AddSingleton<ICurseForgeService, CurseForgeService>();
         services.AddSingleton<IModrinthClient, ModrinthClient>();
         services.AddSingleton<IContentSearchService, ContentSearchService>();
+        services.AddSingleton<IDependencyResolver, DependencyResolver>();
         services.AddSingleton<IContentInstallService, ContentInstallService>();
         services.AddSingleton<IContentPackService, ContentPackService>();
         services.AddSingleton<IVersionNewsService, MojangVersionNewsService>();
