@@ -180,7 +180,18 @@ public sealed class MicrosoftAuthenticationService : IMicrosoftAuthenticationSer
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, EntitlementsEndpoint);
         request.Headers.Authorization = new("Bearer", token.AccessToken);
-        return await SendJsonAsync<JsonElement>(request, "auth.entitlements", cancellationToken).ConfigureAwait(false);
+        var result = await SendJsonAsync<JsonElement>(request, "auth.entitlements", cancellationToken).ConfigureAwait(false);
+        if (!result.Success)
+        {
+            return result;
+        }
+
+        if (!result.Value!.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() == 0)
+        {
+            return Result<JsonElement>.Fail("auth.no_entitlement", "Microsoft 账户没有 Minecraft Java Edition 权益。");
+        }
+
+        return result;
     }
 
     private async Task<Result<MinecraftProfile>> GetProfileAsync(MinecraftToken token, CancellationToken cancellationToken)
