@@ -63,10 +63,16 @@ internal sealed class FileSystemInstanceStore(IAppPaths paths, ILogger<FileSyste
 
         var directory = paths.GetInstanceDirectory(instance.Id);
         Directory.CreateDirectory(directory);
-        Directory.CreateDirectory(paths.GetInstanceGameDirectory(instance.Id));
-        foreach (var name in ManagedGameDirectories)
+
+        // 自建实例：版本隔离始终开启，游戏目录固定在 instances/<id>/minecraft。
+        // 导入的既有安装直接引用原目录，这里不创建、也不改写它。
+        if (string.IsNullOrWhiteSpace(instance.GameDirectory))
         {
-            Directory.CreateDirectory(Path.Combine(paths.GetInstanceGameDirectory(instance.Id), name));
+            Directory.CreateDirectory(paths.GetInstanceGameDirectory(instance.Id));
+            foreach (var name in ManagedGameDirectories)
+            {
+                Directory.CreateDirectory(Path.Combine(paths.GetInstanceGameDirectory(instance.Id), name));
+            }
         }
 
         Directory.CreateDirectory(paths.GetInstanceLogsDirectory(instance.Id));

@@ -36,13 +36,13 @@ Forge 的 `${file.jarVersion}` 会尝试从 `META-INF/MANIFEST.MF` 的 `Implemen
 - 导入：`mod import <实例ID> <文件...>`（复制 `*.jar` / `*.jar.disabled`，默认不覆盖）
 - 删除：`mod delete <实例ID> <文件名>`
 
-WPF 的 **Mods** 页面提供同样的列表、启停、批量、导入、删除、整合包导入导出操作；页面刷新/切换时会重新加载实例下拉，新建/删除实例后无需重启启动器。
+WPF 的 **内容** 页面提供同样的列表、启停、批量、导入、删除、整合包导入导出操作；页面刷新/切换时会重新加载实例下拉，新建/删除实例后无需重启启动器。搜索与远程下载已从内容页移到 **下载** 页（CurseForge + Modrinth，来源可过滤），内容页只处理已安装内容。
 
 ## 整合包
 
 ### 导入
 
-- **Modrinth `.mrpack`**：读取 `modrinth.index.json`，校验 `dependencies.minecraft` 与实例游戏版本、加载器是否匹配；按 `files[]` 的 `path`、`hashes.sha1`、`downloads`、`fileSize` 下载并校验；解压 `overrides/` 与 `client-overrides/`。`env.client = unsupported` 的文件会跳过。
+- **Modrinth `.mrpack`**：读取 `modrinth.index.json`，校验 `dependencies.minecraft` 与实例游戏版本、加载器是否匹配；按 `files[]` 的 `path`、`hashes.sha1`、`downloads`、`fileSize` 下载并校验；解压 `overrides/` 与 `client-overrides/`。`env.client = unsupported` 的文件会跳过。下载页还支持从 Modrinth/CurseForge 直接下载整合包；没有实例时由 `ModpackArchiveInspector` 读取包内元数据自动创建实例后导入。
 - **CurseForge `.zip`**：读取 `manifest.json`，校验游戏版本与加载器（`forge-*` / `fabric-*` / `neoforge-*` / `cleanroom-*`），通过 `POST /v1/mods/files`（经 ECL 代理，客户端不含 key）批量解析 `files[].fileID` 并下载到 `mods/`，校验 SHA-1 与大小；`required=false` 的文件跳过并警告；最后解压 `overrides`（支持自定义目录名）与 `client-overrides/`。代理不可用时返回真实网络/HTTP 错误，不会导入残缺包；只有 overrides 的旧式包仍可导入。详见 [curseforge.md](curseforge.md)。
 - 所有路径都会做目录穿越检查，只允许写入实例 `minecraft/` 目录。
 - 导入完成后写入 `minecraft/.ecl-modpack.json` 记录包名/版本/来源（`modrinth` 或 `curseforge`）。

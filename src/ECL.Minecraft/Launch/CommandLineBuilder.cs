@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Text;
+using Ecl.Auth;
 using Ecl.Java;
 
 namespace Ecl.Minecraft.Launch;
@@ -11,6 +12,8 @@ public static class CommandLineBuilder
     {
         var arguments = new List<string>();
         var classpath = BuildClasspath(context);
+        var accessToken = context.Account.AccessToken ?? "0";
+        var userType = UserType(context.Account);
 
         arguments.Add($"-Xmx{context.MemoryMb}M");
         arguments.Add($"-Xms{Math.Min(1024, context.MemoryMb)}M");
@@ -23,7 +26,11 @@ public static class CommandLineBuilder
         if (loggingFile is { Id.Length: > 0 } && !string.IsNullOrWhiteSpace(loggingArgument))
         {
             var loggingPath = Versions.VersionFilePlanner.GetLoggingFilePath(context.Paths, loggingFile.Id);
-            arguments.Add(loggingArgument.Replace("${path}", loggingPath, StringComparison.OrdinalIgnoreCase));
+            // 导入的实例可能缺少 logging 资源；指向不存在的文件会让 log4j 配置加载失败。
+            if (File.Exists(loggingPath))
+            {
+                arguments.Add(loggingArgument.Replace("${path}", loggingPath, StringComparison.OrdinalIgnoreCase));
+            }
         }
 
         var instanceJvmArguments = context.GetInstanceSetting<string?>("instance.java.extraArguments");
@@ -56,6 +63,12 @@ public static class CommandLineBuilder
             context.Version?.Arguments,
             ReplacePlaceholders));
 
+        // Authlib-Injector 只对第三方账户注入；Microsoft/离线账户这里始终为空。
+        if (!string.IsNullOrWhiteSpace(context.JavaAgentArgument))
+        {
+            arguments.Add(context.JavaAgentArgument);
+        }
+
         arguments.Add("-cp");
         arguments.Add(classpath);
         arguments.Add(context.Version?.MainClass ?? "net.minecraft.client.main.Main");
@@ -73,9 +86,9 @@ public static class CommandLineBuilder
         arguments.Add("--uuid");
         arguments.Add(context.Account.Uuid);
         arguments.Add("--accessToken");
-        arguments.Add("0");
+        arguments.Add(accessToken);
         arguments.Add("--userType");
-        arguments.Add("legacy");
+        arguments.Add(userType);
         arguments.Add("--versionType");
         arguments.Add(context.Version?.Type ?? "release");
         arguments.Add("--width");
@@ -169,6 +182,8 @@ public static class CommandLineBuilder
     private static string ReplaceVersionPlaceholders(string value, LaunchContext context, string classpath)
     {
         var assetsIndex = context.Version?.AssetIndex?.Id ?? context.Version?.Assets ?? "legacy";
+        var accessToken = context.Account.AccessToken ?? "0";
+        var userType = UserType(context.Account);
         return value
             .Replace("${auth_player_name}", context.Account.Name, StringComparison.OrdinalIgnoreCase)
             .Replace("${version_name}", context.Instance.VersionId, StringComparison.OrdinalIgnoreCase)
@@ -176,9 +191,9 @@ public static class CommandLineBuilder
             .Replace("${assets_root}", context.Paths.AssetsDirectory, StringComparison.OrdinalIgnoreCase)
             .Replace("${assets_index_name}", assetsIndex, StringComparison.OrdinalIgnoreCase)
             .Replace("${auth_uuid}", context.Account.Uuid, StringComparison.OrdinalIgnoreCase)
-            .Replace("${auth_access_token}", "0", StringComparison.OrdinalIgnoreCase)
-            .Replace("${auth_session}", "0", StringComparison.OrdinalIgnoreCase)
-            .Replace("${user_type}", "legacy", StringComparison.OrdinalIgnoreCase)
+            .Replace("${auth_access_token}", accessToken, StringComparison.OrdinalIgnoreCase)
+            .Replace("${auth_session}", accessToken, StringComparison.OrdinalIgnoreCase)
+            .Replace("${user_type}", userType, StringComparison.OrdinalIgnoreCase)
             .Replace("${version_type}", context.Version?.Type ?? "release", StringComparison.OrdinalIgnoreCase)
             .Replace("${natives_directory}", context.NativesDirectory, StringComparison.OrdinalIgnoreCase)
             .Replace("${library_directory}", context.Paths.LibrariesDirectory, StringComparison.OrdinalIgnoreCase)
@@ -212,6 +227,17 @@ public static class CommandLineBuilder
         entries.Add(Versions.VersionFilePlanner.GetClientJarPath(context.Paths, context.Instance.VersionId));
         return string.Join(Path.PathSeparator, entries);
     }
+
+    /// <summary>
+    /// 第三方认证（Authlib-Injector）使用 mojang 身份类型，由注入器接管会话校验；
+    /// Microsoft 账户保持 msa，离线账户保持 legacy。
+    /// </summary>
+    private static string UserType(Account account) => account.Type switch
+    {
+        AccountType.Microsoft => "msa",
+        AccountType.ThirdParty => "mojang",
+        _ => "legacy",
+    };
 
     private static string Quote(string value)
     {

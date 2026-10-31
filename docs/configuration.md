@@ -66,13 +66,21 @@ internal sealed class MyOptionsProvider : IOptionProvider
 - 影响所有实例。
 - 全局选项不能写入实例作用域。
 
+`launcher.minecraftDirectory`（实例下载位置）是启动早期读取的全局选项：它把实例与游戏文件的根目录从默认数据目录切换到任意 `.minecraft` 目录。修改后标记为需要重启；已有实例不会自动迁移。启动时还会读取环境变量 `ECL_GAME_DIR` 作为相同语义的覆盖（优先级高于设置）。
+
 ### Instance
 
-- 存储在 `<data>/instances/<id>/settings.json`。
+- 存储在 `<game>/instances/<id>/settings.json`。
 - 只对当前实例生效。
 - 空值表示“未设置/继承”，不会写入文件。
 
+### 版本隔离
+
+版本隔离不是可配置项，因此不会出现在设置页。`GameInstance.VersionIsolation` 恒为 `true`，每个实例的游戏目录固定为 `<game>/instances/<id>/minecraft`；`mods`、`saves`、`config`、`resourcepacks` 等互不共享。
+
 当前实例选项包括：
+
+实例工作区提供独立详情页，集中展示基本信息、账户、Java/JVM、模组、文件目录、最近启动记录与诊断入口。实例的 JVM 预设、额外参数和内存均可单独覆盖；未设置的字段继承全局。实例库页面只负责展示实例与打开工作区，不提供运行设置。
 
 | Key | 含义 |
 | --- | --- |
@@ -100,8 +108,6 @@ var memory = settings.Get<int?>("instance.java.memoryMb", instance.Id)
 UI 在每项下方展示“来源”，实例作用域下 `Default` 显示为“继承全局”，帮助用户理解优先级。
 
 ### 下载源策略
-
-`launcher.theme` 是全局选项，支持 `dark` / `light`，保存后立即修改共享画刷颜色，不需要重启。
 
 `network.downloadSource` 是全局选项，提供四档候选顺序：
 
@@ -141,10 +147,10 @@ CLI 使用 `ecl launch <实例ID> --accept-eula` 记录同意；未同意时真�
 
 | Key | 作用域 | 含义 |
 | --- | --- | --- |
-| `java.defaultPath` | Global | 全局默认 Java 路径；留空自动选择 |
+| `java.defaultPath` | Global | 全局 Java 目录/路径；可填 java.exe、Java 主目录或包含多个 JDK 的父目录，多个路径用分号分隔；留空自动选择 |
 | `java.defaultMemoryMb` | Global | 默认最大堆内存 |
 | `java.extraArguments` | Global | 全局额外 JVM 参数 |
-| `java.jvmPreset` | Global | JVM 预设：default / g1 / zgc / aikar |
+| `java.jvmPreset` | Global | JVM 预设：default / g1 / zgc / aikar；默认 `g1`（推荐） |
 | `java.customJvmPreset` | Global | 自定义 JVM 预设 JSON 文件；留空使用内置预设 |
 | `java.runtimeProvider` | Global | Java 下载来源：mojang / adoptium / zulu / liberica |
 | `instance.java.executablePath` | Instance | 实例指定 Java；留空自动选择 |
@@ -154,7 +160,7 @@ CLI 使用 `ecl launch <实例ID> --accept-eula` 记录同意；未同意时真�
 | `instance.java.customJvmPreset` | Instance | 实例自定义 JVM 预设文件；留空继承全局 |
 | `instance.java.disableCompatibilityCheck` | Instance | 关闭该实例的 Java 兼容性检验 |
 
-自动选择与兼容性规则详见 [java.md](java.md)。实例页的 Java 下拉框会写入 `instance.java.executablePath`；“自动”会清空该值。
+自动选择与兼容性规则详见 [java.md](java.md)。实例工作区的 Java 下拉框会写入 `instance.java.executablePath`；“自动”会清空该值。配置为父目录时，`java.defaultPath` 下的所有 Java 都会参与自动选择。
 
 ## 3. 文件格式
 

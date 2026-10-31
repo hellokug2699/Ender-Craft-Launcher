@@ -5,7 +5,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Services;
 using Ecl.Core.Localization;
-using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Mods;
 
@@ -17,21 +16,25 @@ public sealed partial class ModsViewModel : ObservableObject
     private readonly IModService _mods;
     private readonly IModpackService _modpacks;
     private readonly IContentPackService _contentPacks;
-    private readonly ICurseForgeService _curseForge;
     private readonly IDialogService _dialogs;
     private readonly ILocalizer _localizer;
     private bool _initialized;
     private bool _suppressSelectionRefresh;
+    private string? _pendingInstanceId;
+
+    public Action<string, string>? SearchDependency { get; set; }
 
     public ObservableCollection<ModInstanceChoice> Instances { get; } = [];
 
     public ObservableCollection<ModItemViewModel> Mods { get; } = [];
 
+    public ObservableCollection<ModItemViewModel> FilteredMods { get; } = [];
+
+    public ObservableCollection<ModFilterChoice> ModFilters { get; } = [];
+
     public ObservableCollection<PackTypeChoice> PackTypes { get; } = [];
 
     public ObservableCollection<ContentPackItemViewModel> Packs { get; } = [];
-
-    public ObservableCollection<CurseForgeModItemViewModel> CurseForgeResults { get; } = [];
 
     [ObservableProperty]
     private ModInstanceChoice? _selectedInstance;
@@ -40,19 +43,16 @@ public sealed partial class ModsViewModel : ObservableObject
     private ModItemViewModel? _selectedMod;
 
     [ObservableProperty]
+    private string _modSearchText = string.Empty;
+
+    [ObservableProperty]
+    private ModFilterChoice? _selectedModFilter;
+
+    [ObservableProperty]
     private PackTypeChoice? _selectedPackType;
 
     [ObservableProperty]
     private ContentPackItemViewModel? _selectedPack;
-
-    [ObservableProperty]
-    private CurseForgeModItemViewModel? _selectedCurseForgeResult;
-
-    [ObservableProperty]
-    private string _curseForgeQuery = string.Empty;
-
-    [ObservableProperty]
-    private string _curseForgeStatusText = string.Empty;
 
     [ObservableProperty]
     private string _statusMessage = string.Empty;
@@ -77,7 +77,6 @@ public sealed partial class ModsViewModel : ObservableObject
         IModService mods,
         IModpackService modpacks,
         IContentPackService contentPacks,
-        ICurseForgeService curseForge,
         IDialogService dialogs,
         ILocalizer localizer)
     {
@@ -85,14 +84,18 @@ public sealed partial class ModsViewModel : ObservableObject
         _mods = mods;
         _modpacks = modpacks;
         _contentPacks = contentPacks;
-        _curseForge = curseForge;
         _dialogs = dialogs;
         _localizer = localizer;
+
+        ModFilters.Add(new ModFilterChoice("all", localizer.Get("mods.filter.all")));
+        ModFilters.Add(new ModFilterChoice("enabled", localizer.Get("mods.filter.enabled")));
+        ModFilters.Add(new ModFilterChoice("disabled", localizer.Get("mods.filter.disabled")));
+        ModFilters.Add(new ModFilterChoice("issues", localizer.Get("mods.filter.issues")));
+        _selectedModFilter = ModFilters[0];
 
         PackTypes.Add(new PackTypeChoice(ContentPackKind.ResourcePack, localizer.Get("mods.resourcePacks")));
         PackTypes.Add(new PackTypeChoice(ContentPackKind.ShaderPack, localizer.Get("mods.shaderPacks")));
         _selectedPackType = PackTypes[0];
-        UpdateCurseForgeStatus();
     }
 
     public async Task InitializeAsync()
@@ -104,6 +107,34 @@ public sealed partial class ModsViewModel : ObservableObject
             await RefreshAsync().ConfigureAwait(true);
             await RefreshPacksAsync().ConfigureAwait(true);
         }
+    }
+
+    public async Task<string> GetHealthSummaryAsync(string instanceId)
+    {
+        var result = await _mods.ScanAsync(instanceId).ConfigureAwait(true);
+        if (!result.IsSuccess)
+        {
+            return _localizer.Get("instances.healthModsFailed", result.Error?.Message ?? string.Empty);
+        }
+
+        var report = result.Value!;
+        return report.IssueCount == 0
+            ? _localizer.Get("instances.healthModsOk", report.EnabledCount, report.DisabledCount)
+            : _localizer.Get("instances.healthModsIssues", report.EnabledCount, report.DisabledCount, report.IssueCount,
+                string.Join(Environment.NewLine, report.Issues.Take(12).Select(issue => $"{issue.FileName}: {issue.Kind} ({issue.RelatedModId ?? issue.Detail ?? issue.ModId ?? string.Empty})")));
+    }
+
+    public void SelectInstance(string instanceId)
+    {
+        var match = Instances.FirstOrDefault(item => string.Equals(item.Id, instanceId, StringComparison.Ordinal));
+        if (match is null)
+        {
+            _pendingInstanceId = instanceId;
+            return;
+        }
+
+        _pendingInstanceId = null;
+        SelectedInstance = match;
     }
 
     public async Task ActivateAsync()
@@ -127,7 +158,7 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task ReloadInstancesAsync()
     {
-        var selectedId = SelectedInstance?.Id;
+        var selectedId = _pendingInstanceId ?? SelectedInstance?.Id;
         var instances = await _instances.GetInstancesAsync().ConfigureAwait(true);
 
         _suppressSelectionRefresh = true;
@@ -140,16 +171,17 @@ public sealed partial class ModsViewModel : ObservableObject
                     instance.Id,
                     instance.Name,
                     instance.GameVersion,
-                    instance.Loader));
+                    instance.Loader,
+                    instance.LoaderVersion));
             }
 
             SelectedInstance = Instances.FirstOrDefault(item => item.Id == selectedId)
                                ?? Instances.FirstOrDefault();
+            _pendingInstanceId = null;
         }
         finally
         {
             _suppressSelectionRefresh = false;
-            UpdateCurseForgeStatus();
         }
     }
 
@@ -159,6 +191,7 @@ public sealed partial class ModsViewModel : ObservableObject
         if (SelectedInstance is null)
         {
             Mods.Clear();
+            RefreshFilteredMods();
             Summary = _localizer.Get("mods.noInstance");
             return;
         }
@@ -180,6 +213,7 @@ public sealed partial class ModsViewModel : ObservableObject
                 Mods.Add(new ModItemViewModel(mod, _localizer));
             }
 
+            RefreshFilteredMods();
             Summary = _localizer.Get(
                 "mods.summary",
                 report.EnabledCount,
@@ -329,6 +363,83 @@ public sealed partial class ModsViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task EnableSelectedDependenciesAsync()
+    {
+        if (SelectedInstance is null || SelectedMod is null)
+        {
+            StatusMessage = _localizer.Get("mods.selectMod");
+            return;
+        }
+
+        var dependencyIds = SelectedMod.Issues
+            .Where(issue => issue.Kind == ModIssueKind.DisabledDependency && !string.IsNullOrWhiteSpace(issue.RelatedModId))
+            .Select(issue => issue.RelatedModId!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var dependencies = dependencyIds
+            .Select(id => Mods.FirstOrDefault(mod => string.Equals(mod.ModId, id, StringComparison.OrdinalIgnoreCase)))
+            .Where(mod => mod is not null && !mod.Enabled)
+            .Cast<ModItemViewModel>()
+            .ToArray();
+
+        if (dependencies.Length == 0)
+        {
+            StatusMessage = _localizer.Get("mods.dependenciesNone");
+            return;
+        }
+
+        var names = string.Join(", ", dependencies.Select(mod => mod.Name));
+        if (!_dialogs.Confirm(
+                _localizer.Get("mods.enableDependenciesTitle"),
+                _localizer.Get("mods.enableDependenciesConfirm", names)))
+        {
+            return;
+        }
+
+        var enabled = 0;
+        var errors = new List<string>();
+        foreach (var dependency in dependencies)
+        {
+            var result = await _mods.SetEnabledAsync(SelectedInstance.Id, dependency.FileName, true).ConfigureAwait(true);
+            if (result.IsSuccess)
+            {
+                enabled++;
+            }
+            else
+            {
+                errors.Add($"{dependency.FileName}: {result.Error?.Message}");
+            }
+        }
+
+        StatusMessage = errors.Count == 0
+            ? _localizer.Get("mods.dependenciesEnabled", enabled)
+            : _localizer.Get("mods.dependenciesEnabledWithErrors", enabled, string.Join("; ", errors));
+        await RefreshAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private void SearchSelectedDependency()
+    {
+        if (SelectedInstance is null || SelectedMod is null)
+        {
+            StatusMessage = _localizer.Get("mods.selectMod");
+            return;
+        }
+
+        var dependencyId = SelectedMod.Issues
+            .Where(issue => issue.Kind == ModIssueKind.MissingDependency)
+            .Select(issue => issue.RelatedModId)
+            .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id));
+        if (dependencyId is null)
+        {
+            StatusMessage = _localizer.Get("mods.noSearchableDependency");
+            return;
+        }
+
+        SearchDependency?.Invoke(dependencyId, SelectedInstance.Id);
+    }
+
+    [RelayCommand]
     private async Task DeleteSelectedAsync()
     {
         if (SelectedInstance is null || SelectedMod is null)
@@ -459,151 +570,6 @@ public sealed partial class ModsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task SearchCurseForgeAsync()
-    {
-        if (SelectedInstance is null)
-        {
-            StatusMessage = _localizer.Get("mods.curseforge.selectInstance");
-            return;
-        }
-
-        var loader = CurseForgeLoaders.FromInstanceLoader(SelectedInstance.Loader);
-        if (loader is null)
-        {
-            StatusMessage = _localizer.Get("mods.curseforge.unsupportedLoader");
-            return;
-        }
-
-        IsBusy = true;
-        StatusMessage = _localizer.Get("mods.curseforge.searching");
-        try
-        {
-            var result = await _curseForge
-                .SearchAsync(new CurseForgeSearchQuery
-                {
-                    SearchFilter = CurseForgeQuery,
-                    GameVersion = SelectedInstance.GameVersion,
-                    Loader = loader,
-                    PageSize = 20,
-                })
-                .ConfigureAwait(true);
-
-            if (!result.IsSuccess)
-            {
-                StatusMessage = _localizer.Get(
-                    "mods.curseforge.searchFailed",
-                    result.Error?.Message ?? string.Empty);
-                return;
-            }
-
-            CurseForgeResults.Clear();
-            foreach (var mod in result.Value!.Mods)
-            {
-                CurseForgeResults.Add(new CurseForgeModItemViewModel(mod));
-            }
-
-            StatusMessage = result.Value.Mods.Count == 0
-                ? _localizer.Get("mods.curseforge.noResults")
-                : _localizer.Get("mods.curseforge.results", result.Value.TotalCount);
-        }
-        catch (Exception exception)
-        {
-            StatusMessage = _localizer.Get("mods.curseforge.searchFailed", exception.Message);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    [RelayCommand]
-    private async Task InstallCurseForgeAsync()
-    {
-        if (SelectedInstance is null)
-        {
-            StatusMessage = _localizer.Get("mods.curseforge.selectInstance");
-            return;
-        }
-
-        if (SelectedCurseForgeResult is null)
-        {
-            StatusMessage = _localizer.Get("mods.curseforge.selectResult");
-            return;
-        }
-
-        if (CurseForgeLoaders.FromInstanceLoader(SelectedInstance.Loader) is null)
-        {
-            StatusMessage = _localizer.Get("mods.curseforge.unsupportedLoader");
-            return;
-        }
-
-        IsBusy = true;
-        try
-        {
-            var progress = new Progress<CurseForgeProgress>(update => StatusMessage = update.Message);
-            var result = await _curseForge
-                .InstallAsync(
-                    SelectedInstance.Id,
-                    SelectedCurseForgeResult.Id.ToString(),
-                    progress: progress)
-                .ConfigureAwait(true);
-
-            if (!result.IsSuccess)
-            {
-                StatusMessage = _localizer.Get(
-                    "mods.curseforge.installFailed",
-                    result.Error?.Message ?? string.Empty);
-                return;
-            }
-
-            StatusMessage = _localizer.Get(
-                "mods.curseforge.installed",
-                result.Value!.ModName,
-                result.Value.InstalledFiles.Count);
-            await RefreshAsync().ConfigureAwait(true);
-        }
-        catch (Exception exception)
-        {
-            StatusMessage = _localizer.Get("mods.curseforge.installFailed", exception.Message);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    [RelayCommand]
-    private void OpenCurseForgePage()
-    {
-        if (SelectedCurseForgeResult?.WebsiteUrl is not { Length: > 0 } url)
-        {
-            StatusMessage = _localizer.Get("mods.curseforge.selectResult");
-            return;
-        }
-
-        if (!_dialogs.OpenUrl(url))
-        {
-            StatusMessage = _localizer.Get("mods.curseforge.openFailed");
-        }
-    }
-
-    private void UpdateCurseForgeStatus()
-    {
-        if (SelectedInstance is null)
-        {
-            CurseForgeStatusText = _localizer.Get("mods.curseforge.selectInstance");
-            return;
-        }
-
-        CurseForgeStatusText = _localizer.Get(
-            "mods.curseforge.ready",
-            SelectedInstance.Name,
-            SelectedInstance.GameVersion,
-            SelectedInstance.Loader,
-            _localizer.Get("mods.curseforge.source.proxy"));
-    }
-
-    [RelayCommand]
     private async Task ImportModpackAsync()
     {
         if (SelectedInstance is null)
@@ -668,11 +634,43 @@ public sealed partial class ModsViewModel : ObservableObject
             : result.Error?.ToString() ?? _localizer.Get("mods.exportFailed");
     }
 
+    partial void OnModSearchTextChanged(string value) => RefreshFilteredMods();
+
+    partial void OnSelectedModFilterChanged(ModFilterChoice? value) => RefreshFilteredMods();
+
+    private void RefreshFilteredMods()
+    {
+        var selectedFileName = SelectedMod?.FileName;
+        var search = ModSearchText.Trim();
+        var filter = SelectedModFilter?.Key ?? "all";
+
+        var matches = Mods.Where(mod =>
+        {
+            var matchesSearch = search.Length == 0
+                || mod.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || mod.FileName.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || mod.Meta.Contains(search, StringComparison.OrdinalIgnoreCase);
+            var matchesFilter = filter switch
+            {
+                "enabled" => mod.Enabled,
+                "disabled" => !mod.Enabled,
+                "issues" => mod.HasIssues,
+                _ => true,
+            };
+            return matchesSearch && matchesFilter;
+        }).ToArray();
+
+        FilteredMods.Clear();
+        foreach (var mod in matches)
+        {
+            FilteredMods.Add(mod);
+        }
+
+        SelectedMod = FilteredMods.FirstOrDefault(mod => mod.FileName == selectedFileName);
+    }
+
     partial void OnSelectedInstanceChanged(ModInstanceChoice? value)
     {
-        CurseForgeResults.Clear();
-        SelectedCurseForgeResult = null;
-        UpdateCurseForgeStatus();
 
         if (_initialized && !_suppressSelectionRefresh)
         {
@@ -690,9 +688,28 @@ public sealed partial class ModsViewModel : ObservableObject
     }
 }
 
-public sealed record ModInstanceChoice(string Id, string Name, string GameVersion, string Loader);
+public sealed record ModInstanceChoice(string Id, string Name, string GameVersion, string Loader, string? LoaderVersion)
+{
+    public string LoaderDisplay => Loader.ToLowerInvariant() switch
+    {
+        "vanilla" => "Vanilla",
+        "fabric" => "Fabric",
+        "forge" => "Forge",
+        "neoforge" => "NeoForge",
+        "cleanroom" => "Cleanroom",
+        _ => Loader,
+    };
+
+    public string LoaderVersionDisplay => string.IsNullOrWhiteSpace(LoaderVersion)
+        ? LoaderDisplay
+        : $"{LoaderDisplay} {LoaderVersion}";
+
+    public string GameVersionDisplay => $"Minecraft {GameVersion}";
+}
 
 public sealed record PackTypeChoice(ContentPackKind Kind, string Title);
+
+public sealed record ModFilterChoice(string Key, string Title);
 
 public sealed class ContentPackItemViewModel
 {
@@ -740,7 +757,22 @@ public sealed class ModItemViewModel
 
     public string FileName => _entry.FileName;
 
+    public string? ModId => _entry.Metadata?.ModId;
+
+    public string PlatformText => _entry.Metadata?.Platform switch
+    {
+        ModPlatform.Fabric => _localizer.Get("mods.platform.fabric"),
+        ModPlatform.Forge => _localizer.Get("mods.platform.forge"),
+        ModPlatform.NeoForge => _localizer.Get("mods.platform.neoforge"),
+        ModPlatform.LegacyForge => _localizer.Get("mods.platform.legacyForge"),
+        _ => _localizer.Get("mods.platform.unknown"),
+    };
+
+    public IReadOnlyList<ModIssue> Issues => _entry.Issues;
+
     public bool Enabled => _entry.Enabled;
+
+    public string RecommendationText => string.Join(Environment.NewLine, _entry.Issues.Select(Recommend));
 
     public string StatusText => Enabled
         ? _localizer.Get("mods.enabledLabel")
@@ -749,14 +781,25 @@ public sealed class ModItemViewModel
     public string Name => _entry.Metadata?.Name ?? _entry.FileName;
 
     public string Meta => _entry.Metadata is null
-        ? _entry.FileName
-        : $"{_entry.Metadata.ModId} · {_entry.Metadata.Version} · {_entry.Metadata.Platform}";
+        ? $"{_entry.FileName} · {PlatformText}"
+        : $"{_entry.Metadata.ModId} · {_entry.Metadata.Version} · {PlatformText}";
 
     public string IssuesText => string.Join(
         Environment.NewLine,
         _entry.Issues.Select(issue => Describe(issue)));
 
     public bool HasIssues => _entry.Issues.Count > 0;
+
+    private string Recommend(ModIssue issue) => issue.Kind switch
+    {
+        ModIssueKind.DisabledDependency => _localizer.Get("mod.recommend.disabledDependency", issue.RelatedModId ?? "?"),
+        ModIssueKind.MissingDependency => _localizer.Get("mod.recommend.missingDependency", issue.RelatedModId ?? "?"),
+        ModIssueKind.Conflict => _localizer.Get("mod.recommend.conflict", issue.RelatedModId ?? "?"),
+        ModIssueKind.LoaderMismatch => _localizer.Get("mod.recommend.loaderMismatch", issue.Detail ?? "?"),
+        ModIssueKind.InvalidMetadata => _localizer.Get("mod.recommend.invalidMetadata"),
+        ModIssueKind.DuplicateModId => _localizer.Get("mod.recommend.duplicate"),
+        _ => string.Empty,
+    };
 
     private string Describe(ModIssue issue) => issue.Kind switch
     {
@@ -768,33 +811,4 @@ public sealed class ModItemViewModel
         ModIssueKind.InvalidMetadata => _localizer.Get("mod.issue.invalidMetadata", issue.FileName, issue.Detail ?? "?"),
         _ => issue.Kind.ToString(),
     };
-}
-
-public sealed class CurseForgeModItemViewModel
-{
-    private readonly CurseForgeMod _mod;
-
-    public CurseForgeModItemViewModel(CurseForgeMod mod)
-    {
-        _mod = mod;
-    }
-
-    public int Id => _mod.Id;
-
-    public string Name => _mod.Name;
-
-    public string Slug => _mod.Slug;
-
-    public string Summary => _mod.Summary ?? string.Empty;
-
-    public string? WebsiteUrl => _mod.WebsiteUrl;
-
-    public string Meta
-    {
-        get
-        {
-            var updated = _mod.DateModified?.ToLocalTime().ToString("yyyy-MM-dd") ?? "?";
-            return $"{_mod.Id} · {_mod.Slug} · {_mod.DownloadCount:N0} · {updated}";
-        }
-    }
 }

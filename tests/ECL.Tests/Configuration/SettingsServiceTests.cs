@@ -17,6 +17,7 @@ public sealed class SettingsServiceTests
         var settings = provider.GetRequiredService<ISettingsService>();
 
         Assert.Equal(4096, settings.Get<int>("java.defaultMemoryMb"));
+        Assert.Equal("g1", settings.Get<string>("java.jvmPreset"));
         Assert.Equal(8, settings.Get<int>("network.maxConcurrentDownloads"));
         Assert.Equal("official-first", settings.Get<string>("network.downloadSource"));
         Assert.Contains(settings.Get<string>("launcher.language"), new[] { "zh-CN", "en-US" });
@@ -87,6 +88,12 @@ public sealed class SettingsServiceTests
         Assert.Null(settings.Get<int?>("instance.java.memoryMb", "instance-c"));
         Assert.Equal(SettingsValueSource.Instance, settings.GetSource("instance.java.memoryMb", "instance-a"));
         Assert.Equal(SettingsValueSource.Default, settings.GetSource("instance.java.memoryMb", "instance-c"));
+
+        Assert.Null(settings.Get<string?>("instance.java.jvmPreset", "instance-a"));
+        Assert.True(settings.TrySetRaw("instance.java.jvmPreset", "zgc", "instance-a", out var presetError), presetError);
+        Assert.Equal("zgc", settings.Get<string?>("instance.java.jvmPreset", "instance-a"));
+        Assert.True(settings.TrySetRaw("instance.java.jvmPreset", string.Empty, "instance-a", out var clearPresetError), clearPresetError);
+        Assert.Null(settings.Get<string?>("instance.java.jvmPreset", "instance-a"));
 
         Assert.True(settings.TrySetRaw("instance.java.memoryMb", string.Empty, "instance-a", out var clearError), clearError);
         Assert.Null(settings.Get<int?>("instance.java.memoryMb", "instance-a"));

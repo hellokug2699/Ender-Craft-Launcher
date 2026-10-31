@@ -51,10 +51,14 @@ public sealed class DiagnosticPackageTests
     public void RedactsCommonTokenForms()
     {
         var text = DiagnosticPackageService.Redact(
-            "accessToken=abc\nAuthorization: Bearer xyz\n--accessToken abc\nhttps://u:p@example.com/");
+            "accessToken=abc\nAuthorization: Bearer xyz\n--accessToken abc\nhttps://u:p@example.com/\n" +
+            "Failed to parse into SignedJWT: N4lAb6YQ4jn34yFclZWCTo0RWsgMoo235JiV-8JMH0w");
 
         Assert.DoesNotContain("abc", text);
         Assert.DoesNotContain("xyz", text);
         Assert.DoesNotContain("u:p@", text);
+        // 第三方（Yggdrasil）token 不是 JWT，也必须脱敏。
+        Assert.DoesNotContain("N4lAb6YQ4jn34yFclZWCTo0RWsgMoo235JiV-8JMH0w", text);
+        Assert.Contains("SignedJWT: ***", text);
     }
 }

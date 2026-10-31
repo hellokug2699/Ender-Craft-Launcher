@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Ecl.Auth;
@@ -55,6 +56,7 @@ internal sealed class CliApplication
             "settings" => SettingsCommand(rest),
             "java" => await JavaCommandAsync(rest).ConfigureAwait(false),
             "account" => await AccountCommandAsync(rest).ConfigureAwait(false),
+            "authserver" => await AuthServerCommandAsync(rest).ConfigureAwait(false),
             "help" => PrintHelp(),
             _ => UsageError($"未知命令：{command}"),
         };
@@ -69,6 +71,7 @@ internal sealed class CliApplication
         Console.WriteLine($"Runtime : {RuntimeInformation.FrameworkDescription}");
         Console.WriteLine($"OS      : {RuntimeInformation.OSDescription}");
         Console.WriteLine($"Data    : {paths.Root}");
+        Console.WriteLine($"Game    : {paths.GameRoot}");
         Console.WriteLine("License : GPL-3.0-or-later");
         return 0;
     }
@@ -176,6 +179,55 @@ internal sealed class CliApplication
                         Console.WriteLine($"  OptiFine: {instance.OptiFineVersion}");
                     }
 
+                    return 0;
+                }
+
+            case "scan":
+                {
+                    var detected = await instances.ScanVersionsAsync().ConfigureAwait(false);
+                    if (_commandLine.HasFlag("json"))
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(detected, EclJson.Indented));
+                        return 0;
+                    }
+
+                    if (detected.Count == 0)
+                    {
+                        Console.WriteLine("未在 versions 目录发现可导入的版本。");
+                        return 0;
+                    }
+
+                    foreach (var version in detected)
+                    {
+                        var isolation = version.Isolated ? "隔离" : "未隔离";
+                        var importedMark = version.AlreadyImported ? "  [已导入]" : string.Empty;
+                        Console.WriteLine($"  {version.VersionId}  ·  {version.Loader}  ·  {isolation}{importedMark}");
+                        Console.WriteLine($"      游戏目录：{version.GameDirectory}");
+                    }
+
+                    return 0;
+                }
+
+            case "import":
+                {
+                    var versionId = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(versionId))
+                    {
+                        return UsageError("instance import 需要 versions 目录下的版本 ID。");
+                    }
+
+                    var imported = await instances
+                        .ImportAsync(versionId, _commandLine.GetValue("name"))
+                        .ConfigureAwait(false);
+                    if (!imported.IsSuccess)
+                    {
+                        return WriteError(imported.Error);
+                    }
+
+                    Console.WriteLine($"已导入实例 {imported.Value!.Name}");
+                    Console.WriteLine($"  ID      : {imported.Value.Id}");
+                    Console.WriteLine($"  版本    : {imported.Value.VersionId} ({imported.Value.Loader})");
+                    Console.WriteLine($"  游戏目录: {imported.Value.GameDirectory}");
                     return 0;
                 }
 
@@ -502,7 +554,7 @@ internal sealed class CliApplication
         {
             Console.WriteLine();
             Console.WriteLine("命令：");
-            Console.WriteLine(report.CommandLine);
+            Console.WriteLine(SecretRedaction.CommandLine(report.CommandLine));
         }
     }
 
@@ -773,6 +825,143 @@ internal sealed class CliApplication
                     return 0;
                 }
 
+            case "login-thirdparty":
+                {
+                    var servers = _provider.GetRequiredService<IAuthServerService>();
+                    var serverArg = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(serverArg))
+                    {
+                        return UsageError("account login-thirdparty 需要认证服务器 ID 或地址。");
+                    }
+
+                    var username = _commandLine.GetValue("username");
+                    if (string.IsNullOrWhiteSpace(username))
+                    {
+                        return UsageError("account login-thirdparty 需要 --username。");
+                    }
+
+                    var server = await servers.ResolveAsync(serverArg).ConfigureAwait(false);
+                    if (!server.IsSuccess)
+                    {
+                        return WriteError(server.Error);
+                    }
+
+                    // 密码只用于本次认证：不回显、不写入日志、不持久化。
+                    var password = ReadPassword(
+                        $"请输入 {username} 在 {server.Value!.Name} 的密码（不会回显，也不会保存）：");
+                    if (string.IsNullOrEmpty(password))
+                    {
+                        return WriteError(new EclError(
+                            "auth.thirdparty_credentials_required",
+                            "密码不能为空。"));
+                    }
+
+                    var signedIn = await accounts
+                        .SignInThirdPartyAsync(
+                            server.Value.Id,
+                            username,
+                            password,
+                            _commandLine.HasFlag("default"))
+                        .ConfigureAwait(false);
+                    if (!signedIn.IsSuccess)
+                    {
+                        return WriteError(signedIn.Error);
+                    }
+
+                    Console.WriteLine($"第三方登录成功：{signedIn.Value!.Name}");
+                    Console.WriteLine($"  UUID   : {signedIn.Value.Uuid}");
+                    Console.WriteLine($"  服务器 : {server.Value.Name} ({server.Value.Id})");
+                    return 0;
+                }
+
+            case "login-microsoft":
+                {
+                    var authentication = _provider.GetRequiredService<IMicrosoftAuthenticationService>();
+                    var settings = _provider.GetRequiredService<ISettingsService>();
+                    var clientId = settings.Get<string>("auth.microsoftClientId")?.Trim();
+                    if (string.IsNullOrWhiteSpace(clientId))
+                    {
+                        return WriteError(new EclError("auth.invalid_client_id", "未配置 Microsoft Client ID。"));
+                    }
+
+                    // 仅供实机验证的诊断入口：必须由用户主动触发，不会在启动时自动登录。
+                    Console.WriteLine($"Microsoft Client ID: {clientId}");
+                    Console.WriteLine("按回车后 ECL 将打开系统默认浏览器；请在浏览器中自行完成 Microsoft 登录。");
+                    Console.ReadLine();
+
+                    Result<Account> result;
+                    using (var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5)))
+                    {
+                        try
+                        {
+                            result = await authentication
+                                .SignInAsync(new MicrosoftAuthenticationOptions { ClientId = clientId }, OpenBrowserAsync, timeout.Token)
+                                .ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            return WriteError(new EclError("auth.callback_timeout", "等待浏览器回调超时（5 分钟），未收到授权码。"));
+                        }
+                    }
+
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    var added = await accounts
+                        .AddAsync(result.Value!, _commandLine.HasFlag("default"))
+                        .ConfigureAwait(false);
+                    if (!added.IsSuccess)
+                    {
+                        return WriteError(added.Error);
+                    }
+
+                    Console.WriteLine($"Microsoft 账户登录成功：{added.Value!.Name}");
+                    Console.WriteLine($"  Minecraft UUID: {added.Value.Uuid}");
+                    Console.WriteLine($"  ECL 账户 ID   : {added.Value.Id}");
+                    return 0;
+                }
+
+            case "refresh":
+                {
+                    var settings = _provider.GetRequiredService<ISettingsService>();
+                    var clientId = settings.Get<string>("auth.microsoftClientId")?.Trim();
+                    if (string.IsNullOrWhiteSpace(clientId))
+                    {
+                        return WriteError(new EclError("auth.invalid_client_id", "未配置 Microsoft Client ID。"));
+                    }
+
+                    var accountId = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(accountId))
+                    {
+                        var defaultAccount = await accounts.GetDefaultAccountAsync().ConfigureAwait(false);
+                        if (defaultAccount is null)
+                        {
+                            return WriteError(new EclError("account.not_found", "没有可刷新的默认账户。"));
+                        }
+
+                        accountId = defaultAccount.Id;
+                    }
+
+                    Console.WriteLine($"静默刷新账户 {accountId}（不会打开浏览器）…");
+                    var refreshed = await accounts
+                        .RefreshAsync(accountId, new MicrosoftAuthenticationOptions { ClientId = clientId })
+                        .ConfigureAwait(false);
+                    if (!refreshed.IsSuccess)
+                    {
+                        return WriteError(refreshed.Error);
+                    }
+
+                    Console.WriteLine($"刷新成功：{refreshed.Value!.Name}");
+                    if (refreshed.Value.MinecraftTokenExpiresAt is { } expiresAt)
+                    {
+                        Console.WriteLine($"  Minecraft token 有效期至：{expiresAt.ToLocalTime():yyyy-MM-dd HH:mm:ss zzz}");
+                    }
+
+                    return 0;
+                }
+
             case "remove":
                 {
                     var accountId = args.ElementAtOrDefault(1);
@@ -817,8 +1006,16 @@ internal sealed class CliApplication
     private async Task<int> ListAccountsAsync()
     {
         var accounts = _provider.GetRequiredService<IAccountService>();
+        var servers = _provider.GetRequiredService<IAuthServerService>();
         var list = await accounts.GetAccountsAsync().ConfigureAwait(false);
         var defaultAccount = await accounts.GetDefaultAccountAsync().ConfigureAwait(false);
+        var serverById = (await servers.GetServersAsync().ConfigureAwait(false))
+            .ToDictionary(server => server.Id, StringComparer.Ordinal);
+
+        string DescribeServer(Account account) =>
+            account.AuthServerId is { Length: > 0 } id
+                ? serverById.TryGetValue(id, out var server) ? server.Name : id
+                : string.Empty;
 
         if (_commandLine.HasFlag("json"))
         {
@@ -828,6 +1025,8 @@ internal sealed class CliApplication
                 type = account.Type.ToString().ToLowerInvariant(),
                 account.Name,
                 account.Uuid,
+                account.AuthServerId,
+                authServer = DescribeServer(account),
                 isDefault = account.Id == defaultAccount?.Id,
             });
             Console.WriteLine(JsonSerializer.Serialize(items, EclJson.Indented));
@@ -843,10 +1042,112 @@ internal sealed class CliApplication
         foreach (var account in list)
         {
             var marker = account.Id == defaultAccount?.Id ? "*" : " ";
-            Console.WriteLine($"{marker} {account.Id}  {account.Name}  {account.Type}  {account.Uuid}");
+            var server = DescribeServer(account);
+            var suffix = server.Length > 0 ? $"  @{server}" : string.Empty;
+            Console.WriteLine($"{marker} {account.Id}  {account.Name}  {account.Type}  {account.Uuid}{suffix}");
         }
 
         return 0;
+    }
+
+    private async Task<int> AuthServerCommandAsync(string[] args)
+    {
+        var servers = _provider.GetRequiredService<IAuthServerService>();
+
+        if (args.Length == 0 || string.Equals(args[0], "list", StringComparison.OrdinalIgnoreCase))
+        {
+            var list = await servers.GetServersAsync().ConfigureAwait(false);
+            if (_commandLine.HasFlag("json"))
+            {
+                Console.WriteLine(JsonSerializer.Serialize(list, EclJson.Indented));
+                return 0;
+            }
+
+            if (list.Count == 0)
+            {
+                Console.WriteLine("暂无认证服务器。使用 authserver add <地址> 添加。");
+                return 0;
+            }
+
+            foreach (var server in list)
+            {
+                Console.WriteLine($"{server.Id}  {server.Name}  {server.Url}");
+            }
+
+            return 0;
+        }
+
+        switch (args[0].ToLowerInvariant())
+        {
+            case "add":
+                {
+                    var url = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(url))
+                    {
+                        return UsageError("authserver add 需要认证服务器 API 根地址。");
+                    }
+
+                    var registerUrl = _commandLine.GetValue("register");
+                    var added = await servers.AddAsync(url, registerUrl).ConfigureAwait(false);
+                    if (!added.IsSuccess)
+                    {
+                        return WriteError(added.Error);
+                    }
+
+                    Console.WriteLine($"已添加认证服务器 {added.Value!.Name}");
+                    Console.WriteLine($"  ID  : {added.Value.Id}");
+                    Console.WriteLine($"  API : {added.Value.Url}");
+                    if (!string.IsNullOrWhiteSpace(added.Value.RegisterUrl))
+                    {
+                        Console.WriteLine($"  注册: {added.Value.RegisterUrl}");
+                    }
+
+                    return 0;
+                }
+
+            case "update":
+                {
+                    var id = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(id))
+                    {
+                        return UsageError("authserver update 需要认证服务器 ID。");
+                    }
+
+                    var url = _commandLine.GetValue("url");
+                    var registerUrl = _commandLine.GetValue("register");
+                    var updated = await servers.UpdateAsync(id, url, registerUrl).ConfigureAwait(false);
+                    if (!updated.IsSuccess)
+                    {
+                        return WriteError(updated.Error);
+                    }
+
+                    Console.WriteLine($"已更新认证服务器 {updated.Value!.Name}");
+                    Console.WriteLine($"  API : {updated.Value.Url}");
+                    Console.WriteLine($"  注册: {updated.Value.RegisterUrl ?? "(未设置)"}");
+                    return 0;
+                }
+
+            case "remove":
+                {
+                    var id = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(id))
+                    {
+                        return UsageError("authserver remove 需要认证服务器 ID。");
+                    }
+
+                    var removed = await servers.RemoveAsync(id).ConfigureAwait(false);
+                    if (!removed.IsSuccess)
+                    {
+                        return WriteError(removed.Error);
+                    }
+
+                    Console.WriteLine($"已删除认证服务器 {id}");
+                    return 0;
+                }
+
+            default:
+                return UsageError($"未知的 authserver 子命令：{args[0]}");
+        }
     }
 
     private async Task<int> ModCommandAsync(string[] args)
@@ -1616,6 +1917,54 @@ internal sealed class CliApplication
     {
         Console.WriteLine(Program.HelpText);
         return 0;
+    }
+
+    private static Task OpenBrowserAsync(Uri uri)
+    {
+        Console.WriteLine($"正在打开系统浏览器：{uri.GetLeftPart(UriPartial.Path)}");
+        Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 读取密码：交互式终端下不回显；输入被重定向时按一行读取。
+    /// 密码只用于本次认证调用，不会写入日志或磁盘。
+    /// </summary>
+    private static string ReadPassword(string prompt)
+    {
+        Console.Write(prompt);
+        if (Console.IsInputRedirected)
+        {
+            var piped = Console.ReadLine();
+            Console.WriteLine();
+            return piped ?? string.Empty;
+        }
+
+        var buffer = new System.Text.StringBuilder();
+        while (true)
+        {
+            var key = Console.ReadKey(intercept: true);
+            if (key.Key == ConsoleKey.Enter)
+            {
+                Console.WriteLine();
+                return buffer.ToString();
+            }
+
+            if (key.Key == ConsoleKey.Backspace)
+            {
+                if (buffer.Length > 0)
+                {
+                    buffer.Length--;
+                }
+
+                continue;
+            }
+
+            if (!char.IsControl(key.KeyChar))
+            {
+                buffer.Append(key.KeyChar);
+            }
+        }
     }
 
     private int UsageError(string message)

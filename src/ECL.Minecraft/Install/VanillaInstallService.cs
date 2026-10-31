@@ -129,6 +129,65 @@ public sealed class VanillaInstallService : IVersionInstallService
         }
     }
 
+    public async Task<Result<InstallReport>> ReconfigureAsync(
+        string instanceId,
+        string gameVersion,
+        string loader,
+        string? loaderVersion = null,
+        string? fabricApiVersion = null,
+        string? optiFineVersion = null,
+        IProgress<InstallProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var original = await _instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        if (original is null)
+        {
+            return Result<InstallReport>.Fail("install.instance_missing", _localizer.Get("install.error.instanceMissing", instanceId));
+        }
+
+        var update = await _instances.UpdateConfigurationAsync(
+            instanceId, gameVersion, loader, loaderVersion, fabricApiVersion, optiFineVersion, cancellationToken)
+            .ConfigureAwait(false);
+        if (!update.IsSuccess)
+        {
+            return Result<InstallReport>.Fail(update.Error!);
+        }
+
+        try
+        {
+            var result = await InstallAsync(instanceId, progress, cancellationToken).ConfigureAwait(false);
+            if (result.IsSuccess)
+            {
+                _logger.LogInformation(
+                    "实例 {InstanceId} 已完成原地配置变更；旧版本文件保留以便安全回退。",
+                    instanceId);
+                return result;
+            }
+
+            await _instances.UpdateConfigurationAsync(
+                instanceId,
+                original.GameVersion,
+                original.Loader,
+                original.LoaderVersion,
+                original.FabricApiVersion,
+                original.OptiFineVersion,
+                CancellationToken.None).ConfigureAwait(false);
+            return result;
+        }
+        catch
+        {
+            await _instances.UpdateConfigurationAsync(
+                instanceId,
+                original.GameVersion,
+                original.Loader,
+                original.LoaderVersion,
+                original.FabricApiVersion,
+                original.OptiFineVersion,
+                CancellationToken.None).ConfigureAwait(false);
+            throw;
+        }
+    }
+
     private async Task<Result<InstallReport>> InstallCoreAsync(
         GameInstance instance,
         LoaderKind loaderKind,
@@ -825,7 +884,7 @@ public sealed class VanillaInstallService : IVersionInstallService
         }
 
         var destination = Path.Combine(
-            _paths.GetInstanceGameDirectory(instance.Id),
+            InstancePaths.GetGameDirectory(_paths, instance),
             "mods",
             selected.FileName);
         transaction.TrackDirectory(Path.GetDirectoryName(destination)!);
@@ -880,7 +939,7 @@ public sealed class VanillaInstallService : IVersionInstallService
         var url = $"{OptiFineRoot}/{Uri.EscapeDataString(instance.GameVersion)}/" +
                   $"{Uri.EscapeDataString(selected.Type)}/{Uri.EscapeDataString(selected.Patch)}";
         var destination = Path.Combine(
-            _paths.GetInstanceGameDirectory(instance.Id),
+            InstancePaths.GetGameDirectory(_paths, instance),
             "mods",
             selected.FileName);
         transaction.TrackDirectory(Path.GetDirectoryName(destination)!);

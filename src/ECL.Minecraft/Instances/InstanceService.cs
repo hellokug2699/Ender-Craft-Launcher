@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Ecl.Core;
 using Microsoft.Extensions.Logging;
@@ -18,17 +19,54 @@ public sealed partial class InstanceService : IInstanceService
         "cleanroom",
     };
 
+    /// <summary>版本目录里出现这些条目，说明该版本按“版本隔离”保存着自己的游戏数据。</summary>
+    private static readonly string[] IsolationMarkers =
+    [
+        "mods",
+        "config",
+        "saves",
+        "options.txt",
+        "servers.dat",
+        "resourcepacks",
+        "shaderpacks",
+    ];
+
     private readonly IInstanceStore _store;
+    private readonly IAppPaths _paths;
     private readonly ILogger<InstanceService> _logger;
 
-    public InstanceService(IInstanceStore store, ILogger<InstanceService> logger)
+    public InstanceService(IInstanceStore store, IAppPaths paths, ILogger<InstanceService> logger)
     {
         _store = store;
+        _paths = paths;
         _logger = logger;
     }
 
-    public Task<IReadOnlyList<GameInstance>> GetInstancesAsync(CancellationToken cancellationToken = default) =>
-        _store.ListAsync(cancellationToken);
+    public async Task<IReadOnlyList<GameInstance>> GetInstancesAsync(CancellationToken cancellationToken = default)
+    {
+        var instances = await _store.ListAsync(cancellationToken).ConfigureAwait(false);
+        var repaired = new List<GameInstance>(instances.Count);
+
+        foreach (var instance in instances)
+        {
+            var gameVersion = DetectGameVersionForImportedInstance(instance);
+            if (gameVersion is not null &&
+                !string.Equals(gameVersion, instance.GameVersion, StringComparison.Ordinal))
+            {
+                // 旧版本导入时会把整合包名写进 GameVersion；这里用版本 JSON 中的
+                // clientVersion / 加载器信息修正一次，之后不再重复写入。
+                var updated = instance with { GameVersion = gameVersion };
+                await _store.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
+                repaired.Add(updated);
+            }
+            else
+            {
+                repaired.Add(instance);
+            }
+        }
+
+        return repaired;
+    }
 
     public Task<GameInstance?> GetAsync(string instanceId, CancellationToken cancellationToken = default) =>
         _store.GetAsync(instanceId, cancellationToken);
@@ -125,6 +163,7 @@ public sealed partial class InstanceService : IInstanceService
                 ? fabricApiVersion
                 : null,
             OptiFineVersion = optiFineVersion,
+            VersionIsolation = InstanceIsolation.Enabled,
             CreatedAt = DateTimeOffset.UtcNow,
         };
 
@@ -132,6 +171,345 @@ public sealed partial class InstanceService : IInstanceService
         _logger.LogInformation("已创建实例 {Name}（{Id}，版本 {VersionId}）。", instance.Name, instance.Id, instance.VersionId);
         return Result<GameInstance>.Ok(instance);
     }
+
+    public async Task<Result<GameInstance>> UpdateConfigurationAsync(
+        string instanceId,
+        string gameVersion,
+        string loader,
+        string? loaderVersion = null,
+        string? fabricApiVersion = null,
+        string? optiFineVersion = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!AppPaths.IsValidInstanceId(instanceId))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_id", "实例 ID 不合法。");
+        }
+
+        var current = await _store.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        if (current is null)
+        {
+            return Result<GameInstance>.Fail("instance.not_found", "实例不存在。");
+        }
+
+        gameVersion = gameVersion.Trim();
+        loader = loader.Trim().ToLowerInvariant();
+        loaderVersion = string.IsNullOrWhiteSpace(loaderVersion) ? null : loaderVersion.Trim();
+        fabricApiVersion = string.IsNullOrWhiteSpace(fabricApiVersion) ? null : fabricApiVersion.Trim();
+        optiFineVersion = string.IsNullOrWhiteSpace(optiFineVersion) ? null : optiFineVersion.Trim();
+
+        if (!VersionRegex().IsMatch(gameVersion))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_version", "游戏版本格式不正确。");
+        }
+
+        if (!SupportedLoaders.Contains(loader))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_loader", $"不支持的加载器：{loader}");
+        }
+
+        if (loader == "vanilla" && loaderVersion is not null ||
+            loader != "vanilla" && loaderVersion is null)
+        {
+            return Result<GameInstance>.Fail("instance.loader_version_required", "所选加载器版本无效。");
+        }
+
+        if (loader == "cleanroom" && gameVersion != "1.12.2")
+        {
+            return Result<GameInstance>.Fail("instance.cleanroom_version", "Cleanroom 仅支持 Minecraft 1.12.2。");
+        }
+
+        if (loaderVersion is not null && !LoaderVersionRegex().IsMatch(loaderVersion))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_loader_version", "加载器版本格式不正确。");
+        }
+
+        if (fabricApiVersion is not null &&
+            (loader != "fabric" || !LoaderVersionRegex().IsMatch(fabricApiVersion)))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_fabric_api", "Fabric API 版本无效。");
+        }
+
+        if (optiFineVersion is not null &&
+            ((loader != "forge" && loader != "cleanroom") || !OptiFineKeyRegex().IsMatch(optiFineVersion)))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_optifine", "OptiFine 仅支持 Forge / Cleanroom，且版本键格式必须有效。");
+        }
+
+        var updated = current with
+        {
+            GameVersion = gameVersion,
+            VersionId = BuildVersionId(gameVersion, loader, loaderVersion),
+            Loader = loader,
+            LoaderVersion = loaderVersion,
+            FabricApiVersion = loader == "fabric" ? fabricApiVersion : null,
+            OptiFineVersion = optiFineVersion,
+        };
+
+        await _store.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
+        _logger.LogInformation(
+            "已更新实例 {InstanceId} 配置：Minecraft {GameVersion}，加载器 {Loader} {LoaderVersion}。",
+            instanceId, gameVersion, loader, loaderVersion);
+        return Result<GameInstance>.Ok(updated);
+    }
+
+    public async Task<IReadOnlyList<DetectedVersion>> ScanVersionsAsync(CancellationToken cancellationToken = default)
+    {
+        var imported = (await _store.ListAsync(cancellationToken).ConfigureAwait(false))
+            .Select(instance => instance.VersionId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var versionsDirectory = _paths.VersionsDirectory;
+        if (!Directory.Exists(versionsDirectory))
+        {
+            return [];
+        }
+
+        var detected = new List<DetectedVersion>();
+        foreach (var directory in Directory.EnumerateDirectories(versionsDirectory))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var versionId = Path.GetFileName(directory);
+            var jsonPath = Path.Combine(directory, $"{versionId}.json");
+            if (!File.Exists(jsonPath))
+            {
+                // 只有带同名版本 JSON 的目录才是可启动的版本（assets/、libraries/ 等会被跳过）。
+                continue;
+            }
+
+            var (gameVersion, loader) = ReadVersionProfile(jsonPath);
+            var isolated = IsIsolated(directory);
+            detected.Add(new DetectedVersion(
+                versionId,
+                gameVersion ?? versionId,
+                loader,
+                isolated,
+                isolated ? directory : _paths.GameRoot,
+                imported.Contains(versionId)));
+        }
+
+        return detected.OrderBy(version => version.VersionId, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    public async Task<Result<GameInstance>> ImportAsync(
+        string versionId,
+        string? name = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(versionId))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_version", "版本 ID 不能为空。");
+        }
+
+        var candidates = await ScanVersionsAsync(cancellationToken).ConfigureAwait(false);
+        var candidate = candidates.FirstOrDefault(item =>
+            string.Equals(item.VersionId, versionId.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (candidate is null)
+        {
+            return Result<GameInstance>.Fail(
+                "instance.version_not_found",
+                $"未在 versions 目录找到带有同名 JSON 的版本：{versionId}");
+        }
+
+        if (candidate.AlreadyImported)
+        {
+            return Result<GameInstance>.Fail("instance.already_imported", $"该版本已经导入过了：{candidate.VersionId}");
+        }
+
+        var displayName = string.IsNullOrWhiteSpace(name) ? candidate.VersionId : name.Trim();
+        if (displayName.Length is < 1 or > 48)
+        {
+            return Result<GameInstance>.Fail("instance.invalid_name", "实例名称需为 1-48 个字符。");
+        }
+
+        var existing = await _store.ListAsync(cancellationToken).ConfigureAwait(false);
+        if (existing.Any(instance => string.Equals(instance.Name, displayName, StringComparison.OrdinalIgnoreCase)))
+        {
+            return Result<GameInstance>.Fail("instance.duplicate_name", $"已存在同名实例：{displayName}");
+        }
+
+        var instance = new GameInstance
+        {
+            Id = await CreateUniqueIdAsync(displayName, cancellationToken).ConfigureAwait(false),
+            Name = displayName,
+            GameVersion = candidate.GameVersion,
+            VersionId = candidate.VersionId,
+            Loader = candidate.Loader,
+            VersionIsolation = candidate.Isolated,
+            GameDirectory = candidate.GameDirectory,
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+
+        await _store.SaveAsync(instance, cancellationToken).ConfigureAwait(false);
+        _logger.LogInformation(
+            "已导入既有版本 {VersionId} 为实例 {Name}（{Id}），游戏目录：{Directory}。",
+            candidate.VersionId,
+            instance.Name,
+            instance.Id,
+            instance.GameDirectory);
+        return Result<GameInstance>.Ok(instance);
+    }
+
+    private static bool IsIsolated(string versionDirectory) =>
+        IsolationMarkers.Any(marker =>
+            File.Exists(Path.Combine(versionDirectory, marker)) ||
+            Directory.Exists(Path.Combine(versionDirectory, marker)));
+
+    /// <summary>
+    /// 导入实例的 GameVersion 可能在旧版本中被写成整合包/版本目录名。
+    /// 这里从原安装的版本 JSON 中重新读取实际 Minecraft 版本；仅对导入实例生效。
+    /// </summary>
+    private string? DetectGameVersionForImportedInstance(GameInstance instance)
+    {
+        if (string.IsNullOrWhiteSpace(instance.GameDirectory))
+        {
+            return null;
+        }
+
+        var candidates = new[]
+        {
+            Path.Combine(instance.GameDirectory, $"{instance.VersionId}.json"),
+            Path.Combine(instance.GameDirectory, "versions", instance.VersionId, $"{instance.VersionId}.json"),
+            Path.Combine(_paths.VersionsDirectory, instance.VersionId, $"{instance.VersionId}.json"),
+        };
+
+        foreach (var path in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            var (gameVersion, _) = ReadVersionProfile(path);
+            if (!string.IsNullOrWhiteSpace(gameVersion))
+            {
+                return gameVersion;
+            }
+        }
+
+        return null;
+    }
+
+    private static (string? GameVersion, string Loader) ReadVersionProfile(string jsonPath)
+    {
+        try
+        {
+            using var stream = File.OpenRead(jsonPath);
+            using var document = JsonDocument.Parse(stream);
+            var root = document.RootElement;
+
+            var id = ReadString(root, "id");
+            var inheritsFrom = ReadString(root, "inheritsFrom");
+            var clientVersion = ReadString(root, "clientVersion");
+            var mainClass = ReadString(root, "mainClass") ?? string.Empty;
+
+            var libraries = new List<string>();
+            if (root.TryGetProperty("libraries", out var libraryArray) && libraryArray.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var library in libraryArray.EnumerateArray())
+                {
+                    if (ReadString(library, "name") is { Length: > 0 } name)
+                    {
+                        libraries.Add(name);
+                    }
+                }
+            }
+
+            var loader = DetectLoader(mainClass, libraries);
+
+            // 整合包/加载器版本 JSON 的 id 往往就是整合包名，不能直接当成 Minecraft 版本。
+            // 依次尝试启动器写入的 clientVersion、继承版本、Forge/NeoForge 的 --fml.mcVersion；
+            // Cleanroom 只支持 1.12.2，缺失元数据时按该版本回退。
+            var gameVersion = FirstValidVersion(clientVersion, inheritsFrom, ReadForgeMinecraftVersion(root));
+            if (gameVersion is null && string.Equals(loader, "cleanroom", StringComparison.OrdinalIgnoreCase))
+            {
+                gameVersion = "1.12.2";
+            }
+
+            gameVersion ??= id;
+            if (gameVersion is not null && !VersionRegex().IsMatch(gameVersion))
+            {
+                gameVersion = null;
+            }
+
+            return (gameVersion, loader);
+        }
+        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
+        {
+            return (null, "vanilla");
+        }
+    }
+
+    private static string? FirstValidVersion(params string?[] candidates) =>
+        candidates.FirstOrDefault(candidate =>
+            !string.IsNullOrWhiteSpace(candidate) && VersionRegex().IsMatch(candidate));
+
+    /// <summary>Forge/NeoForge 合并后的版本 JSON 会在游戏参数中记录 --fml.mcVersion。</summary>
+    private static string? ReadForgeMinecraftVersion(JsonElement root)
+    {
+        if (!root.TryGetProperty("arguments", out var arguments) ||
+            arguments.ValueKind != JsonValueKind.Object ||
+            !arguments.TryGetProperty("game", out var game) ||
+            game.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        string? previous = null;
+        foreach (var item in game.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var value = item.GetString();
+            if (previous == "--fml.mcVersion" && !string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+
+            previous = value;
+        }
+
+        return null;
+    }
+
+    private static string DetectLoader(string mainClass, IReadOnlyList<string> libraries)
+    {
+        bool HasLibrary(string fragment) =>
+            libraries.Any(name => name.Contains(fragment, StringComparison.OrdinalIgnoreCase));
+
+        if (HasLibrary("net.fabricmc") || mainClass.Contains("fabric", StringComparison.OrdinalIgnoreCase))
+        {
+            return "fabric";
+        }
+
+        if (HasLibrary("net.neoforged"))
+        {
+            return "neoforge";
+        }
+
+        if (HasLibrary("cleanroom") || mainClass.Contains("cleanroom", StringComparison.OrdinalIgnoreCase))
+        {
+            return "cleanroom";
+        }
+
+        if (HasLibrary("net.minecraftforge"))
+        {
+            return "forge";
+        }
+
+        return "vanilla";
+    }
+
+    private static string? ReadString(JsonElement element, string propertyName) =>
+        element.ValueKind == JsonValueKind.Object &&
+        element.TryGetProperty(propertyName, out var value) &&
+        value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     public async Task<Result> DeleteAsync(string instanceId, CancellationToken cancellationToken = default)
     {

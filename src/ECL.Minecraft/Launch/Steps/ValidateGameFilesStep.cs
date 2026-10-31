@@ -67,6 +67,17 @@ internal sealed class ValidateGameFilesStep(IAppPaths paths, ILocalizer localize
                 localizer.Get("launch.files.ok", requiredFiles.Length));
         }
 
+        // 导入的实例由其它启动器安装并维护，文件差异不应阻止启动。
+        if (!string.IsNullOrWhiteSpace(context.Instance.GameDirectory))
+        {
+            var count = missing.Count + corrupt.Count;
+            var sample = corrupt.Count > 0 ? corrupt[0].Path : missing[0].Path;
+            return new LaunchStepResult(
+                Id,
+                LaunchStepStatus.Warning,
+                localizer.Get("launch.files.imported", count, sample));
+        }
+
         if (corrupt.Count > 0)
         {
             return new LaunchStepResult(

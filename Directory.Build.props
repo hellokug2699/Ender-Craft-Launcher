@@ -19,4 +19,9 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 把构建时间写进程序集元数据，界面左下角显示，便于区分分发出去的二进制。 -->
+    <AssemblyMetadata Include="BuildTime" Value="$([System.DateTime]::Now.ToString('yyyy-MM-dd HH:mm'))" />
+  </ItemGroup>
 </Project>

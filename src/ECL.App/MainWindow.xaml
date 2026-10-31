@@ -3,14 +3,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:Ecl.App.Localization"
         Title="{loc:Loc Key=app.name}"
-        Icon="{StaticResource EclCompactIcon}"
+        Icon="/ECL.ico"
         Width="1240"
         Height="800"
         MinWidth="1020"
         MinHeight="680"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource BackgroundBrush}"
-        FontFamily="Segoe UI"
+        Background="{DynamicResource BackgroundBrush}"
+        FontFamily="{StaticResource UiFontFamily}"
         SnapsToDevicePixels="True">
     <Grid KeyboardNavigation.TabNavigation="Cycle">
         <Grid.ColumnDefinitions>
@@ -20,8 +20,8 @@
 
         <!-- Persistent launcher rail -->
         <Border Grid.Column="0"
-                Background="{StaticResource SidebarBrush}"
-                BorderBrush="{StaticResource BorderSoftBrush}"
+                Background="{DynamicResource SidebarBrush}"
+                BorderBrush="{DynamicResource BorderSoftBrush}"
                 BorderThickness="0,0,1,0">
             <Grid>
                 <Grid.RowDefinitions>
@@ -36,24 +36,24 @@
                             <ColumnDefinition Width="38" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Border Width="34" Height="34" CornerRadius="9" Background="{StaticResource AccentSoftBrush}" BorderBrush="#3A2B5C" BorderThickness="1">
+                        <Border Width="34" Height="34" CornerRadius="9" Background="{DynamicResource AccentSoftBrush}" BorderBrush="{DynamicResource AccentBorderBrush}" BorderThickness="1">
                             <Image Source="{StaticResource EclCompactIcon}" Stretch="Uniform" Margin="6" />
                         </Border>
                         <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center">
                             <TextBlock Text="ECL" FontSize="17" FontWeight="Bold" />
                             <TextBlock Text="ENDER CRAFT LAUNCHER"
-                                       Foreground="{StaticResource TextMutedBrush}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
                                        FontSize="8"
                                        FontWeight="SemiBold"
                                        Margin="0,1,0,0" />
                         </StackPanel>
                     </Grid>
-                    <Border Height="1" Background="{StaticResource BorderSoftBrush}" Margin="0,22,0,0" />
+                    <Border Height="1" Background="{DynamicResource BorderSoftBrush}" Margin="0,22,0,0" />
                 </StackPanel>
 
                 <StackPanel Grid.Row="1" Margin="12,0,12,12">
                     <TextBlock Text="NAVIGATION"
-                               Foreground="{StaticResource TextMutedBrush}"
+                               Foreground="{DynamicResource TextMutedBrush}"
                                FontSize="9"
                                FontWeight="SemiBold"
                                Margin="12,0,0,7" />
@@ -72,22 +72,33 @@
                 </StackPanel>
 
                 <StackPanel Grid.Row="2" Margin="22,0,22,20">
-                    <Border Background="{StaticResource SurfaceBrush}"
-                            BorderBrush="{StaticResource BorderSoftBrush}"
+                    <Border Background="{DynamicResource SurfaceBrush}"
+                            BorderBrush="{DynamicResource BorderSoftBrush}"
                             BorderThickness="1"
                             CornerRadius="10"
                             Padding="11,9">
                         <StackPanel>
                             <TextBlock Text="{Binding VersionText}"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                        FontSize="10"
                                        FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding BuildTimeText}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="9"
+                                       Margin="0,2,0,0"
+                                       Visibility="{Binding BuildTimeText, Converter={StaticResource StringToVisibility}}" />
                             <TextBlock Text="{Binding DataDirectory}"
-                                       Foreground="{StaticResource TextMutedBrush}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
                                        FontSize="9"
                                        Margin="0,3,0,0"
                                        TextTrimming="CharacterEllipsis"
                                        ToolTip="{Binding DataDirectory}" />
+                            <TextBlock Text="{Binding GameDirectory}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="9"
+                                       Margin="0,2,0,0"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding GameDirectory}" />
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -95,16 +106,16 @@
         </Border>
 
         <!-- Content canvas -->
-        <Border Grid.Column="1" Background="{StaticResource BackgroundBrush}">
+        <Border Grid.Column="1" Background="{DynamicResource BackgroundBrush}">
             <Grid>
                 <Ellipse Width="420" Height="420"
                          HorizontalAlignment="Right"
                          VerticalAlignment="Top"
                          Margin="0,-210,-170,0"
-                         Fill="{StaticResource AccentGlowBrush}"
+                         Fill="{DynamicResource AccentGlowBrush}"
                          Opacity="0.16"
                          IsHitTestVisible="False" />
-                <ContentControl Content="{Binding SelectedNavItem.Page}"
+                <ContentControl Content="{Binding CurrentPage}"
                                 Margin="38,32,38,32" />
             </Grid>
         </Border>

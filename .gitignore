@@ -20,6 +20,9 @@ data/
 logs/
 portable.flag
 
+# Local review notes — never commit
+hints.txt
+
 # Secrets — these live in the private Core repository, never here
 *.pfx
 *.p12

@@ -34,13 +34,22 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Text="{loc:Loc Key=mods.title}" Style="{StaticResource SectionText}" />
+                        <TextBlock Text="{loc:Loc Key=mods.currentInstance}" Style="{StaticResource SectionText}" />
                         <TextBlock Text="{Binding Summary}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                    FontSize="11"
                                    Margin="0,5,0,0" />
+                        <WrapPanel Margin="0,8,0,0">
+                            <Border Style="{StaticResource Badge}" Margin="0,0,6,0">
+                                <TextBlock Text="{Binding SelectedInstance.LoaderVersionDisplay}" FontSize="10" />
+                            </Border>
+                            <TextBlock Text="{Binding SelectedInstance.GameVersionDisplay}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       VerticalAlignment="Center" />
+                        </WrapPanel>
                         <TextBlock Text="{Binding StatusMessage}"
-                                   Foreground="{StaticResource TextMutedBrush}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="10"
                                    TextWrapping="Wrap"
                                    Margin="0,4,0,0" />
@@ -49,83 +58,90 @@
                               Width="250"
                               ItemsSource="{Binding Instances}"
                               SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
-                              DisplayMemberPath="Name"
+                              ItemTemplate="{StaticResource NameItemTemplate}"
                               VerticalAlignment="Center" />
                 </Grid>
             </Border>
 
-            <Grid Margin="0,0,0,16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="10" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="10" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="10" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
+            <WrapPanel Margin="0,0,0,8">
+                <Button Content="{loc:Loc Key=mods.searchDependency}" Command="{Binding SearchSelectedDependencyCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc Key=mods.enableDependencies}" Command="{Binding EnableSelectedDependenciesCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc Key=mods.toggle}"
                         Command="{Binding ToggleSelectedCommand}"
-                        Style="{StaticResource PrimaryButton}" />
-                <Button Grid.Column="2"
-                        Content="{loc:Loc Key=mods.enableAll}"
+                        Style="{StaticResource PrimaryButton}"
+                        Margin="0,0,8,8" />
+                <Button Content="{loc:Loc Key=mods.enableAll}"
                         Command="{Binding EnableAllCommand}"
-                        Style="{StaticResource GhostButton}" />
-                <Button Grid.Column="4"
-                        Content="{loc:Loc Key=mods.disableAll}"
+                        Style="{StaticResource GhostButton}"
+                        Margin="0,0,8,8" />
+                <Button Content="{loc:Loc Key=mods.disableAll}"
                         Command="{Binding DisableAllCommand}"
-                        Style="{StaticResource GhostButton}" />
-                <Button Grid.Column="6"
-                        Content="{loc:Loc Key=mods.import}"
+                        Style="{StaticResource GhostButton}"
+                        Margin="0,0,8,8" />
+                <Button Content="{loc:Loc Key=mods.import}"
                         Command="{Binding ImportModsCommand}"
-                        Style="{StaticResource GhostButton}" />
-            </Grid>
-
-            <Grid Margin="0,0,0,16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="10" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="10" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
+                        Style="{StaticResource GhostButton}"
+                        Margin="0,0,8,8" />
                 <Button Content="{loc:Loc Key=mods.importPack}"
                         Command="{Binding ImportModpackCommand}"
-                        Style="{StaticResource GhostButton}" />
-                <Button Grid.Column="2"
-                        Content="{loc:Loc Key=mods.exportPack}"
+                        Style="{StaticResource GhostButton}"
+                        Margin="0,0,8,8" />
+                <Button Content="{loc:Loc Key=mods.exportPack}"
                         Command="{Binding ExportModpackCommand}"
-                        Style="{StaticResource GhostButton}" />
-                <Button Grid.Column="4"
-                        Content="{loc:Loc Key=common.delete}"
+                        Style="{StaticResource GhostButton}"
+                        Margin="0,0,8,8" />
+                <Button Content="{loc:Loc Key=common.delete}"
                         Command="{Binding DeleteSelectedCommand}"
-                        Style="{StaticResource DangerButton}" />
-            </Grid>
+                        Style="{StaticResource DangerButton}"
+                        Margin="0,0,8,8" />
+            </WrapPanel>
 
             <Grid Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="{loc:Loc Key=mods.title}" Style="{StaticResource SectionText}" />
+                <TextBlock Text="{loc:Loc Key=mods.installedTitle}" Style="{StaticResource SectionText}" />
                 <TextBlock Grid.Column="1"
                            Text="{Binding Summary}"
-                           Foreground="{StaticResource TextMutedBrush}"
+                           Foreground="{DynamicResource TextMutedBrush}"
                            FontSize="10"
                            VerticalAlignment="Center" />
             </Grid>
 
-            <ListBox ItemsSource="{Binding Mods}"
+            <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="190" />
+                </Grid.ColumnDefinitions>
+                <TextBox Text="{Binding ModSearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="{loc:Loc Key=mods.searchPlaceholder}" />
+                <ComboBox Grid.Column="2" ItemsSource="{Binding ModFilters}" SelectedItem="{Binding SelectedModFilter, Mode=TwoWay}" DisplayMemberPath="Title" />
+            </Grid>
+
+            <ListBox ItemsSource="{Binding FilteredMods}"
                      SelectedItem="{Binding SelectedMod, Mode=TwoWay}"
                      Margin="0,0,0,18">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Border Background="{StaticResource SurfaceBrush}"
-                                BorderBrush="{StaticResource BorderSoftBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10"
-                                Padding="14"
-                                Margin="0,0,0,8">
+                        <Border Padding="14" Margin="0,0,0,8">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
+                                    <Setter Property="BorderThickness" Value="1" />
+                                    <Setter Property="CornerRadius" Value="10" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                            <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -134,11 +150,12 @@
                                 <StackPanel>
                                     <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" />
                                     <TextBlock Text="{Binding Meta}"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
                                                FontSize="10"
                                                Margin="0,4,0,0" />
+                                    <TextBlock Text="{Binding RecommendationText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,5,0,0" Visibility="{Binding HasIssues, Converter={StaticResource BoolToVisibility}}" />
                                     <TextBlock Text="{Binding IssuesText}"
-                                               Foreground="{StaticResource WarningBrush}"
+                                               Foreground="{DynamicResource WarningBrush}"
                                                FontSize="10"
                                                TextWrapping="Wrap"
                                                Margin="0,5,0,0"
@@ -155,89 +172,6 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
-            <!-- CurseForge -->
-            <Border Style="{StaticResource Card}" Margin="0,0,0,16">
-                <StackPanel>
-                    <Grid>
-                        <StackPanel>
-                            <TextBlock Text="{loc:Loc Key=mods.curseforge.title}" Style="{StaticResource SectionText}" />
-                            <TextBlock Text="{loc:Loc Key=mods.curseforge.subtitle}"
-                                       Foreground="{StaticResource TextMutedBrush}"
-                                       FontSize="10"
-                                       TextWrapping="Wrap"
-                                       Margin="0,4,0,0" />
-                        </StackPanel>
-                        <Border HorizontalAlignment="Right"
-                                VerticalAlignment="Top"
-                                Style="{StaticResource Badge}">
-                            <TextBlock Text="CurseForge" FontSize="9" Foreground="{StaticResource AccentHoverBrush}" />
-                        </Border>
-                    </Grid>
-                    <Grid Margin="0,12,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="10" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="10" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox Text="{Binding CurseForgeQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 ToolTip="{loc:Loc Key=mods.curseforge.searchPlaceholder}" />
-                        <Button Grid.Column="2"
-                                Content="{loc:Loc Key=mods.curseforge.search}"
-                                Command="{Binding SearchCurseForgeCommand}"
-                                Style="{StaticResource PrimaryButton}" />
-                        <Button Grid.Column="4"
-                                Content="{loc:Loc Key=mods.curseforge.open}"
-                                Command="{Binding OpenCurseForgePageCommand}"
-                                Style="{StaticResource GhostButton}" />
-                    </Grid>
-                    <TextBlock Text="{Binding CurseForgeStatusText}"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               FontSize="10"
-                               TextWrapping="Wrap"
-                               Margin="0,8,0,0" />
-                    <ListBox ItemsSource="{Binding CurseForgeResults}"
-                             SelectedItem="{Binding SelectedCurseForgeResult, Mode=TwoWay}"
-                             MaxHeight="240"
-                             Margin="0,10,0,0">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="{StaticResource SurfaceAltBrush}"
-                                        CornerRadius="7"
-                                        Padding="10"
-                                        Margin="0,0,0,5">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding Summary}"
-                                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                                       FontSize="10"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       Margin="0,2,0,0" />
-                                        </StackPanel>
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding Meta}"
-                                                   Foreground="{StaticResource TextMutedBrush}"
-                                                   FontSize="9"
-                                                   VerticalAlignment="Top" />
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                    <Button Content="{loc:Loc Key=mods.curseforge.install}"
-                            Command="{Binding InstallCurseForgeCommand}"
-                            Style="{StaticResource GhostButton}"
-                            HorizontalAlignment="Left"
-                            Margin="0,10,0,0" />
-                </StackPanel>
-            </Border>
-
             <!-- Resource packs / shaders -->
             <Border Style="{StaticResource Card}">
                 <StackPanel>
@@ -250,15 +184,15 @@
                         </Grid.ColumnDefinitions>
                         <ComboBox ItemsSource="{Binding PackTypes}"
                                   SelectedItem="{Binding SelectedPackType, Mode=TwoWay}"
-                                  DisplayMemberPath="Title" />
+                                  ItemTemplate="{StaticResource TitleItemTemplate}" />
                         <TextBlock Grid.Column="2"
                                    Text="{Binding PackSummary}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                    FontSize="11"
                                    VerticalAlignment="Center" />
                     </Grid>
                     <TextBlock Text="{Binding PackWarning}"
-                               Foreground="{StaticResource WarningBrush}"
+                               Foreground="{DynamicResource WarningBrush}"
                                FontSize="10"
                                TextWrapping="Wrap"
                                Margin="0,8,0,0"
@@ -266,6 +200,11 @@
                     <ListBox ItemsSource="{Binding Packs}"
                              SelectedItem="{Binding SelectedPack, Mode=TwoWay}"
                              Margin="0,10,0,0">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                <Setter Property="Padding" Value="10,8" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid Margin="0,3">
@@ -276,8 +215,8 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="{Binding Name}" FontSize="12" />
-                                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" />
-                                    <TextBlock Grid.Column="3" Text="{Binding Meta}" Foreground="{StaticResource TextMutedBrush}" FontSize="10" />
+                                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" />
+                                    <TextBlock Grid.Column="3" Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" />
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>

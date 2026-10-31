@@ -6,13 +6,15 @@ Minecraft 对 Java 版本的要求随版本变化：1.16 及以下通常需要 J
 
 ## 1. 选择顺序
 
-1. **实例指定**：`instance.java.executablePath`（实例设置中的 Java 选择器）。
-2. **全局指定**：`java.defaultPath`（设置 → Java → 默认 Java 路径）。
+1. **实例指定**：`instance.java.executablePath`（实例工作区中的 Java 选择器）。
+2. **全局指定**：`java.defaultPath`（设置 → Java → Java 目录 / 路径）。
 3. **自动选择**：扫描本机 Java，按版本要求挑选最合适的运行时。
 4. **默认 Java**：若没有满足最低要求的运行时，使用探测到的最高版本，并在兼容性检查中提示。
 5. **未找到**：真实启动失败并提示下载；UI 可直接点击“下载 Java”。
 
-实例页的 Java 选择器包含“自动（默认 Java）”与所有探测到的运行时。选择“自动”会清空实例路径，交由自动逻辑决定。
+`java.defaultPath` 支持三种写法：单个 `java.exe`、单个 Java 主目录，或一个包含多个 JDK/JRE 的上级目录（例如 `D:\java`）。多个路径可以用分号或换行分隔。配置为上级目录时，ECL 不会把其中某个 Java 直接当作“全局指定”，而是把目录下的所有运行时加入自动选择，避免因最高版本不兼容而误选。
+
+实例工作区的 Java 选择器包含“自动（默认 Java）”与所有探测到的运行时。选择“自动”会清空实例路径，交由自动逻辑决定。实例库页面只展示实例，Java 与 JVM 设置统一在实例工作区中完成。
 
 ## 2. 版本要求
 
@@ -49,11 +51,11 @@ Cleanroom 的 `version.json` 声明 `javaVersion.majorVersion = 25`，因此 1.1
 
 行为：
 
-- UI 在实例页显示“兼容 / 可能不兼容 / 未找到 Java”。
+- UI 在实例工作区显示“兼容 / 可能不兼容 / 未找到 Java”。
 - 真实启动前，若低于最低要求且检查开启，弹出确认框；用户仍可选择继续。
 - 启动流水线的 `ResolveJavaStep` 同时返回 `Warning`，CLI 会看到同样的警告。
 - 实例设置 `instance.java.disableCompatibilityCheck` 可关闭该实例的检查；关闭后 UI 不再弹窗，流水线不再警告（但找不到 Java 仍会失败）。
-- 实例页 Java 卡片也提供同一开关，便于直接操作。
+- 实例工作区的 Java 卡片也提供同一开关，便于直接操作。
 
 ## 4. 自动下载 Java
 
@@ -75,6 +77,10 @@ Cleanroom 的 `version.json` 声明 `javaVersion.majorVersion = 25`，因此 1.1
 
 Linux ARM64 在 Mojang 来源下会返回“平台不支持”；切换到 Adoptium/Zulu/Liberica 可以下载 ARM64 构建。
 
+**用户无需预先安装 Java。** ECL 当前采用按需下载，而不是把 Java 二进制直接塞进启动器安装包：缺少运行时后，用户可在启动确认中同意下载，也可在实例详情页手动下载。运行时安装到 ECL 数据目录并由启动器扫描管理；不同实例可以复用兼容的本机运行时。
+
+默认 Mojang 来源使用 Minecraft 官方运行时清单；Adoptium、Zulu、Liberica 是可选的 OpenJDK 发行版来源。Temurin 等第三方二进制随包提供其许可证与 NOTICE 信息，ECL 应保留这些文件。若未来改为随 ECL 安装包预置 Java，需要针对具体发行版和版本核对再分发条款，不能把“OpenJDK”名称本身视为统一的再分发授权。
+
 ## 5. 32/64 位与内存校验
 
 `JavaPlatformAdvisor` 在 Java 选择后给出警告（不直接阻止启动）：
@@ -89,7 +95,7 @@ Linux ARM64 在 Mojang 来源下会返回“平台不支持”；切换到 Adopt
 
 ## 6. JVM 参数预设
 
-`java.jvmPreset`（全局）与 `instance.java.jvmPreset`（实例覆盖）支持：
+`java.jvmPreset`（全局）与 `instance.java.jvmPreset`（实例覆盖）支持。全局默认值为 `g1`（推荐）；实例留空时继承全局预设：
 
 | 预设 | 内容 |
 | --- | --- |
@@ -126,17 +132,19 @@ Linux ARM64 在 Mojang 来源下会返回“平台不支持”；切换到 Adopt
   liberica-java-21/
 ```
 
-`JavaLocator` 会扫描该目录（深度 2），因此下载完成后无需手工导入。
+`JavaLocator` 会扫描该目录（深度 2），因此下载完成后无需手工导入。它还会扫描全局设置 `java.defaultPath` 指定的目录：如果该目录是 `D:\java` 这类父目录，会在有限深度内递归查找 `bin/java(.exe)`，并跳过符号链接，避免误选磁盘根目录时长时间扫描。
 
 ## 8. UI 与 CLI
 
-UI 实例页：
+实例工作区：
 
 - Java 下拉框：自动 / 本机运行时。
 - “刷新”：重新扫描。
 - “下载 Java”：按当前实例版本要求下载。
 - “关闭 Java 兼容性检验”：实例级开关。
 - 状态文本 + 下载进度。
+
+实例库只展示实例名称、Minecraft 版本、加载器与最近启动时间，并提供“打开工作区”入口；Java、JVM、账户、模组与诊断等设置都集中在实例工作区。
 
 CLI：
 
@@ -148,6 +156,22 @@ ecl launch <实例ID> --dry-run
 
 ## 9. 限制与后续
 
-- JVM 预设目前是内置组合，尚不支持用户自定义/保存预设。
+- 内置预设之外可通过自定义 JSON 文件加载参数；尚不支持在 UI 中编辑并保存新的命名预设。
 - 32/64 位与内存校验只给出警告，不强制阻止启动。
 - Microsoft 账户体系（原 v0.3）因 OAuth 审核限制暂缓，不影响本地离线启动。
+
+
+## Microsoft 账户接入配置（预留）
+
+当前版本尚未实现 Microsoft OAuth / Xbox Live / Minecraft Services 登录链路。设置页的
+**账户与身份验证 → Microsoft OAuth Client ID** 可保存 Microsoft Entra 应用注册的
+Application (client) ID，但它目前不会启动登录，也不会创建 Microsoft 账户。此字段是为后续接入预留，
+不是“已经支持微软登录”的承诺。
+
+准备接入时建议使用 **Mobile and desktop applications / Public client** 类型，并采用
+Authorization Code + PKCE（桌面应用不应内置 Client Secret）。配置桌面端回环重定向 URI
+（例如 `http://localhost`），并启用公共客户端流程。Minecraft 登录还需要后续完成 Xbox Live、
+XSTS 与 Minecraft Services 的令牌交换和正版档案校验；仅有 OAuth access token 并不足以启动正版 Minecraft。
+
+配置位置：**设置 → 全局 → 账户与身份验证 → Microsoft OAuth Client ID**。
+Application (client) ID 是公开标识，不是密码；不要把 Client Secret 提交到仓库、配置文件或客户端程序中。

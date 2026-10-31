@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Services;
+using Ecl.App.Views;
 using Ecl.Auth;
 using Ecl.Configuration.Settings;
 using Ecl.Core;
@@ -26,6 +30,8 @@ public sealed partial class InstancesViewModel : ObservableObject
 {
     private readonly IInstanceService _instances;
     private readonly IAccountService _accounts;
+    private readonly IAuthServerService _authServers;
+    private readonly IMicrosoftAuthenticationService _microsoftAuthentication;
     private readonly ILaunchService _launchService;
     private readonly IVersionInstallService _installService;
     private readonly ISettingsService _settings;
@@ -46,9 +52,25 @@ public sealed partial class InstancesViewModel : ObservableObject
     private bool _suppressJavaSelection;
     private bool _suppressJavaCheck;
 
+    /// <summary>打开内容管理页时，将目标实例同步到 Mod 管理页。</summary>
+    public Action<string>? NavigateToContent { get; set; }
+
+    /// <summary>打开当前实例的独立工作区页面。</summary>
+    public Action<string>? NavigateToDetails { get; set; }
+
+    /// <summary>从实例工作区返回实例列表。</summary>
+    public Action? NavigateBackFromDetails { get; set; }
+
+    public Func<string, Task<string>>? GetModHealthSummary { get; set; }
+
     public ObservableCollection<InstanceItemViewModel> Instances { get; } = [];
 
     public ObservableCollection<AccountItemViewModel> Accounts { get; } = [];
+
+    public ObservableCollection<AuthServerItemViewModel> AuthServers { get; } = [];
+
+    /// <summary>只有第三方账户才有“账户设置”可编辑（服务器地址与注册链接）。</summary>
+    public bool CanOpenAccountSettings => SelectedAccount?.Model.Type == AccountType.ThirdParty;
 
     public ObservableCollection<LaunchStepItemViewModel> LaunchSteps { get; } = [];
 
@@ -62,11 +84,14 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     public ObservableCollection<VersionChoiceViewModel> OptiFineVersions { get; } = [];
 
+    public ObservableCollection<JvmPresetOptionViewModel> InstanceJvmPresetOptions { get; } = [];
+
     [ObservableProperty]
     private InstanceItemViewModel? _selectedInstance;
 
     [ObservableProperty]
     private AccountItemViewModel? _selectedAccount;
+
 
     [ObservableProperty]
     private string _newInstanceName = string.Empty;
@@ -94,6 +119,9 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _showFabricApiNotice;
+
+    [ObservableProperty]
+    private bool _showOptiFineSelector;
 
     [ObservableProperty]
     private bool _optiFineEnabled;
@@ -135,6 +163,15 @@ public sealed partial class InstancesViewModel : ObservableObject
     private bool _disableJavaCompatibilityCheck;
 
     [ObservableProperty]
+    private string _instanceJvmArguments = string.Empty;
+
+    [ObservableProperty]
+    private string _instanceJvmPreset = string.Empty;
+
+    [ObservableProperty]
+    private string _instanceMemoryMbText = string.Empty;
+
+    [ObservableProperty]
     private bool _isDownloadingJava;
 
     [ObservableProperty]
@@ -165,21 +202,27 @@ public sealed partial class InstancesViewModel : ObservableObject
     private string _diagnosticStatus = string.Empty;
 
     [ObservableProperty]
+    private string _healthReportText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isCheckingHealth;
+
+    [ObservableProperty]
     private bool _isAnalyzingCrash;
 
     public bool HasSelection => SelectedInstance is not null;
 
     public bool IsEmpty => Instances.Count == 0;
 
+    public string InstanceCountText => _localizer.Get("instances.count", Instances.Count);
+
     public string SelectedInstanceName => SelectedInstance?.Name ?? string.Empty;
 
-    public string SelectedInstanceMeta => SelectedInstance is null
-        ? string.Empty
-        : $"{SelectedInstance.Model.VersionId} · {SelectedInstance.Model.Loader}";
+    public string SelectedInstanceMeta => SelectedInstance?.VersionText ?? string.Empty;
 
     public string SelectedInstancePath => SelectedInstance is null
         ? string.Empty
-        : _paths.GetInstanceDirectory(SelectedInstance.Model.Id);
+        : InstancePaths.GetGameDirectory(_paths, SelectedInstance.Model);
 
     public string SelectedInstanceCreated => SelectedInstance is null
         ? string.Empty
@@ -196,13 +239,6 @@ public sealed partial class InstancesViewModel : ObservableObject
 
             var model = SelectedInstance.Model;
             var parts = new List<string>();
-            if (!string.Equals(model.Loader, LoaderKinds.Vanilla, StringComparison.OrdinalIgnoreCase))
-            {
-                parts.Add(string.IsNullOrWhiteSpace(model.LoaderVersion)
-                    ? model.Loader
-                    : _localizer.Get("instances.loaderSummary", model.Loader, model.LoaderVersion));
-            }
-
             if (!string.IsNullOrWhiteSpace(model.FabricApiVersion))
             {
                 parts.Add($"Fabric API {model.FabricApiVersion}");
@@ -222,6 +258,8 @@ public sealed partial class InstancesViewModel : ObservableObject
     public InstancesViewModel(
         IInstanceService instances,
         IAccountService accounts,
+        IAuthServerService authServers,
+        IMicrosoftAuthenticationService microsoftAuthentication,
         ILaunchService launchService,
         IVersionInstallService installService,
         ISettingsService settings,
@@ -240,6 +278,8 @@ public sealed partial class InstancesViewModel : ObservableObject
     {
         _instances = instances;
         _accounts = accounts;
+        _authServers = authServers;
+        _microsoftAuthentication = microsoftAuthentication;
         _launchService = launchService;
         _installService = installService;
         _settings = settings;
@@ -264,6 +304,12 @@ public sealed partial class InstancesViewModel : ObservableObject
         LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.NeoForge, _localizer.Get("instances.loader.neoforge")));
         LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Cleanroom, _localizer.Get("instances.loader.cleanroom")));
         _selectedNewLoader = LoaderChoices[0];
+
+        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel(string.Empty, _localizer.Get("common.inherit")));
+        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel("default", _localizer.Get("option.java.jvmPreset.default")));
+        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel("g1", _localizer.Get("option.java.jvmPreset.g1")));
+        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel("zgc", _localizer.Get("option.java.jvmPreset.zgc")));
+        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel("aikar", _localizer.Get("option.java.jvmPreset.aikar")));
     }
 
     public async Task InitializeAsync()
@@ -274,6 +320,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
 
         _initialized = true;
+        await RefreshAuthServersAsync().ConfigureAwait(true);
         await RefreshAccountsAsync().ConfigureAwait(true);
         await RefreshInstancesAsync().ConfigureAwait(true);
         await RefreshJavaAsync().ConfigureAwait(true);
@@ -282,6 +329,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     [RelayCommand]
     private async Task RefreshAsync()
     {
+        await RefreshAuthServersAsync().ConfigureAwait(true);
         await RefreshAccountsAsync().ConfigureAwait(true);
         await RefreshInstancesAsync().ConfigureAwait(true);
         await RefreshJavaAsync().ConfigureAwait(true);
@@ -305,10 +353,7 @@ public sealed partial class InstancesViewModel : ObservableObject
             if (SelectedInstance is not null)
             {
                 var configured = _settings.Get<string?>("instance.java.executablePath", SelectedInstance.Model.Id);
-                SelectedJavaOption = JavaOptions.FirstOrDefault(option =>
-                    option.Runtime is not null &&
-                    string.Equals(option.Runtime.ExecutablePath, configured, StringComparison.OrdinalIgnoreCase))
-                    ?? JavaOptions[0];
+                SelectConfiguredJavaOption(configured);
             }
             else
             {
@@ -652,12 +697,18 @@ public sealed partial class InstancesViewModel : ObservableObject
             return;
         }
 
-        var name = NewInstanceName.Trim();
         var version = NewInstanceVersion.Trim();
+        var name = NewInstanceName.Trim();
+        if (version.Length == 0)
+        {
+            StatusMessage = _localizer.Get("instances.versionRequired");
+            return;
+        }
+
+        // 实例名可选；留空时使用游戏版本作为默认名称。
         if (name.Length == 0)
         {
-            StatusMessage = _localizer.Get("instances.nameRequired");
-            return;
+            name = version;
         }
 
         if (version.Length == 0)
@@ -872,6 +923,77 @@ public sealed partial class InstancesViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task RepairFilesAsync()
+    {
+        if (SelectedInstance is null)
+        {
+            StatusMessage = _localizer.Get("instances.selectFirst");
+            return;
+        }
+
+        if (!_dialogs.Confirm(
+                _localizer.Get("instances.repairTitle"),
+                _localizer.Get("instances.repairConfirm", SelectedInstance.Name)))
+        {
+            return;
+        }
+
+        await InstallAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private async Task CheckHealthAsync()
+    {
+        if (SelectedInstance is null)
+        {
+            StatusMessage = _localizer.Get("instances.selectFirst");
+            return;
+        }
+
+        if (IsBusy || IsCheckingHealth)
+        {
+            return;
+        }
+
+        IsCheckingHealth = true;
+        IsBusy = true;
+        HealthReportText = _localizer.Get("instances.healthChecking");
+        try
+        {
+            var account = await _accounts.GetDefaultAccountAsync().ConfigureAwait(true);
+            var report = await _launchService
+                .LaunchAsync(SelectedInstance.Model.Id, dryRun: true)
+                .ConfigureAwait(true);
+            LaunchSteps.Clear();
+            foreach (var step in report.Steps)
+            {
+                LaunchSteps.Add(new LaunchStepItemViewModel(step, _localizer));
+            }
+
+            // 命令预览会展示给用户（也可能被截图），token 只保留两端、中间脱敏。
+            LaunchCommandPreview = SecretRedaction.CommandLine(report.CommandLine ?? string.Empty);
+            var launchReady = report.Success && report.Steps.All(step => step.Status is LaunchStepStatus.Success or LaunchStepStatus.Skipped);
+            LaunchStatus = _localizer.Get(launchReady ? "instances.healthLaunchReady" : "instances.healthLaunchIssues");
+            var modSummary = GetModHealthSummary is null
+                ? _localizer.Get("instances.healthModsUnavailable")
+                : await GetModHealthSummary(SelectedInstance.Model.Id).ConfigureAwait(true);
+            var accountStatus = account is null
+                ? _localizer.Get("instances.healthAccountMissing")
+                : _localizer.Get("instances.healthAccountReady", account.Name);
+            HealthReportText = $"{accountStatus}{Environment.NewLine}{modSummary}";
+        }
+        catch (Exception exception)
+        {
+            HealthReportText = _localizer.Get("instances.healthFailed", exception.Message);
+        }
+        finally
+        {
+            IsCheckingHealth = false;
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
     private async Task InstallAsync()
     {
         if (SelectedInstance is null)
@@ -964,11 +1086,199 @@ public sealed partial class InstancesViewModel : ObservableObject
         StatusMessage = _localizer.Get("instances.accountAdded", result.Value!.Name);
     }
 
+    /// <summary>
+    /// 实机验证入口：只有用户主动点击才会打开浏览器并开始 Microsoft 登录。
+    /// 启动器不会在启动时自动登录，也不会代替用户输入凭据。
+    /// </summary>
+    [RelayCommand]
+    private async Task SignInMicrosoftAsync()
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        var clientId = _settings.Get<string>("auth.microsoftClientId")?.Trim();
+        if (string.IsNullOrWhiteSpace(clientId))
+        {
+            StatusMessage = _localizer.Get("instances.microsoftSignInFailed", "auth.invalid_client_id", string.Empty);
+            return;
+        }
+
+        IsBusy = true;
+        StatusMessage = _localizer.Get("instances.microsoftSigningIn");
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            Result<Account> result;
+            try
+            {
+                result = await _microsoftAuthentication
+                    .SignInAsync(new MicrosoftAuthenticationOptions { ClientId = clientId }, OpenBrowserAsync, timeout.Token)
+                    .ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                StatusMessage = _localizer.Get(
+                    "instances.microsoftSignInFailed",
+                    "auth.callback_timeout",
+                    _localizer.Get("instances.microsoftSignInTimeout"));
+                return;
+            }
+
+            if (!result.IsSuccess)
+            {
+                StatusMessage = _localizer.Get(
+                    "instances.microsoftSignInFailed",
+                    result.Error!.Code,
+                    result.Error.Message);
+                return;
+            }
+
+            var added = await _accounts
+                .AddAsync(result.Value!, makeDefault: Accounts.Count == 0)
+                .ConfigureAwait(true);
+            if (!added.IsSuccess)
+            {
+                StatusMessage = added.Error!.Message;
+                return;
+            }
+
+            await RefreshAccountsAsync().ConfigureAwait(true);
+            SelectedAccount = Accounts.FirstOrDefault(item => item.Id == added.Value!.Id) ?? SelectedAccount;
+            StatusMessage = _localizer.Get("instances.microsoftSignedIn", added.Value!.Name);
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = _localizer.Get(
+                "instances.microsoftSignInFailed",
+                "auth.exception",
+                exception.Message);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// 第三方账户只在这里创建：认证服务器地址（必填）与注册链接（可选）只出现在该对话框内。
+    /// </summary>
+    [RelayCommand]
+    private async Task AddThirdPartyAccountAsync()
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        try
+        {
+            var dialog = new AuthlibAccountDialog(_authServers, _accounts, _localizer)
+            {
+                Owner = Application.Current?.MainWindow,
+            };
+
+            if (dialog.ShowDialog() != true || dialog.ResultAccount is null)
+            {
+                return;
+            }
+
+            await RefreshAuthServersAsync().ConfigureAwait(true);
+            await RefreshAccountsAsync().ConfigureAwait(true);
+            SelectedAccount = Accounts.FirstOrDefault(item => item.Id == dialog.ResultAccount.Id) ?? SelectedAccount;
+            StatusMessage = _localizer.Get("instances.thirdPartySignedIn", dialog.ResultAccount.Name);
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = _localizer.Get("instances.thirdPartySignInFailed", "ui.exception", exception.Message);
+        }
+    }
+
+    /// <summary>账户设置：编辑第三方账户所属服务器的地址与注册链接，可选重新登录。</summary>
+    [RelayCommand]
+    private async Task EditAccountSettingsAsync()
+    {
+        if (IsBusy || SelectedAccount is null || SelectedAccount.Model.Type != AccountType.ThirdParty)
+        {
+            return;
+        }
+
+        var account = SelectedAccount.Model;
+        try
+        {
+            var server = string.IsNullOrWhiteSpace(account.AuthServerId)
+                ? null
+                : await _authServers.GetAsync(account.AuthServerId).ConfigureAwait(true);
+            if (server is null)
+            {
+                StatusMessage = _localizer.Get("instances.authServerMissing");
+                return;
+            }
+
+            var dialog = new AuthlibAccountDialog(_authServers, _accounts, _localizer, server, account)
+            {
+                Owner = Application.Current?.MainWindow,
+            };
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            await RefreshAuthServersAsync().ConfigureAwait(true);
+            await RefreshAccountsAsync().ConfigureAwait(true);
+            SelectedAccount = Accounts.FirstOrDefault(item => item.Id == account.Id) ?? SelectedAccount;
+            StatusMessage = _localizer.Get("instances.accountSettingsSaved");
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = _localizer.Get("instances.thirdPartySignInFailed", "ui.exception", exception.Message);
+        }
+    }
+
+    /// <summary>扫描游戏目录的 versions 文件夹，把其它启动器安装的版本导入为实例。</summary>
+    [RelayCommand]
+    private async Task ImportVersionsAsync()
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        var detected = await _instances.ScanVersionsAsync().ConfigureAwait(true);
+        if (detected.Count == 0)
+        {
+            StatusMessage = _localizer.Get("instances.importNone");
+            return;
+        }
+
+        var dialog = new VersionImportDialog(_instances, detected, _localizer)
+        {
+            Owner = Application.Current?.MainWindow,
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        await RefreshInstancesAsync().ConfigureAwait(true);
+        StatusMessage = _localizer.Get("instances.imported", dialog.ImportedCount);
+    }
+
+    private static Task OpenBrowserAsync(Uri uri)
+    {
+        Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        return Task.CompletedTask;
+    }
+
     partial void OnSelectedNewLoaderChanged(LoaderChoiceViewModel? value)
     {
         ShowFabricApiNotice = string.Equals(value?.Id, LoaderKinds.Fabric, StringComparison.OrdinalIgnoreCase);
-        OptiFineEnabled = string.Equals(value?.Id, LoaderKinds.Cleanroom, StringComparison.OrdinalIgnoreCase) ||
-                          string.Equals(value?.Id, LoaderKinds.Forge, StringComparison.OrdinalIgnoreCase);
+        ShowOptiFineSelector = string.Equals(value?.Id, LoaderKinds.Cleanroom, StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(value?.Id, LoaderKinds.Forge, StringComparison.OrdinalIgnoreCase);
+        OptiFineEnabled = ShowOptiFineSelector;
 
         if (!_initialized)
         {
@@ -977,6 +1287,192 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
 
         _ = RefreshComponentsAsync();
+    }
+
+    [RelayCommand]
+    private void BrowseJava()
+    {
+        if (SelectedInstance is null)
+        {
+            return;
+        }
+
+        var path = _dialogs.PickOpenFile(
+            "选择此实例使用的 Java",
+            "Java 可执行文件 (java.exe)|java.exe|可执行文件 (*.exe)|*.exe|所有文件 (*.*)|*.*");
+        if (path is null)
+        {
+            return;
+        }
+
+        var runtime = _javaLocator.FromPath(path);
+        if (runtime is null)
+        {
+            StatusMessage = "所选文件无法识别为有效的 Java 运行时。";
+            return;
+        }
+
+        var option = JavaOptions.FirstOrDefault(item =>
+            string.Equals(item.Runtime?.ExecutablePath, runtime.ExecutablePath, StringComparison.OrdinalIgnoreCase));
+        if (option is null)
+        {
+            option = new JavaOptionViewModel(runtime, FormatJava(runtime));
+            JavaOptions.Add(option);
+        }
+
+        SelectedJavaOption = option;
+        StatusMessage = $"已为当前实例选择 {runtime.DisplayName}。";
+    }
+
+    [RelayCommand]
+    private void SaveInstanceRuntimeSettings()
+    {
+        if (SelectedInstance is null)
+        {
+            return;
+        }
+
+        var memoryText = InstanceMemoryMbText.Trim();
+        if (memoryText.Length > 0 &&
+            (!int.TryParse(memoryText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var memoryMb) ||
+             memoryMb is < 1024 or > 65536))
+        {
+            StatusMessage = "实例内存必须是 1024 至 65536 MB 之间的整数；留空则继承全局设置。";
+            return;
+        }
+
+        var instanceId = SelectedInstance.Model.Id;
+        if (!_settings.TrySetRaw("instance.java.extraArguments", InstanceJvmArguments, instanceId, out var jvmError))
+        {
+            StatusMessage = jvmError ?? "保存实例 JVM 参数失败。";
+            return;
+        }
+
+        if (!_settings.TrySetRaw("instance.java.jvmPreset", InstanceJvmPreset, instanceId, out var presetError))
+        {
+            StatusMessage = presetError ?? "保存实例 JVM 预设失败。";
+            return;
+        }
+
+        if (!_settings.TrySetRaw("instance.java.memoryMb", memoryText, instanceId, out var memoryError))
+        {
+            StatusMessage = memoryError ?? "保存实例内存设置失败。";
+            return;
+        }
+
+        StatusMessage = "实例运行设置已保存。";
+    }
+
+    private void LoadInstanceRuntimeSettings()
+    {
+        if (SelectedInstance is null)
+        {
+            InstanceJvmArguments = string.Empty;
+            InstanceJvmPreset = string.Empty;
+            InstanceMemoryMbText = string.Empty;
+            return;
+        }
+
+        var instanceId = SelectedInstance.Model.Id;
+        InstanceJvmArguments = _settings.Get<string?>("instance.java.extraArguments", instanceId) ?? string.Empty;
+        InstanceJvmPreset = _settings.Get<string?>("instance.java.jvmPreset", instanceId) ?? string.Empty;
+        InstanceMemoryMbText = _settings.Get<int?>("instance.java.memoryMb", instanceId)?
+            .ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+    }
+
+    /// <summary>实例库只负责展示；打开工作区时才进入运行设置、模组、日志与诊断。</summary>
+    [RelayCommand]
+    private void OpenWorkspace(InstanceItemViewModel? instance)
+    {
+        instance ??= SelectedInstance;
+        if (instance is null)
+        {
+            return;
+        }
+
+        SelectedInstance = instance;
+        NavigateToDetails?.Invoke(instance.Model.Id);
+    }
+
+    [RelayCommand]
+    private void BackToInstances() => NavigateBackFromDetails?.Invoke();
+
+    [RelayCommand]
+    private void OpenInstanceFolder() => OpenSelectedDirectory(
+        SelectedInstance is null ? null : _paths.GetInstanceDirectory(SelectedInstance.Model.Id));
+
+    [RelayCommand]
+    private void OpenModsFolder() => OpenSelectedDirectory(
+        SelectedInstance is null ? null : Path.Combine(InstancePaths.GetGameDirectory(_paths, SelectedInstance.Model), "mods"));
+
+    [RelayCommand]
+    private void ManageInstanceMods()
+    {
+        if (SelectedInstance is not null)
+        {
+            NavigateToContent?.Invoke(SelectedInstance.Model.Id);
+        }
+    }
+
+    [RelayCommand]
+    private void ExportLatestLog()
+    {
+        if (SelectedInstance is null)
+        {
+            return;
+        }
+
+        var source = Path.Combine(InstancePaths.GetGameDirectory(_paths, SelectedInstance.Model), "logs", "latest.log");
+        if (!File.Exists(source))
+        {
+            StatusMessage = "该实例尚无 latest.log；请先运行一次游戏。";
+            return;
+        }
+
+        if (!_dialogs.Confirm(
+                "导出运行日志",
+                "latest.log 可能包含服务器地址、玩家名称或其他运行环境信息。请确认目标文件仅分享给可信任的人。"))
+        {
+            return;
+        }
+
+        var destination = _dialogs.PickSaveFile(
+            "导出最近一次运行日志",
+            "日志文件 (*.log)|*.log|所有文件 (*.*)|*.*",
+            $"{SelectedInstance.Name}-latest.log");
+        if (destination is null)
+        {
+            return;
+        }
+
+        try
+        {
+            File.Copy(source, destination, overwrite: true);
+            StatusMessage = $"日志已导出：{destination}";
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            StatusMessage = $"导出日志失败：{exception.Message}";
+        }
+    }
+
+    private void OpenSelectedDirectory(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(path);
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            StatusMessage = $"无法打开目录：{exception.Message}";
+        }
     }
 
     partial void OnSelectedInstanceChanged(InstanceItemViewModel? value)
@@ -996,6 +1492,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         InstallIndeterminate = false;
         JavaDownloadStatus = string.Empty;
 
+        LoadInstanceRuntimeSettings();
         if (JavaOptions.Count > 0)
         {
             _ = RefreshJavaSelectionAsync();
@@ -1042,6 +1539,8 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     partial void OnSelectedAccountChanged(AccountItemViewModel? value)
     {
+        OnPropertyChanged(nameof(CanOpenAccountSettings));
+
         if (_suppressAccountSelection || value is null || value.IsDefault)
         {
             return;
@@ -1126,6 +1625,25 @@ public sealed partial class InstancesViewModel : ObservableObject
             _localizer.Get("instances.java.incompatiblePrompt", actual, required));
     }
 
+    private void SelectConfiguredJavaOption(string? configuredPath)
+    {
+        var option = JavaOptions.FirstOrDefault(item =>
+            item.Runtime is not null &&
+            string.Equals(item.Runtime.ExecutablePath, configuredPath, StringComparison.OrdinalIgnoreCase));
+
+        if (option is null && !string.IsNullOrWhiteSpace(configuredPath))
+        {
+            var runtime = _javaLocator.FromPath(configuredPath);
+            if (runtime is not null)
+            {
+                option = new JavaOptionViewModel(runtime, FormatJava(runtime));
+                JavaOptions.Add(option);
+            }
+        }
+
+        SelectedJavaOption = option ?? JavaOptions.FirstOrDefault();
+    }
+
     private async Task RefreshJavaSelectionAsync()
     {
         if (SelectedInstance is null)
@@ -1139,10 +1657,7 @@ public sealed partial class InstancesViewModel : ObservableObject
             var instance = SelectedInstance.Model;
             _suppressJavaSelection = true;
             var configured = _settings.Get<string?>("instance.java.executablePath", instance.Id);
-            SelectedJavaOption = JavaOptions.FirstOrDefault(option =>
-                option.Runtime is not null &&
-                string.Equals(option.Runtime.ExecutablePath, configured, StringComparison.OrdinalIgnoreCase))
-                ?? JavaOptions.FirstOrDefault();
+            SelectConfiguredJavaOption(configured);
             _suppressJavaSelection = false;
 
             _suppressJavaCheck = true;
@@ -1269,7 +1784,7 @@ public sealed partial class InstancesViewModel : ObservableObject
                 LaunchSteps.Add(new LaunchStepItemViewModel(step, _localizer));
             }
 
-            LaunchCommandPreview = report.CommandLine ?? string.Empty;
+            LaunchCommandPreview = SecretRedaction.CommandLine(report.CommandLine ?? string.Empty);
             LaunchStatus = report.Success
                 ? _localizer.Get(dryRun ? "instances.dryRunSucceeded" : "instances.launchSucceeded")
                 : _localizer.Get("instances.launchFailed");
@@ -1292,11 +1807,23 @@ public sealed partial class InstancesViewModel : ObservableObject
         Instances.Clear();
         foreach (var instance in instances)
         {
-            Instances.Add(new InstanceItemViewModel(instance, _localizer));
+            Instances.Add(new InstanceItemViewModel(instance, _localizer, _paths));
         }
 
         SelectedInstance = Instances.FirstOrDefault(item => item.Model.Id == selectedId) ?? Instances.FirstOrDefault();
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(InstanceCountText));
+    }
+
+    private async Task RefreshAuthServersAsync()
+    {
+        var servers = await _authServers.GetServersAsync().ConfigureAwait(true);
+
+        AuthServers.Clear();
+        foreach (var server in servers)
+        {
+            AuthServers.Add(new AuthServerItemViewModel(server));
+        }
     }
 
     private async Task RefreshAccountsAsync()
@@ -1306,11 +1833,18 @@ public sealed partial class InstancesViewModel : ObservableObject
         {
             var accounts = await _accounts.GetAccountsAsync().ConfigureAwait(true);
             var defaultAccount = await _accounts.GetDefaultAccountAsync().ConfigureAwait(true);
+            var serverNames = AuthServers.ToDictionary(
+                server => server.Id,
+                server => server.DisplayName,
+                StringComparer.Ordinal);
 
             Accounts.Clear();
             foreach (var account in accounts)
             {
-                Accounts.Add(new AccountItemViewModel(account, account.Id == defaultAccount?.Id, _localizer));
+                var serverName = account.AuthServerId is { Length: > 0 } id && serverNames.TryGetValue(id, out var name)
+                    ? name
+                    : null;
+                Accounts.Add(new AccountItemViewModel(account, account.Id == defaultAccount?.Id, _localizer, serverName));
             }
 
             SelectedAccount = Accounts.FirstOrDefault(item => item.IsDefault) ?? Accounts.FirstOrDefault();
@@ -1346,35 +1880,69 @@ public sealed partial class InstancesViewModel : ObservableObject
 
 public sealed class InstanceItemViewModel
 {
-    public InstanceItemViewModel(GameInstance model, ILocalizer localizer)
+    public InstanceItemViewModel(GameInstance model, ILocalizer localizer, IAppPaths paths)
     {
         Model = model;
         Name = model.Name;
-        VersionText = string.Equals(model.Loader, "vanilla", StringComparison.OrdinalIgnoreCase)
-            ? model.VersionId
-            : $"{model.VersionId} · {model.Loader}";
+        MinecraftVersionText = localizer.Get("instances.minecraftVersion", model.GameVersion);
+        LoaderText = FormatLoader(model, localizer);
+        VersionText = $"{MinecraftVersionText} · {LoaderText}";
         LastPlayedText = model.LastPlayedAt is null
             ? localizer.Get("instances.never")
             : localizer.Get("instances.lastPlayedAt", model.LastPlayedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm"));
+        PathText = InstancePaths.GetGameDirectory(paths, model);
     }
 
     public GameInstance Model { get; }
 
     public string Name { get; }
 
+    /// <summary>明确的 Minecraft 版本标记，例如“Minecraft 1.21.1”。</summary>
+    public string MinecraftVersionText { get; }
+
+    /// <summary>加载器名称与版本，例如“Fabric 0.16.10”；原版显示为“原版”。</summary>
+    public string LoaderText { get; }
+
     public string VersionText { get; }
 
     public string LastPlayedText { get; }
+
+    public string PathText { get; }
+
+    private static string FormatLoader(GameInstance model, ILocalizer localizer)
+    {
+        var loaderName = model.Loader.ToLowerInvariant() switch
+        {
+            "fabric" => localizer.Get("instances.loader.fabric"),
+            "forge" => localizer.Get("instances.loader.forge"),
+            "neoforge" => localizer.Get("instances.loader.neoforge"),
+            "cleanroom" => localizer.Get("instances.loader.cleanroom"),
+            "vanilla" => localizer.Get("instances.loader.vanilla"),
+            _ => model.Loader,
+        };
+
+        return string.IsNullOrWhiteSpace(model.LoaderVersion)
+            ? loaderName
+            : $"{loaderName} {model.LoaderVersion}";
+    }
 }
 
 public sealed partial class AccountItemViewModel : ObservableObject
 {
-    public AccountItemViewModel(Account model, bool isDefault, ILocalizer localizer)
+    public AccountItemViewModel(Account model, bool isDefault, ILocalizer localizer, string? authServerName = null)
     {
         Model = model;
         Id = model.Id;
         IsDefault = isDefault;
-        DisplayName = $"{model.Name} · {localizer.Get("accounts.offline")}";
+        var typeLabel = localizer.Get(model.Type switch
+        {
+            AccountType.Microsoft => "accounts.microsoft",
+            AccountType.ThirdParty => "accounts.thirdParty",
+            _ => "accounts.offline",
+        });
+        DisplayName = model.Type == AccountType.ThirdParty && !string.IsNullOrWhiteSpace(authServerName)
+            ? $"{model.Name} · {typeLabel}（{authServerName}）"
+            : $"{model.Name} · {typeLabel}";
     }
 
     public Account Model { get; }
@@ -1387,7 +1955,23 @@ public sealed partial class AccountItemViewModel : ObservableObject
     private bool _isDefault;
 }
 
+public sealed class AuthServerItemViewModel
+{
+    public AuthServerItemViewModel(AuthServer server)
+    {
+        Id = server.Id;
+        var host = Uri.TryCreate(server.Url, UriKind.Absolute, out var uri) ? uri.Host : server.Url;
+        DisplayName = $"{server.Name} · {host}";
+    }
+
+    public string Id { get; }
+
+    public string DisplayName { get; }
+}
+
 public sealed record JavaOptionViewModel(JavaRuntime? Runtime, string DisplayName);
+
+public sealed record JvmPresetOptionViewModel(string Value, string DisplayName);
 
 public sealed record LoaderChoiceViewModel(string Id, string DisplayName);
 

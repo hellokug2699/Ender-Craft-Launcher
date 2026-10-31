@@ -12,7 +12,60 @@ public interface IAccountService
 
     Task<Result<Account>> AddOfflineAsync(string name, bool makeDefault = false, CancellationToken cancellationToken = default);
 
+    Task<Result<Account>> AddAsync(Account account, bool makeDefault = false, CancellationToken cancellationToken = default);
+
+    Task<Result<Account>> AddMicrosoftAsync(Account account, AccountCredentials credentials, bool makeDefault = false, CancellationToken cancellationToken = default);
+
+    Task<Result<Account>> AddThirdPartyAsync(Account account, AccountCredentials credentials, bool makeDefault = false, CancellationToken cancellationToken = default);
+
     Task<Result> RemoveAsync(string accountId, CancellationToken cancellationToken = default);
 
     Task<Result> SetDefaultAsync(string accountId, CancellationToken cancellationToken = default);
+
+    /// <summary>静默刷新 Microsoft 账户凭据（不打开浏览器）。</summary>
+    Task<Result<Account>> RefreshAsync(
+        string accountId,
+        MicrosoftAuthenticationOptions options,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>当 Minecraft token 即将过期或已过期时静默刷新；否则原样返回。</summary>
+    Task<Result<Account>> EnsureFreshAsync(
+        Account account,
+        MicrosoftAuthenticationOptions options,
+        TimeSpan margin,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>校验第三方账户令牌，必要时用 refresh token 换新；不打开浏览器。</summary>
+    Task<Result<Account>> EnsureThirdPartyFreshAsync(Account account, CancellationToken cancellationToken = default);
+
+    /// <summary>用用户名/密码登录第三方认证服务器并保存账号；密码不会持久化。</summary>
+    Task<Result<Account>> SignInThirdPartyAsync(
+        string authServerId,
+        string username,
+        string password,
+        bool makeDefault = false,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>用密码重新登录已有第三方账户，并同步服务器上的最新角色信息。</summary>
+    Task<Result<Account>> ReauthenticateThirdPartyAsync(
+        string accountId,
+        string password,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 在提交认证服务器地址变更前，先用密码向目标服务器完成认证。
+    /// 只返回会话，不写入凭据；只有后续 <see cref="ApplyThirdPartyReauthenticationAsync"/> 成功才生效。
+    /// </summary>
+    Task<Result<AuthlibSession>> PrepareThirdPartyReauthenticationAsync(
+        string accountId,
+        string password,
+        AuthServer targetServer,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>提交已准备好的第三方登录会话：保存凭据并同步账户资料与认证服务器。</summary>
+    Task<Result<Account>> ApplyThirdPartyReauthenticationAsync(
+        string accountId,
+        AuthlibSession session,
+        AuthServer targetServer,
+        CancellationToken cancellationToken = default);
 }

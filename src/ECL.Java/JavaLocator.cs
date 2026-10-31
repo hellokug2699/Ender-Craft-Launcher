@@ -7,15 +7,23 @@ namespace Ecl.Java;
 
 public sealed class JavaLocator : IJavaLocator
 {
+    private const int MaxScanDepth = 4;
+    private const int MaxScanDirectories = 4096;
+
     private static readonly string JavaExecutableName = OperatingSystem.IsWindows() ? "java.exe" : "java";
 
     private readonly IAppPaths _paths;
     private readonly ILogger<JavaLocator> _logger;
+    private readonly IReadOnlyList<IJavaSearchRootProvider> _searchRootProviders;
 
-    public JavaLocator(IAppPaths paths, ILogger<JavaLocator> logger)
+    public JavaLocator(
+        IAppPaths paths,
+        ILogger<JavaLocator> logger,
+        IEnumerable<IJavaSearchRootProvider>? searchRootProviders = null)
     {
         _paths = paths;
         _logger = logger;
+        _searchRootProviders = searchRootProviders?.ToArray() ?? [];
     }
 
     public Task<IReadOnlyList<JavaRuntime>> FindAllAsync(CancellationToken cancellationToken = default)
@@ -30,26 +38,31 @@ public sealed class JavaLocator : IJavaLocator
 
         if (OperatingSystem.IsWindows())
         {
-            AddHomeChildren(candidates, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) is { Length: > 0 } programFiles
-                ? Path.Combine(programFiles, "Java")
-                : null, depth: 1);
-            AddHomeChildren(candidates, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) is { Length: > 0 } programFiles2
-                ? Path.Combine(programFiles2, "Eclipse Adoptium")
-                : null, depth: 1);
-            AddHomeChildren(candidates, Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) is { Length: > 0 } programFiles3
-                ? Path.Combine(programFiles3, "Microsoft")
-                : null, depth: 1);
-            AddHomeChildren(candidates, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData) is { Length: > 0 } localData
-                ? Path.Combine(localData, "Programs", "Eclipse Adoptium")
-                : null, depth: 1);
-            AddHomeChildren(candidates, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) is { Length: > 0 } userProfile
-                ? Path.Combine(userProfile, ".jdks")
-                : null, depth: 1);
+            AddHomeChildren(candidates, GetProgramFilesPath("Java"), depth: 2);
+            AddHomeChildren(candidates, GetProgramFilesPath("Eclipse Adoptium"), depth: 2);
+            AddHomeChildren(candidates, GetProgramFilesPath("Microsoft"), depth: 2);
+            AddHomeChildren(candidates, GetProgramFilesPath("BellSoft"), depth: 2);
+            AddHomeChildren(candidates, GetProgramFilesPath("Zulu"), depth: 2);
+            AddHomeChildren(candidates, GetProgramFilesPath("Amazon Corretto"), depth: 2);
+            AddHomeChildren(candidates, GetProgramFilesPath("IBM Semeru"), depth: 2);
+            AddHomeChildren(candidates, GetLocalAppDataPath("Programs", "Eclipse Adoptium"), depth: 2);
+            AddHomeChildren(candidates, GetUserProfilePath(".jdks"), depth: 2);
         }
         else
         {
-            AddHomeChildren(candidates, "/usr/lib/jvm", depth: 1);
-            AddHomeChildren(candidates, "/usr/java", depth: 1);
+            AddHomeChildren(candidates, "/usr/lib/jvm", depth: 2);
+            AddHomeChildren(candidates, "/usr/java", depth: 2);
+            AddHomeChildren(candidates, "/opt/java", depth: 2);
+        }
+
+        // 用户在全局设置中指定的 Java 目录通常包含多个 JDK/JRE，
+        // 这些目录不一定是“Java 主目录”（可能只是它们的上级目录）。
+        foreach (var provider in _searchRootProviders)
+        {
+            foreach (var root in provider.GetSearchRoots())
+            {
+                AddConfiguredRoot(candidates, root);
+            }
         }
 
         var runtimes = candidates
@@ -73,24 +86,73 @@ public sealed class JavaLocator : IJavaLocator
             return null;
         }
 
-        var executable = ResolveExecutable(path);
-        return executable is null ? null : CreateRuntime(executable);
+        try
+        {
+            var fullPath = Path.GetFullPath(path.Trim().Trim('"'));
+            if (File.Exists(fullPath))
+            {
+                return CreateRuntime(fullPath);
+            }
+
+            if (!Directory.Exists(fullPath))
+            {
+                return null;
+            }
+
+            var direct = Path.Combine(fullPath, "bin", JavaExecutableName);
+            if (File.Exists(direct))
+            {
+                return CreateRuntime(direct);
+            }
+
+            // 允许用户直接选择 ...\bin 目录。
+            var inBin = Path.Combine(fullPath, JavaExecutableName);
+            if (File.Exists(inBin) &&
+                string.Equals(
+                    Path.GetFileName(Path.TrimEndingDirectorySeparator(fullPath)),
+                    "bin",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return CreateRuntime(inBin);
+            }
+
+            // 选择的是包含多个 Java 的上级目录：返回其中版本最高的运行时。
+            var nested = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var visited = 0;
+            AddJavaHomes(nested, fullPath, MaxScanDepth, ref visited);
+
+            return nested
+                .Select(CreateRuntime)
+                .Where(runtime => runtime is not null)
+                .Select(runtime => runtime!)
+                .OrderByDescending(runtime => runtime.Version)
+                .ThenByDescending(runtime => runtime.Version?.Minor)
+                .ThenByDescending(runtime => runtime.Version?.Patch)
+                .FirstOrDefault();
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
-    private static string? ResolveExecutable(string path)
+    private static string? GetProgramFilesPath(string child)
     {
-        if (File.Exists(path))
-        {
-            return Path.GetFullPath(path);
-        }
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        return programFiles.Length == 0 ? null : Path.Combine(programFiles, child);
+    }
 
-        if (Directory.Exists(path))
-        {
-            var candidate = Path.Combine(path, "bin", JavaExecutableName);
-            return File.Exists(candidate) ? Path.GetFullPath(candidate) : null;
-        }
+    private static string? GetLocalAppDataPath(params string[] children)
+    {
+        var localData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return localData.Length == 0 ? null : Path.Combine([localData, .. children]);
+    }
 
-        return null;
+    private static string? GetUserProfilePath(string child)
+    {
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return userProfile.Length == 0 ? null : Path.Combine(userProfile, child);
     }
 
     private static void AddPathEnvironment(HashSet<string> candidates)
@@ -165,6 +227,95 @@ public sealed class JavaLocator : IJavaLocator
         }
     }
 
+    /// <summary>
+    /// 从用户配置的根目录查找 Java。支持“根目录本身就是 Java 主目录”、
+    /// “根目录下有一层或多层 JDK/JRE”等布局，并限制深度和目录数量以避免误选磁盘根目录时长时间扫描。
+    /// </summary>
+    private static void AddConfiguredRoot(HashSet<string> candidates, string root)
+    {
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            return;
+        }
+
+        try
+        {
+            if (File.Exists(root))
+            {
+                candidates.Add(Path.GetFullPath(root));
+                return;
+            }
+
+            if (!Directory.Exists(root))
+            {
+                return;
+            }
+
+            var visited = 0;
+            AddJavaHomes(candidates, root, MaxScanDepth, ref visited);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            // 无法访问的目录直接跳过，不影响其它候选。
+        }
+    }
+
+    private static void AddJavaHomes(HashSet<string> candidates, string directory, int depth, ref int visited)
+    {
+        if (depth < 0 || visited >= MaxScanDirectories)
+        {
+            return;
+        }
+
+        visited++;
+
+        var executable = Path.Combine(directory, "bin", JavaExecutableName);
+        if (File.Exists(executable))
+        {
+            candidates.Add(Path.GetFullPath(executable));
+            return;
+        }
+
+        if (depth == 0)
+        {
+            return;
+        }
+
+        IEnumerable<string> children;
+        try
+        {
+            children = Directory.EnumerateDirectories(directory);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        foreach (var child in children)
+        {
+            if (visited >= MaxScanDirectories)
+            {
+                return;
+            }
+
+            try
+            {
+                // 跳过符号链接/junction，避免在用户误选磁盘根目录时绕圈。
+                if ((File.GetAttributes(child) & FileAttributes.ReparsePoint) != 0)
+                {
+                    continue;
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            AddJavaHomes(candidates, child, depth - 1, ref visited);
+        }
+    }
+
     private static JavaRuntime? CreateRuntime(string executablePath)
     {
         var executable = Path.GetFullPath(executablePath);
@@ -191,13 +342,51 @@ public sealed class JavaLocator : IJavaLocator
         var vendor = implementor ?? javaVendor;
         if (string.IsNullOrWhiteSpace(vendor))
         {
-            var parentName = Path.GetFileName(Path.GetDirectoryName(home));
-            vendor = string.Equals(parentName, "java", StringComparison.OrdinalIgnoreCase)
-                ? "Mojang"
-                : parentName;
+            vendor = InferVendor(home);
         }
 
         return new JavaRuntime(home, executable, vendor, architecture, version);
+    }
+
+    private static string InferVendor(string home)
+    {
+        var text = home.ToLowerInvariant();
+        if (text.Contains("temurin", StringComparison.Ordinal) || text.Contains("adoptium", StringComparison.Ordinal))
+        {
+            return "Eclipse Adoptium";
+        }
+
+        if (text.Contains("zulu", StringComparison.Ordinal))
+        {
+            return "Azul Zulu";
+        }
+
+        if (text.Contains("corretto", StringComparison.Ordinal))
+        {
+            return "Amazon Corretto";
+        }
+
+        if (text.Contains("liberica", StringComparison.Ordinal) || text.Contains("bellsoft", StringComparison.Ordinal))
+        {
+            return "BellSoft Liberica";
+        }
+
+        if (text.Contains("microsoft", StringComparison.Ordinal))
+        {
+            return "Microsoft";
+        }
+
+        if (text.Contains("graalvm", StringComparison.Ordinal))
+        {
+            return "GraalVM";
+        }
+
+        if (text.Contains("semeru", StringComparison.Ordinal))
+        {
+            return "IBM Semeru";
+        }
+
+        return "Java";
     }
 
     private static Dictionary<string, string> ReadReleaseFile(string home)
