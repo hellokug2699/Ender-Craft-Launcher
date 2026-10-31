@@ -1179,20 +1179,27 @@ public sealed partial class InstancesViewModel : ObservableObject
             return;
         }
 
-        var dialog = new AuthlibAccountDialog(_authServers, _accounts, _localizer)
+        try
         {
-            Owner = Application.Current?.MainWindow,
-        };
+            var dialog = new AuthlibAccountDialog(_authServers, _accounts, _localizer)
+            {
+                Owner = Application.Current?.MainWindow,
+            };
 
-        if (dialog.ShowDialog() != true || dialog.ResultAccount is null)
-        {
-            return;
+            if (dialog.ShowDialog() != true || dialog.ResultAccount is null)
+            {
+                return;
+            }
+
+            await RefreshAuthServersAsync().ConfigureAwait(true);
+            await RefreshAccountsAsync().ConfigureAwait(true);
+            SelectedAccount = Accounts.FirstOrDefault(item => item.Id == dialog.ResultAccount.Id) ?? SelectedAccount;
+            StatusMessage = _localizer.Get("instances.thirdPartySignedIn", dialog.ResultAccount.Name);
         }
-
-        await RefreshAuthServersAsync().ConfigureAwait(true);
-        await RefreshAccountsAsync().ConfigureAwait(true);
-        SelectedAccount = Accounts.FirstOrDefault(item => item.Id == dialog.ResultAccount.Id) ?? SelectedAccount;
-        StatusMessage = _localizer.Get("instances.thirdPartySignedIn", dialog.ResultAccount.Name);
+        catch (Exception exception)
+        {
+            StatusMessage = _localizer.Get("instances.thirdPartySignInFailed", "ui.exception", exception.Message);
+        }
     }
 
     /// <summary>账户设置：编辑第三方账户所属服务器的地址与注册链接，可选重新登录。</summary>
@@ -1205,29 +1212,36 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
 
         var account = SelectedAccount.Model;
-        var server = string.IsNullOrWhiteSpace(account.AuthServerId)
-            ? null
-            : await _authServers.GetAsync(account.AuthServerId).ConfigureAwait(true);
-        if (server is null)
+        try
         {
-            StatusMessage = _localizer.Get("instances.authServerMissing");
-            return;
+            var server = string.IsNullOrWhiteSpace(account.AuthServerId)
+                ? null
+                : await _authServers.GetAsync(account.AuthServerId).ConfigureAwait(true);
+            if (server is null)
+            {
+                StatusMessage = _localizer.Get("instances.authServerMissing");
+                return;
+            }
+
+            var dialog = new AuthlibAccountDialog(_authServers, _accounts, _localizer, server, account)
+            {
+                Owner = Application.Current?.MainWindow,
+            };
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            await RefreshAuthServersAsync().ConfigureAwait(true);
+            await RefreshAccountsAsync().ConfigureAwait(true);
+            SelectedAccount = Accounts.FirstOrDefault(item => item.Id == account.Id) ?? SelectedAccount;
+            StatusMessage = _localizer.Get("instances.accountSettingsSaved");
         }
-
-        var dialog = new AuthlibAccountDialog(_authServers, _accounts, _localizer, server, account)
+        catch (Exception exception)
         {
-            Owner = Application.Current?.MainWindow,
-        };
-
-        if (dialog.ShowDialog() != true)
-        {
-            return;
+            StatusMessage = _localizer.Get("instances.thirdPartySignInFailed", "ui.exception", exception.Message);
         }
-
-        await RefreshAuthServersAsync().ConfigureAwait(true);
-        await RefreshAccountsAsync().ConfigureAwait(true);
-        SelectedAccount = Accounts.FirstOrDefault(item => item.Id == account.Id) ?? SelectedAccount;
-        StatusMessage = _localizer.Get("instances.accountSettingsSaved");
     }
 
     private static Task OpenBrowserAsync(Uri uri)
