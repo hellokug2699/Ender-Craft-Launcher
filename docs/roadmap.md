@@ -85,7 +85,7 @@ flowchart TD
 
 **验收：** 导入前后原目录文件哈希不变；共享目录和隔离目录均能正确启动或明确报告缺失条件；Windows CI 通过。
 
-**验证记录：** 样本与覆盖说明见 [instance-import.md](instance-import.md)。回归在 `tests/ECL.Tests/Minecraft/ImportRegressionTests.cs`，Windows 本地 296 项测试全部通过；[CI run #163](https://github.com/hellokug2699/Ender-Craft-Launcher/actions/runs/41182107585)（Windows 构建、格式检查、测试与 Linux 测试）`completed` / `success`。本次同时修复了导入路径上的缺陷：加载器版本缺少自己的 client jar 时类路径错误、损坏/不完整版本 JSON 仍可导入且启动失败缺少原因、多层继承时 GameVersion 被写成加载器配置名。
+**历史验证记录（2026-10-31，非当前 HEAD 的 CI 声明）：** 样本与覆盖说明见 [instance-import.md](instance-import.md)。当时在 Windows 本地执行 `tests/ECL.Tests/Minecraft/ImportRegressionTests.cs` 所属测试套件，296 项通过；[CI run #163](https://github.com/hellokug2699/Ender-Craft-Launcher/actions/runs/41182107585) 对提交 `c505cde` 的 Windows 构建、格式检查、测试与 Linux 测试显示 `completed` / `success`。该记录只证明当时对应提交的结果，不代表当前分支 HEAD 已重新验证。本次修复的缺陷包括：加载器版本缺少自己的 client jar 时类路径错误、损坏/不完整版本 JSON 仍可导入且启动失败缺少原因、多层继承时 GameVersion 被写成加载器配置名。
 
 ### 1.2 目录与文件所有权（当前优先）
 
