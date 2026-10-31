@@ -45,9 +45,11 @@ flowchart TD
     Auth --> Core
     Java --> Core
     Java --> Download
+    Java --> Ops
     MC --> Core
     MC --> Config
     MC --> Download
+    MC --> Ops
     MC --> Auth
     MC --> Java
     App --> MC
@@ -62,6 +64,7 @@ flowchart TD
     Cli --> Auth
     Cli --> Java
     Cli --> Download
+    Cli --> Ops
     Cli --> Core
     Tests --> MC
     Tests --> Config
@@ -80,13 +83,13 @@ flowchart TD
 | --- | --- | --- |
 | `ECL.Core` | 应用路径、`Result`、JSON 约定、Serilog 配置、JSON 本地化 | `IAppPaths`, `Result<T>`, `EclJson`, `JsonLocalizer` |
 | `ECL.Configuration` | 配置定义、注册表、全局/实例作用域、持久化、可见性 | `OptionDefinition<T>`, `OptionRegistry`, `ISettingsService` |
-| `ECL.Operations` | 统一任务模型、状态/阶段、字节与项目进度、速度/ETA、停滞检测、失败归因、内存任务快照 | `OperationSnapshot`, `OperationState`, `IOperationService`, `IOperationStore`, `SpeedMeter`, `OperationErrors` |
-| `ECL.Download` | 下载源策略、官方↔BMCLAPI 映射、并发/重试/续传、哈希校验、流式进度与任务发布 | `DownloadSourceResolver`, `IDownloadService`, `DownloadRequest`, `DownloadProgress` |
+| `ECL.Operations` | 统一任务模型、状态/阶段、字节与项目进度、速度/ETA、停滞检测、失败归因、内存任务快照、嵌套任务作用域与业务进度桥接 | `OperationSnapshot`, `OperationState`, `IOperationService`, `IOperationStore`, `IOperationControl`, `OperationProgressBridge<T>`, `OperationScope`, `SpeedMeter`, `OperationErrors`, `OperationFormat` |
+| `ECL.Download` | 下载源策略、官方↔BMCLAPI 映射、并发/重试/续传、哈希校验、流式进度与任务发布（存在上层业务任务时只转发进度） | `DownloadSourceResolver`, `IDownloadService`, `DownloadRequest`, `DownloadProgress` |
 | `ECL.Auth` | 账户模型、离线 UUID、账户文件 | `Account`, `IAccountService`, `OfflineUuid` |
-| `ECL.Java` | Java 版本解析、运行时探测、需求/兼容性/32-64 位与内存校验、JVM 预设、Mojang/Adoptium/Zulu/Liberica 下载与解压 | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `JvmPresets`, `IJavaInstallService` |
-| `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动、Mod/整合包/资源包管理、CurseForge/Modrinth API、统一搜索与下载、版本情报 | `GameInstance`, `VanillaInstallService`, `ILoaderCatalog`, `IJavaSelectionService`, `IModService`, `IModpackService`, `ICurseForgeClient`, `ICurseForgeService`, `IModrinthClient`, `IContentSearchService`, `IContentInstallService`, `IVersionNewsService`, `ILaunchStep` |
-| `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框 | `MainViewModel`, `HomeViewModel`, `DownloadViewModel`, `InstancesViewModel`, `ModsViewModel`, `SettingsViewModel` |
-| `ECL.Cli` | 无 GUI 管理、调试启动链路 | `CliApplication`, `ParsedCommandLine` |
+| `ECL.Java` | Java 版本解析、运行时探测、需求/兼容性/32-64 位与内存校验、JVM 预设、Mojang/Adoptium/Zulu/Liberica 下载与解压（下载登记 `Java` 任务） | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `JvmPresets`, `IJavaInstallService` |
+| `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动、Mod/整合包/资源包管理、CurseForge/Modrinth API、统一搜索与下载、版本情报；安装、整合包导入与内容安装登记 Operation | `GameInstance`, `VanillaInstallService`, `ILoaderCatalog`, `IJavaSelectionService`, `IModService`, `IModpackService`, `ICurseForgeClient`, `ICurseForgeService`, `IModrinthClient`, `IContentSearchService`, `IContentInstallService`, `IVersionNewsService`, `ILaunchStep` |
+| `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框、任务中心 | `MainViewModel`, `HomeViewModel`, `DownloadViewModel`, `InstancesViewModel`, `ModsViewModel`, `SettingsViewModel`, `OperationCenterViewModel` |
+| `ECL.Cli` | 无 GUI 管理、调试启动链路、长任务进度输出 | `CliApplication`, `ParsedCommandLine`, `CliOperationReporter` |
 | `ECL.Tests` | 单元测试与临时数据目录 | `TestEnvironment`, `FakeProcessLauncher` |
 
 ## 5. 组合根与生命周期
@@ -167,6 +170,7 @@ services.AddEclMinecraft();
 3. 下载 client jar、按当前 OS/架构与 rules 过滤后的依赖库（含 natives classifier）、资源索引、资源对象、日志配置。
 4. SHA-1 校验；已存在且校验通过的文件直接跳过；失败文件自动尝试下一候选源。
 5. natives 不在安装阶段解压，而是每次启动前解压到实例的 `minecraft/natives`，保证实例隔离。
+6. 整个安装登记一个 `Install` 任务（阶段 + 项目/字节进度 + 取消/重试）；内部下载批次复用该任务，不再单独登记。
 
 ### 7.3 启动实例
 
@@ -186,7 +190,7 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 1. 读取版本 JSON 的 `javaVersion`（权威来源）；缺失时按游戏版本推断最低主版本（1.16 及以下建议 Java 8，26.x 建议 Java 25）。
 2. 按“实例指定 → 全局指定 → 自动选择 → 最高版本兜底”的顺序解析 Java。
 3. `JavaCompatibility` 只判断“低于最低版本 / 未知 / 兼容”，不限制最高版本；UI 弹窗提示，实例可关闭检查。
-4. 没有可用 Java 时，`IJavaInstallService` 从 Mojang Java 运行时索引下载对应 component 到 `<data>/java/<component>`，校验 SHA-1，处理目录、符号链接与执行位。
+4. 没有可用 Java 时，`IJavaInstallService` 从 Mojang Java 运行时索引下载对应 component 到 `<data>/java/<component>`，校验 SHA-1，处理目录、符号链接与执行位；下载过程登记 `Java` 任务（索引、清单、下载、解压、完成），可取消与重试。
 
 详见 [java.md](java.md)。
 
@@ -215,15 +219,15 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 1. 所有 CurseForge API 请求都发往 ECL 自建代理，客户端使用官方 API 路径（`/v1/...`），代理注入 `x-api-key` 后转发到 CurseForge。代理服务端源码、内部路由与部署材料不在本仓库；客户端必须公开 endpoint 常量，状态命令也会显示 endpoint。ECL 不读取、不发送也不嵌入 key，构建过程不注入凭据。
 2. 代理只转发 API；`edge.forgecdn.net` 等实际文件下载仍由 ECL 直接访问。
 3. `CurseForgeClient` 负责搜索、项目/文件解析、批量文件查询、下载 URL、限流重试；不做磁盘缓存；只接受 CurseForge CDN 下载地址。
-4. `CurseForgeService` 按实例游戏版本/加载器选择文件，递归安装必需依赖，写入 `minecraft/.ecl-curseforge.json`。
-5. `ModpackService` 对 CurseForge `.zip` 批量解析 `manifest.json` 的 `files[]`，下载、校验、解压 overrides，并写入 `.ecl-modpack.json`。
+4. `CurseForgeService` 按实例游戏版本/加载器选择文件，递归安装必需依赖，写入 `minecraft/.ecl-curseforge.json`；安装过程登记 `Install` 任务，可取消与重试。
+5. `ModpackService` 对 CurseForge `.zip` 批量解析 `manifest.json` 的 `files[]`，下载、校验、解压 overrides，并写入 `.ecl-modpack.json`；导入过程登记 `Import` 任务。
 6. WPF 与 CLI 只调用 `ICurseForgeService` / `ICurseForgeClient`，不直接拼 HTTP。
 
 ### 7.8 Modrinth 与统一下载
 
 1. `ModrinthClient` 访问 `https://api.modrinth.com/v2`，只负责搜索、项目/版本、依赖与文件 URL；只接受 `modrinth.com` / `*.modrinth.com` 的 HTTPS 文件地址。
 2. `ContentSearchService` 把 CurseForge 与 Modrinth 的结果映射为统一的 `ContentHit`；来源过滤支持「全部 / 仅 CurseForge / 仅 Modrinth」，「全部」下两个平台并行请求并交错排列，不跨平台去重。
-3. `ContentInstallService` 统一执行安装/下载：资源包、光影包、数据包按类型落入实例或 `<data>/downloads`；Modrinth Mod 递归补齐必需依赖；CurseForge Mod 复用 `CurseForgeService` 的依赖逻辑。
+3. `ContentInstallService` 统一执行安装/下载：资源包、光影包、数据包按类型落入实例或 `<data>/downloads`；Modrinth Mod 递归补齐必需依赖；CurseForge Mod 复用 `CurseForgeService` 的依赖逻辑；每个入口只登记一个任务，内部导入与下载复用该任务。
 4. 整合包无论来源先下载为归档（`.mrpack` / CurseForge `.zip`），再交给 `IModpackService` 导入；没有实例时可仅下载，或由 `ModpackArchiveInspector` 读取包内 `dependencies`/`manifest.json` 自动创建实例后导入。
 5. `MojangVersionNewsService` 读取 Mojang 版本清单，为「主页 → 新版本情报」提供数据；主页不承载任何下载动作。
 
@@ -234,6 +238,13 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - 可预期失败：`Result` / `Result<T>`，带稳定 `Code`（如 `instance.duplicate_name`）。
 - 启动失败：`LaunchReport.Success = false`，失败步骤带用户可读消息。
 - 意外异常：记录日志；UI 线程异常由 `DispatcherUnhandledException` 兜底。
+
+### 任务进度与诊断
+
+- 长时间任务通过 `IOperationService.Begin` 登记快照；业务服务用 `OperationProgressBridge<T>` 把已有 `IProgress<T>` 桥接到任务中心。
+- 嵌套任务复用上层任务（`OperationScope`），一次安装只产生一个任务条目；任务生命周期由最外层业务服务决定。
+- 失败使用 `OperationErrorKind` 归因（异常类型或稳定错误码），UI 与 CLI 都不解析异常文本。
+- 当前接入范围、状态语义与已知限制见 [operations.md](operations.md)。
 
 ### 日志
 
@@ -311,7 +322,7 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - CurseForge 与 Modrinth 的搜索、一键安装、整合包远程下载与 `.mrpack` 自动建实例导入已完成；不做 Mod 更新检查、可选依赖选择，作者禁止第三方分发或无 CDN 地址的文件无法下载。
 - 实例下载位置（.minecraft 目录）修改后需要重启，已有实例不会自动迁移。
 - 导入实例回归（P1 1.1）已覆盖扫描有效性、导入只读性、共享/隔离启动、缺失文件诊断与内容路径；详见 [instance-import.md](instance-import.md)。目录所有权/共享引用检查（P1 1.2）与迁移（P1 1.3）尚未实现。
-- 统一任务中心（Operation）已接入下载批次：流式字节进度、速度/ETA、停滞/重试/失败归因、当前/最近任务条、取消与失败重试、诊断详情；安装、整合包、Java、备份与启动等业务尚未全部迁移，CLI 也尚未消费任务中心，详见 [operations.md](operations.md)。
+- 统一任务中心（Operation）已接入下载批次、Minecraft 安装、整合包导入、内容安装/下载、CurseForge Mod 安装与 Java 运行时下载：阶段、字节/项目进度、速度/ETA、停滞/重试/失败归因、当前/最近任务条、取消与失败重试、诊断详情；CLI 的安装、Java、整合包与 CurseForge 命令也已消费任务快照。备份/恢复、整合包导出、启动与实例迁移/删除尚未接入，详见 [operations.md](operations.md)。
 - 下载页当前为单页结果（PageSize=40），分页与无限滚动仍在路线图中。
 - 资源包/光影包以 `options.txt` 为启用状态唯一事实来源，支持启用/禁用、缺失/重复/未识别条目提示与原子写入；独立配置文件的 shader 实现不会被同步。
 - 首次启动向导本阶段暂缓。

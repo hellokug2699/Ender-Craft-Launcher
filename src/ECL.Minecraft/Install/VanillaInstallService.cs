@@ -11,6 +11,7 @@ using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Versions;
+using Ecl.Operations;
 using Microsoft.Extensions.Logging;
 
 namespace Ecl.Minecraft.Install;
@@ -31,6 +32,7 @@ public sealed class VanillaInstallService : IVersionInstallService
     private readonly IJavaSelectionService _javaSelection;
     private readonly IForgeProcessorRunner _forgeRunner;
     private readonly ILocalizer _localizer;
+    private readonly IOperationService? _operations;
     private readonly ILogger<VanillaInstallService> _logger;
 
     public VanillaInstallService(
@@ -42,7 +44,8 @@ public sealed class VanillaInstallService : IVersionInstallService
         IJavaSelectionService javaSelection,
         IForgeProcessorRunner forgeRunner,
         ILocalizer localizer,
-        ILogger<VanillaInstallService> logger)
+        ILogger<VanillaInstallService> logger,
+        IOperationService? operations = null)
     {
         _instances = instances;
         _paths = paths;
@@ -52,6 +55,7 @@ public sealed class VanillaInstallService : IVersionInstallService
         _javaSelection = javaSelection;
         _forgeRunner = forgeRunner;
         _localizer = localizer;
+        _operations = operations;
         _logger = logger;
     }
 
@@ -82,25 +86,47 @@ public sealed class VanillaInstallService : IVersionInstallService
 
         var transaction = new InstallTransaction();
 
+        // 整个安装只登记一个任务：下载批次复用该任务，不再产生重复条目。
+        using var operation = new OperationProgressBridge<InstallProgress>(
+            _operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Install,
+                Title = _localizer.Get("install.task.title", instance.Name),
+                StageId = "install",
+                Source = "Mojang",
+                CanCancel = true,
+                CanRetry = true,
+            },
+            progress,
+            MapInstallProgress);
+
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = cancellation.Token;
+        operation.AttachControl(cancellation, retryToken => InstallAsync(instanceId, progress, retryToken));
+
         try
         {
-            var result = await InstallCoreAsync(instance, loaderKind, transaction, progress, cancellationToken)
+            var result = await InstallCoreAsync(instance, loaderKind, transaction, operation, cancellationToken)
                 .ConfigureAwait(false);
 
             if (result.IsSuccess)
             {
                 transaction.Commit();
+                operation.Complete();
             }
             else
             {
                 var actions = transaction.Rollback();
                 WriteDiagnostics(instance, result.Error!, actions);
+                operation.Fail(ToOperationError(result.Error!));
             }
 
             return result;
         }
         catch (OperationCanceledException)
         {
+            operation.Cancel();
             var error = new EclError("install.cancelled", _localizer.Get("install.cancelled"));
             var actions = transaction.Rollback();
             WriteDiagnostics(instance, error, actions);
@@ -108,6 +134,11 @@ public sealed class VanillaInstallService : IVersionInstallService
         }
         catch (DownloadException exception)
         {
+            operation.Fail(new OperationError(
+                exception.Kind,
+                "install.download_failed",
+                exception.Message,
+                exception.Failures.FirstOrDefault()));
             _logger.LogError(exception, "安装实例 {InstanceId} 时下载失败。", instance.Id);
             var error = new EclError(
                 "install.download_failed",
@@ -121,6 +152,7 @@ public sealed class VanillaInstallService : IVersionInstallService
                                               or InvalidOperationException or InvalidDataException
                                               or System.ComponentModel.Win32Exception)
         {
+            operation.Fail(OperationErrors.FromException("install.failed", exception));
             _logger.LogError(exception, "安装实例 {InstanceId} 失败。", instance.Id);
             var error = new EclError("install.failed", _localizer.Get("install.failed", exception.Message));
             var actions = transaction.Rollback();
@@ -1112,6 +1144,42 @@ public sealed class VanillaInstallService : IVersionInstallService
             totalBytes,
             currentFile));
     }
+
+    /// <summary>
+    /// 安装进度按阶段映射到任务中心：字节与项目数量都是当前阶段的值，
+    /// 阶段切换由稳定的 StageId 与用户可读的 StageText 表达。
+    /// </summary>
+    private static OperationProgressUpdate MapInstallProgress(InstallProgress progress) => new()
+    {
+        StageId = InstallStageId(progress.Stage),
+        StageText = progress.Message,
+        CurrentItem = progress.CurrentFile,
+        Completed = progress.CompletedFiles,
+        Total = progress.TotalFiles > 0 ? progress.TotalFiles : null,
+        BytesDownloaded = progress.CompletedBytes,
+        TotalBytes = progress.TotalBytes > 0 ? progress.TotalBytes : null,
+        BytesPerSecond = progress.BytesPerSecond > 0 ? progress.BytesPerSecond : null,
+        IsPaused = progress.IsPaused,
+    };
+
+    private static string InstallStageId(InstallStage stage) => stage switch
+    {
+        InstallStage.Manifest => "install.manifest",
+        InstallStage.Version => "install.version",
+        InstallStage.Loader => "install.loader",
+        InstallStage.Processors => "install.processors",
+        InstallStage.Client => "install.client",
+        InstallStage.Libraries => "install.libraries",
+        InstallStage.Assets => "install.assets",
+        InstallStage.Logging => "install.logging",
+        InstallStage.FabricApi => "install.fabric-api",
+        InstallStage.OptiFine => "install.optifine",
+        InstallStage.Completed => "install.completed",
+        _ => "install",
+    };
+
+    private static OperationError ToOperationError(EclError error) =>
+        OperationErrors.FromCode(error.Code, error.Message, error.Detail);
 
     private sealed record ForgeInstallPlan(
         MinecraftVersion Version,

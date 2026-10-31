@@ -161,7 +161,7 @@ UI 与 CLI 使用同一份报告，只是渲染方式不同。
 
 ## 7. 当前边界与缺口
 
-- 启动流水线本身提供阶段状态、耗时、警告与失败报告；统一 Operation 任务中心目前主要接入下载批次，启动流程尚未作为 Operation 发布。
+- 启动流水线本身提供阶段状态、耗时、警告与失败报告；启动流程尚未作为 Operation 发布到任务中心（下载、安装、整合包、内容与 Java 已接入，见 [operations.md](operations.md)）。
 - 崩溃分析与脱敏诊断包已实现，详见 [diagnostics.md](diagnostics.md)；它们不等于完整的 JVM 崩溃符号化分析。
 - 下载并发、重试、断点续传、暂停/恢复、流式进度、速度/ETA 与失败归因已实现；下载限速尚未实现，详见 [operations.md](operations.md)。
 - Java 自动安装支持 Mojang、Adoptium、Zulu 与 Liberica；内置 JVM 预设与外部 JSON 自定义预设均已支持，但 UI 尚不提供命名预设编辑器，详见 [java.md](java.md)。

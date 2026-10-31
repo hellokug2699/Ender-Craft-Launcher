@@ -143,6 +143,7 @@ Linux ARM64 在 Mojang 来源下会返回“平台不支持”；切换到 Adopt
 - “下载 Java”：按当前实例版本要求下载。
 - “关闭 Java 兼容性检验”：实例级开关。
 - 状态文本 + 下载进度。
+- 下载运行时同时登记统一任务中心的 `Java` 任务（阶段、字节、速度、失败归因、取消/重试），见 [operations.md](operations.md)。
 
 实例库只展示实例名称、Minecraft 版本、加载器与最近启动时间，并提供“打开工作区”入口；Java、JVM、账户、模组与诊断等设置都集中在实例工作区。
 
@@ -153,6 +154,8 @@ ecl java list
 ecl java install <实例ID>
 ecl launch <实例ID> --dry-run
 ```
+
+`ecl java install` 的进度来自统一任务中心，写入标准错误；标准输出只保留最终结果。
 
 ## 9. 限制与后续
 

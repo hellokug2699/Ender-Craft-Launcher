@@ -79,4 +79,31 @@ public sealed class OperationErrorTests
         Assert.Equal("outer", error.Message);
         Assert.Equal("inner", error.Detail);
     }
+
+    [Theory]
+    [InlineData("install.cancelled", OperationErrorKind.Cancelled)]
+    [InlineData("install.download_failed", OperationErrorKind.Network)]
+    [InlineData("java.download_failed", OperationErrorKind.Network)]
+    [InlineData("curseforge.distribution_restricted", OperationErrorKind.Upstream)]
+    [InlineData("modpack.game_version_mismatch", OperationErrorKind.Configuration)]
+    [InlineData("instance.not_found", OperationErrorKind.Configuration)]
+    [InlineData("java.provider_unsupported", OperationErrorKind.Configuration)]
+    [InlineData("install.size_mismatch", OperationErrorKind.FileIntegrity)]
+    [InlineData("modpack.write_failed", OperationErrorKind.LocalIO)]
+    [InlineData("install.failed", OperationErrorKind.EclInternal)]
+    public void ClassifiesBusinessErrorCodes(string code, OperationErrorKind expected)
+    {
+        Assert.Equal(expected, OperationErrors.ClassifyCode(code));
+    }
+
+    [Fact]
+    public void FromCodeKeepsCodeMessageAndDetail()
+    {
+        var error = OperationErrors.FromCode("modpack.download_failed", "下载失败", "detail");
+
+        Assert.Equal(OperationErrorKind.Network, error.Kind);
+        Assert.Equal("modpack.download_failed", error.Code);
+        Assert.Equal("下载失败", error.Message);
+        Assert.Equal("detail", error.Detail);
+    }
 }

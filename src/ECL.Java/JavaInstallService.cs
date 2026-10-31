@@ -6,6 +6,7 @@ using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Core.Localization;
 using Ecl.Download;
+using Ecl.Operations;
 using Microsoft.Extensions.Logging;
 
 namespace Ecl.Java;
@@ -19,6 +20,7 @@ public sealed class JavaInstallService : IJavaInstallService
     private readonly ISettingsService _settings;
     private readonly IReadOnlyDictionary<string, IJavaRuntimeProvider> _providers;
     private readonly ILocalizer _localizer;
+    private readonly IOperationService? _operations;
     private readonly ILogger<JavaInstallService> _logger;
 
     public JavaInstallService(
@@ -29,7 +31,8 @@ public sealed class JavaInstallService : IJavaInstallService
         ISettingsService settings,
         IEnumerable<IJavaRuntimeProvider> providers,
         ILocalizer localizer,
-        ILogger<JavaInstallService> logger)
+        ILogger<JavaInstallService> logger,
+        IOperationService? operations = null)
     {
         _downloads = downloads;
         _sources = sources;
@@ -38,6 +41,7 @@ public sealed class JavaInstallService : IJavaInstallService
         _settings = settings;
         _providers = providers.ToDictionary(provider => provider.Id, StringComparer.OrdinalIgnoreCase);
         _localizer = localizer;
+        _operations = operations;
         _logger = logger;
     }
 
@@ -62,21 +66,64 @@ public sealed class JavaInstallService : IJavaInstallService
         CancellationToken cancellationToken = default)
     {
         var providerId = _settings.Get<string>("java.runtimeProvider");
+        IJavaRuntimeProvider? provider = null;
         if (!string.IsNullOrWhiteSpace(providerId) &&
             !string.Equals(providerId, "mojang", StringComparison.OrdinalIgnoreCase))
         {
-            if (!_providers.TryGetValue(providerId, out var provider))
+            if (!_providers.TryGetValue(providerId, out provider))
             {
                 return Result<JavaRuntime>.Fail(
                     "java.provider_unsupported",
                     _localizer.Get("java.error.providerUnsupported", providerId));
             }
-
-            return await DownloadFromProviderAsync(provider, requirement, progress, cancellationToken)
-                .ConfigureAwait(false);
         }
 
-        return await DownloadFromMojangAsync(requirement, progress, cancellationToken).ConfigureAwait(false);
+        // Java 下载只登记一个任务：内置下载批次复用该任务，不再产生重复条目。
+        using var operation = new OperationProgressBridge<JavaInstallProgress>(
+            _operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Java,
+                Title = _localizer.Get("java.task.title", requirement.MinimumMajor),
+                StageId = "java",
+                Source = provider?.DisplayName ?? "Mojang",
+                CanCancel = true,
+                CanRetry = true,
+            },
+            progress,
+            MapJavaProgress);
+
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = cancellation.Token;
+        operation.AttachControl(cancellation, retryToken => DownloadAsync(requirement, progress, retryToken));
+
+        try
+        {
+            var result = provider is null
+                ? await DownloadFromMojangAsync(requirement, operation, cancellationToken).ConfigureAwait(false)
+                : await DownloadFromProviderAsync(provider, requirement, operation, cancellationToken).ConfigureAwait(false);
+
+            if (result.IsSuccess)
+            {
+                operation.Complete();
+            }
+            else
+            {
+                operation.Fail(OperationErrors.FromCode(result.Error!.Code, result.Error.Message, result.Error.Detail));
+            }
+
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            operation.Cancel();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            operation.Fail(OperationErrors.FromException("java.install_failed", exception));
+            throw;
+        }
     }
 
     private async Task<Result<JavaRuntime>> DownloadFromMojangAsync(
@@ -560,6 +607,35 @@ public sealed class JavaInstallService : IJavaInstallService
             totalBytes,
             currentFile));
     }
+
+    /// <summary>
+    /// Java 安装进度映射到任务中心：索引、清单、下载、解压等阶段使用稳定 StageId，
+    /// 下载阶段提供字节与速度。
+    /// </summary>
+    private static OperationProgressUpdate MapJavaProgress(JavaInstallProgress progress) => new()
+    {
+        StageId = JavaStageId(progress.Stage),
+        StageText = progress.Message,
+        CurrentItem = progress.CurrentFile,
+        Completed = progress.CompletedFiles,
+        Total = progress.TotalFiles > 0 ? progress.TotalFiles : null,
+        BytesDownloaded = progress.CompletedBytes,
+        TotalBytes = progress.TotalBytes > 0 ? progress.TotalBytes : null,
+        BytesPerSecond = progress.BytesPerSecond > 0 ? progress.BytesPerSecond : null,
+        IsPaused = progress.IsPaused,
+    };
+
+    private static string JavaStageId(JavaInstallStage stage) => stage switch
+    {
+        JavaInstallStage.Index => "java.index",
+        JavaInstallStage.Manifest => "java.manifest",
+        JavaInstallStage.Provider => "java.provider",
+        JavaInstallStage.Download => "java.download",
+        JavaInstallStage.Extract => "java.extract",
+        JavaInstallStage.Files => "java.files",
+        JavaInstallStage.Completed => "java.completed",
+        _ => "java",
+    };
 
     private sealed class ForwardingProgress<T>(Action<T> callback) : IProgress<T>
     {

@@ -129,23 +129,6 @@ public sealed partial class OperationCenterViewModel : ObservableObject
 
     private Task<bool> RetryOperation(Guid id) => _operations.RetryAsync(id);
 
-    private static string FormatBytes(long bytes) => bytes switch
-    {
-        >= 1024L * 1024 * 1024 => $"{bytes / 1024d / 1024 / 1024:F2} GB",
-        >= 1024L * 1024 => $"{bytes / 1024d / 1024:F1} MB",
-        >= 1024 => $"{bytes / 1024d:F0} KB",
-        > 0 => $"{bytes} B",
-        _ => "0 B",
-    };
-
-    private static string FormatSpeed(double bytesPerSecond) => bytesPerSecond switch
-    {
-        >= 1024 * 1024 => $"{bytesPerSecond / 1024 / 1024:F1} MB/s",
-        >= 1024 => $"{bytesPerSecond / 1024:F0} KB/s",
-        > 0 => $"{bytesPerSecond:F0} B/s",
-        _ => string.Empty,
-    };
-
     private static string FormatDuration(TimeSpan duration)
     {
         if (duration.TotalHours >= 1)
@@ -245,7 +228,7 @@ public sealed partial class OperationCenterViewModel : ObservableObject
             ProgressValue = Math.Clamp((percent ?? 0) * 100, 0, 100);
             ProgressText = DescribeProgress(snapshot, localizer);
             SpeedText = snapshot.BytesPerSecond is > 0
-                ? FormatSpeed(snapshot.BytesPerSecond.Value)
+                ? OperationFormat.Speed(snapshot.BytesPerSecond.Value)
                 : string.Empty;
             EtaText = snapshot.Eta is { } eta
                 ? localizer.Get("operations.eta", FormatDuration(eta))
@@ -320,7 +303,7 @@ public sealed partial class OperationCenterViewModel : ObservableObject
         {
             if (snapshot.Progress is { } bytesProgress)
             {
-                return $"{bytesProgress * 100:F0}% · {FormatBytes(snapshot.BytesDownloaded)} / {FormatBytes(snapshot.TotalBytes ?? 0)}";
+                return $"{bytesProgress * 100:F0}% · {OperationFormat.Bytes(snapshot.BytesDownloaded)} / {OperationFormat.Bytes(snapshot.TotalBytes ?? 0)}";
             }
 
             if (snapshot.ItemProgress is { } itemsProgress && snapshot.Total is > 0)
@@ -329,7 +312,7 @@ public sealed partial class OperationCenterViewModel : ObservableObject
                        + (itemsProgress > 0 ? $" ({itemsProgress * 100:F0}%)" : string.Empty);
             }
 
-            return snapshot.BytesDownloaded > 0 ? FormatBytes(snapshot.BytesDownloaded) : string.Empty;
+            return snapshot.BytesDownloaded > 0 ? OperationFormat.Bytes(snapshot.BytesDownloaded) : string.Empty;
         }
 
         private static string DescribeDiagnostic(OperationSnapshot snapshot, ILocalizer localizer)

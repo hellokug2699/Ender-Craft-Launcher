@@ -19,6 +19,7 @@ using Ecl.Minecraft.Launch;
 using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.Versions;
+using Ecl.Operations;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Ecl.Cli;
@@ -458,25 +459,9 @@ internal sealed class CliApplication
 
         var installService = _provider.GetRequiredService<IVersionInstallService>();
         var localizer = _provider.GetRequiredService<ILocalizer>();
-        var lastStage = (InstallStage?)null;
 
-        var progress = new InlineProgress<InstallProgress>(update =>
-        {
-            if (lastStage != update.Stage)
-            {
-                Console.WriteLine(update.Message);
-                lastStage = update.Stage;
-            }
-
-            if (update.TotalFiles > 0 &&
-                (update.CompletedFiles == update.TotalFiles || update.CompletedFiles % 200 == 0))
-            {
-                Console.WriteLine(
-                    $"  {update.CompletedFiles}/{update.TotalFiles} · {update.CompletedBytes / 1024 / 1024} MB");
-            }
-        });
-
-        var result = await installService.InstallAsync(instanceId, progress).ConfigureAwait(false);
+        using var operations = TrackOperations();
+        var result = await installService.InstallAsync(instanceId).ConfigureAwait(false);
         if (!result.IsSuccess)
         {
             return WriteError(result.Error);
@@ -770,26 +755,10 @@ internal sealed class CliApplication
         var requirement = JavaRequirements.Resolve(
             version.IsSuccess ? version.Value : null,
             instance.GameVersion);
-        var lastStage = (JavaInstallStage?)null;
 
-        var progress = new InlineProgress<JavaInstallProgress>(update =>
-        {
-            if (lastStage != update.Stage)
-            {
-                Console.WriteLine(update.Message);
-                lastStage = update.Stage;
-            }
-
-            if (update.TotalFiles > 0 &&
-                (update.CompletedFiles == update.TotalFiles || update.CompletedFiles % 100 == 0))
-            {
-                Console.WriteLine(
-                    $"  {update.CompletedFiles}/{update.TotalFiles} · {update.CompletedBytes / 1024 / 1024} MB");
-            }
-        });
-
+        using var operations = TrackOperations();
         var result = await _provider.GetRequiredService<IJavaInstallService>()
-            .EnsureAsync(requirement, progress)
+            .EnsureAsync(requirement)
             .ConfigureAwait(false);
 
         if (!result.IsSuccess)
@@ -1344,23 +1313,8 @@ internal sealed class CliApplication
 
         if (subCommand == "import")
         {
-            var lastStage = string.Empty;
-            var progress = new InlineProgress<ModpackProgress>(update =>
-            {
-                if (!string.Equals(lastStage, update.Stage, StringComparison.Ordinal))
-                {
-                    Console.WriteLine(update.Message);
-                    lastStage = update.Stage;
-                }
-
-                if (update.Total > 0 &&
-                    (update.Completed == update.Total || update.Completed % 100 == 0))
-                {
-                    Console.WriteLine($"  {update.Completed}/{update.Total}");
-                }
-            });
-
-            var result = await service.ImportAsync(instanceId, path, progress).ConfigureAwait(false);
+            using var operations = TrackOperations();
+            var result = await service.ImportAsync(instanceId, path).ConfigureAwait(false);
             if (!result.IsSuccess)
             {
                 return WriteError(result.Error);
@@ -1580,29 +1534,14 @@ internal sealed class CliApplication
         int? fileId = int.TryParse(_commandLine.GetValue("file-id"), out var parsedFileId) && parsedFileId > 0
             ? parsedFileId
             : null;
-        var lastStage = string.Empty;
-        var progress = new InlineProgress<CurseForgeProgress>(update =>
-        {
-            if (!string.Equals(lastStage, update.Stage, StringComparison.Ordinal))
-            {
-                Console.WriteLine(update.Message);
-                lastStage = update.Stage;
-            }
 
-            if (update.Total > 0 &&
-                (update.Completed == update.Total || update.Completed % 10 == 0))
-            {
-                Console.WriteLine($"  {update.Completed}/{update.Total}");
-            }
-        });
-
+        using var operations = TrackOperations();
         var result = await service
             .InstallAsync(
                 instanceId,
                 reference,
                 fileId,
-                includeDependencies: !_commandLine.HasFlag("no-dependencies"),
-                progress)
+                includeDependencies: !_commandLine.HasFlag("no-dependencies"))
             .ConfigureAwait(false);
         if (!result.IsSuccess)
         {
@@ -1996,8 +1935,10 @@ internal sealed class CliApplication
         return exitCode;
     }
 
-    private sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>
-    {
-        public void Report(T value) => callback(value);
-    }
+    /// <summary>
+    /// 订阅任务中心，让安装、整合包、Java 与 CurseForge 等长任务输出统一的
+    /// 阶段、百分比、速度与失败归因；进度写标准错误，避免污染 <c>--json</c>。
+    /// </summary>
+    private CliOperationReporter TrackOperations() =>
+        new(_provider.GetRequiredService<IOperationStore>(), _provider.GetRequiredService<ILocalizer>());
 }

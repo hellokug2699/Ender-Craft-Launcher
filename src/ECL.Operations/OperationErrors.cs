@@ -15,6 +15,65 @@ public static class OperationErrors
     public static OperationError FromException(string code, Exception exception) =>
         new(Classify(exception), code, exception.Message, exception.InnerException?.Message);
 
+    /// <summary>
+    /// 把业务错误码（形如 <c>install.download_failed</c>）映射为失败归因。
+    /// 这是启发式：服务掌握更具体的异常时（例如 <c>DownloadException</c>）
+    /// 应优先使用 <see cref="FromException"/>。
+    /// </summary>
+    public static OperationError FromCode(string code, string message, string? detail = null) =>
+        new(ClassifyCode(code), code, message, detail);
+
+    /// <summary>按错误码关键词推断归因，未匹配时视为启动器内部错误。</summary>
+    public static OperationErrorKind ClassifyCode(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return OperationErrorKind.EclInternal;
+        }
+
+        var normalized = code.ToLowerInvariant();
+        if (normalized.EndsWith(".cancelled", StringComparison.Ordinal) ||
+            normalized.EndsWith(".canceled", StringComparison.Ordinal))
+        {
+            return OperationErrorKind.Cancelled;
+        }
+
+        if (HasAny(normalized, "authentication", "unauthorized", "forbidden", "token"))
+        {
+            return OperationErrorKind.Authentication;
+        }
+
+        if (HasAny(normalized, "hash", "integrity", "checksum", "size"))
+        {
+            return OperationErrorKind.FileIntegrity;
+        }
+
+        if (HasAny(normalized, "download", "network", "timeout", "connect", "dns"))
+        {
+            return OperationErrorKind.Network;
+        }
+
+        if (HasAny(normalized, "write", "disk", "space", "localio", "io_"))
+        {
+            return OperationErrorKind.LocalIO;
+        }
+
+        if (HasAny(normalized, "upstream", "curseforge", "modrinth", "http"))
+        {
+            return OperationErrorKind.Upstream;
+        }
+
+        if (HasAny(normalized, "not_found", "missing", "invalid", "unsupported", "mismatch", "duplicate"))
+        {
+            return OperationErrorKind.Configuration;
+        }
+
+        return OperationErrorKind.EclInternal;
+    }
+
+    private static bool HasAny(string value, params string[] needles) =>
+        needles.Any(needle => value.Contains(needle, StringComparison.Ordinal));
+
     public static OperationErrorKind Classify(Exception exception)
     {
         switch (exception)

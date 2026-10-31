@@ -11,6 +11,7 @@ using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Versions;
+using Ecl.Operations;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -227,6 +228,11 @@ public sealed class InstallServiceTests
         Assert.False(result.IsSuccess);
         Assert.Equal("install.download_failed", result.Error?.Code);
 
+        var operation = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
+        Assert.Equal(OperationState.Failed, operation.State);
+        Assert.Equal("install.download_failed", operation.Error?.Code);
+        Assert.Equal(OperationErrorKind.Network, operation.Error?.Kind);
+
         Assert.False(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, instance.VersionId)));
         Assert.False(File.Exists(VersionFilePlanner.GetClientJarPath(environment.Paths, instance.VersionId)));
         Assert.False(File.Exists(Path.Combine(
@@ -281,6 +287,34 @@ public sealed class InstallServiceTests
     private sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>
     {
         public void Report(T value) => callback(value);
+    }
+
+    [Fact]
+    public async Task PublishesOneInstallOperationAcrossAllStages()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IDownloadService>(fake));
+        var store = provider.GetRequiredService<IOperationStore>();
+
+        var instanceResult = await provider.GetRequiredService<IInstanceService>().CreateAsync("Test", "1.21.1");
+        Assert.True(instanceResult.IsSuccess);
+        var instance = instanceResult.Value!;
+
+        var result = await provider.GetRequiredService<IVersionInstallService>().InstallAsync(instance.Id);
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        var snapshot = Assert.Single(store.Snapshots);
+        Assert.Equal(OperationKind.Install, snapshot.Kind);
+        Assert.Equal(OperationState.Completed, snapshot.State);
+        Assert.Equal("安装 Test", snapshot.Title);
+        Assert.Equal("install.completed", snapshot.StageId);
+        Assert.False(snapshot.CanCancel);
+        Assert.True(snapshot.Completed > 0, "安装完成后应报告已处理的项目数量。");
+        Assert.True(snapshot.BytesDownloaded > 0, "安装完成后应报告累计字节。");
+
+        // 安装内部的下载批次不应再登记一个独立任务。
+        Assert.DoesNotContain(store.Snapshots, item => item.Kind == OperationKind.Download);
     }
 
     private sealed class FakeLoaderCatalog : ILoaderCatalog
@@ -430,7 +464,10 @@ public sealed class InstallServiceTests
             if (failOnDisplayName is not null &&
                 requests.Any(request => string.Equals(request.DisplayName, failOnDisplayName, StringComparison.Ordinal)))
             {
-                throw new DownloadException("fake download failure", [failOnDisplayName]);
+                throw new DownloadException("fake download failure", [failOnDisplayName])
+                {
+                    Kind = OperationErrorKind.Network,
+                };
             }
 
             foreach (var request in requests)

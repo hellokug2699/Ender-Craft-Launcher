@@ -10,6 +10,7 @@ using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Modrinth;
 using Ecl.Minecraft.Mods;
+using Ecl.Operations;
 using Ecl.Tests.CurseForge;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -96,6 +97,13 @@ public sealed class ContentInstallTests
         Assert.True(File.Exists(Path.Combine(
             environment.Paths.GetInstanceGameDirectory(instance.Id),
             ".ecl-modpack.json")));
+
+        // 内容安装 → 整合包导入 → 下载批次只登记一个任务。
+        var snapshot = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
+        Assert.Equal(OperationKind.Import, snapshot.Kind);
+        Assert.Equal(OperationState.Completed, snapshot.State);
+        Assert.Equal("Test Pack", snapshot.Title);
+        Assert.Equal("Modrinth", snapshot.Source);
     }
 
     [Fact]
@@ -116,6 +124,10 @@ public sealed class ContentInstallTests
 
         Assert.False(result.IsSuccess);
         Assert.Empty(await provider.GetRequiredService<IInstanceService>().GetInstancesAsync());
+
+        var snapshot = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
+        Assert.Equal(OperationState.Failed, snapshot.State);
+        Assert.Equal("test.import_failed", snapshot.Error?.Code);
     }
 
     [Fact]

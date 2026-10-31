@@ -79,7 +79,7 @@ public sealed class DownloadService(
         {
             operations?.AttachControl(
                 operationId,
-                new DownloadBatchControl(
+                new OperationControl(
                     batchCts,
                     retryToken => DownloadAsync(uniqueRequests, progress, retryToken)));
         }
@@ -512,32 +512,10 @@ public sealed class DownloadService(
     private static long GetFileLength(string path) => File.Exists(path) ? new FileInfo(path).Length : 0;
 
     /// <summary>
-    /// 把任务中心的任务绑定到下载批次：取消会触发本批次的内部取消源，
-    /// 重试则重新执行同一个批次（生成新的 Operation，保留旧失败记录）。
-    /// </summary>
-    private sealed class DownloadBatchControl(
-        CancellationTokenSource cancellation,
-        Func<CancellationToken, Task> retry) : IOperationControl
-    {
-        public bool TryCancel()
-        {
-            try
-            {
-                cancellation.Cancel();
-                return true;
-            }
-            catch (ObjectDisposedException)
-            {
-                return false;
-            }
-        }
-
-        public Func<CancellationToken, Task>? Retry => retry;
-    }
-
-    /// <summary>
     /// 把一个下载批次的进度同时写入旧 <see cref="DownloadProgress"/> 与统一任务中心。
     /// 进度按时间节流，避免每读 80 KB 就触发一次 UI 更新。
+    /// 上层业务任务（安装、导入等）已登记任务时不再重复登记，进度通过
+    /// <see cref="IProgress{T}"/> 转发给上层任务。
     /// </summary>
     private sealed class DownloadBatchTracker : IDisposable
     {
@@ -545,6 +523,7 @@ public sealed class DownloadService(
 
         private readonly IProgress<DownloadProgress>? _progress;
         private readonly IOperationHandle? _operation;
+        private readonly IOperationHandle? _retryTarget;
         private readonly Func<bool> _isPaused;
         private readonly int _totalFiles;
         private readonly SpeedMeter _speed = new();
@@ -578,7 +557,21 @@ public sealed class DownloadService(
             _totalFiles = requests.Count;
             _knownTotalBytes = knownTotalBytes;
             _allSizesKnown = allSizesKnown;
-            _operation = operations?.Begin(new OperationStart
+
+            // 上层业务任务已经在跟踪进度时，只保留旧 Progress 通道；
+            // 重试状态仍借用上层任务上报，避免用户误以为任务卡住。
+            if (OperationScope.Current is { } parent)
+            {
+                _retryTarget = parent;
+                return;
+            }
+
+            if (operations is null)
+            {
+                return;
+            }
+
+            _operation = operations.Begin(new OperationStart
             {
                 Kind = OperationKind.Download,
                 Title = BuildTitle(requests),
@@ -589,6 +582,7 @@ public sealed class DownloadService(
                 CanCancel = true,
                 CanRetry = true,
             });
+            _retryTarget = _operation;
         }
 
         public void ReportInitial()
@@ -665,7 +659,7 @@ public sealed class DownloadService(
             }
 
             // 进度发布后进入 Retrying，避免下一次进度上报把它立刻覆盖成 Running。
-            _operation?.Retrying(attempt, maxAttempts, reason);
+            _retryTarget?.Retrying(attempt, maxAttempts, reason);
         }
 
         public void ForceReport()

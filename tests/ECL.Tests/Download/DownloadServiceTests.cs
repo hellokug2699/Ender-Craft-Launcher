@@ -15,6 +15,44 @@ namespace Ecl.Tests.Download;
 public sealed class DownloadServiceTests
 {
     [Fact]
+    public async Task NestedBusinessOperationKeepsASingleTaskAndStillReportsProgress()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var handler = new StubHandler();
+        var operations = new OperationService();
+        var progress = new RecordingProgress();
+        var service = CreateService(provider.GetRequiredService<ISettingsService>(), handler, operations);
+        var content = Encoding.UTF8.GetBytes("nested batch");
+        handler.Respond = _ => Ok(content);
+
+        // 模拟安装/导入等业务任务：下载批次应复用该任务而不是再登记一个。
+        using var business = new OperationProgressBridge<int>(
+            operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Install,
+                Title = "install",
+                Source = "Mojang",
+                CanCancel = true,
+            },
+            null,
+            value => new OperationProgressUpdate { StageId = "install.client", Completed = value });
+
+        var request = new DownloadRequest(
+            Path.Combine(environment.Root, "downloads", "nested.bin"),
+            [new Uri("https://example.com/nested.bin")],
+            Size: content.Length);
+
+        await service.DownloadAsync([request], progress);
+
+        var snapshot = Assert.Single(operations.Snapshots);
+        Assert.Equal(OperationKind.Install, snapshot.Kind);
+        Assert.Equal(OperationState.Running, snapshot.State);
+        Assert.NotEmpty(progress.Values);
+    }
+
+    [Fact]
     public async Task DownloadsVerifiesAndSkipsExistingFile()
     {
         using var environment = new TestEnvironment();

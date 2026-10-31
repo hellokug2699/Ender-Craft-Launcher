@@ -14,6 +14,7 @@ ECL 是一个以 Minecraft 实例为中心的启动器，提供游戏安装、�
 - **整合包**：支持 Modrinth `.mrpack` 与 CurseForge `.zip` 导入，并支持 Modrinth 格式导出。
 - **内容平台**：支持 CurseForge / Modrinth 内容搜索与安装；受来源平台作者分发限制的文件仍须遵守平台规则。
 - **启动与诊断**：执行启动前检查、版本解析、文件校验、原生库解压和进程启动，并提供崩溃分析与脱敏诊断包。
+- **任务与进度**：下载批次、Minecraft 安装、整合包导入、内容安装、CurseForge Mod 安装与 Java 运行时下载统一登记为任务，显示阶段、项目/字节进度、平滑速度、剩余时间与失败归因；WPF 任务中心与 CLI 读取同一份任务快照，并对这些任务提供取消与失败重试。
 - **CLI 与测试**：提供无图形命令行入口，并持续建设自动化测试与 CI。
 
 > 具体功能是否已经进入某个分支，请以该分支的代码、测试和 CI 为准；README 不记录分支专属功能状态。
@@ -52,6 +53,10 @@ dotnet run --project src/ECL.Cli -- instance create "Survival" --version 1.21.1
 dotnet run --project src/ECL.Cli -- install <实例ID>
 dotnet run --project src/ECL.Cli -- launch <实例ID> --dry-run
 ```
+
+`install`、`java install`、`modpack import` 与 `curseforge install` 的阶段和进度写入标准错误，
+标准输出保留最终结果与 `--json` 数据；任务进度、失败归因与取消/重试语义见
+[任务进度与诊断](docs/operations.md)。
 
 环境要求：
 
