@@ -1038,7 +1038,8 @@ internal sealed class CliApplication
                         return UsageError("authserver add 需要认证服务器 API 根地址。");
                     }
 
-                    var added = await servers.AddAsync(url).ConfigureAwait(false);
+                    var registerUrl = _commandLine.GetValue("register");
+                    var added = await servers.AddAsync(url, registerUrl).ConfigureAwait(false);
                     if (!added.IsSuccess)
                     {
                         return WriteError(added.Error);
@@ -1047,6 +1048,33 @@ internal sealed class CliApplication
                     Console.WriteLine($"已添加认证服务器 {added.Value!.Name}");
                     Console.WriteLine($"  ID  : {added.Value.Id}");
                     Console.WriteLine($"  API : {added.Value.Url}");
+                    if (!string.IsNullOrWhiteSpace(added.Value.RegisterUrl))
+                    {
+                        Console.WriteLine($"  注册: {added.Value.RegisterUrl}");
+                    }
+
+                    return 0;
+                }
+
+            case "update":
+                {
+                    var id = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(id))
+                    {
+                        return UsageError("authserver update 需要认证服务器 ID。");
+                    }
+
+                    var url = _commandLine.GetValue("url");
+                    var registerUrl = _commandLine.GetValue("register");
+                    var updated = await servers.UpdateAsync(id, url, registerUrl).ConfigureAwait(false);
+                    if (!updated.IsSuccess)
+                    {
+                        return WriteError(updated.Error);
+                    }
+
+                    Console.WriteLine($"已更新认证服务器 {updated.Value!.Name}");
+                    Console.WriteLine($"  API : {updated.Value.Url}");
+                    Console.WriteLine($"  注册: {updated.Value.RegisterUrl ?? "(未设置)"}");
                     return 0;
                 }
 

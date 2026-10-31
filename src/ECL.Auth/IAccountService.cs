@@ -45,4 +45,10 @@ public interface IAccountService
         string password,
         bool makeDefault = false,
         CancellationToken cancellationToken = default);
+
+    /// <summary>用密码重新登录已有第三方账户，并同步服务器上的最新角色信息。</summary>
+    Task<Result<Account>> ReauthenticateThirdPartyAsync(
+        string accountId,
+        string password,
+        CancellationToken cancellationToken = default);
 }

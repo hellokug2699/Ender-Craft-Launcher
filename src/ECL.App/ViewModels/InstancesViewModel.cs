@@ -4,9 +4,11 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Services;
+using Ecl.App.Views;
 using Ecl.Auth;
 using Ecl.Configuration.Settings;
 using Ecl.Core;
@@ -67,6 +69,9 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     public ObservableCollection<AuthServerItemViewModel> AuthServers { get; } = [];
 
+    /// <summary>只有第三方账户才有“账户设置”可编辑（服务器地址与注册链接）。</summary>
+    public bool CanOpenAccountSettings => SelectedAccount?.Model.Type == AccountType.ThirdParty;
+
     public ObservableCollection<LaunchStepItemViewModel> LaunchSteps { get; } = [];
 
     public ObservableCollection<JavaOptionViewModel> JavaOptions { get; } = [];
@@ -87,14 +92,6 @@ public sealed partial class InstancesViewModel : ObservableObject
     [ObservableProperty]
     private AccountItemViewModel? _selectedAccount;
 
-    [ObservableProperty]
-    private AuthServerItemViewModel? _selectedAuthServer;
-
-    [ObservableProperty]
-    private string _newAuthServerUrl = string.Empty;
-
-    [ObservableProperty]
-    private string _thirdPartyUsername = string.Empty;
 
     [ObservableProperty]
     private string _newInstanceName = string.Empty;
@@ -1171,129 +1168,66 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
-    private async Task AddAuthServerAsync()
-    {
-        var url = NewAuthServerUrl.Trim();
-        if (url.Length == 0)
-        {
-            StatusMessage = _localizer.Get("instances.authServerRequired");
-            return;
-        }
-
-        IsBusy = true;
-        try
-        {
-            var result = await _authServers.AddAsync(url).ConfigureAwait(true);
-            if (!result.IsSuccess)
-            {
-                StatusMessage = _localizer.Get(
-                    "instances.authServerFailed",
-                    result.Error!.Code,
-                    result.Error.Message);
-                return;
-            }
-
-            NewAuthServerUrl = string.Empty;
-            await RefreshAuthServersAsync().ConfigureAwait(true);
-            SelectedAuthServer = AuthServers.FirstOrDefault(item => item.Id == result.Value!.Id) ?? SelectedAuthServer;
-            StatusMessage = _localizer.Get("instances.authServerAdded", result.Value!.Name);
-        }
-        catch (Exception exception)
-        {
-            StatusMessage = _localizer.Get("instances.authServerFailed", "authserver.error", exception.Message);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    [RelayCommand]
-    private async Task RemoveAuthServerAsync()
-    {
-        if (SelectedAuthServer is null)
-        {
-            StatusMessage = _localizer.Get("instances.authServerRequired");
-            return;
-        }
-
-        var result = await _authServers.RemoveAsync(SelectedAuthServer.Id).ConfigureAwait(true);
-        if (!result.IsSuccess)
-        {
-            StatusMessage = result.Error!.Message;
-            return;
-        }
-
-        await RefreshAuthServersAsync().ConfigureAwait(true);
-        await RefreshAccountsAsync().ConfigureAwait(true);
-        StatusMessage = _localizer.Get("instances.authServerRemoved");
-    }
-
     /// <summary>
-    /// 第三方登录：由界面按钮触发，密码从 PasswordBox 传入，只用于这一次认证。
+    /// 第三方账户只在这里创建：认证服务器地址（必填）与注册链接（可选）只出现在该对话框内。
     /// </summary>
-    public async Task SignInThirdPartyAsync(string password)
+    [RelayCommand]
+    private async Task AddThirdPartyAccountAsync()
     {
         if (IsBusy)
         {
             return;
         }
 
-        if (SelectedAuthServer is null)
+        var dialog = new AuthlibAccountDialog(_authServers, _accounts, _localizer)
         {
-            StatusMessage = _localizer.Get("instances.authServerRequired");
+            Owner = Application.Current?.MainWindow,
+        };
+
+        if (dialog.ShowDialog() != true || dialog.ResultAccount is null)
+        {
             return;
         }
 
-        var username = ThirdPartyUsername.Trim();
-        if (username.Length == 0)
+        await RefreshAuthServersAsync().ConfigureAwait(true);
+        await RefreshAccountsAsync().ConfigureAwait(true);
+        SelectedAccount = Accounts.FirstOrDefault(item => item.Id == dialog.ResultAccount.Id) ?? SelectedAccount;
+        StatusMessage = _localizer.Get("instances.thirdPartySignedIn", dialog.ResultAccount.Name);
+    }
+
+    /// <summary>账户设置：编辑第三方账户所属服务器的地址与注册链接，可选重新登录。</summary>
+    [RelayCommand]
+    private async Task EditAccountSettingsAsync()
+    {
+        if (IsBusy || SelectedAccount is null || SelectedAccount.Model.Type != AccountType.ThirdParty)
         {
-            StatusMessage = _localizer.Get("instances.thirdPartyUsernameRequired");
             return;
         }
 
-        if (string.IsNullOrEmpty(password))
+        var account = SelectedAccount.Model;
+        var server = string.IsNullOrWhiteSpace(account.AuthServerId)
+            ? null
+            : await _authServers.GetAsync(account.AuthServerId).ConfigureAwait(true);
+        if (server is null)
         {
-            StatusMessage = _localizer.Get("instances.thirdPartyPasswordRequired");
+            StatusMessage = _localizer.Get("instances.authServerMissing");
             return;
         }
 
-        IsBusy = true;
-        StatusMessage = _localizer.Get("instances.thirdPartySigningIn");
-        try
+        var dialog = new AuthlibAccountDialog(_authServers, _accounts, _localizer, server, account)
         {
-            var result = await _accounts
-                .SignInThirdPartyAsync(
-                    SelectedAuthServer.Id,
-                    username,
-                    password,
-                    makeDefault: Accounts.Count == 0)
-                .ConfigureAwait(true);
-            if (!result.IsSuccess)
-            {
-                StatusMessage = _localizer.Get(
-                    "instances.thirdPartySignInFailed",
-                    result.Error!.Code,
-                    result.Error.Message);
-                return;
-            }
+            Owner = Application.Current?.MainWindow,
+        };
 
-            await RefreshAccountsAsync().ConfigureAwait(true);
-            SelectedAccount = Accounts.FirstOrDefault(item => item.Id == result.Value!.Id) ?? SelectedAccount;
-            StatusMessage = _localizer.Get("instances.thirdPartySignedIn", result.Value!.Name);
-        }
-        catch (Exception exception)
+        if (dialog.ShowDialog() != true)
         {
-            StatusMessage = _localizer.Get(
-                "instances.thirdPartySignInFailed",
-                "auth.exception",
-                exception.Message);
+            return;
         }
-        finally
-        {
-            IsBusy = false;
-        }
+
+        await RefreshAuthServersAsync().ConfigureAwait(true);
+        await RefreshAccountsAsync().ConfigureAwait(true);
+        SelectedAccount = Accounts.FirstOrDefault(item => item.Id == account.Id) ?? SelectedAccount;
+        StatusMessage = _localizer.Get("instances.accountSettingsSaved");
     }
 
     private static Task OpenBrowserAsync(Uri uri)
@@ -1563,6 +1497,8 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     partial void OnSelectedAccountChanged(AccountItemViewModel? value)
     {
+        OnPropertyChanged(nameof(CanOpenAccountSettings));
+
         if (_suppressAccountSelection || value is null || value.IsDefault)
         {
             return;
@@ -1838,7 +1774,6 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     private async Task RefreshAuthServersAsync()
     {
-        var selectedId = SelectedAuthServer?.Id;
         var servers = await _authServers.GetServersAsync().ConfigureAwait(true);
 
         AuthServers.Clear();
@@ -1846,8 +1781,6 @@ public sealed partial class InstancesViewModel : ObservableObject
         {
             AuthServers.Add(new AuthServerItemViewModel(server));
         }
-
-        SelectedAuthServer = AuthServers.FirstOrDefault(item => item.Id == selectedId) ?? AuthServers.FirstOrDefault();
     }
 
     private async Task RefreshAccountsAsync()

@@ -611,6 +611,94 @@ public sealed partial class AccountService : IAccountService
         return added;
     }
 
+    public async Task<Result<Account>> ReauthenticateThirdPartyAsync(
+        string accountId,
+        string password,
+        CancellationToken cancellationToken = default)
+    {
+        Account account;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var document = _store.Load();
+            var found = document.Accounts.FirstOrDefault(item => item.Id == accountId);
+            if (found is null)
+            {
+                return Result<Account>.Fail("account.not_found", "账户不存在。");
+            }
+
+            if (found.Type != AccountType.ThirdParty)
+            {
+                return Result<Account>.Fail("account.invalid_type", "只有第三方账户需要重新登录。");
+            }
+
+            account = found;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        var server = await ResolveAuthServerAsync(account.AuthServerId ?? string.Empty, cancellationToken)
+            .ConfigureAwait(false);
+        if (!server.IsSuccess)
+        {
+            return Result<Account>.Fail(server.Error!);
+        }
+
+        var session = await _authlibAuthentication
+            .AuthenticateAsync(server.Value!, account.Name, password, cancellationToken)
+            .ConfigureAwait(false);
+        if (!session.IsSuccess)
+        {
+            return Result<Account>.Fail(session.Error!);
+        }
+
+        var save = await _credentials
+            .SaveAsync(
+                account.Id,
+                new AccountCredentials
+                {
+                    MinecraftAccessToken = session.Value!.AccessToken,
+                    AuthlibClientToken = session.Value.ClientToken,
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!save.IsSuccess)
+        {
+            return Result<Account>.Fail(save.Error!);
+        }
+
+        // 服务器上的角色信息可能已经变化（改名/UUID 变更），同步回账户文档。
+        var updated = account with { Name = session.Value.PlayerName, Uuid = session.Value.Uuid };
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var document = _store.Load();
+            var index = document.Accounts.FindIndex(item => item.Id == accountId);
+            if (index < 0)
+            {
+                return Result<Account>.Fail("account.not_found", "账户不存在。");
+            }
+
+            document.Accounts[index] = updated with
+            {
+                AccessToken = null,
+                RefreshToken = null,
+                ClientToken = null,
+            };
+            _store.Save(document);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        _logger.LogInformation("已重新登录第三方账户 {AccountId}。", accountId);
+        return Result<Account>.Ok(updated);
+    }
+
     private async Task<Result<AuthServer>> ResolveAuthServerAsync(string authServerId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(authServerId))

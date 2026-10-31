@@ -261,6 +261,15 @@ public sealed class AuthlibAuthenticationService : IAuthlibAuthenticationService
                 serverName = new Uri(normalizedUrl).Host;
             }
 
+            // 部分实现把注册链接放在 meta.links.register，用户没填时作为默认值。
+            string? registerUrl = null;
+            if (meta.ValueKind == JsonValueKind.Object &&
+                meta.TryGetProperty("links", out var links) &&
+                links.ValueKind == JsonValueKind.Object)
+            {
+                registerUrl = ReadString(links, "register");
+            }
+
             var domains = new List<string>();
             if (skinDomains.ValueKind == JsonValueKind.Array)
             {
@@ -279,6 +288,7 @@ public sealed class AuthlibAuthenticationService : IAuthlibAuthenticationService
                 ServerName = serverName.Trim(),
                 ImplementationName = ReadString(meta, "implementationName"),
                 ImplementationVersion = ReadString(meta, "implementationVersion"),
+                RegisterUrl = registerUrl,
                 SkinDomains = domains,
             });
         }

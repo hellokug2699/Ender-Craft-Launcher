@@ -19,6 +19,9 @@ public sealed record AuthServer
     /// <summary>展示名，优先取元数据里的 <c>meta.serverName</c>。</summary>
     public required string Name { get; init; }
 
+    /// <summary>用户填写或元数据提供的注册页面地址（可选）。</summary>
+    public string? RegisterUrl { get; init; }
+
     public DateTimeOffset AddedAt { get; init; } = DateTimeOffset.UtcNow;
 }
 
@@ -32,6 +35,9 @@ public sealed record AuthServerMetadata
     public string? ImplementationName { get; init; }
 
     public string? ImplementationVersion { get; init; }
+
+    /// <summary>元数据里的注册链接；用户未填写时作为默认值。</summary>
+    public string? RegisterUrl { get; init; }
 
     [JsonIgnore]
     public IReadOnlyList<string> SkinDomains { get; init; } = [];

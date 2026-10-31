@@ -142,6 +142,75 @@ public sealed class ThirdPartyAccountTests
         Assert.Equal("refreshed-access", persisted!.AccessToken);
     }
 
+    [Fact]
+    public async Task RegisterLinkIsUserSuppliedAndFallsBackToMetadata()
+    {
+        using var environment = new TestEnvironment();
+        var stub = new StubAuthlibAuthentication { MetadataRegisterUrl = "https://auth-a.example.com/register" };
+        await using var provider = CreateProvider(environment, stub);
+        var servers = provider.GetRequiredService<IAuthServerService>();
+
+        // 用户没填：使用元数据提供的注册链接。
+        var defaults = (await servers.AddAsync(ServerA)).Value!;
+        Assert.Equal("https://auth-a.example.com/register", defaults.RegisterUrl);
+
+        // 用户填写：以用户输入为准。
+        var custom = (await servers.AddAsync(ServerA, "https://auth-a.example.com/signup")).Value!;
+        Assert.Equal("https://auth-a.example.com/signup", custom.RegisterUrl);
+
+        // 账户设置里可以改地址与注册链接；服务器 ID 保持不变，账号引用不会失效。
+        var updated = (await servers.UpdateAsync(custom.Id, ServerB, "https://auth-b.example.com/join")).Value!;
+        Assert.Equal(custom.Id, updated.Id);
+        Assert.Equal(ServerB, updated.Url);
+        Assert.Equal("Server auth-b.example.com", updated.Name);
+        Assert.Equal("https://auth-b.example.com/join", updated.RegisterUrl);
+
+        // 地址已被另一台服务器占用时拒绝。
+        var other = (await servers.AddAsync("https://auth-c.example.com/api/yggdrasil")).Value!;
+        var clash = await servers.UpdateAsync(other.Id, ServerB, null);
+        Assert.False(clash.IsSuccess);
+        Assert.Equal("authserver.duplicate", clash.Error?.Code);
+    }
+
+    [Fact]
+    public async Task ReauthenticateRefreshesCredentialsAndProfile()
+    {
+        using var environment = new TestEnvironment();
+        var stub = new StubAuthlibAuthentication();
+        await using var provider = CreateProvider(environment, stub);
+        var servers = provider.GetRequiredService<IAuthServerService>();
+        var accounts = provider.GetRequiredService<IAccountService>();
+
+        var server = (await servers.AddAsync(ServerA)).Value!;
+        var signedIn = await accounts.SignInThirdPartyAsync(server.Id, "Steve", "old-password");
+        Assert.True(signedIn.IsSuccess, signedIn.Error?.ToString());
+
+        // 服务器上的角色改名后，重新登录应同步到账户文档。
+        stub.AuthenticatedName = "SteveRenamed";
+        var again = await accounts.ReauthenticateThirdPartyAsync(signedIn.Value!.Id, "new-password");
+
+        Assert.True(again.IsSuccess, again.Error?.ToString());
+        Assert.Equal("SteveRenamed", again.Value!.Name);
+
+        var persisted = await accounts.GetDefaultAccountAsync();
+        Assert.Equal("SteveRenamed", persisted!.Name);
+        Assert.Equal("ygg-access-Steve", persisted.AccessToken);
+    }
+
+    [Fact]
+    public async Task ReauthenticateRejectsNonThirdPartyAccounts()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = CreateProvider(environment, new StubAuthlibAuthentication());
+        var accounts = provider.GetRequiredService<IAccountService>();
+
+        var offline = await accounts.AddOfflineAsync("Steve");
+        var result = await accounts.ReauthenticateThirdPartyAsync(offline.Value!.Id, "pw");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("account.invalid_type", result.Error?.Code);
+    }
+
     private static ServiceProvider CreateProvider(
         TestEnvironment environment,
         IAuthlibAuthenticationService authlib,
@@ -162,11 +231,18 @@ public sealed class ThirdPartyAccountTests
 
         public bool ValidateResult { get; set; } = true;
 
+        /// <summary>模拟元数据里的注册链接（meta.links.register）。</summary>
+        public string? MetadataRegisterUrl { get; set; }
+
+        /// <summary>模拟服务器上的角色名（可用于测试改名同步）。</summary>
+        public string? AuthenticatedName { get; set; }
+
         public Task<Result<AuthServerMetadata>> FetchMetadataAsync(string url, CancellationToken cancellationToken = default) =>
             Task.FromResult(Result<AuthServerMetadata>.Ok(new AuthServerMetadata
             {
                 Url = url,
                 ServerName = "Server " + new Uri(url).Host,
+                RegisterUrl = MetadataRegisterUrl,
             }));
 
         public Task<Result<AuthlibSession>> AuthenticateAsync(
@@ -178,7 +254,7 @@ public sealed class ThirdPartyAccountTests
             {
                 AccessToken = "ygg-access-" + username,
                 ClientToken = "client-" + username,
-                PlayerName = username,
+                PlayerName = AuthenticatedName ?? username,
                 Uuid = "01234567-89ab-cdef-0123-456789abcdef",
                 AvailableProfiles = 1,
             }));
