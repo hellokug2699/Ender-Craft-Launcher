@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ECL.Core\ECL.Core.csproj" />
     <ProjectReference Include="..\ECL.Configuration\ECL.Configuration.csproj" />
+    <ProjectReference Include="..\ECL.Operations\ECL.Operations.csproj" />
   </ItemGroup>
 
   <ItemGroup>

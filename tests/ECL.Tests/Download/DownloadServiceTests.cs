@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Ecl.Configuration.Settings;
 using Ecl.Download;
+using Ecl.Operations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -50,7 +51,8 @@ public sealed class DownloadServiceTests
         using var provider = environment.CreateServices();
         var settings = provider.GetRequiredService<ISettingsService>();
         var handler = new StubHandler();
-        var service = CreateService(settings, handler);
+        var operations = new OperationService();
+        var service = CreateService(settings, handler, operations);
 
         var good = Encoding.UTF8.GetBytes("good");
         var bad = Encoding.UTF8.GetBytes("bad");
@@ -68,6 +70,10 @@ public sealed class DownloadServiceTests
         await Assert.ThrowsAsync<DownloadException>(() => service.DownloadAsync([request]));
         Assert.False(File.Exists(destination));
         Assert.False(File.Exists(destination + ".part"));
+
+        var snapshot = Assert.Single(operations.Snapshots);
+        Assert.Equal(OperationState.Failed, snapshot.State);
+        Assert.Equal(OperationErrorKind.FileIntegrity, snapshot.Error?.Kind);
     }
 
     [Fact]
@@ -177,8 +183,220 @@ public sealed class DownloadServiceTests
         Assert.False(service.IsPaused);
     }
 
-    private static DownloadService CreateService(ISettingsService settings, StubHandler handler) =>
-        new(new StubHttpClientProvider(handler), settings, NullLogger<DownloadService>.Instance);
+    [Fact]
+    public async Task PublishesCompletedOperationWithBytesAndSource()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var handler = new StubHandler();
+        var operations = new OperationService();
+        var progress = new RecordingProgress();
+        var service = CreateService(provider.GetRequiredService<ISettingsService>(), handler, operations);
+
+        var content = Encoding.UTF8.GetBytes(new string('x', 200_000));
+        var hash = Convert.ToHexString(SHA1.HashData(content)).ToLowerInvariant();
+        handler.Respond = _ => Ok(content);
+
+        var destination = Path.Combine(environment.Root, "downloads", "file.bin");
+        var request = new DownloadRequest(
+            destination,
+            [new Uri("https://example.com/file.bin")],
+            hash,
+            HashingAlgorithm.Sha1,
+            content.Length);
+
+        await service.DownloadAsync([request], progress);
+
+        var snapshot = Assert.Single(operations.Snapshots);
+        Assert.Equal(OperationKind.Download, snapshot.Kind);
+        Assert.Equal("file.bin", snapshot.Title);
+        Assert.Equal("example.com", snapshot.Source);
+        Assert.Equal(OperationState.Completed, snapshot.State);
+        Assert.Equal(content.Length, snapshot.BytesDownloaded);
+        Assert.Equal(content.Length, snapshot.TotalBytes);
+        Assert.Equal(1, snapshot.Progress);
+
+        var final = progress.Values[^1];
+        Assert.Equal(content.Length, final.CurrentFileBytes);
+        Assert.Equal(content.Length, final.CurrentFileTotalBytes);
+        Assert.True(final.IsTotalBytesKnown);
+        Assert.Equal(1, final.CompletedFiles);
+    }
+
+    [Fact]
+    public async Task ReportsRetryingBeforeCompleting()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var handler = new StubHandler();
+        var operations = new OperationService();
+        var observed = new List<OperationSnapshot>();
+        operations.Changed += (_, snapshot) =>
+        {
+            lock (observed)
+            {
+                observed.Add(snapshot);
+            }
+        };
+
+        var service = CreateService(provider.GetRequiredService<ISettingsService>(), handler, operations);
+        var content = Encoding.UTF8.GetBytes("retry me");
+        var hash = Convert.ToHexString(SHA1.HashData(content)).ToLowerInvariant();
+        var calls = 0;
+        handler.Respond = _ => Interlocked.Increment(ref calls) == 1
+            ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            : Ok(content);
+
+        var request = new DownloadRequest(
+            Path.Combine(environment.Root, "downloads", "retry.bin"),
+            [new Uri("https://example.com/retry.bin")],
+            hash,
+            HashingAlgorithm.Sha1,
+            content.Length);
+
+        await service.DownloadAsync([request]);
+
+        OperationSnapshot[] snapshots;
+        lock (observed)
+        {
+            snapshots = observed.ToArray();
+        }
+
+        Assert.Contains(snapshots, snapshot =>
+            snapshot.State == OperationState.Retrying &&
+            snapshot.RetryAttempt == 1 &&
+            snapshot.RetryReason!.Contains("503", StringComparison.Ordinal));
+        Assert.Equal(OperationState.Completed, Assert.Single(operations.Snapshots).State);
+        Assert.True(calls >= 2);
+    }
+
+    [Fact]
+    public async Task UnknownTotalSizeKeepsOperationIndeterminate()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var handler = new StubHandler();
+        var operations = new OperationService();
+        var progress = new RecordingProgress();
+        var service = CreateService(provider.GetRequiredService<ISettingsService>(), handler, operations);
+        handler.Respond = _ => Ok(Encoding.UTF8.GetBytes("payload"));
+
+        var requests = new[]
+        {
+            new DownloadRequest(
+                Path.Combine(environment.Root, "downloads", "one.bin"),
+                [new Uri("https://example.com/one.bin")]),
+            new DownloadRequest(
+                Path.Combine(environment.Root, "downloads", "two.bin"),
+                [new Uri("https://example.com/two.bin")]),
+        };
+
+        await service.DownloadAsync(requests, progress);
+
+        var snapshot = Assert.Single(operations.Snapshots);
+        Assert.Equal(OperationState.Completed, snapshot.State);
+        Assert.Null(snapshot.TotalBytes);
+        Assert.Null(snapshot.Progress);
+        Assert.False(progress.Values[^1].IsTotalBytesKnown);
+    }
+
+    [Fact]
+    public async Task CanceledDownloadBecomesCancelledOperation()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var handler = new StubHandler();
+        var operations = new OperationService();
+        var service = CreateService(provider.GetRequiredService<ISettingsService>(), handler, operations);
+        handler.Respond = _ => Ok(Encoding.UTF8.GetBytes("never downloaded"));
+
+        var request = new DownloadRequest(
+            Path.Combine(environment.Root, "downloads", "canceled.bin"),
+            [new Uri("https://example.com/canceled.bin")]);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => service.DownloadAsync([request], cancellationToken: cts.Token));
+
+        var snapshot = Assert.Single(operations.Snapshots);
+        Assert.Equal(OperationState.Cancelled, snapshot.State);
+        Assert.Equal(OperationErrorKind.Cancelled, snapshot.Error?.Kind);
+    }
+
+    [Fact]
+    public async Task EmptyBatchDoesNotCreateAnOperation()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var operations = new OperationService();
+        var service = CreateService(provider.GetRequiredService<ISettingsService>(), new StubHandler(), operations);
+
+        var result = await service.DownloadAsync([]);
+
+        Assert.Equal(0, result.DownloadedFiles);
+        Assert.Empty(operations.Snapshots);
+    }
+
+    [Fact]
+    public async Task SkippedFilesAreCountedInTheOperation()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var handler = new StubHandler();
+        var operations = new OperationService();
+        var service = CreateService(provider.GetRequiredService<ISettingsService>(), handler, operations);
+        var content = Encoding.UTF8.GetBytes("cached");
+        var hash = Convert.ToHexString(SHA1.HashData(content)).ToLowerInvariant();
+        handler.Respond = _ => Ok(content);
+        var request = new DownloadRequest(
+            Path.Combine(environment.Root, "downloads", "cached.bin"),
+            [new Uri("https://example.com/cached.bin")],
+            hash,
+            HashingAlgorithm.Sha1,
+            content.Length);
+
+        await service.DownloadAsync([request]);
+        await service.DownloadAsync([request]);
+
+        var completed = operations.Snapshots
+            .Where(snapshot => snapshot.State == OperationState.Completed)
+            .OrderByDescending(snapshot => snapshot.StartedAt)
+            .First();
+        Assert.Equal(1, completed.Completed);
+        Assert.Equal(content.Length, completed.BytesDownloaded);
+    }
+
+    private static DownloadService CreateService(
+        ISettingsService settings,
+        StubHandler handler,
+        IOperationService? operations = null) =>
+        new(new StubHttpClientProvider(handler), settings, NullLogger<DownloadService>.Instance, operations);
+
+    private sealed class RecordingProgress : IProgress<DownloadProgress>
+    {
+        private readonly object _gate = new();
+        private readonly List<DownloadProgress> _values = [];
+
+        public IReadOnlyList<DownloadProgress> Values
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _values.ToArray();
+                }
+            }
+        }
+
+        public void Report(DownloadProgress value)
+        {
+            lock (_gate)
+            {
+                _values.Add(value);
+            }
+        }
+    }
 
     private static HttpResponseMessage Ok(byte[] content) =>
         new(HttpStatusCode.OK)

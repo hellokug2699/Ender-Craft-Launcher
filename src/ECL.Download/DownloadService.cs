@@ -8,6 +8,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using Ecl.Configuration.Settings;
+using Ecl.Operations;
 using Microsoft.Extensions.Logging;
 
 namespace Ecl.Download;
@@ -15,7 +16,8 @@ namespace Ecl.Download;
 public sealed class DownloadService(
     IHttpClientProvider httpClientProvider,
     ISettingsService settings,
-    ILogger<DownloadService> logger) : IDownloadService, IDownloadController
+    ILogger<DownloadService> logger,
+    IOperationService? operations = null) : IDownloadService, IDownloadController
 {
     private const int BufferSize = 81920;
     private const int MaxAttemptsPerUrl = 3;
@@ -46,12 +48,14 @@ public sealed class DownloadService(
         }
 
         var totalFiles = uniqueRequests.Length;
-        var totalBytes = uniqueRequests.Sum(request => request.Size ?? 0);
+        var knownTotalBytes = uniqueRequests.Sum(request => request.Size ?? 0);
+        var allSizesKnown = uniqueRequests.All(request => request.Size.HasValue);
         var completedFiles = 0;
         var downloadedFiles = 0;
         var skippedFiles = 0;
         long completedBytes = 0;
         var failures = new ConcurrentBag<string>();
+        var failureKinds = new ConcurrentBag<OperationErrorKind>();
 
         var concurrency = Math.Clamp(settings.Get<int>("network.maxConcurrentDownloads"), 1, 64);
         var parallelOptions = new ParallelOptions
@@ -61,73 +65,90 @@ public sealed class DownloadService(
         };
 
         using var client = httpClientProvider.CreateClient();
-        var speedWatch = Stopwatch.StartNew();
-        double Speed(long bytes) => speedWatch.Elapsed.TotalSeconds < 0.2
-            ? 0
-            : bytes / speedWatch.Elapsed.TotalSeconds;
+        using var tracker = new DownloadBatchTracker(
+            progress,
+            operations,
+            uniqueRequests,
+            knownTotalBytes,
+            allSizesKnown,
+            () => IsPaused);
 
-        Report(progress, 0, totalFiles, 0, totalBytes, null, 0, IsPaused);
+        tracker.ReportInitial();
 
-        await Parallel.ForEachAsync(uniqueRequests, parallelOptions, async (request, token) =>
+        try
         {
-            var displayName = request.DisplayName ?? Path.GetFileName(request.DestinationPath);
-
-            try
+            await Parallel.ForEachAsync(uniqueRequests, parallelOptions, async (request, token) =>
             {
-                if (await IsExistingValidAsync(request, token).ConfigureAwait(false))
+                var displayName = request.DisplayName ?? Path.GetFileName(request.DestinationPath);
+
+                try
                 {
-                    var size = request.Size ?? GetFileLength(request.DestinationPath);
-                    Interlocked.Increment(ref skippedFiles);
+                    if (await IsExistingValidAsync(request, token).ConfigureAwait(false))
+                    {
+                        var size = request.Size ?? GetFileLength(request.DestinationPath);
+                        Interlocked.Increment(ref skippedFiles);
+                        Interlocked.Increment(ref completedFiles);
+                        Interlocked.Add(ref completedBytes, size);
+                        tracker.FileCompleted(displayName, size, skipped: true);
+                        return;
+                    }
+
+                    await DownloadOneAsync(client, request, tracker, token).ConfigureAwait(false);
+                    Interlocked.Increment(ref downloadedFiles);
                     Interlocked.Increment(ref completedFiles);
-                    Interlocked.Add(ref completedBytes, size);
-                    Report(
-                        progress,
-                        Volatile.Read(ref completedFiles),
-                        totalFiles,
-                        Volatile.Read(ref completedBytes),
-                        totalBytes,
-                        displayName,
-                        Speed(Volatile.Read(ref completedBytes)),
-                        IsPaused);
-                    return;
+                    var completedSize = request.Size ?? GetFileLength(request.DestinationPath);
+                    Interlocked.Add(ref completedBytes, completedSize);
+                    tracker.FileCompleted(displayName, completedSize, skipped: false);
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    failures.Add($"{displayName}: {exception.Message}");
+                    failureKinds.Add(exception is DownloadException download
+                        ? download.Kind
+                        : ClassifyFailure(exception, cancellationToken));
+                    logger.LogError(exception, "下载失败：{File}", request.DestinationPath);
+                }
+            }).ConfigureAwait(false);
 
-                await DownloadOneAsync(client, request, token).ConfigureAwait(false);
-                Interlocked.Increment(ref downloadedFiles);
-                Interlocked.Increment(ref completedFiles);
-                Interlocked.Add(ref completedBytes, request.Size ?? GetFileLength(request.DestinationPath));
-                Report(
-                    progress,
-                    Volatile.Read(ref completedFiles),
-                    totalFiles,
-                    Volatile.Read(ref completedBytes),
-                    totalBytes,
-                    displayName,
-                    Speed(Volatile.Read(ref completedBytes)),
-                    IsPaused);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            if (!failures.IsEmpty)
             {
-                throw;
+                throw new DownloadException(
+                    $"有 {failures.Count} 个文件下载失败。",
+                    failures.ToArray())
+                {
+                    Kind = OperationErrors.Worst(failureKinds),
+                };
             }
-            catch (Exception exception)
-            {
-                failures.Add($"{displayName}: {exception.Message}");
-                logger.LogError(exception, "下载失败：{File}", request.DestinationPath);
-            }
-        }).ConfigureAwait(false);
 
-        if (!failures.IsEmpty)
-        {
-            throw new DownloadException(
-                $"有 {failures.Count} 个文件下载失败。",
-                failures.ToArray());
+            tracker.Complete();
+            return new DownloadBatchResult(
+                Volatile.Read(ref downloadedFiles),
+                Volatile.Read(ref skippedFiles),
+                Volatile.Read(ref completedBytes));
         }
-
-        return new DownloadBatchResult(
-            Volatile.Read(ref downloadedFiles),
-            Volatile.Read(ref skippedFiles),
-            Volatile.Read(ref completedBytes));
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            tracker.Cancel();
+            throw;
+        }
+        catch (DownloadException exception)
+        {
+            tracker.Fail(new OperationError(
+                exception.Kind,
+                "download.failed",
+                exception.Message,
+                exception.Failures.FirstOrDefault()));
+            throw;
+        }
+        catch (Exception exception)
+        {
+            tracker.Fail(OperationErrors.FromException("download.failed", exception));
+            throw;
+        }
     }
 
     public async Task<string> DownloadTextAsync(
@@ -203,10 +224,17 @@ public sealed class DownloadService(
             }
         }
 
-        throw new DownloadException("下载文本失败。", failures);
+        throw new DownloadException("下载文本失败。", failures)
+        {
+            Kind = OperationErrorKind.Upstream,
+        };
     }
 
-    private async Task DownloadOneAsync(HttpClient client, DownloadRequest request, CancellationToken cancellationToken)
+    private async Task DownloadOneAsync(
+        HttpClient client,
+        DownloadRequest request,
+        DownloadBatchTracker tracker,
+        CancellationToken cancellationToken)
     {
         var destinationDirectory = Path.GetDirectoryName(request.DestinationPath);
         if (!string.IsNullOrEmpty(destinationDirectory))
@@ -214,13 +242,18 @@ public sealed class DownloadService(
             Directory.CreateDirectory(destinationDirectory);
         }
 
+        var displayName = request.DisplayName ?? Path.GetFileName(request.DestinationPath);
         if (request.Urls.Count == 0)
         {
-            throw new DownloadException("该文件没有可用的下载地址。", [request.DisplayName ?? request.DestinationPath]);
+            throw new DownloadException("该文件没有可用的下载地址。", [displayName])
+            {
+                Kind = OperationErrorKind.Configuration,
+            };
         }
 
         var partPath = request.DestinationPath + ".part";
         var failures = new List<string>();
+        var kind = OperationErrorKind.EclInternal;
 
         foreach (var url in request.Urls)
         {
@@ -229,7 +262,8 @@ public sealed class DownloadService(
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    await DownloadFromUrlAsync(client, url, request, partPath, cancellationToken).ConfigureAwait(false);
+                    await DownloadFromUrlAsync(client, url, request, partPath, tracker, displayName, cancellationToken)
+                        .ConfigureAwait(false);
                     return;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -240,6 +274,11 @@ public sealed class DownloadService(
                 {
                     failures.Add($"{url}: {exception.Message}");
                     logger.LogDebug(exception, "下载失败：{Url}（第 {Attempt} 次）", url, attempt + 1);
+                    if (kind == OperationErrorKind.EclInternal)
+                    {
+                        kind = ClassifyFailure(exception, cancellationToken);
+                    }
+
                     if (!IsRetryable(exception))
                     {
                         break;
@@ -247,13 +286,21 @@ public sealed class DownloadService(
 
                     if (attempt + 1 < MaxAttemptsPerUrl)
                     {
-                        await Task.Delay(TimeSpan.FromMilliseconds(400 * (attempt + 1)), cancellationToken).ConfigureAwait(false);
+                        // 让任务中心显示“正在重试”，而不是把可重试的失败直接当成最终失败。
+                        tracker.Retry(displayName, attempt + 1, MaxAttemptsPerUrl, exception.Message);
+                        await Task.Delay(
+                                TimeSpan.FromMilliseconds(400 * (attempt + 1)),
+                                cancellationToken)
+                            .ConfigureAwait(false);
                     }
                 }
             }
         }
 
-        throw new DownloadException($"下载失败：{request.DisplayName ?? Path.GetFileName(request.DestinationPath)}", failures);
+        throw new DownloadException($"下载失败：{displayName}", failures)
+        {
+            Kind = kind,
+        };
     }
 
     private async Task DownloadFromUrlAsync(
@@ -261,6 +308,8 @@ public sealed class DownloadService(
         Uri url,
         DownloadRequest request,
         string partPath,
+        DownloadBatchTracker tracker,
+        string displayName,
         CancellationToken cancellationToken)
     {
         using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -301,6 +350,12 @@ public sealed class DownloadService(
         }
 
         var append = response.StatusCode == HttpStatusCode.PartialContent && existingLength > 0;
+        var contentLength = response.Content.Headers.ContentLength;
+        var totalBytes = request.Size ??
+                         (contentLength.HasValue ? existingLength + contentLength.Value : null);
+        var written = append ? existingLength : 0;
+        tracker.FileStarted(displayName, totalBytes, written);
+
         await using (var source = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false))
         await using (var destination = new FileStream(
                          partPath,
@@ -316,6 +371,11 @@ public sealed class DownloadService(
                 while (true)
                 {
                     // 暂停点放在每次读写之间，避免暂停时仍把当前响应体灌进磁盘。
+                    if (IsPaused)
+                    {
+                        tracker.ForceReport();
+                    }
+
                     _resumeSignal.Wait(token);
                     var read = await source.ReadAsync(buffer.AsMemory(0, BufferSize), token).ConfigureAwait(false);
                     if (read == 0)
@@ -324,6 +384,8 @@ public sealed class DownloadService(
                     }
 
                     await destination.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
+                    written += read;
+                    tracker.FileProgress(displayName, written);
                 }
             }
             finally
@@ -427,20 +489,247 @@ public sealed class DownloadService(
         _ => false,
     };
 
+    /// <summary>
+    /// HTTP 超时同样表现为 <see cref="OperationCanceledException"/>；只有用户主动取消才算 Cancelled，
+    /// 否则按网络问题归因，避免任务中心把超时显示成“已取消”。
+    /// </summary>
+    private static OperationErrorKind ClassifyFailure(Exception exception, CancellationToken userToken) =>
+        exception is OperationCanceledException && !userToken.IsCancellationRequested
+            ? OperationErrorKind.Network
+            : OperationErrors.Classify(exception);
+
     private static long GetFileLength(string path) => File.Exists(path) ? new FileInfo(path).Length : 0;
 
-    private static void Report(
-        IProgress<DownloadProgress>? progress,
-        int completedFiles,
-        int totalFiles,
-        long completedBytes,
-        long totalBytes,
-        string? currentFile,
-        double bytesPerSecond,
-        bool isPaused) =>
-        progress?.Report(new DownloadProgress(completedFiles, totalFiles, completedBytes, totalBytes, currentFile)
+    /// <summary>
+    /// 把一个下载批次的进度同时写入旧 <see cref="DownloadProgress"/> 与统一任务中心。
+    /// 进度按时间节流，避免每读 80 KB 就触发一次 UI 更新。
+    /// </summary>
+    private sealed class DownloadBatchTracker : IDisposable
+    {
+        private const int ReportIntervalMilliseconds = 150;
+
+        private readonly IProgress<DownloadProgress>? _progress;
+        private readonly IOperationHandle? _operation;
+        private readonly Func<bool> _isPaused;
+        private readonly int _totalFiles;
+        private readonly SpeedMeter _speed = new();
+        private readonly Stopwatch _clock = Stopwatch.StartNew();
+        private readonly object _gate = new();
+        private readonly Dictionary<string, long> _activeBytes = new(StringComparer.OrdinalIgnoreCase);
+        private long _knownTotalBytes;
+        private bool _allSizesKnown;
+        private long _completedBytes;
+        private int _completedFiles;
+        private string? _currentItem;
+        private long _currentItemBytes;
+        private long? _currentItemTotalBytes;
+        private long _lastReportMilliseconds = -ReportIntervalMilliseconds;
+        private long _lastSpeedBytes = -1;
+        private int _retryAttempt;
+        private int _retryMaxAttempts;
+        private string? _retryReason;
+        private bool _disposed;
+
+        public DownloadBatchTracker(
+            IProgress<DownloadProgress>? progress,
+            IOperationService? operations,
+            IReadOnlyList<DownloadRequest> requests,
+            long knownTotalBytes,
+            bool allSizesKnown,
+            Func<bool> isPaused)
         {
-            BytesPerSecond = bytesPerSecond,
-            IsPaused = isPaused,
-        });
+            _progress = progress;
+            _isPaused = isPaused;
+            _totalFiles = requests.Count;
+            _knownTotalBytes = knownTotalBytes;
+            _allSizesKnown = allSizesKnown;
+            _operation = operations?.Begin(new OperationStart
+            {
+                Kind = OperationKind.Download,
+                Title = BuildTitle(requests),
+                StageId = "download",
+                Source = BuildSource(requests),
+                Total = requests.Count,
+                TotalBytes = allSizesKnown ? knownTotalBytes : null,
+                CanCancel = true,
+                CanRetry = true,
+            });
+        }
+
+        public void ReportInitial()
+        {
+            lock (_gate)
+            {
+                PublishLocked();
+            }
+        }
+
+        public void FileStarted(string file, long? totalBytes, long initialBytes)
+        {
+            lock (_gate)
+            {
+                _activeBytes[file] = initialBytes;
+                _currentItem = file;
+                _currentItemBytes = initialBytes;
+                _currentItemTotalBytes = totalBytes;
+
+                // 单文件且大小来自 Content-Length 时，总大小从未知升级为确定。
+                if (!_allSizesKnown && _totalFiles == 1 && totalBytes.HasValue)
+                {
+                    _knownTotalBytes = totalBytes.Value;
+                    _allSizesKnown = true;
+                }
+
+                ClearRetryLocked();
+                PublishLocked();
+            }
+        }
+
+        public void FileProgress(string file, long bytes)
+        {
+            lock (_gate)
+            {
+                _activeBytes[file] = bytes;
+                _currentItem = file;
+                _currentItemBytes = bytes;
+                ClearRetryLocked();
+
+                if (_clock.ElapsedMilliseconds - _lastReportMilliseconds >= ReportIntervalMilliseconds)
+                {
+                    PublishLocked();
+                }
+            }
+        }
+
+        public void FileCompleted(string file, long size, bool skipped)
+        {
+            lock (_gate)
+            {
+                _activeBytes.Remove(file);
+                _completedBytes += size;
+                _completedFiles++;
+                _currentItem = file;
+                _currentItemBytes = size;
+                _currentItemTotalBytes = size;
+                ClearRetryLocked();
+                PublishLocked();
+            }
+        }
+
+        public void Retry(string file, int attempt, int maxAttempts, string? reason)
+        {
+            lock (_gate)
+            {
+                _retryAttempt = attempt;
+                _retryMaxAttempts = maxAttempts;
+                _retryReason = reason;
+                _currentItem = file;
+                PublishLocked();
+            }
+
+            // 进度发布后进入 Retrying，避免下一次进度上报把它立刻覆盖成 Running。
+            _operation?.Retrying(attempt, maxAttempts, reason);
+        }
+
+        public void ForceReport()
+        {
+            lock (_gate)
+            {
+                PublishLocked();
+            }
+        }
+
+        public void Complete()
+        {
+            lock (_gate)
+            {
+                PublishLocked();
+            }
+
+            _operation?.Complete();
+        }
+
+        public void Fail(OperationError error) => _operation?.Fail(error);
+
+        public void Cancel() => _operation?.Cancel();
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _operation?.Dispose();
+        }
+
+        private void PublishLocked()
+        {
+            var activeBytes = _activeBytes.Values.Sum();
+            var downloaded = _completedBytes + activeBytes;
+
+            double? speed;
+            if (downloaded != _lastSpeedBytes)
+            {
+                speed = _speed.Sample(downloaded);
+                _lastSpeedBytes = downloaded;
+            }
+            else
+            {
+                speed = _speed.BytesPerSecond;
+            }
+
+            var paused = _isPaused();
+            _progress?.Report(new DownloadProgress(
+                _completedFiles,
+                _totalFiles,
+                downloaded,
+                _knownTotalBytes,
+                _currentItem)
+            {
+                BytesPerSecond = speed ?? 0,
+                IsPaused = paused,
+                IsTotalBytesKnown = _allSizesKnown,
+                CurrentFileBytes = _currentItemBytes,
+                CurrentFileTotalBytes = _currentItemTotalBytes,
+                RetryAttempt = _retryAttempt,
+                MaxRetryAttempts = _retryMaxAttempts,
+                RetryReason = _retryReason,
+            });
+
+            _operation?.Report(new OperationProgressUpdate
+            {
+                StageId = "download",
+                CurrentItem = _currentItem,
+                Completed = _completedFiles,
+                Total = _totalFiles,
+                BytesDownloaded = downloaded,
+                TotalBytes = _allSizesKnown ? _knownTotalBytes : null,
+                BytesPerSecond = speed,
+                IsPaused = paused,
+            });
+
+            _lastReportMilliseconds = _clock.ElapsedMilliseconds;
+        }
+
+        private void ClearRetryLocked()
+        {
+            _retryAttempt = 0;
+            _retryMaxAttempts = 0;
+            _retryReason = null;
+        }
+
+        private static string BuildTitle(IReadOnlyList<DownloadRequest> requests)
+        {
+            var first = requests[0].DisplayName ?? Path.GetFileName(requests[0].DestinationPath);
+            return requests.Count == 1 ? first : $"{first} (+{requests.Count - 1})";
+        }
+
+        private static string? BuildSource(IReadOnlyList<DownloadRequest> requests) =>
+            requests
+                .SelectMany(request => request.Urls)
+                .Select(uri => uri.Host)
+                .FirstOrDefault(host => !string.IsNullOrWhiteSpace(host));
+    }
 }
