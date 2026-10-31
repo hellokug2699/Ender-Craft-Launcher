@@ -6,15 +6,14 @@ ECL 是一个以 Minecraft 实例为中心的启动器，提供游戏安装、�
 
 ## 功能概览
 
-- **实例管理**：创建、查看、导入和管理独立 Minecraft 实例；创建时按正式版 / 快照版 / 愚人节版筛选并选择游戏版本，实例工作区集中管理账户、Java、内存、模组与内容。
+- **实例管理**：创建、查看、导入和管理独立 Minecraft 实例。
 - **游戏与加载器**：支持 Minecraft 原版、Fabric、Forge、NeoForge 与 Cleanroom 的安装和启动。
-- **Java 管理**：探测本机 Java、检查版本兼容性、下载 Java 运行时，并支持实例级 Java 选择、JVM 参数预设与内存覆盖（可选择“使用全局设置”）。
+- **Java 管理**：探测本机 Java、检查版本兼容性、下载 Java 运行时，并支持实例级 Java 选择和 JVM 参数预设。
 - **账户**：支持离线账户；其他认证能力以当前分支实际代码和测试结果为准。
-- **Mod 与内容**：在实例工作区管理 Mod、资源包、光影包和数据包，检查常见元数据问题，并可一键下载缺失的强制依赖；搜索与远程下载仍在下载页。
+- **Mod 与内容**：管理 Mod、资源包、光影包和数据包，并检查常见元数据问题。
 - **整合包**：支持 Modrinth `.mrpack` 与 CurseForge `.zip` 导入，并支持 Modrinth 格式导出。
 - **内容平台**：支持 CurseForge / Modrinth 内容搜索与安装；受来源平台作者分发限制的文件仍须遵守平台规则。
 - **启动与诊断**：执行启动前检查、版本解析、文件校验、原生库解压和进程启动，并提供崩溃分析与脱敏诊断包。
-- **任务与进度**：下载批次、Minecraft 安装、整合包导入、内容安装、CurseForge Mod 安装与 Java 运行时下载统一登记为任务，显示阶段、项目/字节进度、平滑速度、剩余时间与失败归因；WPF 任务中心与 CLI 读取同一份任务快照，并对这些任务提供取消与失败重试。
 - **CLI 与测试**：提供无图形命令行入口，并持续建设自动化测试与 CI。
 
 > 具体功能是否已经进入某个分支，请以该分支的代码、测试和 CI 为准；README 不记录分支专属功能状态。
@@ -54,10 +53,6 @@ dotnet run --project src/ECL.Cli -- install <实例ID>
 dotnet run --project src/ECL.Cli -- launch <实例ID> --dry-run
 ```
 
-`install`、`java install`、`modpack import` 与 `curseforge install` 的阶段和进度写入标准错误，
-标准输出保留最终结果与 `--json` 数据；任务进度、失败归因与取消/重试语义见
-[任务进度与诊断](docs/operations.md)。
-
 环境要求：
 
 - Windows 10 1809+ / Windows 11：运行 WPF 桌面程序。
@@ -77,12 +72,9 @@ dotnet run --project src/ECL.Cli -- launch <实例ID> --dry-run
 - [Modrinth 集成](docs/modrinth.md)
 - [崩溃分析与诊断包](docs/diagnostics.md)
 - [启动流水线](docs/launch-pipeline.md)
-- [任务进度与诊断](docs/operations.md)
-- [导入实例回归](docs/instance-import.md)
 - [仓库与保密策略](docs/repository-policy.md)
 - [开发路线图](docs/roadmap.md)
 - [架构决策记录（ADR）](docs/adr)
-- [文档维护规则](docs/documentation-maintenance.md)
 
 ## 仓库与安全
 

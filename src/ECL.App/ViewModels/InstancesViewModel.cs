@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -929,18 +930,43 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
 
         var instance = SelectedInstance;
-        if (_settings.Get<bool>("launcher.confirmBeforeDelete") &&
-            !_dialogs.Confirm(
-                _localizer.Get("instances.deleteConfirmTitle"),
-                _localizer.Get("instances.deleteConfirm", instance.Name)))
+        var planResult = await _instances.GetDeletionPlanAsync(instance.Model.Id).ConfigureAwait(true);
+        if (!planResult.IsSuccess)
         {
+            StatusMessage = planResult.Error?.Message ?? string.Empty;
             return;
+        }
+
+        var plan = planResult.Value!;
+
+        // 默认行为：有 ECL 托管数据时删除托管数据；导入实例只移除记录，外部目录永远保留。
+        var mode = plan.HasManagedGameData
+            ? InstanceDeletionMode.DeleteManagedData
+            : InstanceDeletionMode.RemoveRecordOnly;
+
+        if (_settings.Get<bool>("launcher.confirmBeforeDelete"))
+        {
+            var choice = _dialogs.ChooseInstanceDeletion(
+                _localizer.Get("instances.deletePlanTitle"),
+                BuildDeletionMessage(plan),
+                plan.HasManagedGameData);
+
+            if (choice == InstanceDeletionChoice.Cancel)
+            {
+                return;
+            }
+
+            mode = choice == InstanceDeletionChoice.DeleteManagedData
+                ? InstanceDeletionMode.DeleteManagedData
+                : InstanceDeletionMode.RemoveRecordOnly;
         }
 
         IsBusy = true;
         try
         {
-            var result = await _instances.DeleteAsync(instance.Model.Id).ConfigureAwait(true);
+            var result = await _instances
+                .DeleteAsync(instance.Model.Id, new InstanceDeleteOptions { Mode = mode })
+                .ConfigureAwait(true);
             if (!result.IsSuccess)
             {
                 StatusMessage = result.Error?.Message ?? string.Empty;
@@ -948,12 +974,47 @@ public sealed partial class InstancesViewModel : ObservableObject
             }
 
             await RefreshInstancesAsync().ConfigureAwait(true);
-            StatusMessage = _localizer.Get("instances.deleted", instance.Name);
+            StatusMessage = mode == InstanceDeletionMode.DeleteManagedData
+                ? _localizer.Get("instances.deleted", instance.Name)
+                : _localizer.Get("instances.deletedRecordOnly", instance.Name);
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>把结构化删除计划转成用户可读的影响预览，而不是只确认实例名称。</summary>
+    private string BuildDeletionMessage(InstanceDeletionPlan plan)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(_localizer.Get("instances.deletePlanHeader", plan.InstanceName));
+        builder.AppendLine();
+        builder.AppendLine(_localizer.Get("instances.deletePlanRecord", plan.RecordDirectory));
+
+        if (plan.Find(InstanceDeletionEntryKind.ManagedGameData) is { } managedGameData)
+        {
+            builder.AppendLine(_localizer.Get("instances.deletePlanManagedData", managedGameData.Path));
+            builder.AppendLine();
+            builder.Append(_localizer.Get("instances.deletePlanChoose"));
+            return builder.ToString();
+        }
+
+        if (plan.Find(InstanceDeletionEntryKind.ExternalGameData) is { } externalGameData)
+        {
+            builder.AppendLine(_localizer.Get("instances.deletePlanExternal", externalGameData.Path));
+            if (plan.IsShared)
+            {
+                builder.AppendLine(_localizer.Get(
+                    "instances.deletePlanShared",
+                    string.Join("、", plan.SharedWith.Select(reference => reference.Name))));
+            }
+
+            builder.AppendLine();
+            builder.Append(_localizer.Get("instances.deletePlanRecordOnlyNote"));
+        }
+
+        return builder.ToString();
     }
 
     [RelayCommand]

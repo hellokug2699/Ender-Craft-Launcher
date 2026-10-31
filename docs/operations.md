@@ -148,7 +148,8 @@ using var operation = new OperationProgressBridge<InstallProgress>(
 
 - 标题取第一个文件的显示名（多文件追加 `(+N)`），来源取下载 URL 的主机名。
 - 流式读取时按约 150 ms 节流上报当前文件已写字节，不等整个文件完成。
-- `SpeedMeter` 使用指数平滑（EMA），采样间隔小于 200 ms 时复用上次结果。
+- `SpeedMeter` 使用指数平滑（EMA），采样间隔小于 200 ms 时复用上次结果；暂停/恢复时重置采样基线，恢复后的速度不会被整段暂停时长拉低。
+- 断点续传时若服务器忽略 `Range` 并返回 `200`，响应体是完整文件：既有 `.part` 会被覆盖，总字节只取本次 `Content-Length`，不重复累加旧长度。
 - 可重试异常（连接超时、HTTP 5xx/429、IO、校验失败）进入 `Retrying`，并带上第几次尝试与原因。
 - 暂停时在读写之间上报 `IsPaused`；恢复后下一次进度回到正常。
 - 用户取消 → `Cancelled`；HTTP 超时（同样是 `TaskCanceledException`）按 `Network` 归因，不误报取消。

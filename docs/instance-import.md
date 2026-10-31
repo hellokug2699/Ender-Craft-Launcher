@@ -69,10 +69,27 @@ dotnet test tests/ECL.Tests/ECL.Tests.csproj
 - Windows / Linux CI：[run #163](https://github.com/hellokug2699/Ender-Craft-Launcher/actions/runs/41182107585)，
   提交 `c505cde`，`completed` / `success`（Windows 构建、格式检查、测试；Linux 测试）。
 
-## 5. 已知限制
+## 5. 删除与目录所有权
+
+导入只建立引用，因此删除导入实例时默认**只移除启动器记录**：
+
+| 内容 | 自建实例 | 导入实例（外部目录） | 共享外部目录 |
+| --- | --- | --- | --- |
+| `instance.json` / `settings.json` / `logs/` | 删除 | 删除 | 删除 |
+| `instances/<id>/minecraft/` | 可选删除 | 不存在 | 不存在 |
+| 原安装的游戏目录 | 不适用 | **保留** | **保留** |
+
+- `InstanceDeletionPlanner` 会把外部目录标记为 `External` / `SharedExternal`，`CanDelete = false`；即使调用方请求“删除 ECL 托管数据”，执行层也只移除记录。
+- 多个实例引用同一目录时，删除计划会列出其它实例的名称与 ID；删除其中一个不会影响其它实例。
+- 外部目录被用户移动或删除时，计划会把该项标记为不存在，但仍允许移除失效的实例记录。
+- 删除失败返回 `instance.delete_failed`，实例记录保留以便重试。
+
+自动化覆盖见 `tests/ECL.Tests/Minecraft/InstanceDeletionTests.cs`。WPF 删除对话框会用同一份计划展示路径、托管数据与共享引用；CLI 使用 `instance delete <id> --dry-run` 预览。
+
+## 6. 已知限制
 
 - 样本中的版本 JSON 是最小可用结构，不覆盖所有加载器/整合包的真实字段组合；
   真实安装回归仍建议手工导入一份原版与一份 Fabric/Forge 安装各一次。
 - 启动可能写入 `eula.txt`（游戏要求）与 `options.txt`（用户显式启用资源包/光影时）；
   “导入不修改原文件”的断言只覆盖扫描与导入流程本身。
-- 目录共享、删除保护与迁移属于 P1 1.2/1.3，本文档不覆盖。
+- 目录共享、删除保护已覆盖；迁移属于 P1 1.3，本文档不覆盖。

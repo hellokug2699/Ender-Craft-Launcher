@@ -362,8 +362,11 @@ public sealed class DownloadService(
 
         var append = response.StatusCode == HttpStatusCode.PartialContent && existingLength > 0;
         var contentLength = response.Content.Headers.ContentLength;
+        // 服务器忽略 Range 并返回 200 时，响应体是完整文件，不能把既有 .part 长度再加一次。
         var totalBytes = request.Size ??
-                         (contentLength.HasValue ? existingLength + contentLength.Value : null);
+                         (contentLength.HasValue
+                             ? (append ? existingLength + contentLength.Value : contentLength.Value)
+                             : null);
         var written = append ? existingLength : 0;
         tracker.FileStarted(displayName, totalBytes, written);
 
@@ -539,6 +542,7 @@ public sealed class DownloadService(
         private long? _currentItemTotalBytes;
         private long _lastReportMilliseconds = -ReportIntervalMilliseconds;
         private long _lastSpeedBytes = -1;
+        private bool _lastPausedState;
         private int _retryAttempt;
         private int _retryMaxAttempts;
         private string? _retryReason;
@@ -699,6 +703,15 @@ public sealed class DownloadService(
         {
             var activeBytes = _activeBytes.Values.Sum();
             var downloaded = _completedBytes + activeBytes;
+            var paused = _isPaused();
+
+            // 暂停/恢复时丢弃旧采样基线：否则恢复后的第一段速度会按整个暂停时长被拉低。
+            if (paused != _lastPausedState)
+            {
+                _speed.Reset(downloaded);
+                _lastSpeedBytes = -1;
+                _lastPausedState = paused;
+            }
 
             double? speed;
             if (downloaded != _lastSpeedBytes)
@@ -711,7 +724,6 @@ public sealed class DownloadService(
                 speed = _speed.BytesPerSecond;
             }
 
-            var paused = _isPaused();
             _progress?.Report(new DownloadProgress(
                 _completedFiles,
                 _totalFiles,

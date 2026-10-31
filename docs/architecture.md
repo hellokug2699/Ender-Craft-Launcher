@@ -154,6 +154,8 @@ services.AddEclMinecraft();
 
 实例 ID 采用 `slug-6位十六进制` 形式（例如 `survival-a1b2c3`），只允许小写字母、数字、点、下划线、连字符，避免路径穿越；显示名称与目录名解耦。
 
+自建实例的 `minecraft/` 固定在 `instances/<id>/minecraft`；导入实例的 `instance.json` 可带一个外部 `gameDirectory`（共享 `.minecraft` 根或版本隔离目录），此时 ECL 只引用、不复制，也不会在删除实例时递归删除该目录。详见 7.9 与 [instance-import.md](instance-import.md)。
+
 ## 7. 核心流程
 
 ### 7.1 创建实例
@@ -233,6 +235,25 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 5. `IModDependencyInstaller` 把实例中缺失的强制依赖按 mod id 精确解析到 Modrinth（slug/项目 ID）或 CurseForge（slug/名称），再复用 `IContentInstallService` 安装；无法精确匹配的依赖只报告，不做模糊安装。
 6. WPF 的内容管理集中在实例工作区（不再有独立“内容”页面）；下载页仍负责搜索、远程下载与整合包下载。
 7. `MojangVersionNewsService` 读取 Mojang 版本清单，为「主页 → 新版本情报」提供数据；主页不承载任何下载动作。
+
+### 7.9 删除实例与目录所有权
+
+删除实例不是“删除一个目录”，而是按所有权逐项处理：
+
+| 路径 | 所有权 | 仅移除记录 | 删除 ECL 托管数据 |
+| --- | --- | --- | --- |
+| `instances/<id>/instance.json`、`settings.json`、`logs/` | ECL | 删除 | 删除 |
+| `instances/<id>/minecraft/`（自建实例） | ECL | 保留 | 删除 |
+| 导入实例的 `GameDirectory` | 外部 | 保留 | 保留 |
+| 被多个实例引用的 `GameDirectory` | 共享/外部 | 保留 | 保留 |
+
+1. `InstanceService.GetDeletionPlanAsync` 生成 `InstanceDeletionPlan`：记录文件、日志、托管游戏目录和外部游戏目录分开列出，并标记 `CanDelete`、`Exists` 与共享引用。
+2. `InstanceDeleteOptions` 只表达“仅移除记录”或“删除 ECL 托管数据”，不让 UI/CLI 自行拼接删除语义。
+3. `FileSystemInstanceStore.DeleteAsync` 只删除计划中 `CanDelete = true` 的项；外部/共享目录即使调用方要求删除托管数据也会被强制降级为仅移除记录。
+4. 游戏数据先删、元数据最后删；删除失败时实例仍然可见，并返回 `instance.delete_failed` 以便重试。仅移除记录后，只有记录目录为空时才移除该目录。
+5. WPF 删除对话框展示路径、托管数据与共享引用，并让用户选择“同时删除托管数据 / 仅移除记录 / 取消”；CLI 使用 `instance delete --dry-run` 预览，`--force` 执行，`--keep-data` 只移除记录。
+
+> 目录共享、删除保护与迁移的边界说明见 [instance-import.md](instance-import.md)；迁移（P1 1.3）仍未实现。
 
 ## 8. 横切关注点
 
@@ -326,7 +347,7 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - 实例创建页从 Mojang 版本清单选择正式版 / 快照版 / 愚人节版；愚人节版本依赖固定 ID 列表识别，新版本出现时需要更新列表。旧版 alpha/beta 不参与实例创建。
 - 内容管理已从独立页面合并到实例工作区（账户、Java/JVM、内存覆盖、模组与内容、整合包、文件与诊断）；应用不再提供独立的“内容”导航项。
 - 实例下载位置（.minecraft 目录）修改后需要重启，已有实例不会自动迁移。
-- 导入实例回归（P1 1.1）已覆盖扫描有效性、导入只读性、共享/隔离启动、缺失文件诊断与内容路径；详见 [instance-import.md](instance-import.md)。目录所有权/共享引用检查（P1 1.2）与迁移（P1 1.3）尚未实现。
+- 导入实例回归（P1 1.1）已覆盖扫描有效性、导入只读性、共享/隔离启动、缺失文件诊断与内容路径；详见 [instance-import.md](instance-import.md)。删除实例已按目录所有权生成计划并保护外部/共享目录（P1 1.2 的删除部分，见 7.9）；内容删除/禁用的所有权细化与迁移（P1 1.3）尚未实现。
 - 统一任务中心（Operation）已接入下载批次、Minecraft 安装、整合包导入、内容安装/下载、CurseForge Mod 安装与 Java 运行时下载：阶段、字节/项目进度、速度/ETA、停滞/重试/失败归因、当前/最近任务条、取消与失败重试、诊断详情；CLI 的安装、Java、整合包与 CurseForge 命令也已消费任务快照。备份/恢复、整合包导出、启动与实例迁移/删除尚未接入，详见 [operations.md](operations.md)。
 - 下载页当前为单页结果（PageSize=40），分页与无限滚动仍在路线图中。
 - 资源包/光影包以 `options.txt` 为启用状态唯一事实来源，支持启用/禁用、缺失/重复/未识别条目提示与原子写入；独立配置文件的 shader 实现不会被同步。
@@ -334,4 +355,4 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 
 ## 11. 下一步
 
-按 [roadmap.md](roadmap.md) 推进：P1 1.1 导入实例回归已完成（回归测试与样本见 [instance-import.md](instance-import.md)）；下一步是 P1 1.2 目录与文件所有权（共享目录引用检查、删除保护），随后是实例迁移与原地配置变更。
+按 [roadmap.md](roadmap.md) 推进：P1 1.1 导入实例回归已完成（回归测试与样本见 [instance-import.md](instance-import.md)）；P1 1.2 的删除数据安全边界已落地（见 7.9），剩余内容是内容删除/禁用的所有权细化；随后是实例迁移与原地配置变更。

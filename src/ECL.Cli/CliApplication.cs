@@ -250,18 +250,42 @@ internal sealed class CliApplication
                         return UsageError("instance delete 需要实例 ID。");
                     }
 
-                    if (!_commandLine.HasFlag("force"))
+                    var planResult = await instances.GetDeletionPlanAsync(instanceId).ConfigureAwait(false);
+                    if (!planResult.IsSuccess)
                     {
-                        return UsageError("删除实例需要 --force 确认。");
+                        return WriteError(planResult.Error);
                     }
 
-                    var result = await instances.DeleteAsync(instanceId).ConfigureAwait(false);
+                    var plan = planResult.Value!;
+                    PrintDeletionPlan(plan, _commandLine.HasFlag("json"));
+
+                    if (_commandLine.HasFlag("dry-run"))
+                    {
+                        return 0;
+                    }
+
+                    if (!_commandLine.HasFlag("force"))
+                    {
+                        return UsageError("删除实例需要 --force 确认；使用 --keep-data 可只移除启动器记录。");
+                    }
+
+                    var mode = _commandLine.HasFlag("keep-data")
+                        ? InstanceDeletionMode.RemoveRecordOnly
+                        : InstanceDeletionMode.DeleteManagedData;
+                    var result = await instances
+                        .DeleteAsync(instanceId, new InstanceDeleteOptions { Mode = mode })
+                        .ConfigureAwait(false);
                     if (!result.IsSuccess)
                     {
                         return WriteError(result.Error);
                     }
 
-                    Console.WriteLine($"已删除实例 {instanceId}");
+                    var keptGameData = plan.HasManagedGameData && mode == InstanceDeletionMode.RemoveRecordOnly;
+                    Console.WriteLine(keptGameData
+                        ? $"已移除实例记录 {instanceId}，游戏数据保留在 {plan.GameDirectory}"
+                        : plan.HasManagedGameData
+                            ? $"已删除实例 {instanceId}（含 ECL 托管游戏数据）"
+                            : $"已移除实例记录 {instanceId}，外部游戏目录未删除：{plan.GameDirectory}");
                     return 0;
                 }
 
@@ -296,6 +320,32 @@ internal sealed class CliApplication
         }
 
         return 0;
+    }
+
+    private static void PrintDeletionPlan(InstanceDeletionPlan plan, bool json)
+    {
+        if (json)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(plan, EclJson.Indented));
+            return;
+        }
+
+        Console.WriteLine($"实例：{plan.InstanceName}（{plan.InstanceId}）");
+        Console.WriteLine($"  启动器记录：{plan.RecordDirectory}");
+        if (plan.Find(InstanceDeletionEntryKind.ManagedGameData) is { } managed)
+        {
+            Console.WriteLine($"  ECL 托管游戏目录：{managed.Path}（{(managed.Exists ? "存在" : "不存在")}）");
+            Console.WriteLine("  默认删除托管数据；--keep-data 只移除记录并保留游戏数据。");
+        }
+        else if (plan.Find(InstanceDeletionEntryKind.ExternalGameData) is { } external)
+        {
+            Console.WriteLine($"  外部游戏目录：{external.Path}（只引用，不会删除）");
+            if (plan.IsShared)
+            {
+                Console.WriteLine(
+                    $"  共享引用：{string.Join("、", plan.SharedWith.Select(reference => $"{reference.Name}（{reference.Id}）"))}");
+            }
+        }
     }
 
     private async Task<int> LoaderCommandAsync(string[] args)

@@ -657,21 +657,59 @@ public sealed partial class InstanceService : IInstanceService
             ? value.GetString()
             : null;
 
-    public async Task<Result> DeleteAsync(string instanceId, CancellationToken cancellationToken = default)
+    public async Task<Result> DeleteAsync(string instanceId, CancellationToken cancellationToken = default) =>
+        await DeleteAsync(instanceId, InstanceDeleteOptions.DeleteManagedData, cancellationToken).ConfigureAwait(false);
+
+    public async Task<Result<InstanceDeletionPlan>> GetDeletionPlanAsync(
+        string instanceId,
+        CancellationToken cancellationToken = default)
     {
         if (!AppPaths.IsValidInstanceId(instanceId))
         {
-            return Result.Fail("instance.invalid_id", "实例 ID 不合法。");
+            return Result<InstanceDeletionPlan>.Fail("instance.invalid_id", "实例 ID 不合法。");
         }
 
         var instance = await _store.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
         if (instance is null)
         {
-            return Result.Fail("instance.not_found", "实例不存在。");
+            return Result<InstanceDeletionPlan>.Fail("instance.not_found", "实例不存在。");
         }
 
-        await _store.DeleteAsync(instanceId, cancellationToken).ConfigureAwait(false);
-        _logger.LogInformation("已删除实例 {Name}（{Id}）。", instance.Name, instance.Id);
+        var allInstances = await _store.ListAsync(cancellationToken).ConfigureAwait(false);
+        return Result<InstanceDeletionPlan>.Ok(
+            InstanceDeletionPlanner.Create(_paths, instance, allInstances));
+    }
+
+    public async Task<Result> DeleteAsync(
+        string instanceId,
+        InstanceDeleteOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        var planResult = await GetDeletionPlanAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        if (!planResult.IsSuccess)
+        {
+            return Result.Fail(planResult.Error!);
+        }
+
+        var plan = planResult.Value!;
+
+        // 外部/共享目录只可能是引用：即使调用方要求删除托管数据，也强制降级为仅移除记录。
+        var mode = plan.HasExternalGameData
+            ? InstanceDeletionMode.RemoveRecordOnly
+            : options.Mode;
+
+        var deleted = await _store.DeleteAsync(plan, mode, cancellationToken).ConfigureAwait(false);
+        if (!deleted.IsSuccess)
+        {
+            return deleted;
+        }
+
+        _logger.LogInformation(
+            "已删除实例 {Name}（{Id}），模式：{Mode}；外部目录：{External}",
+            plan.InstanceName,
+            plan.InstanceId,
+            mode,
+            plan.HasExternalGameData);
         return Result.Ok();
     }
 

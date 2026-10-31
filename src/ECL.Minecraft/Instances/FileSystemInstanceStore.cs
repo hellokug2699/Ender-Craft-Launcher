@@ -85,19 +85,64 @@ internal sealed class FileSystemInstanceStore(IAppPaths paths, ILogger<FileSyste
         return Task.CompletedTask;
     }
 
-    public Task DeleteAsync(string instanceId, CancellationToken cancellationToken = default)
+    public Task<Result> DeleteAsync(
+        InstanceDeletionPlan plan,
+        InstanceDeletionMode mode,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var directory = paths.GetInstanceDirectory(instanceId);
-        if (!Directory.Exists(directory))
+        try
         {
-            return Task.CompletedTask;
-        }
+            // 游戏数据先删、元数据最后删：删除失败时实例仍可见，便于用户重试或手工恢复。
+            if (mode == InstanceDeletionMode.DeleteManagedData &&
+                plan.Find(InstanceDeletionEntryKind.ManagedGameData) is { CanDelete: true, Exists: true } gameData)
+            {
+                Directory.Delete(gameData.Path, recursive: true);
+                logger.LogInformation("已删除实例 {Id} 的 ECL 托管游戏目录：{Directory}", plan.InstanceId, gameData.Path);
+            }
 
-        Directory.Delete(directory, recursive: true);
-        logger.LogInformation("已删除实例目录：{Directory}", directory);
-        return Task.CompletedTask;
+            if (plan.Find(InstanceDeletionEntryKind.LauncherLogs) is { Exists: true } logs)
+            {
+                Directory.Delete(logs.Path, recursive: true);
+            }
+
+            foreach (var entry in plan.Entries.Where(entry =>
+                         entry.Kind == InstanceDeletionEntryKind.LauncherRecord && entry.Exists))
+            {
+                if (File.Exists(entry.Path))
+                {
+                    File.Delete(entry.Path);
+                }
+            }
+
+            // 只移除空的实例记录目录。仅移除记录或保留游戏数据时，剩下的 minecraft/ 不会被触碰。
+            if (Directory.Exists(plan.RecordDirectory) &&
+                !Directory.EnumerateFileSystemEntries(plan.RecordDirectory).Any())
+            {
+                Directory.Delete(plan.RecordDirectory);
+            }
+
+            logger.LogInformation(
+                "已移除实例 {Name}（{Id}）的记录，模式：{Mode}，外部游戏目录保留：{GameDirectory}",
+                plan.InstanceName,
+                plan.InstanceId,
+                mode,
+                plan.GameDirectory);
+            return Task.FromResult(Result.Ok());
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(
+                exception,
+                "删除实例 {Id} 失败（模式：{Mode}）。",
+                plan.InstanceId,
+                mode);
+            return Task.FromResult(Result.Fail(
+                "instance.delete_failed",
+                "删除实例失败，请检查目录权限或占用后重试。",
+                exception.Message));
+        }
     }
 
     private GameInstance? TryLoad(string instanceId)
