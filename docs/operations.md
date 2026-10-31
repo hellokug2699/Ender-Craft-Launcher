@@ -1,10 +1,10 @@
 # 任务进度与诊断（Operation）
 
-ECL 的长时间任务（下载、安装、导入、备份、启动…）统一通过 Operation 模型对外表达进度与失败原因。
-UI 和 CLI 只消费快照，不直接依赖 `DownloadService`，也不解析异常文本判断错误类型。
+Operation 是 ECL 长时间任务的统一进度与诊断模型。**当前只有下载批次完成接入**；安装、导入、Java、备份与启动仍在逐步迁移。
 
-本文档对应第一阶段：**模型 + 下载接入 + 最小 UI 闭环**。安装器、整合包、Java、备份等业务服务仍使用
-现有 `IProgress<T>` API，后续逐步迁移，不在此阶段做全仓库重构。
+当前 WPF 任务中心消费 Operation 快照，不直接依赖 `DownloadService`，也不解析异常文本判断错误类型。CLI 尚未接入 Operation。
+
+本文档对应第一阶段：**模型 + 下载接入 + 最小 WPF UI 闭环**。其他业务服务仍使用现有 `IProgress<T>` API，不在此阶段做全仓库重构。
 
 ## 1. 分层
 
@@ -15,7 +15,9 @@ IOperationService / OperationHandle        （写入端）
         ↓
 IOperationStore（内存快照 + Changed 事件）   （读取端）
         ↓
-OperationCenterViewModel / CLI / Logging
+OperationCenterViewModel（WPF）
+        ↓
+（CLI / 持久化 Store：后续接入）
 ```
 
 - `ECL.Operations` 不依赖 Core、Download 或 WPF，可被任意业务模块引用。
