@@ -110,6 +110,7 @@ services.AddEclMinecraft();
 - 启动步骤通过 `IEnumerable<ILaunchStep>` 注入并按 `Order` 排序，新增步骤不需要改启动器。
 - App 启动顺序：创建 `AppPaths` → 读取语言与实例下载位置 → 建立本地化器 → 构建容器 → 显示主窗口 → 异步加载实例、设置与版本情报。
 - 语言切换标记为“需要重启”，XAML 中的静态文本由 `LocExtension` 在加载时解析。
+- 页面根 `ScrollViewer` 启用 `behaviors:WheelScroll.IsEnabled`：指针位于嵌套 `ListBox`/内层滚动区时，先滚动最内层可滚动区域；到边界或不可滚动后把滚轮转交页面根滚动区，避免列表吞掉滚轮导致整页无法滚动。
 
 ## 6. 数据目录
 
