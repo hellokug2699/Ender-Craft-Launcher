@@ -79,10 +79,41 @@ public sealed class JavaSelectionServiceTests
         Assert.NotEmpty(selection.Warnings);
     }
 
+    [Fact]
+    public async Task SkipsContainerDirectoryAndSelectsCompatibleRuntime()
+    {
+        using var environment = new TestEnvironment();
+        var java8 = Runtime(environment, "8.0.412");
+        var java17 = Runtime(environment, "17.0.15");
+        var root = Path.Combine(environment.Root, "all-java");
+        Directory.CreateDirectory(root);
+
+        // 模拟“用户把包含多个 Java 的父目录填进全局设置”：
+        // 直接解析这个目录会得到 17，但 1.16.5 应该优先选择 Java 8。
+        var fakeLocator = new FakeJavaLocator(
+            [java8, java17],
+            path => string.Equals(path, root, StringComparison.OrdinalIgnoreCase) ? java17 : null);
+
+        await using var provider = environment.CreateServices(services =>
+            services.AddSingleton<IJavaLocator>(fakeLocator));
+
+        var settings = provider.GetRequiredService<ISettingsService>();
+        Assert.True(settings.TrySetRaw("java.defaultPath", root, null, out var pathError), pathError);
+
+        var instance = await CreateVersionAsync(provider, environment, "1.16.5", javaMajor: 8);
+        var version = (await provider.GetRequiredService<IVersionResolver>().ResolveAsync(instance.VersionId)).Value!;
+        var selection = await provider.GetRequiredService<IJavaSelectionService>()
+            .ResolveAsync(instance, version);
+
+        Assert.Equal(8, selection.Runtime?.Version?.Major);
+        Assert.True(selection.Compatibility?.IsCompatible);
+    }
+
     private static async Task<GameInstance> CreateVersionAsync(
         IServiceProvider provider,
         TestEnvironment environment,
-        string gameVersion)
+        string gameVersion,
+        int javaMajor = 17)
     {
         var created = await provider.GetRequiredService<IInstanceService>()
             .CreateAsync("Java Test", gameVersion);
@@ -91,11 +122,11 @@ public sealed class JavaSelectionServiceTests
 
         var path = VersionFilePlanner.GetVersionJsonPath(environment.Paths, instance.VersionId);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        await File.WriteAllTextAsync(path, """
+        await File.WriteAllTextAsync(path, $$"""
             {
-              "id": "1.20.1",
+              "id": "{{gameVersion}}",
               "type": "release",
-              "javaVersion": { "component": "java-runtime-gamma", "majorVersion": 17 },
+              "javaVersion": { "component": "java-runtime-gamma", "majorVersion": {{javaMajor}} },
               "libraries": []
             }
             """);
@@ -115,12 +146,15 @@ public sealed class JavaSelectionServiceTests
             parsed);
     }
 
-    private sealed class FakeJavaLocator(IReadOnlyList<JavaRuntime> runtimes) : IJavaLocator
+    private sealed class FakeJavaLocator(
+        IReadOnlyList<JavaRuntime> runtimes,
+        Func<string, JavaRuntime?>? fromPath = null) : IJavaLocator
     {
         public Task<IReadOnlyList<JavaRuntime>> FindAllAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(runtimes);
 
         public JavaRuntime? FromPath(string path) =>
+            fromPath?.Invoke(path) ??
             runtimes.FirstOrDefault(runtime =>
                 string.Equals(runtime.ExecutablePath, path, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(runtime.HomePath, path, StringComparison.OrdinalIgnoreCase));

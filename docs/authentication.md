@@ -70,11 +70,22 @@ Minecraft Services
 
 这些问题均以修复提交进入 `nightly`，并应通过回归测试持续保护。
 
+## 第三方认证（Authlib-Injector）
+
+ECL 支持通过 Authlib-Injector / Yggdrasil 兼容服务器登录第三方账户。密码只用于本次登录，不写入账户 JSON、日志或诊断包；令牌保存在安全凭据存储中。
+
+安全约束：
+
+- 认证服务器地址必须是 HTTPS 绝对地址；仅 `localhost` / 回环地址允许 HTTP 用于本地测试。
+- 拒绝带 `userInfo` 的 URL（例如 `https://user:pass@example.com`），避免地址本身携带凭据。
+- 认证客户端使用 `AllowAutoRedirect = false`；3xx 重定向按失败处理，密码或令牌不会被 307/308 转发到其它主机。
+- 修改认证服务器地址时，必须先输入密码完成重新登录；ECL 会先验证新服务器元数据并完成认证，再提交服务器地址与账户凭据。提交账户凭据失败时会尝试回滚服务器地址。
+- Authlib-Injector 清单中的版本号只允许路径安全字符，SHA-256 必须是 64 位十六进制；缓存的 jar 只有通过校验并带有 `.sha256` 记录时才用于命令预览。
+
 ## 当前边界
 
-- 已实现：Microsoft OAuth、PKCE、浏览器回调、Xbox Live、XSTS、Minecraft Services、Java Edition entitlement、Minecraft profile、Windows DPAPI、安全 token 脱敏、静默刷新。
+- 已实现：Microsoft OAuth、PKCE、浏览器回调、Xbox Live、XSTS、Minecraft Services、Java Edition entitlement、Minecraft profile、Authlib-Injector 第三方账户、Windows DPAPI、安全 token 脱敏、静默刷新。
 - 已完成：真实账户端到端实机验证。
 - 仍需完善：账户注销 / 凭据彻底清理体验、refresh token 失效后的重新授权状态、跨平台安全凭据存储，以及完整账户管理 UI。
-- 尚无：authlib-injector 第三方认证。
 
 仅完成 Microsoft OAuth 不代表用户拥有可启动的 Minecraft Java Edition；ECL 必须继续完成 Xbox / XSTS / Minecraft Services 和 Java Edition entitlement 检查。

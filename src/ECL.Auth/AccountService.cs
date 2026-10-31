@@ -699,6 +699,150 @@ public sealed partial class AccountService : IAccountService
         return Result<Account>.Ok(updated);
     }
 
+    public async Task<Result<AuthlibSession>> PrepareThirdPartyReauthenticationAsync(
+        string accountId,
+        string password,
+        AuthServer targetServer,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(targetServer);
+
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            return Result<AuthlibSession>.Fail(
+                "auth.thirdparty_credentials_required",
+                "请输入密码以完成重新登录。");
+        }
+
+        Account account;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var document = _store.Load();
+            var found = document.Accounts.FirstOrDefault(item => item.Id == accountId);
+            if (found is null)
+            {
+                return Result<AuthlibSession>.Fail("account.not_found", "账户不存在。");
+            }
+
+            if (found.Type != AccountType.ThirdParty)
+            {
+                return Result<AuthlibSession>.Fail(
+                    "account.invalid_type",
+                    "只有第三方账户需要重新登录。");
+            }
+
+            account = found;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        return await _authlibAuthentication
+            .AuthenticateAsync(targetServer, account.Name, password, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<Result<Account>> ApplyThirdPartyReauthenticationAsync(
+        string accountId,
+        AuthlibSession session,
+        AuthServer targetServer,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(targetServer);
+
+        if (string.IsNullOrWhiteSpace(targetServer.Id))
+        {
+            return Result<Account>.Fail("authserver.invalid", "认证服务器信息不完整。");
+        }
+
+        var previousCredentials = await _credentials
+            .GetAsync(accountId, cancellationToken)
+            .ConfigureAwait(false);
+
+        var save = await _credentials
+            .SaveAsync(
+                accountId,
+                new AccountCredentials
+                {
+                    MinecraftAccessToken = session.AccessToken,
+                    AuthlibClientToken = session.ClientToken,
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!save.IsSuccess)
+        {
+            return Result<Account>.Fail(save.Error!);
+        }
+
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var document = _store.Load();
+                var index = document.Accounts.FindIndex(item => item.Id == accountId);
+                if (index < 0)
+                {
+                    await RestoreCredentialsAsync(accountId, previousCredentials).ConfigureAwait(false);
+                    return Result<Account>.Fail("account.not_found", "账户不存在。");
+                }
+
+                var current = document.Accounts[index];
+                if (current.Type != AccountType.ThirdParty)
+                {
+                    await RestoreCredentialsAsync(accountId, previousCredentials).ConfigureAwait(false);
+                    return Result<Account>.Fail(
+                        "account.invalid_type",
+                        "只有第三方账户需要重新登录。");
+                }
+
+                var updated = current with
+                {
+                    Name = session.PlayerName,
+                    Uuid = session.Uuid,
+                    AuthServerId = targetServer.Id,
+                    AccessToken = null,
+                    RefreshToken = null,
+                    ClientToken = null,
+                };
+
+                document.Accounts[index] = updated;
+                _store.Save(document);
+                _logger.LogInformation(
+                    "已更新第三方账户 {AccountId} 的登录会话与认证服务器。",
+                    accountId);
+                return Result<Account>.Ok(updated);
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            await RestoreCredentialsAsync(accountId, previousCredentials).ConfigureAwait(false);
+            return Result<Account>.Fail("account.save_failed", $"保存账户失败：{exception.Message}");
+        }
+    }
+
+    private async Task RestoreCredentialsAsync(
+        string accountId,
+        Result<AccountCredentials> previousCredentials)
+    {
+        if (previousCredentials.IsSuccess && previousCredentials.Value is not null)
+        {
+            await _credentials
+                .SaveAsync(accountId, previousCredentials.Value, CancellationToken.None)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        await _credentials.RemoveAsync(accountId, CancellationToken.None).ConfigureAwait(false);
+    }
+
     private async Task<Result<AuthServer>> ResolveAuthServerAsync(string authServerId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(authServerId))

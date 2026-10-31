@@ -51,4 +51,21 @@ public interface IAccountService
         string accountId,
         string password,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 在提交认证服务器地址变更前，先用密码向目标服务器完成认证。
+    /// 只返回会话，不写入凭据；只有后续 <see cref="ApplyThirdPartyReauthenticationAsync"/> 成功才生效。
+    /// </summary>
+    Task<Result<AuthlibSession>> PrepareThirdPartyReauthenticationAsync(
+        string accountId,
+        string password,
+        AuthServer targetServer,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>提交已准备好的第三方登录会话：保存凭据并同步账户资料与认证服务器。</summary>
+    Task<Result<Account>> ApplyThirdPartyReauthenticationAsync(
+        string accountId,
+        AuthlibSession session,
+        AuthServer targetServer,
+        CancellationToken cancellationToken = default);
 }

@@ -73,8 +73,28 @@ public sealed class AuthlibInjectorService(
         }
 
         var version = manifest.Version.Trim();
+        if (!IsSafeVersion(version))
+        {
+            return Result<AuthlibInjectorArtifact>.Fail(
+                "authlibinjector.manifest_failed",
+                "Authlib-Injector 版本号格式不合法，已拒绝。");
+        }
+
         var expectedHash = manifest.Checksums.Sha256.Trim().ToLowerInvariant();
-        var target = Path.Combine(paths.InjectorDirectory, $"{JarPrefix}{version}{JarSuffix}");
+        if (!IsValidSha256(expectedHash))
+        {
+            return Result<AuthlibInjectorArtifact>.Fail(
+                "authlibinjector.manifest_failed",
+                "Authlib-Injector 的 SHA-256 校验值格式不正确，已拒绝。");
+        }
+
+        var target = GetCachePath(paths.InjectorDirectory, version);
+        if (target is null)
+        {
+            return Result<AuthlibInjectorArtifact>.Fail(
+                "authlibinjector.manifest_failed",
+                "Authlib-Injector 缓存路径不合法，已拒绝。");
+        }
 
         try
         {
@@ -84,6 +104,7 @@ public sealed class AuthlibInjectorService(
             {
                 logger.LogWarning("缓存的 Authlib-Injector 校验失败，将重新下载：{Path}", target);
                 File.Delete(target);
+                DeleteCachedHash(target);
             }
 
             if (!File.Exists(target))
@@ -103,9 +124,21 @@ public sealed class AuthlibInjectorService(
 
             if (!HasExpectedHash(target, expectedHash))
             {
+                File.Delete(target);
+                DeleteCachedHash(target);
                 return Result<AuthlibInjectorArtifact>.Fail(
                     "authlibinjector.checksum_failed",
                     "Authlib-Injector 下载文件校验失败，已拒绝加载。");
+            }
+
+            // 记录已验证的哈希，预览命令只使用带有效校验记录的缓存。
+            try
+            {
+                File.WriteAllText(GetHashPath(target), expectedHash);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                logger.LogWarning(exception, "无法写入 Authlib-Injector 校验记录：{Path}", target);
             }
         }
         catch (Exception exception) when (exception is DownloadException or IOException or UnauthorizedAccessException)
@@ -127,10 +160,88 @@ public sealed class AuthlibInjectorService(
             return null;
         }
 
-        return Directory
-            .EnumerateFiles(paths.InjectorDirectory, $"{JarPrefix}*{JarSuffix}")
-            .OrderByDescending(File.GetLastWriteTimeUtc)
-            .FirstOrDefault();
+        foreach (var path in Directory
+                     .EnumerateFiles(paths.InjectorDirectory, $"{JarPrefix}*{JarSuffix}")
+                     .OrderByDescending(File.GetLastWriteTimeUtc))
+        {
+            var fileName = Path.GetFileName(path);
+            if (!fileName.StartsWith(JarPrefix, StringComparison.OrdinalIgnoreCase) ||
+                !fileName.EndsWith(JarSuffix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var version = fileName[JarPrefix.Length..^JarSuffix.Length];
+            if (!IsSafeVersion(version))
+            {
+                continue;
+            }
+
+            var expectedHash = TryReadCachedHash(path);
+            if (expectedHash is null || !HasExpectedHash(path, expectedHash))
+            {
+                continue;
+            }
+
+            return path;
+        }
+
+        return null;
+    }
+
+    private static string? GetCachePath(string injectorDirectory, string version)
+    {
+        var root = Path.GetFullPath(injectorDirectory);
+        var target = Path.GetFullPath(Path.Combine(root, $"{JarPrefix}{version}{JarSuffix}"));
+        var rootPrefix = root.EndsWith(Path.DirectorySeparatorChar)
+            ? root
+            : root + Path.DirectorySeparatorChar;
+        return target.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase) ? target : null;
+    }
+
+    private static bool IsSafeVersion(string version) =>
+        version.Length is > 0 and <= 64 &&
+        version.All(character =>
+            char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or '-' or '+');
+
+    private static bool IsValidSha256(string value) =>
+        value.Length == 64 && value.All(Uri.IsHexDigit);
+
+    private static string GetHashPath(string jarPath) => $"{jarPath}.sha256";
+
+    private static void DeleteCachedHash(string jarPath)
+    {
+        try
+        {
+            var hashPath = GetHashPath(jarPath);
+            if (File.Exists(hashPath))
+            {
+                File.Delete(hashPath);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // 删除失败不应阻止重新下载。
+        }
+    }
+
+    private static string? TryReadCachedHash(string jarPath)
+    {
+        try
+        {
+            var hashPath = GetHashPath(jarPath);
+            if (!File.Exists(hashPath))
+            {
+                return null;
+            }
+
+            var value = File.ReadAllText(hashPath).Trim().ToLowerInvariant();
+            return IsValidSha256(value) ? value : null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     private static bool HasExpectedHash(string path, string expectedSha256)

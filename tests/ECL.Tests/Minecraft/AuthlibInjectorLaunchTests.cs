@@ -120,6 +120,55 @@ public sealed class AuthlibInjectorLaunchTests
         }
     }
 
+    [Fact]
+    public async Task InjectorRejectsUnsafeManifestVersionAndMalformedHash()
+    {
+        var jar = Encoding.UTF8.GetBytes("fake injector jar");
+        var goodHash = Convert.ToHexString(SHA256.HashData(jar)).ToLowerInvariant();
+
+        using (var environment = new TestEnvironment())
+        {
+            var service = new AuthlibInjectorService(
+                new FakeDownloadService(jar, goodHash, version: "../evil"),
+                environment.Paths,
+                NullLogger<AuthlibInjectorService>.Instance);
+            var result = await service.EnsureAsync();
+            Assert.False(result.IsSuccess);
+            Assert.Equal("authlibinjector.manifest_failed", result.Error?.Code);
+        }
+
+        using (var environment = new TestEnvironment())
+        {
+            var service = new AuthlibInjectorService(
+                new FakeDownloadService(jar, "not-a-sha256"),
+                environment.Paths,
+                NullLogger<AuthlibInjectorService>.Instance);
+            var result = await service.EnsureAsync();
+            Assert.False(result.IsSuccess);
+            Assert.Equal("authlibinjector.manifest_failed", result.Error?.Code);
+        }
+    }
+
+    [Fact]
+    public async Task CachedJarIsOnlyPreviewedAfterVerifiedHashRecordExists()
+    {
+        var jar = Encoding.UTF8.GetBytes("fake injector jar");
+        var goodHash = Convert.ToHexString(SHA256.HashData(jar)).ToLowerInvariant();
+
+        using var environment = new TestEnvironment();
+        var service = new AuthlibInjectorService(
+            new FakeDownloadService(jar, goodHash),
+            environment.Paths,
+            NullLogger<AuthlibInjectorService>.Instance);
+
+        var result = await service.EnsureAsync();
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        Assert.Equal(result.Value!.Path, service.TryGetCachedJarPath());
+
+        File.Delete($"{result.Value.Path}.sha256");
+        Assert.Null(service.TryGetCachedJarPath());
+    }
+
     private static ServiceProvider CreateProvider(TestEnvironment environment, out StubAuthlib stubAuthlib)
     {
         var authlib = new StubAuthlib();
@@ -201,7 +250,7 @@ public sealed class AuthlibInjectorLaunchTests
     }
 
     /// <summary>用真实的 AuthlibInjectorService，只把下载层替换成内存假实现。</summary>
-    private sealed class FakeDownloadService(byte[] jar, string sha256) : IDownloadService
+    private sealed class FakeDownloadService(byte[] jar, string sha256, string version = "1.2.8") : IDownloadService
     {
         public Task<DownloadBatchResult> DownloadAsync(
             IReadOnlyList<DownloadRequest> requests,
@@ -230,7 +279,7 @@ public sealed class AuthlibInjectorLaunchTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(JsonSerializer.Serialize(new
             {
-                version = "1.2.8",
+                version,
                 download_url = "https://example.com/authlib-injector-1.2.8.jar",
                 checksums = new { sha256 },
             }));

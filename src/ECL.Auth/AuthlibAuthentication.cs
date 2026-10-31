@@ -54,18 +54,24 @@ public interface IAuthlibAuthenticationService
 
 public sealed class AuthlibAuthenticationService : IAuthlibAuthenticationService
 {
+    /// <summary>认证会携带密码或令牌，因此非本机地址必须使用 HTTPS。</summary>
+    public const string HttpsRequiredMessage = "认证服务器地址必须是 HTTPS 绝对地址（localhost 可使用 HTTP）。";
+
     private readonly HttpClient _httpClient;
 
-    public AuthlibAuthenticationService(HttpClient? httpClient = null)
+    public AuthlibAuthenticationService(HttpMessageHandler? handler = null)
     {
-        _httpClient = httpClient ?? new HttpClient();
+        // 认证请求绝不跟随重定向，避免密码/令牌被 307/308 转发到其它主机。
+        _httpClient = handler is null
+            ? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+            : new HttpClient(handler);
     }
 
     public async Task<Result<AuthServerMetadata>> FetchMetadataAsync(string url, CancellationToken cancellationToken = default)
     {
         if (!TryNormalizeUrl(url, out var normalized))
         {
-            return Result<AuthServerMetadata>.Fail("authserver.invalid_url", "认证服务器地址必须是 http/https 绝对地址。");
+            return Result<AuthServerMetadata>.Fail("authserver.invalid_url", HttpsRequiredMessage);
         }
 
         try
@@ -151,11 +157,16 @@ public sealed class AuthlibAuthenticationService : IAuthlibAuthenticationService
             return Result<bool>.Ok(false);
         }
 
+        if (!TryNormalizeUrl(server.Url, out var baseUrl))
+        {
+            return Result<bool>.Fail("authserver.insecure_url", HttpsRequiredMessage);
+        }
+
         try
         {
             using var content = JsonContent.Create(new TokenRequest { AccessToken = accessToken, ClientToken = clientToken });
             using var response = await _httpClient
-                .PostAsync($"{server.Url.TrimEnd('/')}/authserver/validate", content, cancellationToken)
+                .PostAsync($"{baseUrl}/authserver/validate", content, cancellationToken)
                 .ConfigureAwait(false);
 
             // Yggdrasil 规范：204/200 表示令牌有效，403 表示无效。响应体为空，不能按 JSON 解析。
@@ -314,8 +325,10 @@ public sealed class AuthlibAuthenticationService : IAuthlibAuthenticationService
         }
 
         if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) ||
+            string.IsNullOrWhiteSpace(uri.Host) ||
+            !string.IsNullOrEmpty(uri.UserInfo) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
-            string.IsNullOrWhiteSpace(uri.Host))
+            (uri.Scheme == Uri.UriSchemeHttp && !IsLoopbackHost(uri)))
         {
             return false;
         }
@@ -324,6 +337,11 @@ public sealed class AuthlibAuthenticationService : IAuthlibAuthenticationService
         return true;
     }
 
+    private static bool IsLoopbackHost(Uri uri) =>
+        uri.IsLoopback ||
+        string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase) ||
+        uri.Host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase);
+
     private async Task<Result<T>> PostJsonAsync<T>(
         AuthServer server,
         string relativePath,
@@ -331,11 +349,16 @@ public sealed class AuthlibAuthenticationService : IAuthlibAuthenticationService
         CancellationToken cancellationToken,
         bool treatForbiddenAsResult = false)
     {
+        if (!TryNormalizeUrl(server.Url, out var baseUrl))
+        {
+            return Result<T>.Fail("authserver.insecure_url", HttpsRequiredMessage);
+        }
+
         try
         {
             using var content = JsonContent.Create(payload);
             using var response = await _httpClient
-                .PostAsync($"{server.Url.TrimEnd('/')}/{relativePath}", content, cancellationToken)
+                .PostAsync($"{baseUrl}/{relativePath}", content, cancellationToken)
                 .ConfigureAwait(false);
 
             if (response.IsSuccessStatusCode)

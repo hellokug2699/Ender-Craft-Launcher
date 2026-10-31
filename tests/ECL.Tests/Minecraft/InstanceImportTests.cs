@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Text.Json;
+using Ecl.Core.Json;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Launch;
 using Microsoft.Extensions.DependencyInjection;
@@ -151,6 +152,100 @@ public sealed class InstanceImportTests
 
         var fileStep = Assert.Single(report.Steps, step => step.StepId == "files");
         Assert.Equal(LaunchStepStatus.Warning, fileStep.Status);
+    }
+
+    [Fact]
+    public async Task ScanResolvesMinecraftVersionForLoaderAndModpackProfiles()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+        var versions = environment.Paths.VersionsDirectory;
+
+        CreateProfile(versions, "Pixelmon", """
+            {
+              "id": "Pixelmon",
+              "clientVersion": "1.21.1",
+              "mainClass": "cpw.mods.bootstraplauncher.BootstrapLauncher",
+              "libraries": [{ "name": "net.neoforged:neoforge:21.1.80" }]
+            }
+            """);
+
+        CreateProfile(versions, "CleanroomPack", """
+            {
+              "id": "CleanroomPack",
+              "mainClass": "top.outlands.foundation.boot.Foundation",
+              "libraries": [{ "name": "com.cleanroommc:cleanroom:0.2" }]
+            }
+            """);
+
+        CreateProfile(versions, "ForgePack", """
+            {
+              "id": "ForgePack",
+              "mainClass": "cpw.mods.bootstraplauncher.BootstrapLauncher",
+              "libraries": [{ "name": "net.neoforged:neoforge:20.4.237" }],
+              "arguments": { "game": ["--fml.mcVersion", "1.20.1"] }
+            }
+            """);
+
+        var detected = await instances.ScanVersionsAsync();
+
+        var pixelmon = Assert.Single(detected, item => item.VersionId == "Pixelmon");
+        Assert.Equal("1.21.1", pixelmon.GameVersion);
+        Assert.Equal("neoforge", pixelmon.Loader);
+
+        var cleanroom = Assert.Single(detected, item => item.VersionId == "CleanroomPack");
+        Assert.Equal("1.12.2", cleanroom.GameVersion);
+        Assert.Equal("cleanroom", cleanroom.Loader);
+
+        var forge = Assert.Single(detected, item => item.VersionId == "ForgePack");
+        Assert.Equal("1.20.1", forge.GameVersion);
+        Assert.Equal("neoforge", forge.Loader);
+    }
+
+    [Fact]
+    public async Task GetInstancesRepairsGameVersionOfImportedModpacks()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+        var versions = environment.Paths.VersionsDirectory;
+
+        CreateProfile(versions, "Pixelmon", """
+            {
+              "id": "Pixelmon",
+              "clientVersion": "1.21.1",
+              "mainClass": "cpw.mods.bootstraplauncher.BootstrapLauncher",
+              "libraries": [{ "name": "net.neoforged:neoforge:21.1.80" }]
+            }
+            """);
+
+        var imported = await instances.ImportAsync("Pixelmon");
+        Assert.True(imported.IsSuccess, imported.Error?.ToString());
+        Assert.Equal("1.21.1", imported.Value!.GameVersion);
+
+        // 模拟旧版本导入留下的错误 GameVersion，Read 时应自动修正。
+        var metadataPath = environment.Paths.GetInstanceMetadataFile(imported.Value.Id);
+        var stale = JsonSerializer.Deserialize<GameInstance>(
+            File.ReadAllText(metadataPath), EclJson.Default)!;
+        File.WriteAllText(
+            metadataPath,
+            JsonSerializer.Serialize(stale with { GameVersion = "Pixelmon" }, EclJson.Indented));
+
+        var loaded = await instances.GetInstancesAsync();
+        var repaired = Assert.Single(loaded, item => item.Id == imported.Value.Id);
+        Assert.Equal("1.21.1", repaired.GameVersion);
+
+        // 已经修正后再次读取不应重复改写。
+        var second = await instances.GetInstancesAsync();
+        Assert.Equal("1.21.1", Assert.Single(second, item => item.Id == imported.Value.Id).GameVersion);
+    }
+
+    private static void CreateProfile(string versionsDirectory, string versionId, string json)
+    {
+        var directory = Path.Combine(versionsDirectory, versionId);
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, $"{versionId}.json"), json);
     }
 
     private static void CreateVersion(string versionsDirectory, string versionId, string mainClass, bool isolated)

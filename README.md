@@ -11,10 +11,10 @@ ECL 致力于提供完整、可靠且易于维护的 Minecraft 实例管理与�
 - **桌面界面**：Windows WPF，采用深色主题与持久侧栏，包含主页、下载、实例、内容、设置和关于页面。
 - **主页工作台**：选择并启动实例、预览启动命令、查看 Java 与账户状态、快速切换实例，并提供下载中心、实例管理和已安装内容入口。主页不展示 Minecraft 正式版或快照版更新资讯。
 - **下载中心**：统一搜索游戏版本、Mod、整合包、数据包、资源包和光影包；支持 CurseForge、Modrinth 来源筛选、游戏版本与加载器过滤、查看项目详情、下载或安装。
-- **实例独立管理**：每个实例拥有独立工作区与设置文件，集中管理基本信息、Java/JVM、模组列表、文件目录、启动记录和崩溃诊断；可分别指定 Java、JVM 预设、额外参数和内存。未设置的实例覆盖项继承全局设置。
+- **实例独立管理**：实例库只展示实例名称、Minecraft 版本、加载器与最近启动时间；每个实例拥有独立工作区，集中管理基本信息、账户、Java/JVM、模组列表、文件目录、启动记录和崩溃诊断。可分别指定 Java、JVM 预设、额外参数和内存；未设置的实例覆盖项继承全局设置。
 - **游戏安装**：支持原版、Fabric、Forge、NeoForge 与 Cleanroom 的安装流程，并处理对应的版本元数据、依赖库和启动参数。
-- **Java 管理**：探测本机 Java，按实例选择运行时；支持自动下载运行时、版本兼容性检查和 JVM 参数预设。全局默认启用推荐的 G1 GC 参数，实例可继承或覆盖。
-- **账户**：支持离线账户与 Microsoft 正式账户。Microsoft 登录使用 OAuth Authorization Code + PKCE，经 Xbox Live、XSTS、Minecraft Services 完成 Java Edition 权益与档案验证；敏感令牌使用 Windows DPAPI 持久化，并支持静默刷新。第三方认证尚未实现。
+- **Java 管理**：探测本机 Java，按实例选择运行时；支持扫描全局 Java 目录（包括包含多个 JDK 的父目录）、自动下载运行时、版本兼容性检查和 JVM 参数预设。全局默认启用推荐的 G1 GC 参数，实例可继承或覆盖。
+- **账户**：支持离线、Microsoft 与 Authlib-Injector 第三方账户。Microsoft 登录使用 OAuth Authorization Code + PKCE，经 Xbox Live、XSTS、Minecraft Services 完成 Java Edition 权益与档案验证；敏感令牌使用 Windows DPAPI 持久化，并支持静默刷新。第三方认证服务器强制 HTTPS（仅 localhost 允许 HTTP），认证请求不跟随重定向；修改服务器地址前必须先重新登录。
 - **内容管理**：解析 Mod 元数据，检查重复项、依赖缺失、冲突和加载器不匹配；支持导入、启用、禁用与删除。
 - **整合包**：支持导入 Modrinth .mrpack 与 CurseForge .zip，并提供 Modrinth 格式导出；导入过程包含文件校验与安全解压保护。
 - **资源与光影**：管理资源包、光影包和数据包；相关启用状态与 Minecraft 配置保持同步。
@@ -26,7 +26,6 @@ ECL 致力于提供完整、可靠且易于维护的 Minecraft 实例管理与�
 
 ## 尚未实现或仍有限制
 
-- authlib-injector 第三方认证尚未实现。
 - Quilt、Legacy Fabric 等加载器尚未支持。
 - Mod 更新检查与可选依赖交互选择尚未完成。
 - CurseForge 作者限制第三方分发的文件无法由启动器代为分发。

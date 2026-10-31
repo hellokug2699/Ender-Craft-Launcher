@@ -80,7 +80,7 @@ internal sealed class MyOptionsProvider : IOptionProvider
 
 当前实例选项包括：
 
-实例工作区提供独立详情页，集中展示基本信息、Java/JVM、模组、文件目录、最近启动记录与诊断入口。实例的 JVM 预设、额外参数和内存均可单独覆盖；未设置的字段继承全局。
+实例工作区提供独立详情页，集中展示基本信息、账户、Java/JVM、模组、文件目录、最近启动记录与诊断入口。实例的 JVM 预设、额外参数和内存均可单独覆盖；未设置的字段继承全局。实例库页面只负责展示实例与打开工作区，不提供运行设置。
 
 | Key | 含义 |
 | --- | --- |
@@ -147,7 +147,7 @@ CLI 使用 `ecl launch <实例ID> --accept-eula` 记录同意；未同意时真�
 
 | Key | 作用域 | 含义 |
 | --- | --- | --- |
-| `java.defaultPath` | Global | 全局默认 Java 路径；留空自动选择 |
+| `java.defaultPath` | Global | 全局 Java 目录/路径；可填 java.exe、Java 主目录或包含多个 JDK 的父目录，多个路径用分号分隔；留空自动选择 |
 | `java.defaultMemoryMb` | Global | 默认最大堆内存 |
 | `java.extraArguments` | Global | 全局额外 JVM 参数 |
 | `java.jvmPreset` | Global | JVM 预设：default / g1 / zgc / aikar；默认 `g1`（推荐） |
@@ -160,7 +160,7 @@ CLI 使用 `ecl launch <实例ID> --accept-eula` 记录同意；未同意时真�
 | `instance.java.customJvmPreset` | Instance | 实例自定义 JVM 预设文件；留空继承全局 |
 | `instance.java.disableCompatibilityCheck` | Instance | 关闭该实例的 Java 兼容性检验 |
 
-自动选择与兼容性规则详见 [java.md](java.md)。实例页的 Java 下拉框会写入 `instance.java.executablePath`；“自动”会清空该值。
+自动选择与兼容性规则详见 [java.md](java.md)。实例工作区的 Java 下拉框会写入 `instance.java.executablePath`；“自动”会清空该值。配置为父目录时，`java.defaultPath` 下的所有 Java 都会参与自动选择。
 
 ## 3. 文件格式
 

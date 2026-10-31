@@ -18,6 +18,51 @@ public sealed class AuthlibAuthenticationTests
         Name = "Example Auth",
     };
 
+    [Theory]
+    [InlineData("https://example.com/api/yggdrasil", true)]
+    [InlineData("http://example.com/api/yggdrasil", false)]
+    [InlineData("http://localhost:8080/api/yggdrasil", true)]
+    [InlineData("http://127.0.0.1/api/yggdrasil", true)]
+    [InlineData("https://user:pass@example.com/api/yggdrasil", false)]
+    [InlineData("ftp://example.com/api/yggdrasil", false)]
+    public void OnlySecureOrLoopbackUrlsAreAccepted(string url, bool expected)
+    {
+        var accepted = AuthlibAuthenticationService.TryNormalizeUrl(url, out var normalized);
+
+        Assert.Equal(expected, accepted);
+        Assert.Equal(expected, normalized.Length > 0);
+    }
+
+    [Fact]
+    public async Task InsecureServerUrlIsRejectedBeforeSendingCredentials()
+    {
+        var handler = new StubAuthlibHandler();
+        var service = new AuthlibAuthenticationService(handler);
+        var insecure = Server with { Url = "http://example.com/api/yggdrasil" };
+
+        var result = await service.AuthenticateAsync(insecure, "Steve", "secret-password");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("authserver.insecure_url", result.Error?.Code);
+        Assert.Null(handler.LastRequestUri);
+    }
+
+    [Fact]
+    public async Task AuthenticationTreatsRedirectAsFailure()
+    {
+        var handler = new StubAuthlibHandler
+        {
+            AuthenticateStatus = HttpStatusCode.TemporaryRedirect,
+            AuthenticateResponse = string.Empty,
+        };
+        var service = new AuthlibAuthenticationService(handler);
+
+        var result = await service.AuthenticateAsync(Server, "Steve", "secret-password");
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("authserver.unreachable", result.Error?.Code);
+    }
+
     [Fact]
     public async Task ParsesServerMetadata()
     {
@@ -66,8 +111,7 @@ public sealed class AuthlibAuthenticationTests
                 }
                 """,
         };
-        using var httpClient = new HttpClient(handler);
-        var service = new AuthlibAuthenticationService(httpClient);
+        var service = new AuthlibAuthenticationService(handler);
 
         var result = await service.AuthenticateAsync(Server, "Steve", "secret-password");
 
@@ -98,8 +142,7 @@ public sealed class AuthlibAuthenticationTests
                 {"error":"ForbiddenOperationException","errorMessage":"Invalid credentials. Invalid username or password."}
                 """,
         };
-        using var httpClient = new HttpClient(handler);
-        var service = new AuthlibAuthenticationService(httpClient);
+        var service = new AuthlibAuthenticationService(handler);
 
         var result = await service.AuthenticateAsync(Server, "Steve", "secret-password");
 
@@ -118,8 +161,7 @@ public sealed class AuthlibAuthenticationTests
                 {"accessToken":"ygg-access","clientToken":"c","availableProfiles":[]}
                 """,
         };
-        using var httpClient = new HttpClient(handler);
-        var service = new AuthlibAuthenticationService(httpClient);
+        var service = new AuthlibAuthenticationService(handler);
 
         var result = await service.AuthenticateAsync(Server, "Steve", "pw");
 
@@ -131,8 +173,7 @@ public sealed class AuthlibAuthenticationTests
     public async Task EmptyCredentialsFailWithoutNetworkCall()
     {
         var handler = new StubAuthlibHandler();
-        using var httpClient = new HttpClient(handler);
-        var service = new AuthlibAuthenticationService(httpClient);
+        var service = new AuthlibAuthenticationService(handler);
 
         var result = await service.AuthenticateAsync(Server, " ", "");
 
@@ -145,8 +186,7 @@ public sealed class AuthlibAuthenticationTests
     public async Task ValidateReportsInvalidTokenAsFalse()
     {
         var handler = new StubAuthlibHandler { ValidateStatus = HttpStatusCode.Forbidden };
-        using var httpClient = new HttpClient(handler);
-        var service = new AuthlibAuthenticationService(httpClient);
+        var service = new AuthlibAuthenticationService(handler);
 
         var result = await service.ValidateAsync(Server, "ygg-access", "client-token");
 
@@ -159,8 +199,7 @@ public sealed class AuthlibAuthenticationTests
     public async Task ValidateReportsValidTokenAsTrue()
     {
         var handler = new StubAuthlibHandler { ValidateStatus = HttpStatusCode.NoContent };
-        using var httpClient = new HttpClient(handler);
-        var service = new AuthlibAuthenticationService(httpClient);
+        var service = new AuthlibAuthenticationService(handler);
 
         var result = await service.ValidateAsync(Server, "ygg-access", "client-token");
 
@@ -181,8 +220,7 @@ public sealed class AuthlibAuthenticationTests
                 }
                 """,
         };
-        using var httpClient = new HttpClient(handler);
-        var service = new AuthlibAuthenticationService(httpClient);
+        var service = new AuthlibAuthenticationService(handler);
 
         var result = await service.RefreshAsync(Server, "old-access", "client-token");
 

@@ -31,6 +31,8 @@ public sealed class JavaSelectionService(
     IJavaLocator locator,
     ILocalizer localizer) : IJavaSelectionService
 {
+    private static readonly string JavaExecutableName = OperatingSystem.IsWindows() ? "java.exe" : "java";
+
     public async Task<JavaSelectionResult> ResolveAsync(
         GameInstance instance,
         MinecraftVersion? version,
@@ -40,11 +42,11 @@ public sealed class JavaSelectionService(
             ? null
             : JavaRequirements.Resolve(version, instance.GameVersion);
 
-        var configuredPaths = new[]
+        var configuredPaths = new List<string?>
         {
             settings.Get<string?>("instance.java.executablePath", instance.Id),
-            settings.Get<string>("java.defaultPath"),
         };
+        configuredPaths.AddRange(JavaSearchPath.Split(settings.Get<string>("java.defaultPath")));
 
         var warnings = new List<string>();
         JavaRuntime? runtime = null;
@@ -57,14 +59,24 @@ public sealed class JavaSelectionService(
                 continue;
             }
 
-            explicitPath ??= configuredPath;
-            runtime = locator.FromPath(configuredPath);
+            var path = configuredPath.Trim().Trim('"');
+
+            // 目录本身不是 Java 主目录时，通常表示“包含多个 JDK 的父目录”。
+            // 这种路径交给 JavaLocator.FindAllAsync 展开，避免直接锁定其中版本最高的一个。
+            if (Directory.Exists(path) &&
+                !File.Exists(Path.Combine(path, "bin", JavaExecutableName)))
+            {
+                continue;
+            }
+
+            explicitPath ??= path;
+            runtime = locator.FromPath(path);
             if (runtime is not null)
             {
                 break;
             }
 
-            warnings.Add(localizer.Get("launch.java.configuredInvalid", configuredPath));
+            warnings.Add(localizer.Get("launch.java.configuredInvalid", path));
         }
 
         var runtimes = await locator.FindAllAsync(cancellationToken).ConfigureAwait(false);

@@ -214,11 +214,11 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     public bool IsEmpty => Instances.Count == 0;
 
+    public string InstanceCountText => _localizer.Get("instances.count", Instances.Count);
+
     public string SelectedInstanceName => SelectedInstance?.Name ?? string.Empty;
 
-    public string SelectedInstanceMeta => SelectedInstance is null
-        ? string.Empty
-        : $"{SelectedInstance.Model.VersionId} · {SelectedInstance.Model.Loader}";
+    public string SelectedInstanceMeta => SelectedInstance?.VersionText ?? string.Empty;
 
     public string SelectedInstancePath => SelectedInstance is null
         ? string.Empty
@@ -239,13 +239,6 @@ public sealed partial class InstancesViewModel : ObservableObject
 
             var model = SelectedInstance.Model;
             var parts = new List<string>();
-            if (!string.Equals(model.Loader, LoaderKinds.Vanilla, StringComparison.OrdinalIgnoreCase))
-            {
-                parts.Add(string.IsNullOrWhiteSpace(model.LoaderVersion)
-                    ? model.Loader
-                    : _localizer.Get("instances.loaderSummary", model.Loader, model.LoaderVersion));
-            }
-
             if (!string.IsNullOrWhiteSpace(model.FabricApiVersion))
             {
                 parts.Add($"Fabric API {model.FabricApiVersion}");
@@ -1387,13 +1380,18 @@ public sealed partial class InstancesViewModel : ObservableObject
             .ToString(CultureInfo.InvariantCulture) ?? string.Empty;
     }
 
+    /// <summary>实例库只负责展示；打开工作区时才进入运行设置、模组、日志与诊断。</summary>
     [RelayCommand]
-    private void OpenInstanceDetails()
+    private void OpenWorkspace(InstanceItemViewModel? instance)
     {
-        if (SelectedInstance is not null)
+        instance ??= SelectedInstance;
+        if (instance is null)
         {
-            NavigateToDetails?.Invoke(SelectedInstance.Model.Id);
+            return;
         }
+
+        SelectedInstance = instance;
+        NavigateToDetails?.Invoke(instance.Model.Id);
     }
 
     [RelayCommand]
@@ -1809,11 +1807,12 @@ public sealed partial class InstancesViewModel : ObservableObject
         Instances.Clear();
         foreach (var instance in instances)
         {
-            Instances.Add(new InstanceItemViewModel(instance, _localizer));
+            Instances.Add(new InstanceItemViewModel(instance, _localizer, _paths));
         }
 
         SelectedInstance = Instances.FirstOrDefault(item => item.Model.Id == selectedId) ?? Instances.FirstOrDefault();
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(InstanceCountText));
     }
 
     private async Task RefreshAuthServersAsync()
@@ -1881,25 +1880,51 @@ public sealed partial class InstancesViewModel : ObservableObject
 
 public sealed class InstanceItemViewModel
 {
-    public InstanceItemViewModel(GameInstance model, ILocalizer localizer)
+    public InstanceItemViewModel(GameInstance model, ILocalizer localizer, IAppPaths paths)
     {
         Model = model;
         Name = model.Name;
-        VersionText = string.Equals(model.Loader, "vanilla", StringComparison.OrdinalIgnoreCase)
-            ? model.VersionId
-            : $"{model.VersionId} · {model.Loader}";
+        MinecraftVersionText = localizer.Get("instances.minecraftVersion", model.GameVersion);
+        LoaderText = FormatLoader(model, localizer);
+        VersionText = $"{MinecraftVersionText} · {LoaderText}";
         LastPlayedText = model.LastPlayedAt is null
             ? localizer.Get("instances.never")
             : localizer.Get("instances.lastPlayedAt", model.LastPlayedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm"));
+        PathText = InstancePaths.GetGameDirectory(paths, model);
     }
 
     public GameInstance Model { get; }
 
     public string Name { get; }
 
+    /// <summary>明确的 Minecraft 版本标记，例如“Minecraft 1.21.1”。</summary>
+    public string MinecraftVersionText { get; }
+
+    /// <summary>加载器名称与版本，例如“Fabric 0.16.10”；原版显示为“原版”。</summary>
+    public string LoaderText { get; }
+
     public string VersionText { get; }
 
     public string LastPlayedText { get; }
+
+    public string PathText { get; }
+
+    private static string FormatLoader(GameInstance model, ILocalizer localizer)
+    {
+        var loaderName = model.Loader.ToLowerInvariant() switch
+        {
+            "fabric" => localizer.Get("instances.loader.fabric"),
+            "forge" => localizer.Get("instances.loader.forge"),
+            "neoforge" => localizer.Get("instances.loader.neoforge"),
+            "cleanroom" => localizer.Get("instances.loader.cleanroom"),
+            "vanilla" => localizer.Get("instances.loader.vanilla"),
+            _ => model.Loader,
+        };
+
+        return string.IsNullOrWhiteSpace(model.LoaderVersion)
+            ? loaderName
+            : $"{loaderName} {model.LoaderVersion}";
+    }
 }
 
 public sealed partial class AccountItemViewModel : ObservableObject

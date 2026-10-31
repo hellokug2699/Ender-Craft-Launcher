@@ -32,6 +32,10 @@ public sealed class ThirdPartyAccountTests
         var invalid = await servers.AddAsync("not-a-url");
         Assert.False(invalid.IsSuccess);
         Assert.Equal("authserver.invalid_url", invalid.Error?.Code);
+
+        var insecure = await servers.AddAsync("http://auth-a.example.com/api/yggdrasil");
+        Assert.False(insecure.IsSuccess);
+        Assert.Equal("authserver.invalid_url", insecure.Error?.Code);
     }
 
     [Fact]
@@ -143,6 +147,59 @@ public sealed class ThirdPartyAccountTests
     }
 
     [Fact]
+    public async Task UpdatingServerUrlKeepsOldStateWhenNewServerCannotBeValidated()
+    {
+        using var environment = new TestEnvironment();
+        var stub = new StubAuthlibAuthentication();
+        await using var provider = CreateProvider(environment, stub);
+        var servers = provider.GetRequiredService<IAuthServerService>();
+
+        var server = (await servers.AddAsync(ServerA)).Value!;
+        stub.MetadataFailureHost = "auth-b.example.com";
+
+        var insecure = await servers.UpdateAsync(
+            server.Id,
+            "http://auth-b.example.com/api/yggdrasil",
+            null);
+        Assert.False(insecure.IsSuccess);
+        Assert.Equal("authserver.invalid_url", insecure.Error?.Code);
+
+        var failed = await servers.UpdateAsync(server.Id, ServerB, null);
+
+        Assert.False(failed.IsSuccess);
+        var stored = await servers.GetAsync(server.Id);
+        Assert.NotNull(stored);
+        Assert.Equal(ServerA, stored!.Url);
+    }
+
+    [Fact]
+    public async Task ReauthenticationCanBePreparedBeforeCommittingNewServer()
+    {
+        using var environment = new TestEnvironment();
+        var stub = new StubAuthlibAuthentication();
+        await using var provider = CreateProvider(environment, stub);
+        var servers = provider.GetRequiredService<IAuthServerService>();
+        var accounts = provider.GetRequiredService<IAccountService>();
+
+        var server = (await servers.AddAsync(ServerA)).Value!;
+        var account = (await accounts.SignInThirdPartyAsync(server.Id, "Steve", "pw", makeDefault: true)).Value!;
+
+        var target = server with { Url = ServerB, Name = "Server auth-b.example.com" };
+        var prepared = await accounts.PrepareThirdPartyReauthenticationAsync(account.Id, "new-password", target);
+        Assert.True(prepared.IsSuccess, prepared.Error?.ToString());
+
+        // 准备阶段只做网络认证，不写入凭据或服务器地址。
+        var untouched = await accounts.GetDefaultAccountAsync();
+        Assert.Equal(server.Id, untouched!.AuthServerId);
+        Assert.Equal("ygg-access-Steve", untouched.AccessToken);
+
+        var applied = await accounts.ApplyThirdPartyReauthenticationAsync(account.Id, prepared.Value!, target);
+        Assert.True(applied.IsSuccess, applied.Error?.ToString());
+        Assert.Equal(server.Id, applied.Value!.AuthServerId);
+        Assert.Equal("Steve", applied.Value.Name);
+    }
+
+    [Fact]
     public async Task RegisterLinkIsUserSuppliedAndFallsBackToMetadata()
     {
         using var environment = new TestEnvironment();
@@ -237,13 +294,21 @@ public sealed class ThirdPartyAccountTests
         /// <summary>模拟服务器上的角色名（可用于测试改名同步）。</summary>
         public string? AuthenticatedName { get; set; }
 
+        /// <summary>模拟某主机的元数据请求失败，用于测试“验证失败不提交修改”。</summary>
+        public string? MetadataFailureHost { get; set; }
+
         public Task<Result<AuthServerMetadata>> FetchMetadataAsync(string url, CancellationToken cancellationToken = default) =>
-            Task.FromResult(Result<AuthServerMetadata>.Ok(new AuthServerMetadata
-            {
-                Url = url,
-                ServerName = "Server " + new Uri(url).Host,
-                RegisterUrl = MetadataRegisterUrl,
-            }));
+            MetadataFailureHost is not null &&
+            string.Equals(new Uri(url).Host, MetadataFailureHost, StringComparison.OrdinalIgnoreCase)
+                ? Task.FromResult(Result<AuthServerMetadata>.Fail(
+                    "authserver.unreachable",
+                    "simulated metadata failure"))
+                : Task.FromResult(Result<AuthServerMetadata>.Ok(new AuthServerMetadata
+                {
+                    Url = url,
+                    ServerName = "Server " + new Uri(url).Host,
+                    RegisterUrl = MetadataRegisterUrl,
+                }));
 
         public Task<Result<AuthlibSession>> AuthenticateAsync(
             AuthServer server,

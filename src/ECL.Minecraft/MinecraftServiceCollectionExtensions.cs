@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.Configuration;
+using Ecl.Java;
 using Ecl.Minecraft.Content;
 using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Diagnostics;
@@ -24,6 +25,7 @@ public static class MinecraftServiceCollectionExtensions
     public static IServiceCollection AddEclMinecraft(this IServiceCollection services)
     {
         services.AddSingleton<IOptionProvider, MinecraftOptionsProvider>();
+        services.AddSingleton<IJavaSearchRootProvider, SettingsJavaSearchRootProvider>();
         services.AddSingleton<IInstanceStore, FileSystemInstanceStore>();
         services.AddSingleton<IInstanceService, InstanceService>();
         services.AddSingleton<IVersionResolver, VersionResolver>();

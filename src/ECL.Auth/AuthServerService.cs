@@ -25,6 +25,12 @@ public interface IAuthServerService
     Task<Result<AuthServer>> AddAsync(string url, string? registerUrl = null, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 只校验地址并读取元数据，不写入存储。供“修改服务器地址前先验证”等需要
+    /// 先完成网络确认、再提交本地修改的流程使用。
+    /// </summary>
+    Task<Result<AuthServerMetadata>> ValidateAsync(string url, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 修改认证服务器的地址与注册链接（供“账户设置”使用）。
     /// 服务器 ID 保持不变，已有的账号引用不会失效。
     /// </summary>
@@ -96,6 +102,20 @@ public sealed class AuthServerService(
         return Result<AuthServer>.Fail("authserver.not_found", $"认证服务器不存在：{idOrUrl}");
     }
 
+    public async Task<Result<AuthServerMetadata>> ValidateAsync(
+        string url,
+        CancellationToken cancellationToken = default)
+    {
+        if (!AuthlibAuthenticationService.TryNormalizeUrl(url, out var normalized))
+        {
+            return Result<AuthServerMetadata>.Fail(
+                "authserver.invalid_url",
+                AuthlibAuthenticationService.HttpsRequiredMessage);
+        }
+
+        return await authentication.FetchMetadataAsync(normalized, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<Result<AuthServer>> AddAsync(
         string url,
         string? registerUrl = null,
@@ -103,33 +123,47 @@ public sealed class AuthServerService(
     {
         if (!AuthlibAuthenticationService.TryNormalizeUrl(url, out var normalized))
         {
-            return Result<AuthServer>.Fail("authserver.invalid_url", "认证服务器地址必须是 http/https 绝对地址。");
+            return Result<AuthServer>.Fail(
+                "authserver.invalid_url",
+                AuthlibAuthenticationService.HttpsRequiredMessage);
         }
 
         var requestedRegisterUrl = NormalizeRegisterUrl(registerUrl);
+
+        // 已存在时不需要访问网络；注册链接变更也在锁内完成。
+        var existing = (await GetServersAsync(cancellationToken).ConfigureAwait(false))
+            .FirstOrDefault(server =>
+                string.Equals(server.Url, normalized, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            return await SaveRegisterUrlAsync(existing, requestedRegisterUrl, cancellationToken).ConfigureAwait(false);
+        }
+
+        // 网络元数据请求放在锁外，避免慢服务器阻塞其它认证服务器操作。
+        var metadata = await authentication.FetchMetadataAsync(normalized, cancellationToken).ConfigureAwait(false);
+        if (!metadata.IsSuccess)
+        {
+            return Result<AuthServer>.Fail(metadata.Error!);
+        }
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var document = store.Load();
-            var existing = document.Servers.FirstOrDefault(server =>
+
+            // 网络请求期间可能有另一个添加操作先完成，提交前重新检查。
+            var current = document.Servers.FirstOrDefault(server =>
                 string.Equals(server.Url, normalized, StringComparison.OrdinalIgnoreCase));
-            if (existing is not null)
+            if (current is not null)
             {
-                if (requestedRegisterUrl is not null && requestedRegisterUrl != existing.RegisterUrl)
+                if (requestedRegisterUrl is not null && requestedRegisterUrl != current.RegisterUrl)
                 {
-                    existing = existing with { RegisterUrl = requestedRegisterUrl };
-                    Replace(document, existing);
+                    current = current with { RegisterUrl = requestedRegisterUrl };
+                    Replace(document, current);
                     store.Save(document);
                 }
 
-                return Result<AuthServer>.Ok(existing);
-            }
-
-            var metadata = await authentication.FetchMetadataAsync(normalized, cancellationToken).ConfigureAwait(false);
-            if (!metadata.IsSuccess)
-            {
-                return Result<AuthServer>.Fail(metadata.Error!);
+                return Result<AuthServer>.Ok(current);
             }
 
             var server = new AuthServer
@@ -152,12 +186,91 @@ public sealed class AuthServerService(
         }
     }
 
+    private async Task<Result<AuthServer>> SaveRegisterUrlAsync(
+        AuthServer existing,
+        string? requestedRegisterUrl,
+        CancellationToken cancellationToken)
+    {
+        if (requestedRegisterUrl is null ||
+            string.Equals(requestedRegisterUrl, existing.RegisterUrl, StringComparison.Ordinal))
+        {
+            return Result<AuthServer>.Ok(existing);
+        }
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var document = store.Load();
+            var current = document.Servers.FirstOrDefault(server =>
+                string.Equals(server.Id, existing.Id, StringComparison.OrdinalIgnoreCase));
+            if (current is null)
+            {
+                return Result<AuthServer>.Ok(existing);
+            }
+
+            current = current with { RegisterUrl = requestedRegisterUrl };
+            Replace(document, current);
+            store.Save(document);
+            return Result<AuthServer>.Ok(current);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<Result<AuthServer>> UpdateAsync(
         string id,
         string? url,
         string? registerUrl,
         CancellationToken cancellationToken = default)
     {
+        var current = await GetAsync(id, cancellationToken).ConfigureAwait(false);
+        if (current is null)
+        {
+            return Result<AuthServer>.Fail("authserver.not_found", $"认证服务器不存在：{id}");
+        }
+
+        var normalized = current.Url;
+        var name = current.Name;
+        var urlChanged = false;
+
+        if (!string.IsNullOrWhiteSpace(url))
+        {
+            if (!AuthlibAuthenticationService.TryNormalizeUrl(url, out normalized))
+            {
+                return Result<AuthServer>.Fail(
+                    "authserver.invalid_url",
+                    AuthlibAuthenticationService.HttpsRequiredMessage);
+            }
+
+            urlChanged = !string.Equals(normalized, current.Url, StringComparison.OrdinalIgnoreCase);
+            if (urlChanged)
+            {
+                var servers = await GetServersAsync(cancellationToken).ConfigureAwait(false);
+                var clash = servers.FirstOrDefault(server =>
+                    !string.Equals(server.Id, current.Id, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(server.Url, normalized, StringComparison.OrdinalIgnoreCase));
+                if (clash is not null)
+                {
+                    return Result<AuthServer>.Fail(
+                        "authserver.duplicate",
+                        $"该地址已经是另一个认证服务器：{clash.Name}");
+                }
+
+                // 先验证新服务器并取回元数据，再提交本地修改；网络请求不占锁。
+                var metadata = await authentication
+                    .FetchMetadataAsync(normalized, cancellationToken)
+                    .ConfigureAwait(false);
+                if (!metadata.IsSuccess)
+                {
+                    return Result<AuthServer>.Fail(metadata.Error!);
+                }
+
+                name = metadata.Value!.ServerName;
+            }
+        }
+
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -169,15 +282,16 @@ public sealed class AuthServerService(
                 return Result<AuthServer>.Fail("authserver.not_found", $"认证服务器不存在：{id}");
             }
 
-            var normalized = server.Url;
-            var name = server.Name;
-            if (!string.IsNullOrWhiteSpace(url))
+            // 验证期间服务器可能被其它操作修改；避免把已通过验证的旧结果覆盖到新状态上。
+            if (!string.Equals(server.Url, current.Url, StringComparison.OrdinalIgnoreCase))
             {
-                if (!AuthlibAuthenticationService.TryNormalizeUrl(url, out normalized))
-                {
-                    return Result<AuthServer>.Fail("authserver.invalid_url", "认证服务器地址必须是 http/https 绝对地址。");
-                }
+                return Result<AuthServer>.Fail(
+                    "authserver.concurrent_update",
+                    "认证服务器已被其他操作修改，请刷新后重试。");
+            }
 
+            if (urlChanged)
+            {
                 var clash = document.Servers.FirstOrDefault(item =>
                     !string.Equals(item.Id, server.Id, StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(item.Url, normalized, StringComparison.OrdinalIgnoreCase));
@@ -186,17 +300,6 @@ public sealed class AuthServerService(
                     return Result<AuthServer>.Fail(
                         "authserver.duplicate",
                         $"该地址已经是另一个认证服务器：{clash.Name}");
-                }
-
-                if (!string.Equals(normalized, server.Url, StringComparison.OrdinalIgnoreCase))
-                {
-                    var metadata = await authentication.FetchMetadataAsync(normalized, cancellationToken).ConfigureAwait(false);
-                    if (!metadata.IsSuccess)
-                    {
-                        return Result<AuthServer>.Fail(metadata.Error!);
-                    }
-
-                    name = metadata.Value!.ServerName;
                 }
             }
 

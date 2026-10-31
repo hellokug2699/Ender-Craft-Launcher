@@ -183,24 +183,110 @@ public partial class AuthlibAccountDialog : Window
             return;
         }
 
+        if (!AuthlibAuthenticationService.TryNormalizeUrl(serverUrl, out var normalizedUrl))
+        {
+            StatusText.Text = _localizer.Get(
+                "authlib.invalidServerUrl",
+                AuthlibAuthenticationService.HttpsRequiredMessage);
+            return;
+        }
+
         var password = PasswordBox.Password;
+        var registerUrl = RegisterUrlBox.Text.Trim();
+        var urlChanged = !string.Equals(normalizedUrl, _server.Url, StringComparison.OrdinalIgnoreCase);
+
         SetBusy(true, _localizer.Get("authlib.working"));
         try
         {
-            var updated = await _authServers
-                .UpdateAsync(_server.Id, serverUrl, RegisterUrlBox.Text.Trim())
-                .ConfigureAwait(true);
-            if (!updated.IsSuccess)
+            if (urlChanged)
             {
-                ShowError("authlib.serverFailed", updated.Error);
+                if (password.Length == 0)
+                {
+                    // 地址变更会同时改变凭据所属的服务器；不允许在未重新登录时静默提交。
+                    StatusText.Text = _localizer.Get("authlib.reauthRequired");
+                    return;
+                }
+
+                // 1. 先验证新服务器。
+                var metadata = await _authServers.ValidateAsync(normalizedUrl).ConfigureAwait(true);
+                if (!metadata.IsSuccess)
+                {
+                    ShowError("authlib.serverFailed", metadata.Error);
+                    return;
+                }
+
+                // 2. 用新地址完成登录，但先不写入任何本地状态。
+                var targetServer = _server with
+                {
+                    Url = normalizedUrl,
+                    Name = metadata.Value!.ServerName,
+                    RegisterUrl = string.IsNullOrWhiteSpace(registerUrl)
+                        ? metadata.Value.RegisterUrl
+                        : registerUrl,
+                };
+
+                var prepared = await _accounts
+                    .PrepareThirdPartyReauthenticationAsync(_account.Id, password, targetServer)
+                    .ConfigureAwait(true);
+                if (!prepared.IsSuccess)
+                {
+                    ShowError("authlib.loginFailed", prepared.Error);
+                    return;
+                }
+
+                // 3. 提交服务器地址，再提交账户凭据与资料。
+                var updated = await _authServers
+                    .UpdateAsync(_server.Id, normalizedUrl, registerUrl)
+                    .ConfigureAwait(true);
+                if (!updated.IsSuccess)
+                {
+                    ShowError("authlib.serverFailed", updated.Error);
+                    return;
+                }
+
+                var applied = await _accounts
+                    .ApplyThirdPartyReauthenticationAsync(_account.Id, prepared.Value!, updated.Value!)
+                    .ConfigureAwait(true);
+                if (!applied.IsSuccess)
+                {
+                    // 凭据保存失败时尽量恢复旧地址，避免账号指向“新服务器 + 旧凭据”。
+                    var rollback = await _authServers
+                        .UpdateAsync(_server.Id, _server.Url, _server.RegisterUrl)
+                        .ConfigureAwait(true);
+                    if (rollback.IsSuccess)
+                    {
+                        ShowError("authlib.loginFailed", applied.Error);
+                    }
+                    else
+                    {
+                        StatusText.Text = _localizer.Get(
+                            "authlib.reauthServerChanged",
+                            applied.Error?.Message ?? string.Empty);
+                    }
+
+                    return;
+                }
+
+                ResultServer = updated.Value;
+                ResultAccount = applied.Value;
+                DialogResult = true;
                 return;
             }
 
-            ResultServer = updated.Value;
+            var result = await _authServers
+                .UpdateAsync(_server.Id, normalizedUrl, registerUrl)
+                .ConfigureAwait(true);
+            if (!result.IsSuccess)
+            {
+                ShowError("authlib.serverFailed", result.Error);
+                return;
+            }
+
+            ResultServer = result.Value;
 
             if (password.Length > 0)
             {
-                // 用户填写了密码：重新登录并同步服务器上的最新角色信息。
+                // 地址未变，只重新登录并同步服务器上的最新角色信息。
                 var signedIn = await _accounts
                     .ReauthenticateThirdPartyAsync(_account.Id, password)
                     .ConfigureAwait(true);
