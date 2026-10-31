@@ -77,6 +77,7 @@ dotnet run --project src/ECL.Cli -- launch <实例ID> --dry-run
 - [仓库与保密策略](docs/repository-policy.md)
 - [开发路线图](docs/roadmap.md)
 - [架构决策记录（ADR）](docs/adr)
+- [文档维护规则](docs/documentation-maintenance.md)
 
 ## 仓库与安全
 
