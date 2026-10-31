@@ -115,8 +115,8 @@ example.zip                                            失败     [重试] [详�
 本阶段本地验证（Windows，.NET SDK 10.0.403）：`dotnet build ECL.sln -c Release` 与
 `dotnet format --verify-no-changes` 通过，`dotnet test -c Release` 338 项全部通过
 （其中 `Ecl.Tests.Operations` 30 项、下载相关 26 项）。Windows / Linux CI：
-[run #166](https://github.com/hellokug2699/Ender-Craft-Launcher/actions/runs/41184065696)
-`completed` / `success`（提交 `5275520`）。
+[run #169](https://github.com/hellokug2699/Ender-Craft-Launcher/actions/runs/41185715819)
+`completed` / `success`（提交 `fe0f9dc`，包含模型/下载/UI/控制与诊断）。
 
 ## 6. 已知限制与后续
 
