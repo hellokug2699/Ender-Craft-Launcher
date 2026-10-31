@@ -462,6 +462,30 @@ public sealed class DownloadServiceTests
         Assert.Equal(OperationState.Completed, Assert.Single(operations.Snapshots).State);
     }
 
+    [Fact]
+    public async Task DependencyInjectionWiresTheOperationStoreIntoDownloads()
+    {
+        using var environment = new TestEnvironment();
+        var handler = new StubHandler();
+        using var provider = environment.CreateServices(services =>
+            services.AddSingleton<IHttpClientProvider>(new StubHttpClientProvider(handler)));
+        var store = provider.GetRequiredService<IOperationStore>();
+        var downloads = provider.GetRequiredService<IDownloadService>();
+        var content = Encoding.UTF8.GetBytes("wired");
+        handler.Respond = _ => Ok(content);
+
+        var request = new DownloadRequest(
+            Path.Combine(environment.Root, "downloads", "wired.bin"),
+            [new Uri("https://example.com/wired.bin")],
+            Size: content.Length);
+
+        await downloads.DownloadAsync([request]);
+
+        var snapshot = Assert.Single(store.Snapshots);
+        Assert.Equal(OperationKind.Download, snapshot.Kind);
+        Assert.Equal(OperationState.Completed, snapshot.State);
+    }
+
     private static DownloadService CreateService(
         ISettingsService settings,
         StubHandler handler,

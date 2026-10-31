@@ -97,8 +97,8 @@ client.jar                                            进行中
 重试快照、未知大小 indeterminate、取消归因、空批次不创建任务、跳过已缓存文件。
 
 本阶段本地验证（Windows，.NET SDK 10.0.403）：`dotnet build ECL.sln -c Release` 与
-`dotnet format --verify-no-changes` 通过，`dotnet test -c Release` 333 项全部通过
-（其中 `Ecl.Tests.Operations` 28 项、下载相关 23 项）。Windows / Linux CI：
+`dotnet format --verify-no-changes` 通过，`dotnet test -c Release` 334 项全部通过
+（其中 `Ecl.Tests.Operations` 28 项、下载相关 24 项）。Windows / Linux CI：
 [run #166](https://github.com/hellokug2699/Ender-Craft-Launcher/actions/runs/41184065696)
 `completed` / `success`（提交 `5275520`）。
 
