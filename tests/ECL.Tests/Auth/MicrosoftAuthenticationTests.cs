@@ -35,7 +35,7 @@ public sealed class MicrosoftAuthenticationTests
 
         async Task OpenBrowserAsync(Uri authorizeUri)
         {
-            var state = System.Web.HttpUtility.ParseQueryString(authorizeUri.Query)["state"];
+            var state = GetQueryValue(authorizeUri, "state");
             Assert.False(string.IsNullOrWhiteSpace(state));
 
             using var browser = new HttpClient();
@@ -46,6 +46,17 @@ public sealed class MicrosoftAuthenticationTests
             using var response = await browser.GetAsync(callback.Uri);
             response.EnsureSuccessStatusCode();
         }
+    }
+
+    private static string? GetQueryValue(Uri uri, string key)
+    {
+        return uri.Query.TrimStart('?')
+            .Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Split('=', 2))
+            .Where(parts => parts.Length == 2)
+            .Where(parts => string.Equals(Uri.UnescapeDataString(parts[0]), key, StringComparison.Ordinal))
+            .Select(parts => Uri.UnescapeDataString(parts[1]))
+            .FirstOrDefault();
     }
 
     private sealed class StubAuthenticationHandler : HttpMessageHandler
