@@ -180,6 +180,9 @@ https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/<channel>
 
 > `release` Environment 建议配置 Required reviewers；workflow 只授予 `contents: write`，checkout 不保留凭据。
 > 私钥不得写入日志、Release 附件、artifact 或 public 仓库。CI 的 PR 流程永远不会签名。
+>
+> 当前 `release.yml` 位于 `nightly` 分支；GitHub 的 `workflow_dispatch` 按钮只在 workflow 进入默认分支后显示。
+> 在合并到默认分支前，可通过推送 `v*` tag 触发同一 workflow（已验证）。
 
 ## 8. 验证记录
 
@@ -188,7 +191,8 @@ https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/<channel>
 - `dotnet test --filter FullyQualifiedName~Ecl.Tests.Deployment`：37 项通过，覆盖版本解析、Manifest 校验、路径与重复条目、签名/未知公钥、安全解包、staging/切换/回滚、降级拒绝、HTTPS/下载校验。
 - 端到端：用测试密钥签名 `0.8.0-e2e` → Bootstrapper `--apply --deploy-only` 写入 `current.json` → 启动到 `versions/0.8.0-e2e/ECL.exe`；再部署 `0.8.1-e2e` → `--rollback` 回到 `0.8.0-e2e`，两次退出码均为 0。
 - 使用 Core 仓库的 `signing/update-signing.key` 与 public 仓库 `build/update-trust.json` 打包 `0.8.2-prodtest`，Bootstrapper 校验签名并完成部署，退出码 0；私钥与公钥指纹一致。
-- 未完成：全新 Windows 无 .NET SDK 的安装验收、安装器 UI、卸载、真实签名 Release、125%/150% 缩放下的更新 UI。
+- GitHub Actions 实际 Release 测试（run `41220030330`）：通过 tag `v0.8.0-dev.1` 触发，成功生成 `v0.8.0-dev.1` 与 `beta` 两个 Release；`update-manifest.sig` 用 public 信任库验签通过，`beta` 资产 `ECL-0.8.0-dev.1-win-x64.zip` 的 GitHub digest 与 Manifest `package.sha256` 一致，job 日志未出现私钥标记。CI run `41220734282` 在 Linux 交叉路径修复后通过。
+- 未完成：全新 Windows 无 .NET SDK 的安装验收、安装器 UI、卸载、真实稳定版 Release、125%/150% 缩放下的更新 UI。
 
 ## 9. 用户数据与卸载边界
 
