@@ -16,6 +16,8 @@ public interface IAccountService
 
     Task<Result<Account>> AddMicrosoftAsync(Account account, AccountCredentials credentials, bool makeDefault = false, CancellationToken cancellationToken = default);
 
+    Task<Result<Account>> AddThirdPartyAsync(Account account, AccountCredentials credentials, bool makeDefault = false, CancellationToken cancellationToken = default);
+
     Task<Result> RemoveAsync(string accountId, CancellationToken cancellationToken = default);
 
     Task<Result> SetDefaultAsync(string accountId, CancellationToken cancellationToken = default);
@@ -31,5 +33,16 @@ public interface IAccountService
         Account account,
         MicrosoftAuthenticationOptions options,
         TimeSpan margin,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>校验第三方账户令牌，必要时用 refresh token 换新；不打开浏览器。</summary>
+    Task<Result<Account>> EnsureThirdPartyFreshAsync(Account account, CancellationToken cancellationToken = default);
+
+    /// <summary>用用户名/密码登录第三方认证服务器并保存账号；密码不会持久化。</summary>
+    Task<Result<Account>> SignInThirdPartyAsync(
+        string authServerId,
+        string username,
+        string password,
+        bool makeDefault = false,
         CancellationToken cancellationToken = default);
 }

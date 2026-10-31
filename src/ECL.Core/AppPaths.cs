@@ -32,6 +32,10 @@ public interface IAppPaths
     string DownloadsDirectory { get; }
     string GlobalSettingsFile { get; }
     string AccountsFile { get; }
+    string AuthServersFile { get; }
+
+    /// <summary>Authlib-Injector 组件的缓存目录。</summary>
+    string InjectorDirectory { get; }
 
     string GetInstanceDirectory(string instanceId);
     string GetInstanceMetadataFile(string instanceId);
@@ -72,6 +76,8 @@ public sealed partial class AppPaths : IAppPaths
     public string DownloadsDirectory => Path.Combine(Root, "downloads");
     public string GlobalSettingsFile => Path.Combine(ConfigDirectory, "global.json");
     public string AccountsFile => Path.Combine(AccountsDirectory, "accounts.json");
+    public string AuthServersFile => Path.Combine(AccountsDirectory, "authservers.json");
+    public string InjectorDirectory => Path.Combine(Root, "injector");
 
     public AppPaths(string root, string? gameRoot = null)
     {
@@ -149,6 +155,7 @@ public sealed partial class AppPaths : IAppPaths
         Directory.CreateDirectory(LogsDirectory);
         Directory.CreateDirectory(CacheDirectory);
         Directory.CreateDirectory(DownloadsDirectory);
+        Directory.CreateDirectory(InjectorDirectory);
 
         // 实例与游戏文件可以位于另一个磁盘；目录不存在时一并创建。
         Directory.CreateDirectory(GameRoot);
