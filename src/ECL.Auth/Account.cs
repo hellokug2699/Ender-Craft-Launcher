@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using System.Text.Json.Serialization;
+
 namespace Ecl.Auth;
 
 public enum AccountType
@@ -19,8 +21,12 @@ public sealed record Account
 
     public required string Uuid { get; init; }
 
+    /// <summary>Transient Minecraft access token. Never serialize this into accounts.json.</summary>
+    [JsonIgnore]
     public string? AccessToken { get; init; }
 
+    /// <summary>Transient Microsoft refresh token. Never serialize this into accounts.json.</summary>
+    [JsonIgnore]
     public string? RefreshToken { get; init; }
 
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
