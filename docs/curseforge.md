@@ -105,7 +105,7 @@ ecl modpack import survival-a1b2c3 "C:\packs\example.zip"
 
 ## 6. WPF
 
-**Mods** 页面新增 CurseForge 区域：
+**下载** 页面提供 CurseForge 搜索与安装区域：
 
 - 自动使用当前实例的 Minecraft 版本与加载器搜索；
 - 显示名称、简介、项目 ID、下载量、更新时间；
