@@ -6,11 +6,11 @@ import sys
 from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-MARKDOWN_ROOTS = [ROOT]
+ADR_DIR = ROOT / "docs" / "adr"
 LINK_RE = re.compile(r"(?<!!)\[[^\]]*\]\((<[^>]+>|[^)]+)\)")
 errors = []
 
-for markdown in sorted(DOCS.rglob("*.md")):
+for markdown in sorted(path for path in ROOT.rglob("*.md") if ".git" not in path.parts):
     text = markdown.read_text(encoding="utf-8")
     for match in LINK_RE.finditer(text):
         raw = match.group(1).strip()
@@ -32,7 +32,7 @@ for markdown in sorted(DOCS.rglob("*.md")):
         if not target.exists():
             errors.append(f"{markdown.relative_to(ROOT)}: broken link: {destination}")
 
-for adr in sorted((DOCS / "adr").glob("*.md")):
+for adr in sorted(ADR_DIR.glob("*.md")):
     text = adr.read_text(encoding="utf-8")
     if not re.search(r"^- 状态：.+$", text, re.MULTILINE):
         errors.append(f"{adr.relative_to(ROOT)}: missing '- 状态：...' metadata")
