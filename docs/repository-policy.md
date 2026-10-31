@@ -19,7 +19,7 @@ ECL 使用两个仓库：
 - 架构文档、ADR、路线图、构建脚本。
 - 更新公钥（用于客户端验证签名，公钥本身不保密）。
 - 本地化文件。
-- “CurseForge 请求经自建代理转发”的说明，以及客户端中必须存在的代理域名常量。
+- “CurseForge 请求经自建代理转发”的说明，以及客户端必须使用的公开代理 API endpoint。客户端需要知道请求目的地，因此 endpoint 不是秘密；代理实现、路由配置、部署材料和 API key 仍必须保留在 private Core。
 - CI 配置（不含任何密钥值）。
 
 ### Core 仓库允许
@@ -36,7 +36,7 @@ ECL 使用两个仓库：
 
 - 在 public 仓库提交 `.pfx`、`.p12`、`.snk`、私钥、令牌、密码。
 - 在 public 仓库的提交历史、Issue、PR、Actions 日志中出现秘密。
-- 在 public 仓库出现代理地址、路由、部署配置、Secret 名称或部署步骤。
+- 在 public 仓库出现代理服务端源码、内部路由实现、部署配置、Secret 名称、密钥或部署步骤。公开客户端 endpoint 可以且必须存在于客户端配置/代码中，不得把它误当作凭据。
 - 在 Core 仓库放业务代码、文档、截图、构建产物、可公开的配置。
 - 让 public 仓库的构建、测试、CI 依赖 Core 仓库或私有子模块。
 
@@ -65,9 +65,9 @@ $env:ECL_SIGNING_PASSWORD = "<从安全存储读取>"
 CurseForge 请求经私有代理转发，代理与 key 都不进入 public 仓库：
 
 - ECL 客户端、构建、发布产物与配置文件都不读取、不发送也不包含 key。
-- 代理的源码、路由、部署配置与 Secret 名称只存在于 private Core 仓库；public 仓库不含任何代理工程文件。
+- 代理的服务端源码、内部路由实现、部署配置与 Secret 名称只存在于 private Core 仓库；public 仓库不含代理工程文件。客户端调用所需的 API endpoint 是公开配置，当前由 `CurseForgeClient.BaseAddress` 提供，且 `curseforge status` 会显示它。
 - Core 仓库的 `credentials/curseforge.json` 仅作为部署时的配置来源，运行时不依赖它。
-- 任何情况下都不得把 key 或代理地址、路由写入 public 仓库文件、CI 日志、Issue 或诊断包。
+- 任何情况下都不得把 key、内部路由实现、Secret 名称或部署细节写入 public 仓库文件、CI 日志、Issue 或诊断包。客户端公开 endpoint 不属于秘密，但应配置限流与滥用防护，不能依赖隐藏 URL 作为安全措施。
 
 泄露或滥用时的轮换流程：在 CurseForge 后台生成新 key → 更新代理的 Secret → 重新部署。客户端无需重新发布。代理侧必须配置限流，详见 [curseforge.md](curseforge.md)。
 
