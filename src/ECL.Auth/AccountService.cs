@@ -9,12 +9,14 @@ namespace Ecl.Auth;
 public sealed partial class AccountService : IAccountService
 {
     private readonly IAccountStore _store;
+    private readonly ISecureCredentialStore _credentials;
     private readonly ILogger<AccountService> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public AccountService(IAccountStore store, ILogger<AccountService> logger)
+    public AccountService(IAccountStore store, ISecureCredentialStore credentials, ILogger<AccountService> logger)
     {
         _store = store;
+        _credentials = credentials;
         _logger = logger;
     }
 
@@ -37,16 +39,28 @@ public sealed partial class AccountService : IAccountService
         try
         {
             var document = _store.Load();
-            if (document.DefaultAccountId is not null)
+            var account = document.DefaultAccountId is not null
+                ? document.Accounts.FirstOrDefault(item => item.Id == document.DefaultAccountId)
+                : null;
+            account ??= document.Accounts.FirstOrDefault();
+
+            if (account is null || account.Type != AccountType.Microsoft)
             {
-                var configured = document.Accounts.FirstOrDefault(account => account.Id == document.DefaultAccountId);
-                if (configured is not null)
-                {
-                    return configured;
-                }
+                return account;
             }
 
-            return document.Accounts.FirstOrDefault();
+            var credentials = await _credentials.GetAsync(account.Id, cancellationToken).ConfigureAwait(false);
+            if (!credentials.IsSuccess)
+            {
+                _logger.LogWarning("Microsoft 账户 {AccountId} 缺少安全凭据：{Code}", account.Id, credentials.Error?.Code);
+                return account;
+            }
+
+            return account with
+            {
+                AccessToken = credentials.Value!.MinecraftAccessToken,
+                RefreshToken = credentials.Value.MicrosoftRefreshToken,
+            };
         }
         finally
         {
@@ -80,7 +94,7 @@ public sealed partial class AccountService : IAccountService
                 CreatedAt = DateTimeOffset.UtcNow,
             };
 
-            return await AddCoreAsync(document, account, makeDefault).ConfigureAwait(false);
+            return await AddCoreAsync(document, account, makeDefault, null, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -88,9 +102,90 @@ public sealed partial class AccountService : IAccountService
         }
     }
 
-    public async Task<Result<Account>> AddAsync(Account account, bool makeDefault = false, CancellationToken cancellationToken = default)
+    public Task<Result<Account>> AddAsync(Account account, bool makeDefault = false, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(account);
+        if (account.Type == AccountType.Microsoft)
+        {
+            if (string.IsNullOrWhiteSpace(account.AccessToken))
+            {
+                return Task.FromResult(Result<Account>.Fail("account.credentials_missing", "Microsoft 账户缺少 Minecraft 登录凭据。"));
+            }
+
+            return AddMicrosoftAsync(
+                account,
+                new AccountCredentials
+                {
+                    MinecraftAccessToken = account.AccessToken,
+                    MicrosoftRefreshToken = account.RefreshToken,
+                },
+                makeDefault,
+                cancellationToken);
+        }
+
+        return AddNonMicrosoftAsync(account, makeDefault, cancellationToken);
+    }
+
+    public async Task<Result<Account>> AddMicrosoftAsync(Account account, AccountCredentials credentials, bool makeDefault = false, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        ArgumentNullException.ThrowIfNull(credentials);
+
+        if (account.Type != AccountType.Microsoft)
+        {
+            return Result<Account>.Fail("account.invalid_type", "只能为 Microsoft 账户保存 Microsoft 凭据。");
+        }
+
+        if (string.IsNullOrWhiteSpace(credentials.MinecraftAccessToken))
+        {
+            return Result<Account>.Fail("account.credentials_missing", "Minecraft access token 为空。");
+        }
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var document = _store.Load();
+            if (document.Accounts.Any(existing =>
+                    string.Equals(existing.Name, account.Name, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(existing.Id, account.Id, StringComparison.Ordinal)))
+            {
+                return Result<Account>.Fail("account.duplicate", $"已存在同名或同 ID 账户：{account.Name}");
+            }
+
+            var saveCredentials = await _credentials.SaveAsync(account.Id, credentials, cancellationToken).ConfigureAwait(false);
+            if (!saveCredentials.IsSuccess)
+            {
+                return Result<Account>.Fail(saveCredentials.Error!);
+            }
+
+            try
+            {
+                var result = await AddCoreAsync(document, account with
+                {
+                    AccessToken = null,
+                    RefreshToken = null,
+                }, makeDefault, null, cancellationToken).ConfigureAwait(false);
+                if (!result.IsSuccess)
+                {
+                    await _credentials.RemoveAsync(account.Id, cancellationToken).ConfigureAwait(false);
+                }
+
+                return result;
+            }
+            catch
+            {
+                await _credentials.RemoveAsync(account.Id, cancellationToken).ConfigureAwait(false);
+                throw;
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<Result<Account>> AddNonMicrosoftAsync(Account account, bool makeDefault, CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(account.Id) || string.IsNullOrWhiteSpace(account.Name) || string.IsNullOrWhiteSpace(account.Uuid))
         {
             return Result<Account>.Fail("account.invalid", "账户资料不完整。");
@@ -107,7 +202,7 @@ public sealed partial class AccountService : IAccountService
                 return Result<Account>.Fail("account.duplicate", $"已存在同名或同 ID 账户：{account.Name}");
             }
 
-            return await AddCoreAsync(document, account, makeDefault).ConfigureAwait(false);
+            return await AddCoreAsync(document, account, makeDefault, null, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -115,8 +210,14 @@ public sealed partial class AccountService : IAccountService
         }
     }
 
-    private Task<Result<Account>> AddCoreAsync(AccountsDocument document, Account account, bool makeDefault)
+    private Task<Result<Account>> AddCoreAsync(
+        AccountsDocument document,
+        Account account,
+        bool makeDefault,
+        AccountCredentials? credentials,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         document.Accounts.Add(account);
         if (makeDefault || document.DefaultAccountId is null)
         {
@@ -138,6 +239,15 @@ public sealed partial class AccountService : IAccountService
             if (account is null)
             {
                 return Result.Fail("account.not_found", "账户不存在。");
+            }
+
+            if (account.Type == AccountType.Microsoft)
+            {
+                var removeCredentials = await _credentials.RemoveAsync(accountId, cancellationToken).ConfigureAwait(false);
+                if (!removeCredentials.IsSuccess)
+                {
+                    return removeCredentials;
+                }
             }
 
             document.Accounts.Remove(account);
