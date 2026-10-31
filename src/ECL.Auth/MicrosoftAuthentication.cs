@@ -74,13 +74,14 @@ public sealed class MicrosoftAuthenticationService : IMicrosoftAuthenticationSer
         });
 
         var contextTask = listener.GetContextAsync().WaitAsync(cancellationToken);
-        await openBrowser(authorize.Uri).ConfigureAwait(false);
+        var browserTask = openBrowser(authorize.Uri);
         var context = await contextTask.ConfigureAwait(false);
         var query = context.Request.QueryString;
         var returnedState = query["state"];
         var error = query["error"];
         var code = query["code"];
         await WriteBrowserResponseAsync(context.Response, error is null ? "登录完成，请返回 ECL。" : "登录失败，请返回 ECL 查看错误。").ConfigureAwait(false);
+        await browserTask.ConfigureAwait(false);
 
         if (!string.Equals(state, returnedState, StringComparison.Ordinal))
         {
