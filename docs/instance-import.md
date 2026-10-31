@@ -55,7 +55,9 @@ dotnet test tests/ECL.Tests/ECL.Tests.csproj --filter FullyQualifiedName~ImportR
 dotnet test tests/ECL.Tests/ECL.Tests.csproj
 ```
 
-## 4. 验证记录
+## 4. 历史验证记录
+
+以下结果记录于 2026-10-31，仅适用于当时执行的代码与提交，不代表当前分支 HEAD 已重新运行验证。
 
 - 2026-10-31，Windows 10/11 + .NET SDK 10.0.403：
   `dotnet test tests/ECL.Tests/ECL.Tests.csproj -c Debug` → 296 通过，0 失败；
