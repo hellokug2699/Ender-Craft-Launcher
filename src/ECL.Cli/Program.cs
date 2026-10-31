@@ -114,6 +114,9 @@ internal static class Program
           account list [--json]           列出账户
           account add-offline <名称> [--default]
                                           添加离线账户
+          account login-microsoft [--default]
+                                          打开浏览器完成 Microsoft 登录（实机验证用）
+          account refresh [账户ID]        静默刷新 Microsoft 凭据（不打开浏览器）
           account remove <账户ID>         删除账户
           account default <账户ID>        设为默认账户
 

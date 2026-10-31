@@ -57,6 +57,37 @@ public sealed class AccountServiceTests
     }
 
     [Fact]
+    public async Task AllowsSameNameForDifferentAccountTypes()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var accounts = provider.GetRequiredService<IAccountService>();
+
+        var offline = await accounts.AddOfflineAsync("hellokug");
+        Assert.True(offline.IsSuccess);
+
+        var thirdParty = await accounts.AddAsync(new Account
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Type = AccountType.ThirdParty,
+            Name = "hellokug",
+            Uuid = "0123456789abcdef0123456789abcdef",
+        });
+        Assert.True(thirdParty.IsSuccess, thirdParty.Error?.ToString());
+        Assert.Equal(2, (await accounts.GetAccountsAsync()).Count);
+
+        var duplicate = await accounts.AddAsync(new Account
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Type = AccountType.ThirdParty,
+            Name = "HELLOKUG",
+            Uuid = "fedcba9876543210fedcba9876543210",
+        });
+        Assert.False(duplicate.IsSuccess);
+        Assert.Equal("account.duplicate", duplicate.Error?.Code);
+    }
+
+    [Fact]
     public async Task AccountsPersistAcrossServiceInstances()
     {
         using var environment = new TestEnvironment();

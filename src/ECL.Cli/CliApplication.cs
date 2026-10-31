@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Ecl.Auth;
@@ -503,7 +504,7 @@ internal sealed class CliApplication
         {
             Console.WriteLine();
             Console.WriteLine("命令：");
-            Console.WriteLine(report.CommandLine);
+            Console.WriteLine(SecretRedaction.CommandLine(report.CommandLine));
         }
     }
 
@@ -771,6 +772,94 @@ internal sealed class CliApplication
                     }
 
                     Console.WriteLine($"已添加离线账户 {result.Value!.Name} ({result.Value.Uuid})");
+                    return 0;
+                }
+
+            case "login-microsoft":
+                {
+                    var authentication = _provider.GetRequiredService<IMicrosoftAuthenticationService>();
+                    var settings = _provider.GetRequiredService<ISettingsService>();
+                    var clientId = settings.Get<string>("auth.microsoftClientId")?.Trim();
+                    if (string.IsNullOrWhiteSpace(clientId))
+                    {
+                        return WriteError(new EclError("auth.invalid_client_id", "未配置 Microsoft Client ID。"));
+                    }
+
+                    // 仅供实机验证的诊断入口：必须由用户主动触发，不会在启动时自动登录。
+                    Console.WriteLine($"Microsoft Client ID: {clientId}");
+                    Console.WriteLine("按回车后 ECL 将打开系统默认浏览器；请在浏览器中自行完成 Microsoft 登录。");
+                    Console.ReadLine();
+
+                    Result<Account> result;
+                    using (var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5)))
+                    {
+                        try
+                        {
+                            result = await authentication
+                                .SignInAsync(new MicrosoftAuthenticationOptions { ClientId = clientId }, OpenBrowserAsync, timeout.Token)
+                                .ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            return WriteError(new EclError("auth.callback_timeout", "等待浏览器回调超时（5 分钟），未收到授权码。"));
+                        }
+                    }
+
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    var added = await accounts
+                        .AddAsync(result.Value!, _commandLine.HasFlag("default"))
+                        .ConfigureAwait(false);
+                    if (!added.IsSuccess)
+                    {
+                        return WriteError(added.Error);
+                    }
+
+                    Console.WriteLine($"Microsoft 账户登录成功：{added.Value!.Name}");
+                    Console.WriteLine($"  Minecraft UUID: {added.Value.Uuid}");
+                    Console.WriteLine($"  ECL 账户 ID   : {added.Value.Id}");
+                    return 0;
+                }
+
+            case "refresh":
+                {
+                    var settings = _provider.GetRequiredService<ISettingsService>();
+                    var clientId = settings.Get<string>("auth.microsoftClientId")?.Trim();
+                    if (string.IsNullOrWhiteSpace(clientId))
+                    {
+                        return WriteError(new EclError("auth.invalid_client_id", "未配置 Microsoft Client ID。"));
+                    }
+
+                    var accountId = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(accountId))
+                    {
+                        var defaultAccount = await accounts.GetDefaultAccountAsync().ConfigureAwait(false);
+                        if (defaultAccount is null)
+                        {
+                            return WriteError(new EclError("account.not_found", "没有可刷新的默认账户。"));
+                        }
+
+                        accountId = defaultAccount.Id;
+                    }
+
+                    Console.WriteLine($"静默刷新账户 {accountId}（不会打开浏览器）…");
+                    var refreshed = await accounts
+                        .RefreshAsync(accountId, new MicrosoftAuthenticationOptions { ClientId = clientId })
+                        .ConfigureAwait(false);
+                    if (!refreshed.IsSuccess)
+                    {
+                        return WriteError(refreshed.Error);
+                    }
+
+                    Console.WriteLine($"刷新成功：{refreshed.Value!.Name}");
+                    if (refreshed.Value.MinecraftTokenExpiresAt is { } expiresAt)
+                    {
+                        Console.WriteLine($"  Minecraft token 有效期至：{expiresAt.ToLocalTime():yyyy-MM-dd HH:mm:ss zzz}");
+                    }
+
                     return 0;
                 }
 
@@ -1617,6 +1706,13 @@ internal sealed class CliApplication
     {
         Console.WriteLine(Program.HelpText);
         return 0;
+    }
+
+    private static Task OpenBrowserAsync(Uri uri)
+    {
+        Console.WriteLine($"正在打开系统浏览器：{uri.GetLeftPart(UriPartial.Path)}");
+        Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        return Task.CompletedTask;
     }
 
     private int UsageError(string message)

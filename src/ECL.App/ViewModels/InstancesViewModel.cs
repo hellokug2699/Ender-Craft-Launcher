@@ -28,6 +28,7 @@ public sealed partial class InstancesViewModel : ObservableObject
 {
     private readonly IInstanceService _instances;
     private readonly IAccountService _accounts;
+    private readonly IMicrosoftAuthenticationService _microsoftAuthentication;
     private readonly ILaunchService _launchService;
     private readonly IVersionInstallService _installService;
     private readonly ISettingsService _settings;
@@ -255,6 +256,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     public InstancesViewModel(
         IInstanceService instances,
         IAccountService accounts,
+        IMicrosoftAuthenticationService microsoftAuthentication,
         ILaunchService launchService,
         IVersionInstallService installService,
         ISettingsService settings,
@@ -273,6 +275,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     {
         _instances = instances;
         _accounts = accounts;
+        _microsoftAuthentication = microsoftAuthentication;
         _launchService = launchService;
         _installService = installService;
         _settings = settings;
@@ -961,7 +964,8 @@ public sealed partial class InstancesViewModel : ObservableObject
                 LaunchSteps.Add(new LaunchStepItemViewModel(step, _localizer));
             }
 
-            LaunchCommandPreview = report.CommandLine ?? string.Empty;
+            // 命令预览会展示给用户（也可能被截图），token 只保留两端、中间脱敏。
+            LaunchCommandPreview = SecretRedaction.CommandLine(report.CommandLine ?? string.Empty);
             var launchReady = report.Success && report.Steps.All(step => step.Status is LaunchStepStatus.Success or LaunchStepStatus.Skipped);
             LaunchStatus = _localizer.Get(launchReady ? "instances.healthLaunchReady" : "instances.healthLaunchIssues");
             var modSummary = GetModHealthSummary is null
@@ -1074,6 +1078,87 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
 
         StatusMessage = _localizer.Get("instances.accountAdded", result.Value!.Name);
+    }
+
+    /// <summary>
+    /// 实机验证入口：只有用户主动点击才会打开浏览器并开始 Microsoft 登录。
+    /// 启动器不会在启动时自动登录，也不会代替用户输入凭据。
+    /// </summary>
+    [RelayCommand]
+    private async Task SignInMicrosoftAsync()
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        var clientId = _settings.Get<string>("auth.microsoftClientId")?.Trim();
+        if (string.IsNullOrWhiteSpace(clientId))
+        {
+            StatusMessage = _localizer.Get("instances.microsoftSignInFailed", "auth.invalid_client_id", string.Empty);
+            return;
+        }
+
+        IsBusy = true;
+        StatusMessage = _localizer.Get("instances.microsoftSigningIn");
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            Result<Account> result;
+            try
+            {
+                result = await _microsoftAuthentication
+                    .SignInAsync(new MicrosoftAuthenticationOptions { ClientId = clientId }, OpenBrowserAsync, timeout.Token)
+                    .ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                StatusMessage = _localizer.Get(
+                    "instances.microsoftSignInFailed",
+                    "auth.callback_timeout",
+                    _localizer.Get("instances.microsoftSignInTimeout"));
+                return;
+            }
+
+            if (!result.IsSuccess)
+            {
+                StatusMessage = _localizer.Get(
+                    "instances.microsoftSignInFailed",
+                    result.Error!.Code,
+                    result.Error.Message);
+                return;
+            }
+
+            var added = await _accounts
+                .AddAsync(result.Value!, makeDefault: Accounts.Count == 0)
+                .ConfigureAwait(true);
+            if (!added.IsSuccess)
+            {
+                StatusMessage = added.Error!.Message;
+                return;
+            }
+
+            await RefreshAccountsAsync().ConfigureAwait(true);
+            SelectedAccount = Accounts.FirstOrDefault(item => item.Id == added.Value!.Id) ?? SelectedAccount;
+            StatusMessage = _localizer.Get("instances.microsoftSignedIn", added.Value!.Name);
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = _localizer.Get(
+                "instances.microsoftSignInFailed",
+                "auth.exception",
+                exception.Message);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private static Task OpenBrowserAsync(Uri uri)
+    {
+        Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        return Task.CompletedTask;
     }
 
     partial void OnSelectedNewLoaderChanged(LoaderChoiceViewModel? value)
@@ -1580,7 +1665,7 @@ public sealed partial class InstancesViewModel : ObservableObject
                 LaunchSteps.Add(new LaunchStepItemViewModel(step, _localizer));
             }
 
-            LaunchCommandPreview = report.CommandLine ?? string.Empty;
+            LaunchCommandPreview = SecretRedaction.CommandLine(report.CommandLine ?? string.Empty);
             LaunchStatus = report.Success
                 ? _localizer.Get(dryRun ? "instances.dryRunSucceeded" : "instances.launchSucceeded")
                 : _localizer.Get("instances.launchFailed");
@@ -1685,7 +1770,12 @@ public sealed partial class AccountItemViewModel : ObservableObject
         Model = model;
         Id = model.Id;
         IsDefault = isDefault;
-        DisplayName = $"{model.Name} · {localizer.Get("accounts.offline")}";
+        DisplayName = $"{model.Name} · {localizer.Get(model.Type switch
+        {
+            AccountType.Microsoft => "accounts.microsoft",
+            AccountType.ThirdParty => "accounts.thirdParty",
+            _ => "accounts.offline",
+        })}";
     }
 
     public Account Model { get; }

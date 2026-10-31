@@ -29,6 +29,10 @@ public sealed record Account
     [JsonIgnore]
     public string? RefreshToken { get; init; }
 
+    /// <summary>Transient Minecraft access token expiry. Never serialize this into accounts.json.</summary>
+    [JsonIgnore]
+    public DateTimeOffset? MinecraftTokenExpiresAt { get; init; }
+
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
 }
 
