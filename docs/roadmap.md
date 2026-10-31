@@ -22,11 +22,12 @@ ECL 是面向 Windows 的 Minecraft 启动器，长期目标是达到 HMCL / PCL
 
 当前仓库已实现原版安装与启动、Java 管理、Fabric / Forge / NeoForge / Cleanroom、OptiFine 显式安装、Mod 管理、Modrinth / CurseForge 整合包导入导出、CurseForge 与 Modrinth 搜索和安装、统一来源过滤、`.mrpack` 下载/自动建实例导入、可配置实例下载位置（.minecraft 目录）、自动版本隔离、资源包和光影包文件管理及启用状态（写入 `options.txt`）、崩溃分析、脱敏诊断包、下载暂停/恢复、自定义 JVM 预设、WPF 与 CLI、单元测试及 CI。
 
+Microsoft 正式账户认证链已经完成真实 Windows 11 实机验证：使用 OAuth Authorization Code + PKCE，经 Xbox Live、XSTS、Minecraft Services 完成 Java Edition entitlement 与 profile 验证；敏感凭据使用 Windows DPAPI 保存，并支持不打开浏览器的静默刷新与 refresh token rotation。真实测试中发现的 token JSON 映射、Xbox/XSTS JSON 大小写、localhost loopback、跨类型同名账户和 token 脱敏问题均已修复。
+
 WPF 外壳已完成 launcher-first 重构：页面为「主页 / 下载 / 实例 / 内容 / 设置 / 关于」。主页只保留启动与新版本情报；下载页合并实例下载与 Mod/整合包/数据包/资源包/光影包下载，并提供「全部 / 仅 CurseForge / 仅 Modrinth」来源过滤；实例页只负责管理与启动；内容页只管理已安装内容。控件级主题（按钮、输入框、下拉框、复选框、页签、列表选中态、滚动条与提示框）已统一为 ECL 深色视觉，并内嵌 HarmonyOS Sans SC 作为界面字体；浅色模式已移除。
 
 已知未完成或受限项：
 
-- [!] Microsoft OAuth 及 Xbox / XSTS / Minecraft Services 认证链路：受应用注册 / OAuth 审核条件影响；不能以离线账户模拟替代真实认证。
 - [ ] authlib-injector 第三方认证。
 - [ ] Mod 更新检查、可选依赖选择及严格依赖版本范围语义。
 - [ ] 下载页分页 / 无限滚动与更细的结果筛选（分类、排序）。
@@ -46,11 +47,11 @@ WPF 外壳已完成 launcher-first 重构：页面为「主页 / 下载 / 实例
 
 ### A1. 发布前基线与回归保护
 
-- [ ] 在 Windows CI 中验证 Release 构建、完整测试和 WPF 项目构建。
-- [ ] 在 Linux CI 中验证 Core / CLI / Tests 可构建、测试可运行。
+- [x] 在 Windows CI 中验证 Release 构建、完整测试和 WPF 项目构建。
+- [x] 在 Linux CI 中验证 Core / CLI / Tests 可构建、测试可运行。
 - [~] 统一执行 `dotnet format` 检查和静态分析；`dotnet format --verify-no-changes` 已修复现存问题并作为 Windows CI 门槛，静态分析（分析器/警告即错误）仍待补齐。
 - [ ] 为关键用户流程补充集成级回归测试：创建实例 → 安装原版 → 安装加载器 → Dry Run → 真实启动所需前置条件检查。
-- [ ] 记录测试结果、已知限制和可复现的失败步骤；不以测试数量单独衡量覆盖质量。
+- [x] 记录 Microsoft 认证实机测试结果、已知限制和可复现的失败步骤，并将实机发现的问题形成回归测试任务。
 
 **验收门槛**
 - Release 构建与现有测试通过。
@@ -84,7 +85,7 @@ WPF 外壳已完成 launcher-first 重构：页面为「主页 / 下载 / 实例
 ### A4. 诊断与无障碍收尾
 
 - [ ] 完善键盘焦点顺序、焦点可见性、读屏名称与常用操作键盘可达性。
-- [ ] 检查日志和诊断包的令牌、用户名、路径等敏感字段脱敏规则。
+- [x] 检查并修复日志、诊断包、CLI 输出和 GUI 命令预览中的访问令牌脱敏规则。
 - [ ] 为安装 / 启动失败提供稳定错误代码、用户可理解消息和下一步建议。
 
 **验收门槛**
@@ -118,16 +119,16 @@ WPF 外壳已完成 launcher-first 重构：页面为「主页 / 下载 / 实例
 
 ### B1. 账户系统
 
-- [!] Microsoft OAuth：先确认应用注册、授权流程和所需审核条件；条件未满足前不得把该项排入无条件执行队列。
-- [ ] 在外部条件满足后实现 Microsoft 登录、Xbox / XSTS / Minecraft Services 链路、令牌刷新与失效处理。
-- [ ] 使用 Windows DPAPI 保护需要持久化的敏感令牌；明确退出登录、令牌失效和数据迁移行为。
+- [x] Microsoft OAuth：应用注册、授权流程和所需审核条件已满足，并完成真实 Windows 实机验证。
+- [x] 实现 Microsoft 登录、Xbox / XSTS / Minecraft Services 链路、Java Edition entitlement / profile 检查与令牌刷新。
+- [x] 使用 Windows DPAPI 保护持久化敏感令牌；refresh token rotation 会保存新的 refresh token。
 - [ ] 实现 authlib-injector 第三方认证，并将认证协议适配限制在认证模块内。
-- [ ] 完成账户管理 UI、默认账户选择和错误恢复流程。
+- [~] 完成账户管理 UI、默认账户选择和错误恢复流程；当前已支持 Microsoft 登录、账户类型展示、默认账户和基础错误提示，注销、refresh 失效后的重新授权状态及完整账户中心仍待完善。
 
 **验收门槛**
-- 真实账号流程经过可重复的端到端验证；不以 Mock 测试冒充线上认证成功。
-- 令牌不进入日志、诊断包、命令预览或普通配置文件。
-- 登录失败、取消、令牌过期和撤销均有明确状态，不影响离线账户的现有能力。
+- [x] 真实账号流程经过可重复的端到端实机验证；不以 Mock 测试冒充线上认证成功。
+- [x] 令牌不进入日志、诊断包、命令预览或普通配置文件；展示时仅允许受控脱敏。
+- [~] 登录失败、取消、令牌过期和撤销均有明确状态；主动取消和常见刷新路径已处理，refresh token 撤销后的完整重新授权体验仍待完善。
 
 ### B2. 实例与整合包工作流
 
@@ -245,12 +246,12 @@ WPF 外壳已完成 launcher-first 重构：页面为「主页 / 下载 / 实例
 
 ## 近期推荐顺序
 
-1. 建立并确认当前 Windows / Linux CI 基线。
-2. 完成 Launcher UI 第一轮收尾，并在 Windows WPF CI 中验证全部页面。
-3. 完成资源包 / 光影包启用状态闭环（A2 已完成）。
-4. 处理 Mod 依赖匹配与更新检查的设计，再分阶段实现。
-5. 收敛诊断、无障碍与数据安全缺口。
-6. 单独评估 Microsoft OAuth 外部条件；不让它阻塞可独立完成的工作。
-7. 决定发布包方案，再实现签名验证与自更新。
+1. 固化当前 Windows / Linux CI 基线，并为本次 Microsoft 实机暴露的协议问题补充自动化回归测试。
+2. 完善 Microsoft 账户生命周期：refresh 失效后的重新授权、注销与凭据清理，以及完整账户中心 UI。
+3. 完成关键用户流程的集成级回归测试：创建实例 → 安装原版 → 安装加载器 → Dry Run → 真实启动所需前置条件检查。
+4. 完成 Launcher UI 第一轮收尾与全部 WPF 页面资源 / 绑定 / 缩放回归。
+5. 处理 Mod 依赖匹配与更新检查的设计，再分阶段实现。
+6. 收敛诊断、无障碍与数据安全缺口。
+7. 设计并实现正式安装包、签名验证与自更新。
 
 不要同时启动多个会修改同一公共接口或同一 UI 页面的大任务。优先交付可独立测试、可审查、可回滚的小变更。
