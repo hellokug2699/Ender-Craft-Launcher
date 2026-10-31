@@ -59,16 +59,15 @@ public sealed partial class MainViewModel : ObservableObject
             new NavItemViewModel("home", localizer.Get("nav.home"), home),
             new NavItemViewModel("download", localizer.Get("nav.download"), download),
             new NavItemViewModel("instances", localizer.Get("nav.instances"), instances),
-            new NavItemViewModel("content", localizer.Get("nav.content"), mods),
             new NavItemViewModel("settings", localizer.Get("nav.settings"), settings),
             new NavItemViewModel("about", localizer.Get("nav.about"), about),
         ];
 
         _selectedNavItem = NavItems[0];
         _home.Navigate = NavigateTo;
+        _home.OpenInstanceWorkspace = OpenSelectedInstanceWorkspace;
         _instances.GetModHealthSummary = _mods.GetHealthSummaryAsync;
         _mods.SearchDependency = OpenDependencySearch;
-        _instances.NavigateToContent = OpenContentForInstance;
         _instances.NavigateToDetails = OpenInstanceDetails;
         _instances.NavigateBackFromDetails = BackToInstances;
         VersionText = $"ECL {typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0"}";
@@ -90,10 +89,16 @@ public sealed partial class MainViewModel : ObservableObject
         NavigateTo("download");
     }
 
-    private void OpenContentForInstance(string instanceId)
+    /// <summary>主页“已安装内容”直接进入选中实例的工作区；没有选中实例时回到实例库。</summary>
+    private void OpenSelectedInstanceWorkspace()
     {
-        _mods.SelectInstance(instanceId);
-        NavigateTo("content");
+        if (_instances.SelectedInstance is { } instance)
+        {
+            OpenInstanceDetails(instance.Model.Id);
+            return;
+        }
+
+        NavigateTo("instances");
     }
 
     private void OpenInstanceDetails(string instanceId)
@@ -101,6 +106,9 @@ public sealed partial class MainViewModel : ObservableObject
         _mods.SelectInstance(instanceId);
         _showingInstanceDetails = true;
         OnPropertyChanged(nameof(CurrentPage));
+
+        // 工作区里的“模组与内容”使用最新的实例列表与扫描结果。
+        _ = _mods.ActivateAsync();
     }
 
     private void BackToInstances()
@@ -133,9 +141,6 @@ public sealed partial class MainViewModel : ObservableObject
 
         switch (value.Page)
         {
-            case ModsViewModel mods:
-                _ = mods.ActivateAsync();
-                break;
             case DownloadViewModel download:
                 _ = download.ActivateAsync();
                 break;

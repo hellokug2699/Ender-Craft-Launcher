@@ -125,7 +125,17 @@
                         </StackPanel>
                         <StackPanel Grid.Column="2">
                             <TextBlock Text="{loc:Loc Key=instance.detail.memory}" Style="{StaticResource LabelText}" />
-                            <TextBox Text="{Binding Instances.InstanceMemoryMbText, UpdateSourceTrigger=PropertyChanged}" Margin="0,6,0,0" ToolTip="{loc:Loc Key=instance.detail.memoryHint}" />
+                            <CheckBox Content="{loc:Loc Key=instance.detail.memoryUseGlobal}"
+                                      IsChecked="{Binding Instances.UseGlobalMemory, Mode=TwoWay}"
+                                      Margin="0,0,0,6" />
+                            <TextBox Text="{Binding Instances.InstanceMemoryMbText, UpdateSourceTrigger=PropertyChanged}"
+                                     IsEnabled="{Binding Instances.IsInstanceMemoryEditable}"
+                                     Visibility="{Binding Instances.IsInstanceMemoryEditable, Converter={StaticResource BoolToVisibility}}"
+                                     ToolTip="{loc:Loc Key=instance.detail.memoryHint}" />
+                            <TextBlock Text="{Binding Instances.GlobalMemoryText}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="9"
+                                       Margin="0,5,0,0" />
                         </StackPanel>
                         <StackPanel Grid.Column="4">
                             <TextBlock Text="{loc:Loc Key=instance.detail.presetHelp}" Style="{StaticResource LabelText}" />
@@ -157,7 +167,7 @@
                     <Grid Margin="0,10,0,0">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="150" /></Grid.ColumnDefinitions>
                         <TextBox Text="{Binding Mods.ModSearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="{loc:Loc Key=mods.searchPlaceholder}" />
-                        <ComboBox Grid.Column="2" ItemsSource="{Binding Mods.ModFilters}" SelectedItem="{Binding Mods.SelectedModFilter, Mode=TwoWay}" DisplayMemberPath="Title" />
+                        <ComboBox Grid.Column="2" ItemsSource="{Binding Mods.ModFilters}" SelectedItem="{Binding Mods.SelectedModFilter, Mode=TwoWay}" ItemTemplate="{StaticResource TitleItemTemplate}" />
                     </Grid>
                     <ListBox ItemsSource="{Binding Mods.FilteredMods}" SelectedItem="{Binding Mods.SelectedMod, Mode=TwoWay}" Height="230" Margin="0,12,0,0" BorderBrush="{DynamicResource BorderSoftBrush}" Background="{DynamicResource SurfaceBrush}">
                         <ListBox.ItemTemplate>
@@ -176,42 +186,108 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Content="{loc:Loc Key=mods.searchDependency}" Command="{Binding Mods.SearchSelectedDependencyCommand}" Style="{StaticResource GhostButton}" />
-                        <Button Content="{loc:Loc Key=mods.enableDependencies}" Command="{Binding Mods.EnableSelectedDependenciesCommand}" Style="{StaticResource PrimaryButton}" />
-                        <Button Content="{loc:Loc Key=instance.detail.toggleMod}" Command="{Binding Mods.ToggleSelectedCommand}" Style="{StaticResource GhostButton}" />
+                        <Button Content="{loc:Loc Key=instance.detail.toggleMod}" Command="{Binding Mods.ToggleSelectedCommand}" Style="{StaticResource PrimaryButton}" />
                         <Button Content="{loc:Loc Key=instance.detail.deleteMod}" Command="{Binding Mods.DeleteSelectedCommand}" Style="{StaticResource DangerButton}" Margin="8,0,0,0" />
-                        <Button Content="{loc:Loc Key=instance.detail.importModpack}" Command="{Binding Mods.ImportModpackCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
-                        <Button Content="{loc:Loc Key=instance.detail.exportModpack}" Command="{Binding Mods.ExportModpackCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
                     </StackPanel>
-                    <Border Height="1" Background="{DynamicResource BorderSoftBrush}" Margin="0,14,0,12" />
-                    <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+
+                    <!-- 依赖处理：下载缺失依赖 / 启用已安装依赖 / 搜索依赖 / 批量启用禁用 -->
+                    <Expander Style="{StaticResource SectionExpander}" IsExpanded="True">
+                        <Expander.Header>
+                            <TextBlock Text="{loc:Loc Key=mods.section.dependencies}"
+                                       FontSize="12"
+                                       FontWeight="SemiBold" />
+                        </Expander.Header>
                         <StackPanel>
-                            <TextBlock Text="{loc:Loc Key=mods.packsTitle}" Style="{StaticResource LabelText}" />
-                            <TextBlock Text="{Binding Mods.PackSummary}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="0,3,0,0" />
+                            <TextBlock Text="{loc:Loc Key=mods.dependenciesHint}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="9"
+                                       TextWrapping="Wrap"
+                                       Margin="0,2,0,8" />
+                            <WrapPanel>
+                                <Button Content="{loc:Loc Key=mods.downloadDependencies}"
+                                        Command="{Binding Mods.DownloadMissingDependenciesCommand}"
+                                        Style="{StaticResource PrimaryButton}"
+                                        Margin="0,0,8,8" />
+                                <Button Content="{loc:Loc Key=mods.enableDependencies}"
+                                        Command="{Binding Mods.EnableSelectedDependenciesCommand}"
+                                        Style="{StaticResource GhostButton}"
+                                        Margin="0,0,8,8" />
+                                <Button Content="{loc:Loc Key=mods.searchDependency}"
+                                        Command="{Binding Mods.SearchSelectedDependencyCommand}"
+                                        Style="{StaticResource GhostButton}"
+                                        Margin="0,0,8,8" />
+                            </WrapPanel>
+                            <WrapPanel>
+                                <Button Content="{loc:Loc Key=mods.enableAll}"
+                                        Command="{Binding Mods.EnableAllCommand}"
+                                        Style="{StaticResource GhostButton}"
+                                        Margin="0,0,8,8" />
+                                <Button Content="{loc:Loc Key=mods.disableAll}"
+                                        Command="{Binding Mods.DisableAllCommand}"
+                                        Style="{StaticResource GhostButton}"
+                                        Margin="0,0,8,8" />
+                            </WrapPanel>
                         </StackPanel>
-                        <ComboBox Grid.Column="1" ItemsSource="{Binding Mods.PackTypes}" SelectedItem="{Binding Mods.SelectedPackType, Mode=TwoWay}" DisplayMemberPath="Title" Width="150" />
-                    </Grid>
-                    <TextBlock Text="{Binding Mods.PackWarning}" Foreground="{DynamicResource WarningBrush}" FontSize="9" Margin="0,6,0,0" TextWrapping="Wrap" />
-                    <ListBox ItemsSource="{Binding Mods.Packs}" SelectedItem="{Binding Mods.SelectedPack, Mode=TwoWay}" Height="130" Margin="0,8,0,0" BorderBrush="{DynamicResource BorderSoftBrush}" Background="{DynamicResource SurfaceBrush}">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="5,3">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding Name}" FontSize="10" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
-                                    </StackPanel>
-                                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="9" VerticalAlignment="Center" />
-                                </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                        <Button Content="{loc:Loc Key=mods.packImport}" Command="{Binding Mods.ImportPackCommand}" Style="{StaticResource GhostButton}" />
-                        <Button Content="{loc:Loc Key=mods.packToggle}" Command="{Binding Mods.TogglePackCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
-                        <Button Content="{loc:Loc Key=common.delete}" Command="{Binding Mods.DeletePackCommand}" Style="{StaticResource DangerButton}" Margin="8,0,0,0" />
-                    </StackPanel>
+                    </Expander>
+
+                    <!-- 整合包导入 / 导出 -->
+                    <Expander Style="{StaticResource SectionExpander}" IsExpanded="False">
+                        <Expander.Header>
+                            <TextBlock Text="{loc:Loc Key=mods.section.modpack}"
+                                       FontSize="12"
+                                       FontWeight="SemiBold" />
+                        </Expander.Header>
+                        <WrapPanel Margin="0,4,0,0">
+                            <Button Content="{loc:Loc Key=instance.detail.importModpack}"
+                                    Command="{Binding Mods.ImportModpackCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    Margin="0,0,8,8" />
+                            <Button Content="{loc:Loc Key=instance.detail.exportModpack}"
+                                    Command="{Binding Mods.ExportModpackCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    Margin="0,0,8,8" />
+                        </WrapPanel>
+                    </Expander>
+
+                    <!-- 资源包与光影 -->
+                    <Expander Style="{StaticResource SectionExpander}" IsExpanded="False">
+                        <Expander.Header>
+                            <TextBlock Text="{loc:Loc Key=mods.section.packs}"
+                                       FontSize="12"
+                                       FontWeight="SemiBold" />
+                        </Expander.Header>
+                        <StackPanel>
+                            <Grid Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="{loc:Loc Key=mods.packsTitle}" Style="{StaticResource LabelText}" />
+                                    <TextBlock Text="{Binding Mods.PackSummary}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="0,3,0,0" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding Mods.PackTypes}" SelectedItem="{Binding Mods.SelectedPackType, Mode=TwoWay}" ItemTemplate="{StaticResource TitleItemTemplate}" Width="150" />
+                            </Grid>
+                            <TextBlock Text="{Binding Mods.PackWarning}" Foreground="{DynamicResource WarningBrush}" FontSize="9" Margin="0,6,0,0" TextWrapping="Wrap" />
+                            <ListBox ItemsSource="{Binding Mods.Packs}" SelectedItem="{Binding Mods.SelectedPack, Mode=TwoWay}" Height="130" Margin="0,8,0,0" BorderBrush="{DynamicResource BorderSoftBrush}" Background="{DynamicResource SurfaceBrush}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="5,3">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Name}" FontSize="10" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="9" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button Content="{loc:Loc Key=mods.packImport}" Command="{Binding Mods.ImportPackCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                                <Button Content="{loc:Loc Key=mods.packToggle}" Command="{Binding Mods.TogglePackCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                                <Button Content="{loc:Loc Key=common.delete}" Command="{Binding Mods.DeletePackCommand}" Style="{StaticResource DangerButton}" Margin="0,0,8,8" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Expander>
+
                     <TextBlock Text="{Binding Mods.StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
@@ -245,11 +321,6 @@
                 <StackPanel>
                     <TextBlock Text="{loc:Loc Key=instance.detail.latestLaunch}" Style="{StaticResource SectionText}" />
                     <TextBlock Text="{Binding Instances.HealthReportText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
-                    <Button Content="{loc:Loc Key=instances.manageModIssues}" Command="{Binding Instances.ManageInstanceModsCommand}" Style="{StaticResource GhostButton}" HorizontalAlignment="Left" Margin="0,8,0,0" />
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                        <Button Content="{loc:Loc Key=instances.java.download}" Command="{Binding Instances.DownloadJavaCommand}" Style="{StaticResource PrimaryButton}" />
-                        <Button Content="{loc:Loc Key=instances.repairFiles}" Command="{Binding Instances.RepairFilesCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
-                    </StackPanel>
                     <TextBlock Text="{Binding Instances.LaunchStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
                     <ItemsControl ItemsSource="{Binding Instances.LaunchSteps}" Margin="0,8,0,0">
                         <ItemsControl.ItemTemplate>

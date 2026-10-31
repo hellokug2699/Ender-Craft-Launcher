@@ -136,8 +136,33 @@
                         </StackPanel>
                         <StackPanel Margin="0,12,0,0">
                             <TextBlock Text="{loc:Loc Key=instances.version}" Style="{StaticResource LabelText}" />
-                            <TextBox Text="{Binding Game.NewInstanceVersion, UpdateSourceTrigger=PropertyChanged}"
-                                     ToolTip="{loc:Loc Key=instances.versionPlaceholder}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="10" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox ItemsSource="{Binding Game.VersionTypes}"
+                                          SelectedItem="{Binding Game.SelectedVersionType, Mode=TwoWay}"
+                                          ItemTemplate="{StaticResource TitleItemTemplate}" />
+                                <ComboBox Grid.Column="2"
+                                          ItemsSource="{Binding Game.GameVersions}"
+                                          SelectedItem="{Binding Game.SelectedGameVersion, Mode=TwoWay}"
+                                          ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
+                                <Button Grid.Column="3"
+                                        Content="{loc:Loc Key=instances.version.refresh}"
+                                        Command="{Binding Game.RefreshVersionsCommand}"
+                                        Style="{StaticResource GhostButton}"
+                                        Margin="10,0,0,0" />
+                            </Grid>
+                            <ProgressBar Height="3" Margin="0,8,0,0" IsIndeterminate="True"
+                                         Visibility="{Binding Game.IsLoadingVersions, Converter={StaticResource BoolToVisibility}}" />
+                            <TextBlock Text="{Binding Game.VersionStatus}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="10"
+                                       Margin="0,6,0,0"
+                                       TextWrapping="Wrap" />
                         </StackPanel>
                         <StackPanel Margin="0,12,0,0">
                             <TextBlock Text="{loc:Loc Key=instances.loader.title}" Style="{StaticResource LabelText}" />

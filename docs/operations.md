@@ -1,7 +1,7 @@
 # 任务进度与诊断（Operation）
 
 Operation 是 ECL 长时间任务的统一进度与诊断模型。当前实现覆盖**下载批次、Minecraft 安装、
-整合包导入、内容安装/下载、CurseForge Mod 安装与 Java 运行时下载**；备份/恢复、整合包导出、
+整合包导入、内容安装/下载、CurseForge Mod 安装、缺失依赖下载与 Java 运行时下载**；备份/恢复、整合包导出、
 启动、实例迁移与删除等任务尚未接入，仍使用各自的 `IProgress<T>` 或阶段报告。
 
 WPF 任务中心与 CLI 都只消费 `IOperationStore` 快照，不直接依赖具体业务服务，也不解析异常文本判断错误类型。
@@ -15,6 +15,7 @@ WPF 任务中心与 CLI 都只消费 `IOperationStore` 快照，不直接依赖�
 | 整合包导入 | `IModpackService.ImportAsync` | `Import` | 是 | 是 |
 | 内容安装 / 仅下载 / 整合包导入 | `IContentInstallService` 的四个入口 | `Install` / `Download` / `Import` | 是 | 是 |
 | CurseForge Mod 安装 | `ICurseForgeService.InstallAsync` | `Install` | 是 | 是 |
+| 缺失依赖下载 | `IModDependencyInstaller.InstallMissingAsync` | `Install` | 是 | 是 |
 | Java 运行时下载 | `IJavaInstallService.DownloadAsync`（含 `EnsureAsync`） | `Java` | 是 | 是 |
 | 启动、备份/恢复、整合包导出、迁移、删除、诊断包导出 | — | — | 否 | 否 |
 
@@ -77,6 +78,7 @@ Pending → Running ⇄ Retrying → Completed / Failed / Cancelled
 | 整合包导入 | `modpack.resolve`、`modpack.download`、`modpack.overrides` |
 | 内容安装/下载 | `content.resolve`、`content.resolveCurseForge`、`content.download`、`content.inspect`、`content.import` |
 | CurseForge Mod | `curseforge.resolve`、`curseforge.download`、`curseforge.done` |
+| 缺失依赖下载 | `mods.dependencies.scan`、`mods.dependencies.resolve`、`mods.dependencies.install`、`mods.dependencies.done` |
 | Java | `java.index`、`java.manifest`、`java.provider`、`java.download`、`java.extract`、`java.files`、`java.completed` |
 
 `StageText` 由业务服务通过 `ILocalizer` 生成。UI 先查 `operations.stage.<stageid>` 本地化键，
@@ -204,6 +206,16 @@ using var operation = new OperationProgressBridge<InstallProgress>(
 - `EnsureAsync` 在已找到兼容 Java 时直接返回，不登记任务；只有真正下载时才出现任务。
 - 业务失败保留错误码，例如 `java.provider_unsupported` 归因为配置。
 
+### 7.7 缺失依赖下载
+
+`IModDependencyInstaller.InstallMissingAsync` 登记 `Install` 任务：
+
+- 标题为 `mods.dependencies.taskTitle`（“下载缺失依赖 · {实例名}”），来源显示 `Modrinth / CurseForge`。
+- 阶段为扫描 → 逐个匹配 → 安装 → 完成；`Completed/Total` 表示已处理的依赖数量。
+- 每个依赖先按 mod id 在 Modrinth 精确匹配，再回退 CurseForge；无法匹配时只加入“未匹配”，不做模糊安装。
+- 依赖安装复用 `IContentInstallService`，因此嵌套的内容安装/下载任务会被 `OperationScope` 合并到当前任务。
+- 扫描、匹配或安装失败会保留业务错误码；取消与失败重试由任务中心转交。
+
 ## 8. WPF 任务中心
 
 `OperationCenterViewModel` 订阅 `IOperationStore.Changed`，在主窗口底部显示：
@@ -254,18 +266,22 @@ using var operation = new OperationProgressBridge<InstallProgress>(
 
 业务接入用例（分别位于 `Install`、`Minecraft`、`Modrinth`、`CurseForge`、`Java`、`Cli` 测试目录）
 覆盖：安装只登记一个 `Install` 任务并完成、安装失败保留错误码与归因、整合包导入成功/失败、
-内容安装的嵌套任务合并、CurseForge 安装完成阶段、Java 下载完成阶段，以及 CLI 的阶段/重试/失败输出和
-“只跟踪第一个运行中任务”的行为。
+内容安装的嵌套任务合并、CurseForge 安装完成阶段、Java 下载完成阶段、缺失依赖按 Modrinth / CurseForge
+解析与未匹配/失败汇总，以及 CLI 的阶段/重试/失败输出和“只跟踪第一个运行中任务”的行为。
+
+版本目录（`VersionCatalogTests`）覆盖正式版 / 快照版 / 愚人节版分类、旧版过滤与清单缓存/刷新；
+这些用例属于实例创建 UI 的数据来源，不影响 Operation 本身。
 
 **本地验证（2026-10-31，Windows，.NET SDK 10.0.403）：**
 
 ```text
 dotnet build ECL.sln -c Release          → 0 warning / 0 error
 dotnet format ECL.sln --verify-no-changes → 无差异
-dotnet test tests/ECL.Tests/ECL.Tests.csproj -c Release → 360 项全部通过
+dotnet test tests/ECL.Tests/ECL.Tests.csproj -c Release → 377 项全部通过
 ```
 
-分类数量：`Ecl.Tests.Operations` 48、下载 27、安装 14、Modrinth/内容 13、Java 60、CurseForge 10、CLI 2。
+分类数量：`Ecl.Tests.Operations` 48、下载 27、安装 14、Minecraft 137（含版本目录与缺失依赖下载 16）、
+Modrinth/内容 13、Java 61、CurseForge 10、CLI 2。
 该记录只证明本次本地执行结果；本次变更尚未附带对应提交的 CI 运行结果。
 
 **历史记录：** 上一次文档提到的 CI run #169（提交 `fe0f9dc`）属于第一阶段的记录，
@@ -280,6 +296,7 @@ dotnet test tests/ECL.Tests/ECL.Tests.csproj -c Release → 360 项全部通过
 - 停滞阈值 20 秒、检查周期 2 秒，尚未做成设置项。
 - 只广播单一 `Changed` 事件，未拆分 `Started` / `StageChanged` / `Retrying` 等细粒度事件。
 - 安装任务按阶段统计项目数与字节；如果将来需要“整个安装的累计字节”，需要额外的全局总量来源，而不是把阶段值相加。
+- 缺失依赖只做 mod id 精确匹配；依赖声明与平台项目 slug 不一致时可能“未匹配”，此时需要用户手动搜索，不做模糊安装。
 
 ## 12. 接入示例
 

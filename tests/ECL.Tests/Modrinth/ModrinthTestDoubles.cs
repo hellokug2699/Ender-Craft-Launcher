@@ -15,6 +15,9 @@ internal sealed class FakeModrinthClient : IModrinthClient
 
     public Dictionary<string, ModrinthVersion> VersionsById { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>这些项目 ID / slug 返回 404，用于测试回退到其它来源。</summary>
+    public HashSet<string> MissingProjects { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public int SearchCalls { get; private set; }
 
     public int VersionCalls { get; private set; }
@@ -35,12 +38,15 @@ internal sealed class FakeModrinthClient : IModrinthClient
     public Task<Result<ModrinthProject>> GetProjectAsync(
         string projectIdOrSlug,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult(Result<ModrinthProject>.Ok(new ModrinthProject
-        {
-            Id = projectIdOrSlug,
-            Slug = projectIdOrSlug,
-            Title = projectIdOrSlug,
-        }));
+        Task.FromResult(MissingProjects.Contains(projectIdOrSlug)
+            ? Result<ModrinthProject>.Fail("modrinth.not_found", $"缺少测试项目 {projectIdOrSlug}")
+            : Result<ModrinthProject>.Ok(new ModrinthProject
+            {
+                Id = projectIdOrSlug,
+                Slug = projectIdOrSlug,
+                Title = projectIdOrSlug,
+                ProjectType = "mod",
+            }));
 
     public Task<Result<IReadOnlyList<ModrinthVersion>>> GetVersionsAsync(
         string projectIdOrSlug,

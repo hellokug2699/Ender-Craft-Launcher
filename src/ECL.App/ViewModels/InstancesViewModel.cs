@@ -42,6 +42,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IJavaSelectionService _javaSelection;
     private readonly IJavaInstallService _javaInstall;
     private readonly IVersionResolver _versionResolver;
+    private readonly IVersionCatalog _versionCatalog;
     private readonly IEulaService _eula;
     private readonly ILoaderCatalog _loaderCatalog;
     private readonly IDownloadController _downloads;
@@ -51,9 +52,8 @@ public sealed partial class InstancesViewModel : ObservableObject
     private bool _suppressAccountSelection;
     private bool _suppressJavaSelection;
     private bool _suppressJavaCheck;
-
-    /// <summary>打开内容管理页时，将目标实例同步到 Mod 管理页。</summary>
-    public Action<string>? NavigateToContent { get; set; }
+    private bool _suppressVersionReload;
+    private IReadOnlyList<MinecraftGameVersion> _allVersions = [];
 
     /// <summary>打开当前实例的独立工作区页面。</summary>
     public Action<string>? NavigateToDetails { get; set; }
@@ -78,6 +78,10 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     public ObservableCollection<LoaderChoiceViewModel> LoaderChoices { get; } = [];
 
+    public ObservableCollection<GameVersionTypeChoice> VersionTypes { get; } = [];
+
+    public ObservableCollection<VersionChoiceViewModel> GameVersions { get; } = [];
+
     public ObservableCollection<VersionChoiceViewModel> LoaderVersions { get; } = [];
 
     public ObservableCollection<VersionChoiceViewModel> FabricApiVersions { get; } = [];
@@ -97,7 +101,16 @@ public sealed partial class InstancesViewModel : ObservableObject
     private string _newInstanceName = string.Empty;
 
     [ObservableProperty]
-    private string _newInstanceVersion = "1.21.1";
+    private GameVersionTypeChoice? _selectedVersionType;
+
+    [ObservableProperty]
+    private VersionChoiceViewModel? _selectedGameVersion;
+
+    [ObservableProperty]
+    private bool _isLoadingVersions;
+
+    [ObservableProperty]
+    private string _versionStatus = string.Empty;
 
     [ObservableProperty]
     private LoaderChoiceViewModel? _selectedNewLoader;
@@ -170,6 +183,14 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     [ObservableProperty]
     private string _instanceMemoryMbText = string.Empty;
+
+    [ObservableProperty]
+    private bool _useGlobalMemory;
+
+    [ObservableProperty]
+    private string _globalMemoryText = string.Empty;
+
+    public bool IsInstanceMemoryEditable => !UseGlobalMemory;
 
     [ObservableProperty]
     private bool _isDownloadingJava;
@@ -270,6 +291,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         IJavaSelectionService javaSelection,
         IJavaInstallService javaInstall,
         IVersionResolver versionResolver,
+        IVersionCatalog versionCatalog,
         IEulaService eula,
         ILoaderCatalog loaderCatalog,
         IDownloadController downloads,
@@ -290,6 +312,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         _javaSelection = javaSelection;
         _javaInstall = javaInstall;
         _versionResolver = versionResolver;
+        _versionCatalog = versionCatalog;
         _eula = eula;
         _loaderCatalog = loaderCatalog;
         _downloads = downloads;
@@ -304,6 +327,21 @@ public sealed partial class InstancesViewModel : ObservableObject
         LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.NeoForge, _localizer.Get("instances.loader.neoforge")));
         LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Cleanroom, _localizer.Get("instances.loader.cleanroom")));
         _selectedNewLoader = LoaderChoices[0];
+
+        VersionTypes.Add(new GameVersionTypeChoice(
+            MinecraftVersionKind.Release,
+            _localizer.Get("instances.versionType.release")));
+        VersionTypes.Add(new GameVersionTypeChoice(
+            MinecraftVersionKind.Snapshot,
+            _localizer.Get("instances.versionType.snapshot")));
+        VersionTypes.Add(new GameVersionTypeChoice(
+            MinecraftVersionKind.AprilFools,
+            _localizer.Get("instances.versionType.aprilFools")));
+        _selectedVersionType = VersionTypes[0];
+
+        GlobalMemoryText = _localizer.Get(
+            "instance.detail.memoryGlobal",
+            _settings.Get<int>("java.defaultMemoryMb"));
 
         InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel(string.Empty, _localizer.Get("common.inherit")));
         InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel("default", _localizer.Get("option.java.jvmPreset.default")));
@@ -324,6 +362,116 @@ public sealed partial class InstancesViewModel : ObservableObject
         await RefreshAccountsAsync().ConfigureAwait(true);
         await RefreshInstancesAsync().ConfigureAwait(true);
         await RefreshJavaAsync().ConfigureAwait(true);
+        await LoadVersionsAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private Task RefreshVersionsAsync() => LoadVersionsAsync(refresh: true);
+
+    /// <summary>
+    /// 读取 Mojang 版本清单并按“正式版 / 快照版 / 愚人节版”过滤。
+    /// 清单较长，服务内部有缓存；刷新按钮才会强制重新读取。
+    /// </summary>
+    private async Task LoadVersionsAsync(bool refresh = false)
+    {
+        if (IsLoadingVersions)
+        {
+            return;
+        }
+
+        IsLoadingVersions = true;
+        VersionStatus = _localizer.Get("instances.version.loading");
+        try
+        {
+            var result = await _versionCatalog.GetVersionsAsync(refresh).ConfigureAwait(true);
+            if (!result.IsSuccess)
+            {
+                _allVersions = [];
+                GameVersions.Clear();
+                SelectedGameVersion = null;
+                VersionStatus = _localizer.Get("instances.version.failed", result.Error?.Message ?? string.Empty);
+                return;
+            }
+
+            _allVersions = result.Value!;
+            ApplyVersionFilter(keepSelection: false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _allVersions = [];
+            GameVersions.Clear();
+            SelectedGameVersion = null;
+            VersionStatus = _localizer.Get("instances.version.failed", exception.Message);
+        }
+        finally
+        {
+            IsLoadingVersions = false;
+        }
+    }
+
+    private void ApplyVersionFilter(bool keepSelection)
+    {
+        var kind = SelectedVersionType?.Kind ?? MinecraftVersionKind.Release;
+        var previous = keepSelection ? SelectedGameVersion?.Value : null;
+
+        _suppressVersionReload = true;
+        try
+        {
+            GameVersions.Clear();
+            foreach (var version in _allVersions.Where(version => version.Kind == kind))
+            {
+                GameVersions.Add(new VersionChoiceViewModel(
+                    version.Id,
+                    FormatVersionWithDate(version.Id, version.ReleasedAt)));
+            }
+
+            SelectedGameVersion = previous is null
+                ? GameVersions.FirstOrDefault()
+                : GameVersions.FirstOrDefault(version =>
+                      string.Equals(version.Value, previous, StringComparison.Ordinal))
+                  ?? GameVersions.FirstOrDefault();
+
+            VersionStatus = GameVersions.Count == 0
+                ? _localizer.Get("instances.version.empty")
+                : string.Empty;
+        }
+        finally
+        {
+            _suppressVersionReload = false;
+        }
+
+        _ = RefreshComponentsAsync();
+    }
+
+    partial void OnSelectedVersionTypeChanged(GameVersionTypeChoice? value)
+    {
+        if (!_initialized)
+        {
+            return;
+        }
+
+        ApplyVersionFilter(keepSelection: false);
+    }
+
+    partial void OnSelectedGameVersionChanged(VersionChoiceViewModel? value)
+    {
+        if (_initialized && !_suppressVersionReload)
+        {
+            _ = RefreshComponentsAsync();
+        }
+    }
+
+    partial void OnUseGlobalMemoryChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsInstanceMemoryEditable));
+
+        // 取消勾选时用全局值作为起点，避免用户面对一个空输入框。
+        if (!value && string.IsNullOrWhiteSpace(InstanceMemoryMbText))
+        {
+            InstanceMemoryMbText = _settings
+                .Get<int>("java.defaultMemoryMb")
+                .ToString(CultureInfo.InvariantCulture);
+        }
     }
 
     [RelayCommand]
@@ -380,10 +528,10 @@ public sealed partial class InstancesViewModel : ObservableObject
             return;
         }
 
-        var version = NewInstanceVersion.Trim();
-        if (version.Length == 0)
+        var version = SelectedGameVersion?.Value;
+        if (string.IsNullOrWhiteSpace(version))
         {
-            ComponentStatus = _localizer.Get("instances.versionRequired");
+            ComponentStatus = _localizer.Get("instances.version.select");
             return;
         }
 
@@ -697,11 +845,11 @@ public sealed partial class InstancesViewModel : ObservableObject
             return;
         }
 
-        var version = NewInstanceVersion.Trim();
+        var version = SelectedGameVersion?.Value;
         var name = NewInstanceName.Trim();
-        if (version.Length == 0)
+        if (string.IsNullOrWhiteSpace(version))
         {
-            StatusMessage = _localizer.Get("instances.versionRequired");
+            StatusMessage = _localizer.Get("instances.version.select");
             return;
         }
 
@@ -709,12 +857,6 @@ public sealed partial class InstancesViewModel : ObservableObject
         if (name.Length == 0)
         {
             name = version;
-        }
-
-        if (version.Length == 0)
-        {
-            StatusMessage = _localizer.Get("instances.versionRequired");
-            return;
         }
 
         var loader = SelectedNewLoader?.Id ?? LoaderKinds.Vanilla;
@@ -1098,12 +1240,7 @@ public sealed partial class InstancesViewModel : ObservableObject
             return;
         }
 
-        var clientId = _settings.Get<string>("auth.microsoftClientId")?.Trim();
-        if (string.IsNullOrWhiteSpace(clientId))
-        {
-            StatusMessage = _localizer.Get("instances.microsoftSignInFailed", "auth.invalid_client_id", string.Empty);
-            return;
-        }
+        var clientId = MicrosoftClientIdentity.DefaultClientId;
 
         IsBusy = true;
         StatusMessage = _localizer.Get("instances.microsoftSigningIn");
@@ -1333,11 +1470,12 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
 
         var memoryText = InstanceMemoryMbText.Trim();
-        if (memoryText.Length > 0 &&
-            (!int.TryParse(memoryText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var memoryMb) ||
+        if (!UseGlobalMemory &&
+            (memoryText.Length == 0 ||
+             !int.TryParse(memoryText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var memoryMb) ||
              memoryMb is < 1024 or > 65536))
         {
-            StatusMessage = "实例内存必须是 1024 至 65536 MB 之间的整数；留空则继承全局设置。";
+            StatusMessage = _localizer.Get("instances.memory.invalid");
             return;
         }
 
@@ -1354,30 +1492,44 @@ public sealed partial class InstancesViewModel : ObservableObject
             return;
         }
 
-        if (!_settings.TrySetRaw("instance.java.memoryMb", memoryText, instanceId, out var memoryError))
+        var memorySaved = UseGlobalMemory
+            ? _settings.TryClear("instance.java.memoryMb", instanceId, out var memoryError)
+            : _settings.TrySetRaw("instance.java.memoryMb", memoryText, instanceId, out memoryError);
+        if (!memorySaved)
         {
             StatusMessage = memoryError ?? "保存实例内存设置失败。";
             return;
         }
 
-        StatusMessage = "实例运行设置已保存。";
+        GlobalMemoryText = _localizer.Get(
+            "instance.detail.memoryGlobal",
+            _settings.Get<int>("java.defaultMemoryMb"));
+        StatusMessage = UseGlobalMemory
+            ? _localizer.Get("instances.memory.savedGlobal")
+            : _localizer.Get("instances.memory.saved");
     }
 
     private void LoadInstanceRuntimeSettings()
     {
+        GlobalMemoryText = _localizer.Get(
+            "instance.detail.memoryGlobal",
+            _settings.Get<int>("java.defaultMemoryMb"));
+
         if (SelectedInstance is null)
         {
             InstanceJvmArguments = string.Empty;
             InstanceJvmPreset = string.Empty;
             InstanceMemoryMbText = string.Empty;
+            UseGlobalMemory = true;
             return;
         }
 
         var instanceId = SelectedInstance.Model.Id;
         InstanceJvmArguments = _settings.Get<string?>("instance.java.extraArguments", instanceId) ?? string.Empty;
         InstanceJvmPreset = _settings.Get<string?>("instance.java.jvmPreset", instanceId) ?? string.Empty;
-        InstanceMemoryMbText = _settings.Get<int?>("instance.java.memoryMb", instanceId)?
-            .ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        var instanceMemory = _settings.Get<int?>("instance.java.memoryMb", instanceId);
+        UseGlobalMemory = instanceMemory is null;
+        InstanceMemoryMbText = instanceMemory?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
     }
 
     /// <summary>实例库只负责展示；打开工作区时才进入运行设置、模组、日志与诊断。</summary>
@@ -1404,15 +1556,6 @@ public sealed partial class InstancesViewModel : ObservableObject
     [RelayCommand]
     private void OpenModsFolder() => OpenSelectedDirectory(
         SelectedInstance is null ? null : Path.Combine(InstancePaths.GetGameDirectory(_paths, SelectedInstance.Model), "mods"));
-
-    [RelayCommand]
-    private void ManageInstanceMods()
-    {
-        if (SelectedInstance is not null)
-        {
-            NavigateToContent?.Invoke(SelectedInstance.Model.Id);
-        }
-    }
 
     [RelayCommand]
     private void ExportLatestLog()
@@ -1974,6 +2117,8 @@ public sealed record JavaOptionViewModel(JavaRuntime? Runtime, string DisplayNam
 public sealed record JvmPresetOptionViewModel(string Value, string DisplayName);
 
 public sealed record LoaderChoiceViewModel(string Id, string DisplayName);
+
+public sealed record GameVersionTypeChoice(MinecraftVersionKind Kind, string Title);
 
 public sealed record VersionChoiceViewModel(string? Value, string DisplayName);
 

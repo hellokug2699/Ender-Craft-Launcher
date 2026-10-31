@@ -2,11 +2,14 @@
 
 > 当前状态：Microsoft 正式账户认证链已经在 Windows 11 实机完成验证。ECL 使用 Microsoft OAuth Authorization Code + PKCE，经 Xbox Live、XSTS、Minecraft Services 完成 Java Edition 权益与档案验证，并使用 Windows DPAPI 保存敏感凭据。令牌刷新在不打开浏览器的情况下完成。
 
-## Client ID 填写位置
+## Client ID
 
-打开 ECL **设置 → 全局 → 账户与身份验证 → Microsoft OAuth Client ID**，填写 Microsoft Entra 管理中心中应用注册的 **Application (client) ID**（GUID 格式）。
+ECL 使用固定的 Microsoft OAuth public client 标识符（`MicrosoftClientIdentity.DefaultClientId`），
+**不提供用户设置项**：登录链路（授权码 + PKCE、`localhost` 回调）依赖这个固定的应用注册。
+该标识符是公开的应用标识，不是秘密，也不是可编辑配置。
 
-ECL 桌面应用属于 public client，不配置、不分发 Client Secret。当前公开仓库中的 Client ID 只是应用标识符，不是秘密。
+需要自行构建并替换 Client ID 的开发者，可以修改 `src/ECL.Auth/MicrosoftAuthentication.cs`
+中的常量后重新构建；不要把 Client Secret 写入客户端或仓库。
 
 ## 登录流程
 

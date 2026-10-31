@@ -87,7 +87,7 @@ flowchart TD
 | `ECL.Download` | 下载源策略、官方↔BMCLAPI 映射、并发/重试/续传、哈希校验、流式进度与任务发布（存在上层业务任务时只转发进度） | `DownloadSourceResolver`, `IDownloadService`, `DownloadRequest`, `DownloadProgress` |
 | `ECL.Auth` | 账户模型、离线 UUID、账户文件 | `Account`, `IAccountService`, `OfflineUuid` |
 | `ECL.Java` | Java 版本解析、运行时探测、需求/兼容性/32-64 位与内存校验、JVM 预设、Mojang/Adoptium/Zulu/Liberica 下载与解压（下载登记 `Java` 任务） | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `JvmPresets`, `IJavaInstallService` |
-| `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动、Mod/整合包/资源包管理、CurseForge/Modrinth API、统一搜索与下载、版本情报；安装、整合包导入与内容安装登记 Operation | `GameInstance`, `VanillaInstallService`, `ILoaderCatalog`, `IJavaSelectionService`, `IModService`, `IModpackService`, `ICurseForgeClient`, `ICurseForgeService`, `IModrinthClient`, `IContentSearchService`, `IContentInstallService`, `IVersionNewsService`, `ILaunchStep` |
+| `ECL.Minecraft` | 实例存储、版本 JSON/继承、版本清单分类、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动、Mod/整合包/资源包管理、缺失依赖解析、CurseForge/Modrinth API、统一搜索与下载、版本情报；安装、整合包导入、内容安装与依赖下载登记 Operation | `GameInstance`, `VanillaInstallService`, `IVersionCatalog`, `ILoaderCatalog`, `IJavaSelectionService`, `IModService`, `IModDependencyInstaller`, `IModpackService`, `ICurseForgeClient`, `ICurseForgeService`, `IModrinthClient`, `IContentSearchService`, `IContentInstallService`, `IVersionNewsService`, `ILaunchStep` |
 | `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框、任务中心 | `MainViewModel`, `HomeViewModel`, `DownloadViewModel`, `InstancesViewModel`, `ModsViewModel`, `SettingsViewModel`, `OperationCenterViewModel` |
 | `ECL.Cli` | 无 GUI 管理、调试启动链路、长任务进度输出 | `CliApplication`, `ParsedCommandLine`, `CliOperationReporter` |
 | `ECL.Tests` | 单元测试与临时数据目录 | `TestEnvironment`, `FakeProcessLauncher` |
@@ -159,9 +159,10 @@ services.AddEclMinecraft();
 ### 7.1 创建实例
 
 1. UI/CLI 校验名称与版本格式。
-2. `InstanceService` 生成唯一 ID 与 `VersionId`（加载器会追加后缀）。
-3. `FileSystemInstanceStore` 创建目录、游戏子目录并原子写入 `instance.json`。
-4. 实例作用域配置通过 `settings.json` 按需写入，未设置时继承全局。
+2. UI 从 `IVersionCatalog` 读取 Mojang 版本清单，按正式版 / 快照版 / 愚人节版过滤后让用户选择；愚人节版本使用固定 ID 列表识别，因为正常快照也可能在 4 月 1 日发布。
+3. `InstanceService` 生成唯一 ID 与 `VersionId`（加载器会追加后缀）。
+4. `FileSystemInstanceStore` 创建目录、游戏子目录并原子写入 `instance.json`。
+5. 实例作用域配置通过 `settings.json` 按需写入，未设置时继承全局。
 
 ### 7.2 安装原版版本
 
@@ -229,7 +230,9 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 2. `ContentSearchService` 把 CurseForge 与 Modrinth 的结果映射为统一的 `ContentHit`；来源过滤支持「全部 / 仅 CurseForge / 仅 Modrinth」，「全部」下两个平台并行请求并交错排列，不跨平台去重。
 3. `ContentInstallService` 统一执行安装/下载：资源包、光影包、数据包按类型落入实例或 `<data>/downloads`；Modrinth Mod 递归补齐必需依赖；CurseForge Mod 复用 `CurseForgeService` 的依赖逻辑；每个入口只登记一个任务，内部导入与下载复用该任务。
 4. 整合包无论来源先下载为归档（`.mrpack` / CurseForge `.zip`），再交给 `IModpackService` 导入；没有实例时可仅下载，或由 `ModpackArchiveInspector` 读取包内 `dependencies`/`manifest.json` 自动创建实例后导入。
-5. `MojangVersionNewsService` 读取 Mojang 版本清单，为「主页 → 新版本情报」提供数据；主页不承载任何下载动作。
+5. `IModDependencyInstaller` 把实例中缺失的强制依赖按 mod id 精确解析到 Modrinth（slug/项目 ID）或 CurseForge（slug/名称），再复用 `IContentInstallService` 安装；无法精确匹配的依赖只报告，不做模糊安装。
+6. WPF 的内容管理集中在实例工作区（不再有独立“内容”页面）；下载页仍负责搜索、远程下载与整合包下载。
+7. `MojangVersionNewsService` 读取 Mojang 版本清单，为「主页 → 新版本情报」提供数据；主页不承载任何下载动作。
 
 ## 8. 横切关注点
 
@@ -319,7 +322,9 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - 未实现下载限速；并发、重试、续传、暂停/恢复已生效。
 - 界面固定为 ECL 深色主题（浅色模式已移除），内嵌 HarmonyOS Sans SC 字体；主题刷子统一使用 `DynamicResource`，避免样式解析时捕获旧颜色。托盘、完整 i18n 热切换与更细的无障碍仍在路线图中。
 - 崩溃分析基于日志/崩溃报告文本与 Mod 元数据排序，不是完整的符号化解析；诊断包导出已做脱敏，详见 [diagnostics.md](diagnostics.md)。
-- CurseForge 与 Modrinth 的搜索、一键安装、整合包远程下载与 `.mrpack` 自动建实例导入已完成；不做 Mod 更新检查、可选依赖选择，作者禁止第三方分发或无 CDN 地址的文件无法下载。
+- CurseForge 与 Modrinth 的搜索、一键安装、整合包远程下载与 `.mrpack` 自动建实例导入已完成；不做 Mod 更新检查、可选依赖选择，作者禁止第三方分发或无 CDN 地址的文件无法下载。实例工作区可按 Mod 元数据精确匹配并下载缺失的强制依赖；无法匹配时只提示手动搜索。
+- 实例创建页从 Mojang 版本清单选择正式版 / 快照版 / 愚人节版；愚人节版本依赖固定 ID 列表识别，新版本出现时需要更新列表。旧版 alpha/beta 不参与实例创建。
+- 内容管理已从独立页面合并到实例工作区（账户、Java/JVM、内存覆盖、模组与内容、整合包、文件与诊断）；应用不再提供独立的“内容”导航项。
 - 实例下载位置（.minecraft 目录）修改后需要重启，已有实例不会自动迁移。
 - 导入实例回归（P1 1.1）已覆盖扫描有效性、导入只读性、共享/隔离启动、缺失文件诊断与内容路径；详见 [instance-import.md](instance-import.md)。目录所有权/共享引用检查（P1 1.2）与迁移（P1 1.3）尚未实现。
 - 统一任务中心（Operation）已接入下载批次、Minecraft 安装、整合包导入、内容安装/下载、CurseForge Mod 安装与 Java 运行时下载：阶段、字节/项目进度、速度/ETA、停滞/重试/失败归因、当前/最近任务条、取消与失败重试、诊断详情；CLI 的安装、Java、整合包与 CurseForge 命令也已消费任务快照。备份/恢复、整合包导出、启动与实例迁移/删除尚未接入，详见 [operations.md](operations.md)。

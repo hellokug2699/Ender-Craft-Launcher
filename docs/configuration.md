@@ -75,11 +75,11 @@ internal sealed class MyOptionsProvider : IOptionProvider
 
 当前实例选项包括：
 
-实例工作区提供独立详情页，集中展示基本信息、账户、Java/JVM、模组、文件目录、最近启动记录与诊断入口。实例的 JVM 预设、额外参数和内存均可单独覆盖；未设置的字段继承全局。实例库页面只负责展示实例与打开工作区，不提供运行设置。
+实例工作区提供独立详情页，集中展示基本信息、账户、Java/JVM、模组与内容、文件目录、最近启动记录与诊断入口。实例的 JVM 预设、额外参数和内存均可单独覆盖；未设置的字段继承全局。实例库页面只负责展示实例与打开工作区，不提供运行设置。内存设置在工作区中以“使用全局设置”复选框表达：勾选时不写实例键（使用 `java.defaultMemoryMb`），取消勾选后填写的值写入 `instance.java.memoryMb`，且实例值优先于全局值。
 
 | Key | 含义 |
 | --- | --- |
-| `instance.java.memoryMb` | 覆盖全局最大内存；留空继承 |
+| `instance.java.memoryMb` | 覆盖全局最大内存；未设置（勾选“使用全局设置”）时继承 |
 | `instance.java.executablePath` | 覆盖全局 Java 路径；留空继承 |
 | `instance.java.extraArguments` | 覆盖全局 JVM 参数；留空继承 |
 | `instance.java.jvmPreset` | 覆盖全局 JVM 预设；留空继承 |
@@ -149,7 +149,7 @@ CLI 使用 `ecl launch <实例ID> --accept-eula` 记录同意；未同意时真�
 | `java.customJvmPreset` | Global | 自定义 JVM 预设 JSON 文件；留空使用内置预设 |
 | `java.runtimeProvider` | Global | Java 下载来源：mojang / adoptium / zulu / liberica |
 | `instance.java.executablePath` | Instance | 实例指定 Java；留空自动选择 |
-| `instance.java.memoryMb` | Instance | 实例内存覆盖；留空继承全局 |
+| `instance.java.memoryMb` | Instance | 实例内存覆盖；未设置（工作区勾选“使用全局设置”）时继承全局 |
 | `instance.java.extraArguments` | Instance | 实例 JVM 参数覆盖 |
 | `instance.java.jvmPreset` | Instance | 实例 JVM 预设覆盖；留空继承全局 |
 | `instance.java.customJvmPreset` | Instance | 实例自定义 JVM 预设文件；留空继承全局 |

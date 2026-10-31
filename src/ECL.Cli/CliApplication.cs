@@ -856,12 +856,7 @@ internal sealed class CliApplication
             case "login-microsoft":
                 {
                     var authentication = _provider.GetRequiredService<IMicrosoftAuthenticationService>();
-                    var settings = _provider.GetRequiredService<ISettingsService>();
-                    var clientId = settings.Get<string>("auth.microsoftClientId")?.Trim();
-                    if (string.IsNullOrWhiteSpace(clientId))
-                    {
-                        return WriteError(new EclError("auth.invalid_client_id", "未配置 Microsoft Client ID。"));
-                    }
+                    var clientId = MicrosoftClientIdentity.DefaultClientId;
 
                     // 仅供实机验证的诊断入口：必须由用户主动触发，不会在启动时自动登录。
                     Console.WriteLine($"Microsoft Client ID: {clientId}");
@@ -904,12 +899,7 @@ internal sealed class CliApplication
 
             case "refresh":
                 {
-                    var settings = _provider.GetRequiredService<ISettingsService>();
-                    var clientId = settings.Get<string>("auth.microsoftClientId")?.Trim();
-                    if (string.IsNullOrWhiteSpace(clientId))
-                    {
-                        return WriteError(new EclError("auth.invalid_client_id", "未配置 Microsoft Client ID。"));
-                    }
+                    var clientId = MicrosoftClientIdentity.DefaultClientId;
 
                     var accountId = args.ElementAtOrDefault(1);
                     if (string.IsNullOrWhiteSpace(accountId))
