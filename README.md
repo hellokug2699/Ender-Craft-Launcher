@@ -37,9 +37,7 @@ nightly  ──持续开发──>  dev  ──集成验证与验收──>  mai
 ```powershell
 git clone https://github.com/hellokug2699/Ender-Craft-Launcher.git
 cd Ender-Craft-Launcher
-# 根据需要切换到 main / dev / nightly
-git switch main
-
+git switch <main|dev|nightly>
 dotnet restore ECL.sln
 dotnet build ECL.sln -c Release
 dotnet test tests/ECL.Tests/ECL.Tests.csproj -c Release
