@@ -80,20 +80,52 @@ public sealed partial class AccountService : IAccountService
                 CreatedAt = DateTimeOffset.UtcNow,
             };
 
-            document.Accounts.Add(account);
-            if (makeDefault || document.DefaultAccountId is null)
-            {
-                document.DefaultAccountId = account.Id;
-            }
-
-            _store.Save(document);
-            _logger.LogInformation("已添加离线账户 {Name}（{Uuid}）。", account.Name, account.Uuid);
-            return Result<Account>.Ok(account);
+            return await AddCoreAsync(document, account, makeDefault).ConfigureAwait(false);
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    public async Task<Result<Account>> AddAsync(Account account, bool makeDefault = false, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        if (string.IsNullOrWhiteSpace(account.Id) || string.IsNullOrWhiteSpace(account.Name) || string.IsNullOrWhiteSpace(account.Uuid))
+        {
+            return Result<Account>.Fail("account.invalid", "账户资料不完整。");
+        }
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var document = _store.Load();
+            if (document.Accounts.Any(existing =>
+                    string.Equals(existing.Name, account.Name, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(existing.Id, account.Id, StringComparison.Ordinal)))
+            {
+                return Result<Account>.Fail("account.duplicate", $"已存在同名或同 ID 账户：{account.Name}");
+            }
+
+            return await AddCoreAsync(document, account, makeDefault).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private Task<Result<Account>> AddCoreAsync(AccountsDocument document, Account account, bool makeDefault)
+    {
+        document.Accounts.Add(account);
+        if (makeDefault || document.DefaultAccountId is null)
+        {
+            document.DefaultAccountId = account.Id;
+        }
+
+        _store.Save(document);
+        _logger.LogInformation("已添加 {Type} 账户 {Name}（{Uuid}）。", account.Type, account.Name, account.Uuid);
+        return Task.FromResult(Result<Account>.Ok(account));
     }
 
     public async Task<Result> RemoveAsync(string accountId, CancellationToken cancellationToken = default)
