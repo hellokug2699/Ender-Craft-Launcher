@@ -60,11 +60,14 @@ internal static class Program
 
         命令:
           version                         显示版本、运行时与数据目录
+          update check [--feed <URL>] [--trust <文件>] [--install-root <目录>] [--json]
+                                          按 launcher.checkUpdates / launcher.updateChannel 检查更新
           instance list [--json]          列出实例
           instance create <名称> --version <版本> [--loader <加载器>] [--loader-version <版本>]
                            [--fabric-api-version <版本>] [--optifine-version <type:patch>]
                                           创建实例；加载器支持 vanilla、fabric、forge、neoforge、cleanroom
-          instance delete <实例ID> --force 删除实例
+          instance delete <实例ID> [--force] [--keep-data] [--dry-run] [--json]
+                                          预览删除计划；--force 执行，--keep-data 只移除记录
           instance scan [--json]          扫描 versions 目录中已有的版本
           instance import <版本ID> [--name <名称>]
                                           把已有版本导入为实例（引用原目录，不复制）

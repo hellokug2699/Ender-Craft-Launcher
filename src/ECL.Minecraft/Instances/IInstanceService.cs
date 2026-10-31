@@ -31,6 +31,20 @@ public interface IInstanceService
     Task<Result> DeleteAsync(string instanceId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 生成删除预览：列出启动器记录、ECL 托管游戏数据与外部/共享目录，
+    /// 并标明哪些路径可以删除。UI 与 CLI 必须先展示该计划。
+    /// </summary>
+    Task<Result<InstanceDeletionPlan>> GetDeletionPlanAsync(
+        string instanceId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>按结构化选项删除实例。外部与共享游戏目录永远不会被递归删除。</summary>
+    Task<Result> DeleteAsync(
+        string instanceId,
+        InstanceDeleteOptions options,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 扫描游戏目录下已有的 <c>versions/&lt;id&gt;/&lt;id&gt;.json</c>，返回可导入的版本候选。
     /// 用于识别其它启动器留下的安装，不复制文件。
     /// </summary>

@@ -109,6 +109,34 @@ public sealed class JavaSelectionServiceTests
         Assert.True(selection.Compatibility?.IsCompatible);
     }
 
+    [Fact]
+    public async Task InstanceMemoryOverridesGlobalMemory()
+    {
+        using var environment = new TestEnvironment();
+        var java17 = Runtime(environment, "17.0.15");
+        await using var provider = environment.CreateServices(services =>
+            services.AddSingleton<IJavaLocator>(new FakeJavaLocator([java17])));
+
+        var settings = provider.GetRequiredService<ISettingsService>();
+        Assert.True(settings.TrySetRaw("java.defaultMemoryMb", "4096", null, out var globalError), globalError);
+
+        var instance = await CreateVersionAsync(provider, environment, "1.20.1");
+        var version = (await provider.GetRequiredService<IVersionResolver>().ResolveAsync(instance.VersionId)).Value!;
+        var selection = provider.GetRequiredService<IJavaSelectionService>();
+
+        var globalOnly = await selection.ResolveAsync(instance, version);
+        Assert.Equal(4096, globalOnly.MemoryMb);
+
+        Assert.True(
+            settings.TrySetRaw("instance.java.memoryMb", "6144", instance.Id, out var instanceError),
+            instanceError);
+        var overridden = await selection.ResolveAsync(instance, version);
+        Assert.Equal(6144, overridden.MemoryMb);
+
+        Assert.True(settings.TryClear("instance.java.memoryMb", instance.Id, out var clearError), clearError);
+        Assert.Equal(4096, (await selection.ResolveAsync(instance, version)).MemoryMb);
+    }
+
     private static async Task<GameInstance> CreateVersionAsync(
         IServiceProvider provider,
         TestEnvironment environment,

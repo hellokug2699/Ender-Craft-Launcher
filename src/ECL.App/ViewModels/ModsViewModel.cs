@@ -15,6 +15,7 @@ public sealed partial class ModsViewModel : ObservableObject
     private readonly IInstanceService _instances;
     private readonly IModService _mods;
     private readonly IModpackService _modpacks;
+    private readonly IModDependencyInstaller _dependencies;
     private readonly IContentPackService _contentPacks;
     private readonly IDialogService _dialogs;
     private readonly ILocalizer _localizer;
@@ -76,6 +77,7 @@ public sealed partial class ModsViewModel : ObservableObject
         IInstanceService instances,
         IModService mods,
         IModpackService modpacks,
+        IModDependencyInstaller dependencies,
         IContentPackService contentPacks,
         IDialogService dialogs,
         ILocalizer localizer)
@@ -83,6 +85,7 @@ public sealed partial class ModsViewModel : ObservableObject
         _instances = instances;
         _mods = mods;
         _modpacks = modpacks;
+        _dependencies = dependencies;
         _contentPacks = contentPacks;
         _dialogs = dialogs;
         _localizer = localizer;
@@ -360,6 +363,47 @@ public sealed partial class ModsViewModel : ObservableObject
             SelectedMod.Enabled ? "mods.disabled" : "mods.enabled",
             SelectedMod.FileName);
         await RefreshAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private async Task DownloadMissingDependenciesAsync()
+    {
+        if (SelectedInstance is null)
+        {
+            StatusMessage = _localizer.Get("mods.selectInstance");
+            return;
+        }
+
+        if (IsBusy)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var progress = new Progress<ModDependencyProgress>(update => StatusMessage = update.Message);
+            var result = await _dependencies
+                .InstallMissingAsync(SelectedInstance.Id, progress)
+                .ConfigureAwait(true);
+            if (!result.IsSuccess)
+            {
+                StatusMessage = result.Error?.ToString() ?? _localizer.Get("mods.dependencies.failedMessage");
+                return;
+            }
+
+            var report = result.Value!;
+            StatusMessage = _localizer.Get(
+                "mods.dependencies.done",
+                report.Installed.Count,
+                report.Unresolved.Count,
+                report.Failed.Count);
+            await RefreshAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]

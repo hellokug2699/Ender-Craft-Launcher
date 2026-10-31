@@ -28,4 +28,26 @@ public sealed record DetectedVersion(
     string Loader,
     bool Isolated,
     string GameDirectory,
-    bool AlreadyImported);
+    bool AlreadyImported,
+    DetectedVersionProblem Problem = DetectedVersionProblem.None,
+    string? ProblemDetail = null)
+{
+    /// <summary>
+    /// 该版本是否具备导入条件：版本 JSON 可解析、继承链完整、已确定 mainClass。
+    /// 已导入的版本即使结构完整也不可重复导入。
+    /// </summary>
+    public bool CanImport => Problem == DetectedVersionProblem.None && !AlreadyImported;
+}
+
+/// <summary>扫描到的版本为什么不能导入。</summary>
+public enum DetectedVersionProblem
+{
+    /// <summary>版本结构完整，可以导入。</summary>
+    None,
+
+    /// <summary>版本 JSON 损坏、缺少 mainClass，或无法确定 Minecraft 版本。</summary>
+    InvalidManifest,
+
+    /// <summary>继承链缺少父版本文件或存在循环，属于不完整的安装。</summary>
+    IncompleteInheritance,
+}

@@ -24,8 +24,10 @@
 `files` 步骤的校验范围：
 
 - client、libraries、asset index、logging 文件：检查存在性、大小与 SHA-1；文件被截断或损坏时在真实启动前失败。
+- client jar 按继承链定位：优先使用实例版本目录中的 jar（ECL 安装流程写入），缺失时使用继承链中声明 `downloads.client` 的原版版本目录中的 jar。其它启动器安装的 Fabric/Forge 等加载器版本没有自己的 jar，这一层回退是必需的。
 - 资源对象（`assets/objects/<前两位>/<hash>`）：检查存在性与大小，避免每次启动对数百 MB 资源全量哈希。
 - Dry Run 下缺失/损坏只返回 `Warning`，仍生成预期命令。
+- 导入的实例（`GameDirectory` 指向原安装）由外部启动器维护，文件与清单不一致时只返回 `Warning` 并给出若干示例路径，不阻止启动。
 
 安装失败时由 `InstallTransaction` 清理本次新建的文件、恢复被覆盖的版本 JSON，并在 `logs/install/` 写入诊断 JSON。
 
@@ -60,6 +62,7 @@
 ### 真实启动
 
 - 缺少 Java、版本或关键文件时直接 `Failed`，不会执行后续步骤。
+- 版本文件缺失、继承链缺父版本或 JSON 损坏时，`version` 步骤的失败消息会附带具体原因（缺失文件路径或解析错误），便于定位是哪个版本不完整。
 - Java 版本与游戏版本不匹配时默认只 `Warning`，UI 会在启动前弹窗确认；实例设置可关闭兼容性检验。
 - 未同意 EULA 时 `eula` 步骤 `Failed`；UI 首次真实启动会弹窗要求同意，记录后写入 `eula=true`。
 - 所有步骤成功后，`StartGameStep` 通过 `IProcessLauncher` 启动进程。
@@ -132,7 +135,7 @@ public sealed record LaunchCommand(
 - 现代版本的 natives 以 `natives-<os>[-arch]` classifier 形式出现在 `name` 中；每组按架构选择唯一变体。
 - 类路径只包含主 artifact；natives classifier 与 legacy `Natives` 的 native jar 不进入类路径。
 - 库路径来自 `downloads.artifact.path`，缺失时按 Maven 坐标推导。
-- 追加 `<data>/versions/<versionId>/<versionId>.jar`。
+- 追加实例的 client jar：优先 `<data>/versions/<versionId>/<versionId>.jar`；该文件不存在时回退到继承链中声明 `downloads.client` 的版本目录，兼容其它启动器生成的加载器版本。
 - 版本 JSON 缺失时使用 `<classpath>` 占位（仅 Dry Run）。
 
 ## 5. 失败策略
@@ -156,14 +159,15 @@ UI 与 CLI 使用同一份报告，只是渲染方式不同。
 
 `IProcessLauncher` 是接口，测试使用 `FakeProcessLauncher` 验证参数与调用次数。
 
-## 7. 当前缺口
+## 7. 当前边界与缺口
 
-原版与加载器安装、启动闭环已完成，仍缺以下能力：
+- 启动流水线本身提供阶段状态、耗时、警告与失败报告；启动流程尚未作为 Operation 发布到任务中心（下载、安装、整合包、内容与 Java 已接入，见 [operations.md](operations.md)）。
+- 崩溃分析与脱敏诊断包已实现，详见 [diagnostics.md](diagnostics.md)；它们不等于完整的 JVM 崩溃符号化分析。
+- 下载并发、重试、断点续传、暂停/恢复、流式进度、速度/ETA 与失败归因已实现；下载限速尚未实现，详见 [operations.md](operations.md)。
+- Java 自动安装支持 Mojang、Adoptium、Zulu 与 Liberica；内置 JVM 预设与外部 JSON 自定义预设均已支持，但 UI 尚不提供命名预设编辑器，详见 [java.md](java.md)。
+- Microsoft 与 Authlib-Injector/Yggdrasil 认证已实现；账户中心的注销、凭据清理与失效重认证体验仍需完善，详见 [authentication.md](authentication.md)。
 
-1. 游戏日志单独落盘、崩溃报告解析与 Mod 嫌疑排序。
-2. 下载限速（并发、重试、续传已实现）。
-3. 下载速度/暂停恢复 UI 与安装失败后的阶段级修复向导（诊断文件已提供）。
-4. Java 运行时的高级匹配（32/64 位与内存已给出警告；JVM 预设已内置，用户自定义预设待补）。
+本文档描述启动流水线，不把下载、崩溃诊断或账户 UI 的缺口混写为启动步骤缺失。
 
 ## 8. 扩展方式
 

@@ -11,7 +11,7 @@ ECL 是一个 Windows 优先的 Minecraft 启动器，目标能力对齐 HMCL / 
 
 同时保留自己的设计空间：配置项由元数据驱动、启动流程分阶段可观测、模块边界清晰、UI 只是薄壳。
 
-当前版本（v0.8）已完成原版安装、Java 管理与加载器安装：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查、Mojang/Adoptium/Zulu/Liberica Java 运行时下载、Fabric（含 Fabric API）、Forge/NeoForge（含安装器 processors）与 Cleanroom 安装、OptiFine 显式安装；Mod/整合包/资源包管理、CurseForge 与 Modrinth 搜索/远程下载、崩溃分析、脱敏诊断包、下载暂停/速度与自定义 JVM 预设也已接入。UI 在 v0.8 完成 launcher-first 重构：主页只负责启动与版本情报，所有下载集中到「下载」页。v0.3 账户体系因 Microsoft OAuth 审核限制暂缓；首次启动向导本阶段暂缓。
+当前版本（v0.8）已完成原版安装、Java 管理与加载器安装：版本/资源/库/日志下载、natives 解压、EULA、逐实例 Java 选择、兼容性检查、Mojang/Adoptium/Zulu/Liberica Java 运行时下载、Fabric（含 Fabric API）、Forge/NeoForge（含安装器 processors）与 Cleanroom 安装、OptiFine 显式安装；Mod/整合包/资源包管理、CurseForge 与 Modrinth 搜索/远程下载、崩溃分析、脱敏诊断包、下载暂停/速度与自定义 JVM 预设也已接入。UI 在 v0.8 完成 launcher-first 重构：主页只负责启动与版本情报，所有下载集中到「下载」页。Microsoft 与 Authlib-Injector/Yggdrasil 账户认证已实现；账户中心的注销、凭据清理与失效重认证体验仍待完善。首次启动向导本阶段暂缓。
 
 ## 2. 设计原则
 
@@ -29,6 +29,7 @@ ECL 是一个 Windows 优先的 Minecraft 启动器，目标能力对齐 HMCL / 
 flowchart TD
     Core[ECL.Core<br/>路径/结果/日志/本地化]
     Config[ECL.Configuration<br/>元数据配置]
+    Ops[ECL.Operations<br/>任务/进度/诊断]
     Download[ECL.Download<br/>下载源/HTTP/校验]
     Auth[ECL.Auth<br/>账户与离线 UUID]
     Java[ECL.Java<br/>Java 探测]
@@ -40,12 +41,15 @@ flowchart TD
     Config --> Core
     Download --> Core
     Download --> Config
+    Download --> Ops
     Auth --> Core
     Java --> Core
     Java --> Download
+    Java --> Ops
     MC --> Core
     MC --> Config
     MC --> Download
+    MC --> Ops
     MC --> Auth
     MC --> Java
     App --> MC
@@ -53,16 +57,19 @@ flowchart TD
     App --> Auth
     App --> Java
     App --> Download
+    App --> Ops
     App --> Core
     Cli --> MC
     Cli --> Config
     Cli --> Auth
     Cli --> Java
     Cli --> Download
+    Cli --> Ops
     Cli --> Core
     Tests --> MC
     Tests --> Config
     Tests --> Download
+    Tests --> Ops
     Tests --> Auth
     Tests --> Java
     Tests --> Core
@@ -76,12 +83,15 @@ flowchart TD
 | --- | --- | --- |
 | `ECL.Core` | 应用路径、`Result`、JSON 约定、Serilog 配置、JSON 本地化 | `IAppPaths`, `Result<T>`, `EclJson`, `JsonLocalizer` |
 | `ECL.Configuration` | 配置定义、注册表、全局/实例作用域、持久化、可见性 | `OptionDefinition<T>`, `OptionRegistry`, `ISettingsService` |
-| `ECL.Download` | 下载源策略、官方↔BMCLAPI 映射、并发/重试/续传、哈希校验 | `DownloadSourceResolver`, `IDownloadService`, `DownloadRequest` |
+| `ECL.Operations` | 统一任务模型、状态/阶段、字节与项目进度、速度/ETA、停滞检测、失败归因、内存任务快照、嵌套任务作用域与业务进度桥接 | `OperationSnapshot`, `OperationState`, `IOperationService`, `IOperationStore`, `IOperationControl`, `OperationProgressBridge<T>`, `OperationScope`, `SpeedMeter`, `OperationErrors`, `OperationFormat` |
+| `ECL.Download` | 下载源策略、官方↔BMCLAPI 映射、并发/重试/续传、哈希校验、流式进度与任务发布（存在上层业务任务时只转发进度） | `DownloadSourceResolver`, `IDownloadService`, `DownloadRequest`, `DownloadProgress` |
 | `ECL.Auth` | 账户模型、离线 UUID、账户文件 | `Account`, `IAccountService`, `OfflineUuid` |
-| `ECL.Java` | Java 版本解析、运行时探测、需求/兼容性/32-64 位与内存校验、JVM 预设、Mojang/Adoptium/Zulu/Liberica 下载与解压 | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `JvmPresets`, `IJavaInstallService` |
-| `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动、Mod/整合包/资源包管理、CurseForge/Modrinth API、统一搜索与下载、版本情报 | `GameInstance`, `VanillaInstallService`, `ILoaderCatalog`, `IJavaSelectionService`, `IModService`, `IModpackService`, `ICurseForgeClient`, `ICurseForgeService`, `IModrinthClient`, `IContentSearchService`, `IContentInstallService`, `IVersionNewsService`, `ILaunchStep` |
-| `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框 | `MainViewModel`, `HomeViewModel`, `DownloadViewModel`, `InstancesViewModel`, `ModsViewModel`, `SettingsViewModel` |
-| `ECL.Cli` | 无 GUI 管理、调试启动链路 | `CliApplication`, `ParsedCommandLine` |
+| `ECL.Java` | Java 版本解析、运行时探测、需求/兼容性/32-64 位与内存校验、JVM 预设、Mojang/Adoptium/Zulu/Liberica 下载与解压（下载登记 `Java` 任务） | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `JvmPresets`, `IJavaInstallService` |
+| `ECL.Minecraft` | 实例存储、版本 JSON/继承、版本清单分类、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动、Mod/整合包/资源包管理、缺失依赖解析、CurseForge/Modrinth API、统一搜索与下载、版本情报；安装、整合包导入、内容安装与依赖下载登记 Operation | `GameInstance`, `VanillaInstallService`, `IVersionCatalog`, `ILoaderCatalog`, `IJavaSelectionService`, `IModService`, `IModDependencyInstaller`, `IModpackService`, `ICurseForgeClient`, `ICurseForgeService`, `IModrinthClient`, `IContentSearchService`, `IContentInstallService`, `IVersionNewsService`, `ILaunchStep` |
+| `ECL.Deployment` | 更新 Manifest schema/校验、RSA-PSS 签名验证、HTTPS 更新客户端、安全解包、staging、版本指针、切换与回滚 | `UpdateManifest`, `UpdateManifestParser`, `UpdateTrustStore`, `UpdateSignatureVerifier`, `SafeZipExtractor`, `UpdateLayout`, `UpdateInstaller`, `UpdateClient` |
+| `ECL.Bootstrapper` | 读取当前版本指针、启动已安装版本、应用签名更新与回滚；不覆盖运行中的主程序 | `ECL.Bootstrapper.exe` |
+| `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框、任务中心 | `MainViewModel`, `HomeViewModel`, `DownloadViewModel`, `InstancesViewModel`, `ModsViewModel`, `SettingsViewModel`, `OperationCenterViewModel` |
+| `ECL.Cli` | 无 GUI 管理、调试启动链路、长任务进度输出 | `CliApplication`, `ParsedCommandLine`, `CliOperationReporter` |
 | `ECL.Tests` | 单元测试与临时数据目录 | `TestEnvironment`, `FakeProcessLauncher` |
 
 ## 5. 组合根与生命周期
@@ -102,6 +112,7 @@ services.AddEclMinecraft();
 - 启动步骤通过 `IEnumerable<ILaunchStep>` 注入并按 `Order` 排序，新增步骤不需要改启动器。
 - App 启动顺序：创建 `AppPaths` → 读取语言与实例下载位置 → 建立本地化器 → 构建容器 → 显示主窗口 → 异步加载实例、设置与版本情报。
 - 语言切换标记为“需要重启”，XAML 中的静态文本由 `LocExtension` 在加载时解析。
+- 页面根 `ScrollViewer` 启用 `behaviors:WheelScroll.IsEnabled`：指针位于嵌套 `ListBox`/内层滚动区时，先滚动最内层可滚动区域；到边界或不可滚动后把滚轮转交页面根滚动区，避免列表吞掉滚轮导致整页无法滚动。
 
 ## 6. 数据目录
 
@@ -115,7 +126,8 @@ services.AddEclMinecraft();
 │  ├─ global.json                  # 全局配置
 │  └─ eula.json                    # EULA 同意记录
 ├─ accounts/
-│  └─ accounts.json                # 账户与默认账户
+│  ├─ accounts.json                # 账户元数据与默认账户（不保存令牌）
+│  └─ credentials.dat.<account-id> # Windows DPAPI 加密的账户凭据
 ├─ downloads/                      # 无实例时的文件下载目录
 │  ├─ mods/  resourcepacks/  shaderpacks/  datapacks/  modpacks/
 ├─ java/                           # 启动器托管的 Java 运行时
@@ -145,14 +157,17 @@ services.AddEclMinecraft();
 
 实例 ID 采用 `slug-6位十六进制` 形式（例如 `survival-a1b2c3`），只允许小写字母、数字、点、下划线、连字符，避免路径穿越；显示名称与目录名解耦。
 
+自建实例的 `minecraft/` 固定在 `instances/<id>/minecraft`；导入实例的 `instance.json` 可带一个外部 `gameDirectory`（共享 `.minecraft` 根或版本隔离目录），此时 ECL 只引用、不复制，也不会在删除实例时递归删除该目录。详见 7.9 与 [instance-import.md](instance-import.md)。
+
 ## 7. 核心流程
 
 ### 7.1 创建实例
 
 1. UI/CLI 校验名称与版本格式。
-2. `InstanceService` 生成唯一 ID 与 `VersionId`（加载器会追加后缀）。
-3. `FileSystemInstanceStore` 创建目录、游戏子目录并原子写入 `instance.json`。
-4. 实例作用域配置通过 `settings.json` 按需写入，未设置时继承全局。
+2. UI 从 `IVersionCatalog` 读取 Mojang 版本清单，按正式版 / 快照版 / 愚人节版过滤后让用户选择；愚人节版本使用固定 ID 列表识别，因为正常快照也可能在 4 月 1 日发布。
+3. `InstanceService` 生成唯一 ID 与 `VersionId`（加载器会追加后缀）。
+4. `FileSystemInstanceStore` 创建目录、游戏子目录并原子写入 `instance.json`。
+5. 实例作用域配置通过 `settings.json` 按需写入，未设置时继承全局。
 
 ### 7.2 安装原版版本
 
@@ -161,6 +176,7 @@ services.AddEclMinecraft();
 3. 下载 client jar、按当前 OS/架构与 rules 过滤后的依赖库（含 natives classifier）、资源索引、资源对象、日志配置。
 4. SHA-1 校验；已存在且校验通过的文件直接跳过；失败文件自动尝试下一候选源。
 5. natives 不在安装阶段解压，而是每次启动前解压到实例的 `minecraft/natives`，保证实例隔离。
+6. 整个安装登记一个 `Install` 任务（阶段 + 项目/字节进度 + 取消/重试）；内部下载批次复用该任务，不再单独登记。
 
 ### 7.3 启动实例
 
@@ -180,7 +196,7 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 1. 读取版本 JSON 的 `javaVersion`（权威来源）；缺失时按游戏版本推断最低主版本（1.16 及以下建议 Java 8，26.x 建议 Java 25）。
 2. 按“实例指定 → 全局指定 → 自动选择 → 最高版本兜底”的顺序解析 Java。
 3. `JavaCompatibility` 只判断“低于最低版本 / 未知 / 兼容”，不限制最高版本；UI 弹窗提示，实例可关闭检查。
-4. 没有可用 Java 时，`IJavaInstallService` 从 Mojang Java 运行时索引下载对应 component 到 `<data>/java/<component>`，校验 SHA-1，处理目录、符号链接与执行位。
+4. 没有可用 Java 时，`IJavaInstallService` 从 Mojang Java 运行时索引下载对应 component 到 `<data>/java/<component>`，校验 SHA-1，处理目录、符号链接与执行位；下载过程登记 `Java` 任务（索引、清单、下载、解压、完成），可取消与重试。
 
 详见 [java.md](java.md)。
 
@@ -199,27 +215,58 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 详见 [configuration.md](configuration.md)。概要：
 
 - 全局选项只看 `config/global.json`。
-- 实例选项只看 `instances/<id>/settings.json`；空值表示继承或未设置。
-- 每次读取返回“值 + 来源（Default/Global/Instance）”，UI 用来源标记帮助用户理解覆盖关系。
+- 实例选项只看 `instances/<id>/settings.json`；未设置时是否回退全局值由具体业务读取方显式决定，SettingsService 不自动合并两份配置。
+- `Get` 与 `GetSource` 分别读取值和来源；UI 可用来源标记帮助用户理解设置来自默认值、全局文件还是实例文件。
 
 ### 7.7 CurseForge
 
 详见 [curseforge.md](curseforge.md)。概要：
 
-1. 所有 CurseForge API 请求都发往 ECL 自建的代理（客户端路径与官方 API 一致，`/v1/...`），由代理注入 `x-api-key` 后转发到 `api.curseforge.com`。代理的源码、路由与部署材料不在本仓库。ECL 不读取、不发送也不嵌入 key，构建过程不注入任何凭据。
+1. 所有 CurseForge API 请求都发往 ECL 自建代理，客户端使用官方 API 路径（`/v1/...`），代理注入 `x-api-key` 后转发到 CurseForge。代理服务端源码、内部路由与部署材料不在本仓库；客户端必须公开 endpoint 常量，状态命令也会显示 endpoint。ECL 不读取、不发送也不嵌入 key，构建过程不注入凭据。
 2. 代理只转发 API；`edge.forgecdn.net` 等实际文件下载仍由 ECL 直接访问。
 3. `CurseForgeClient` 负责搜索、项目/文件解析、批量文件查询、下载 URL、限流重试；不做磁盘缓存；只接受 CurseForge CDN 下载地址。
-4. `CurseForgeService` 按实例游戏版本/加载器选择文件，递归安装必需依赖，写入 `minecraft/.ecl-curseforge.json`。
-5. `ModpackService` 对 CurseForge `.zip` 批量解析 `manifest.json` 的 `files[]`，下载、校验、解压 overrides，并写入 `.ecl-modpack.json`。
+4. `CurseForgeService` 按实例游戏版本/加载器选择文件，递归安装必需依赖，写入 `minecraft/.ecl-curseforge.json`；安装过程登记 `Install` 任务，可取消与重试。
+5. `ModpackService` 对 CurseForge `.zip` 批量解析 `manifest.json` 的 `files[]`，下载、校验、解压 overrides，并写入 `.ecl-modpack.json`；导入过程登记 `Import` 任务。
 6. WPF 与 CLI 只调用 `ICurseForgeService` / `ICurseForgeClient`，不直接拼 HTTP。
 
 ### 7.8 Modrinth 与统一下载
 
 1. `ModrinthClient` 访问 `https://api.modrinth.com/v2`，只负责搜索、项目/版本、依赖与文件 URL；只接受 `modrinth.com` / `*.modrinth.com` 的 HTTPS 文件地址。
 2. `ContentSearchService` 把 CurseForge 与 Modrinth 的结果映射为统一的 `ContentHit`；来源过滤支持「全部 / 仅 CurseForge / 仅 Modrinth」，「全部」下两个平台并行请求并交错排列，不跨平台去重。
-3. `ContentInstallService` 统一执行安装/下载：资源包、光影包、数据包按类型落入实例或 `<data>/downloads`；Modrinth Mod 递归补齐必需依赖；CurseForge Mod 复用 `CurseForgeService` 的依赖逻辑。
+3. `ContentInstallService` 统一执行安装/下载：资源包、光影包、数据包按类型落入实例或 `<data>/downloads`；Modrinth Mod 递归补齐必需依赖；CurseForge Mod 复用 `CurseForgeService` 的依赖逻辑；每个入口只登记一个任务，内部导入与下载复用该任务。
 4. 整合包无论来源先下载为归档（`.mrpack` / CurseForge `.zip`），再交给 `IModpackService` 导入；没有实例时可仅下载，或由 `ModpackArchiveInspector` 读取包内 `dependencies`/`manifest.json` 自动创建实例后导入。
-5. `MojangVersionNewsService` 读取 Mojang 版本清单，为「主页 → 新版本情报」提供数据；主页不承载任何下载动作。
+5. `IDependencyResolver` 把缺失的强制依赖解析为 `ResolvedDependencyGraph`：Modrinth 优先，CurseForge 按精确 slug 回退；结果区分 `Resolved` / `NotFound` / `Ambiguous` / `Incompatible` / `Failed`。`ResolvedDependency` 携带来源、项目、版本、文件、URL、SHA-1 与大小，`IContentInstallService.InstallResolvedAsync` 直接安装该文件，安装阶段不再按 mod id 二次解析。
+6. WPF 的内容管理集中在实例工作区（不再有独立“内容”页面）；下载页仍负责搜索、远程下载与整合包下载。
+7. `MojangVersionNewsService` 读取 Mojang 版本清单，为「主页 → 新版本情报」提供数据；主页不承载任何下载动作。
+
+### 7.9 删除实例与目录所有权
+
+删除实例不是“删除一个目录”，而是按所有权逐项处理：
+
+| 路径 | 所有权 | 仅移除记录 | 删除 ECL 托管数据 |
+| --- | --- | --- | --- |
+| `instances/<id>/instance.json`、`settings.json`、`logs/` | ECL | 删除 | 删除 |
+| `instances/<id>/minecraft/`（自建实例） | ECL | 保留 | 删除 |
+| 导入实例的 `GameDirectory` | 外部 | 保留 | 保留 |
+| 被多个实例引用的 `GameDirectory` | 共享/外部 | 保留 | 保留 |
+
+1. `InstanceService.GetDeletionPlanAsync` 生成 `InstanceDeletionPlan`：记录文件、日志、托管游戏目录和外部游戏目录分开列出，并标记 `CanDelete`、`Exists` 与共享引用。
+2. `InstanceDeleteOptions` 只表达“仅移除记录”或“删除 ECL 托管数据”，不让 UI/CLI 自行拼接删除语义。
+3. `FileSystemInstanceStore.DeleteAsync` 只删除计划中 `CanDelete = true` 的项；外部/共享目录即使调用方要求删除托管数据也会被强制降级为仅移除记录。
+4. 游戏数据先删、元数据最后删；删除失败时实例仍然可见，并返回 `instance.delete_failed` 以便重试。仅移除记录后，只有记录目录为空时才移除该目录。
+5. WPF 删除对话框展示路径、托管数据与共享引用，并让用户选择“同时删除托管数据 / 仅移除记录 / 取消”；CLI 使用 `instance delete --dry-run` 预览，`--force` 执行，`--keep-data` 只移除记录。
+
+> 目录共享、删除保护与迁移的边界说明见 [instance-import.md](instance-import.md)；迁移（P1 1.3）仍未实现。
+
+### 7.10 部署与更新
+
+1. `ECL.Deployment` 定义版本化 Manifest schema、严格路径校验、RSA-PSS-SHA256 detached signature 与受信任公钥集合；未知公钥 / 签名错误 / 产品、平台、架构、版本不匹配全部 fail-closed。
+2. `UpdateClient` 只接受 HTTPS，先验证签名再解析 Manifest；发布包下载后校验大小与 SHA-256。
+3. `SafeZipExtractor` 拒绝绝对路径、盘符、父目录、符号链接、重复条目和超限大小，并确认每个目标仍位于 staging 根目录。
+4. `UpdateInstaller` 先解包到 staging、逐文件校验，再移动到 `versions/<version>`；最后用临时文件 + 原子替换写入 `current.json`。失败时旧版本与指针保持不变；自动更新拒绝降级，显式回滚通过 `RollbackAsync`。
+5. `ECL.Bootstrapper` 是独立进程：启动 `current.json` 指向的版本，或在主程序退出后应用已签名更新；不在运行中的 ECL 内覆盖自身 DLL。
+6. 发布由 `.github/workflows/release.yml` 完成：从受控 Secret/Core 读取私钥，校验其与 public 仓库 `build/update-trust.json` 一致后签名，创建版本 tag 与通道 tag 的 GitHub Release，并在 `always()` 中删除临时私钥。
+7. 程序安装目录与用户数据目录分离；更新、回滚与未来的卸载不触碰实例、账户、配置和用户导入目录。详见 [deployment.md](deployment.md)。
 
 ## 8. 横切关注点
 
@@ -228,6 +275,13 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - 可预期失败：`Result` / `Result<T>`，带稳定 `Code`（如 `instance.duplicate_name`）。
 - 启动失败：`LaunchReport.Success = false`，失败步骤带用户可读消息。
 - 意外异常：记录日志；UI 线程异常由 `DispatcherUnhandledException` 兜底。
+
+### 任务进度与诊断
+
+- 长时间任务通过 `IOperationService.Begin` 登记快照；业务服务用 `OperationProgressBridge<T>` 把已有 `IProgress<T>` 桥接到任务中心。
+- 嵌套任务复用上层任务（`OperationScope`），一次安装只产生一个任务条目；任务生命周期由最外层业务服务决定。
+- 失败使用 `OperationErrorKind` 归因（异常类型或稳定错误码），UI 与 CLI 都不解析异常文本。
+- 当前接入范围、状态语义与已知限制见 [operations.md](operations.md)。
 
 ### 日志
 
@@ -250,9 +304,9 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 
 ### 安全
 
-- 更新包与安装包必须签名验证（规划中）。
-- 账户令牌计划使用 DPAPI 加密（规划中），当前仅实现离线账户。
-- 签名证书、私钥、OAuth 机密只存在于 private Core 仓库；public 仓库构建不读取它。
+- 更新 Manifest 使用 RSA-PSS-SHA256 detached signature，客户端按 `keyId` 从 `update-trust.json` 选择公钥；未知公钥或签名错误 fail-closed。Windows Authenticode 代码签名仍待证书接入。
+- Microsoft 与第三方账户凭据在 Windows 上使用 DPAPI 加密存储；非 Windows 平台暂不支持该安全凭据存储。离线账户不需要远程令牌。
+- 签名证书、私钥与发布凭据只存在于 private Core 仓库；Microsoft 桌面 OAuth 使用 public client + PKCE，不需要 Client Secret。public 仓库构建不读取私有材料。
 - CurseForge API key 只保存在私有代理服务端；ECL 客户端、构建产物、日志与诊断包都不含 key。代理实现与部署材料只在 private Core 仓库。
 - CurseForge 下载只接受官方 CDN（`*.forgecdn.net` / `*.curseforge.com`）；Modrinth 只接受 `modrinth.com` / `*.modrinth.com` 的 HTTPS 地址，避免 API 响应被滥用为任意 URL。
 
@@ -297,17 +351,21 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - Fabric/Forge/NeoForge 生成的继承链已按 `inheritsFrom` 合并；Forge/NeoForge 的 processors 产物（client jar）位于共享 `libraries/`。
 - 已处理 library `rules`、natives classifier、日志配置路径；已使用版本 JSON 的 `arguments.jvm` 与加载器专属 `arguments.game` 参数（标准游戏参数仍由启动器生成）。
 - Java 自动下载支持 Mojang、Adoptium、Zulu 与 Liberica；32/64 位与内存提示、JVM 预设已接入。
-- 未实现 Microsoft OAuth、authlib-injector、令牌加密（v0.3 暂缓）。
-- 未实现更新器与签名验证；签名脚本已预留。
+- Microsoft OAuth / Xbox / XSTS / Minecraft Services 与 Authlib-Injector/Yggdrasil 均已实现；Windows DPAPI 凭据保护已实现，跨平台安全凭据存储仍是缺口。账户管理 UI 的注销、凭据清理与失效重认证体验仍待完善。
+- 已实现更新协议核心、独立 Bootstrapper、staging/版本指针/回滚与签名 Release workflow；安装器 UI、卸载、主程序内自动检查/下载与 Authenticode 代码签名仍待后续。详见 [deployment.md](deployment.md)。
 - 未实现下载限速；并发、重试、续传、暂停/恢复已生效。
-- 界面固定为 ECL 深色主题（浅色模式已移除），内嵌 HarmonyOS Sans SC 字体；主题刷子统一使用 `DynamicResource`，避免样式解析时捕获旧颜色。托盘、完整 i18n 热切换与更细的无障碍仍在路线图中。
-- 崩溃分析基于日志/崩溃报告文本与 Mod 元数据排序，不是完整的符号化解析；日志导出已做脱敏。
-- CurseForge 与 Modrinth 的搜索、一键安装、整合包远程下载与 `.mrpack` 自动建实例导入已完成；不做 Mod 更新检查、可选依赖选择，作者禁止第三方分发或无 CDN 地址的文件无法下载。
+- 界面固定为 ECL 深色主题（浅色模式已移除），内嵌 HarmonyOS Sans SC 的 Regular / Medium / Bold 三个静态字面；正文、强调与标题通过共享排版 token 区分，主题刷子统一使用 `DynamicResource`。字体与许可细节见 [typography.md](typography.md)。托盘、完整 i18n 热切换与更细的无障碍仍在路线图中。
+- 崩溃分析基于日志/崩溃报告文本与 Mod 元数据排序，不是完整的符号化解析；诊断包导出已做脱敏，详见 [diagnostics.md](diagnostics.md)。
+- CurseForge 与 Modrinth 的搜索、一键安装、整合包远程下载与 `.mrpack` 自动建实例导入已完成；不做 Mod 更新检查、可选依赖选择，作者禁止第三方分发或无 CDN 地址的文件无法下载。实例工作区可按 Mod 元数据精确匹配并下载缺失的强制依赖；无法匹配时只提示手动搜索。
+- 实例创建页从 Mojang 版本清单选择正式版 / 快照版 / 愚人节版；愚人节版本依赖固定 ID 列表识别，新版本出现时需要更新列表。旧版 alpha/beta 不参与实例创建。
+- 内容管理已从独立页面合并到实例工作区（账户、Java/JVM、内存覆盖、模组与内容、整合包、文件与诊断）；应用不再提供独立的“内容”导航项。
 - 实例下载位置（.minecraft 目录）修改后需要重启，已有实例不会自动迁移。
+- 导入实例回归（P1 1.1）已覆盖扫描有效性、导入只读性、共享/隔离启动、缺失文件诊断与内容路径；详见 [instance-import.md](instance-import.md)。删除实例已按目录所有权生成计划并保护外部/共享目录（P1 1.2 的删除部分，见 7.9）；内容删除/禁用只接受实例游戏目录内的合法文件名。实例迁移（P1 1.3）尚未实现。
+- 统一任务中心（Operation）已接入下载批次、Minecraft 安装、整合包导入、内容安装/下载、CurseForge Mod 安装与 Java 运行时下载：阶段、字节/项目进度、速度/ETA、停滞/重试/失败归因、当前/最近任务条、取消与失败重试、诊断详情；CLI 的安装、Java、整合包与 CurseForge 命令也已消费任务快照。备份/恢复、整合包导出、启动与实例迁移/删除尚未接入，详见 [operations.md](operations.md)。
 - 下载页当前为单页结果（PageSize=40），分页与无限滚动仍在路线图中。
 - 资源包/光影包以 `options.txt` 为启用状态唯一事实来源，支持启用/禁用、缺失/重复/未识别条目提示与原子写入；独立配置文件的 shader 实现不会被同步。
 - 首次启动向导本阶段暂缓。
 
 ## 11. 下一步
 
-按 [roadmap.md](roadmap.md) 推进：v0.7 主题、崩溃分析、诊断包、下载控制、自定义 JVM 预设与资源包/光影包启用状态已完成，CurseForge 搜索/安装与远程下载已补全；下一步完成 Mod 依赖匹配与更新检查设计、无障碍细节和 v1.0 分发/更新。
+按 [roadmap.md](roadmap.md) 推进：P1 1.1 导入实例回归已完成（回归测试与样本见 [instance-import.md](instance-import.md)）；P1 1.2 的删除数据安全边界与内容操作路径约束已落地（见 7.9），真实共享目录与 WPF 删除对话框待实机验收；随后是实例迁移与原地配置变更。

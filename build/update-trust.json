@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "keys": [
+    {
+      "keyId": "ecl-release-2026-11",
+      "algorithm": "RSA-PSS-SHA256",
+      "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAnQS/0vLrzdG7qREcLPvS\nOzl5MbPASlB3nKSM/T5ShJAi7fqH9GXC8P4unXpjdq0+59SXgcBr1VvDW6PB4zVj\nFS/O55r5IA3Phoju5it1lcnDbVogT29gkhny+786L5WVevvOpl+8tfWNGXjL7HB9\n/FT/nvE53ETRZHe/kDHFXw2Wi4uPMPwk4k4AaTKtG82ZUzazmgcwszrLkjfEE9a4\nq3rQw+zclV3BYMGRHHsxG3W2TA7xvuSoHfxTwpGgzVnlkaHaj9j8+OWbUHapgJjZ\n/sxpOcxFt4/aZ6zmlsDiGH4tELqtKev6thQscEnhA+nxsXyg32jU4mknHvIqxp8E\nkIKiX4qh2zvLfqmTnI/x+WkdCKQ+wU5mMJfBjKHo1IB0ZBmsAZC5ZXG3W0wIXd7c\ngjroJBvRlS4h2z/VhDa/gcIk8dFoXcgHWfXAdE0F7rJX0wsMlE6mVlKnU0IRsaVz\nK6J7sa+XmtUR34ANHRR7MrFQJ9oT6RIG95KKp5kMaVCVAgMBAAE=\n-----END PUBLIC KEY-----"
+    }
+  ]
+}

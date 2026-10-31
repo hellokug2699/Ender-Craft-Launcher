@@ -12,6 +12,114 @@
         Background="{DynamicResource BackgroundBrush}"
         FontFamily="{StaticResource UiFontFamily}"
         SnapsToDevicePixels="True">
+    <Window.Resources>
+        <DataTemplate x:Key="OperationItemTemplate">
+            <Border Style="{StaticResource Card}" Padding="14,10" Margin="0,6,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding Title}"
+                                   FontSize="12"
+                                   Style="{StaticResource EmphasisText}"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding StateText}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   Margin="10,0,0,0"
+                                   VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="12,0,0,0">
+                            <Button Content="{loc:Loc Key=operations.cancel}"
+                                    Command="{Binding CancelCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    Padding="8,2"
+                                    MinHeight="0"
+                                    FontSize="10"
+                                    Visibility="{Binding CanCancel, Converter={StaticResource BoolToVisibility}}" />
+                            <Button Content="{loc:Loc Key=operations.retryButton}"
+                                    Command="{Binding RetryCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    Padding="8,2"
+                                    MinHeight="0"
+                                    FontSize="10"
+                                    Margin="6,0,0,0"
+                                    Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}" />
+                            <Button Content="{loc:Loc Key=operations.details}"
+                                    Command="{Binding ToggleDetailsCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    Padding="8,2"
+                                    MinHeight="0"
+                                    FontSize="10"
+                                    Margin="6,0,0,0" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Grid.Row="1"
+                               Margin="0,4,0,0"
+                               FontSize="10"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis">
+                        <Run Text="{Binding StageText}" />
+                        <Run Text="{Binding CurrentItem}" />
+                    </TextBlock>
+                    <ProgressBar Grid.Row="2"
+                                 Height="3"
+                                 Margin="0,8,0,0"
+                                 Minimum="0"
+                                 Maximum="100"
+                                 Value="{Binding ProgressValue}"
+                                 IsIndeterminate="{Binding IsIndeterminate}" />
+                    <Grid Grid.Row="3" Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding ProgressText}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding SpeedText}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Margin="10,0,0,0" />
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding EtaText}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   Margin="10,0,0,0" />
+                    </Grid>
+                    <TextBlock Grid.Row="4"
+                               Text="{Binding DiagnosticText}"
+                               FontSize="10"
+                               Foreground="{DynamicResource WarningBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0"
+                               Visibility="{Binding HasDiagnostic, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Grid.Row="5"
+                               Text="{Binding DetailsText}"
+                               FontFamily="Consolas"
+                               FontSize="10"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,6,0,0"
+                               Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
     <Grid KeyboardNavigation.TabNavigation="Cycle">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="248" />
@@ -44,7 +152,7 @@
                             <TextBlock Text="ENDER CRAFT LAUNCHER"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        FontSize="8"
-                                       FontWeight="SemiBold"
+                                       Style="{StaticResource EmphasisText}"
                                        Margin="0,1,0,0" />
                         </StackPanel>
                     </Grid>
@@ -55,7 +163,7 @@
                     <TextBlock Text="NAVIGATION"
                                Foreground="{DynamicResource TextMutedBrush}"
                                FontSize="9"
-                               FontWeight="SemiBold"
+                               Style="{StaticResource EmphasisText}"
                                Margin="12,0,0,7" />
                     <ListBox ItemsSource="{Binding NavItems}"
                              SelectedItem="{Binding SelectedNavItem, Mode=TwoWay}"
@@ -81,7 +189,7 @@
                             <TextBlock Text="{Binding VersionText}"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        FontSize="10"
-                                       FontWeight="SemiBold" />
+                                       Style="{StaticResource EmphasisText}" />
                             <TextBlock Text="{Binding BuildTimeText}"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        FontSize="9"
@@ -108,15 +216,44 @@
         <!-- Content canvas -->
         <Border Grid.Column="1" Background="{DynamicResource BackgroundBrush}">
             <Grid>
-                <Ellipse Width="420" Height="420"
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Ellipse Grid.Row="0"
+                         Width="420" Height="420"
                          HorizontalAlignment="Right"
                          VerticalAlignment="Top"
                          Margin="0,-210,-170,0"
                          Fill="{DynamicResource AccentGlowBrush}"
                          Opacity="0.16"
                          IsHitTestVisible="False" />
-                <ContentControl Content="{Binding CurrentPage}"
+                <ContentControl Grid.Row="0"
+                                Content="{Binding CurrentPage}"
                                 Margin="38,32,38,32" />
+
+                <!-- 任务中心：当前任务 / 最近任务，含进度、诊断与取消/重试 -->
+                <StackPanel Grid.Row="1" Margin="38,0,38,18">
+                    <StackPanel Visibility="{Binding OperationCenter.HasActive, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{loc:Loc Key=operations.active}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="9"
+                                   Style="{StaticResource EmphasisText}"
+                                   Margin="0,0,0,2" />
+                        <ItemsControl ItemsSource="{Binding OperationCenter.ActiveOperations}"
+                                      ItemTemplate="{StaticResource OperationItemTemplate}" />
+                    </StackPanel>
+                    <StackPanel Margin="0,8,0,0"
+                                Visibility="{Binding OperationCenter.HasRecent, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{loc:Loc Key=operations.recent}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="9"
+                                   Style="{StaticResource EmphasisText}"
+                                   Margin="0,0,0,2" />
+                        <ItemsControl ItemsSource="{Binding OperationCenter.RecentOperations}"
+                                      ItemTemplate="{StaticResource OperationItemTemplate}" />
+                    </StackPanel>
+                </StackPanel>
             </Grid>
         </Border>
     </Grid>

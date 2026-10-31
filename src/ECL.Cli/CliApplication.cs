@@ -9,6 +9,7 @@ using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Core.Localization;
+using Ecl.Deployment;
 using Ecl.Java;
 using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Diagnostics;
@@ -19,6 +20,7 @@ using Ecl.Minecraft.Launch;
 using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.Versions;
+using Ecl.Operations;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Ecl.Cli;
@@ -54,6 +56,7 @@ internal sealed class CliApplication
             "crash" => await CrashCommandAsync(rest).ConfigureAwait(false),
             "diagnostics" => await DiagnosticsCommandAsync(rest).ConfigureAwait(false),
             "settings" => SettingsCommand(rest),
+            "update" => await UpdateCommandAsync(rest).ConfigureAwait(false),
             "java" => await JavaCommandAsync(rest).ConfigureAwait(false),
             "account" => await AccountCommandAsync(rest).ConfigureAwait(false),
             "authserver" => await AuthServerCommandAsync(rest).ConfigureAwait(false),
@@ -201,8 +204,18 @@ internal sealed class CliApplication
                     {
                         var isolation = version.Isolated ? "隔离" : "未隔离";
                         var importedMark = version.AlreadyImported ? "  [已导入]" : string.Empty;
-                        Console.WriteLine($"  {version.VersionId}  ·  {version.Loader}  ·  {isolation}{importedMark}");
+                        var problemMark = version.Problem switch
+                        {
+                            DetectedVersionProblem.InvalidManifest => "  [无效]",
+                            DetectedVersionProblem.IncompleteInheritance => "  [不完整]",
+                            _ => string.Empty,
+                        };
+                        Console.WriteLine($"  {version.VersionId}  ·  {version.Loader}  ·  {isolation}{importedMark}{problemMark}");
                         Console.WriteLine($"      游戏目录：{version.GameDirectory}");
+                        if (!string.IsNullOrWhiteSpace(version.ProblemDetail))
+                        {
+                            Console.WriteLine($"      原因：{version.ProblemDetail}");
+                        }
                     }
 
                     return 0;
@@ -239,18 +252,42 @@ internal sealed class CliApplication
                         return UsageError("instance delete 需要实例 ID。");
                     }
 
-                    if (!_commandLine.HasFlag("force"))
+                    var planResult = await instances.GetDeletionPlanAsync(instanceId).ConfigureAwait(false);
+                    if (!planResult.IsSuccess)
                     {
-                        return UsageError("删除实例需要 --force 确认。");
+                        return WriteError(planResult.Error);
                     }
 
-                    var result = await instances.DeleteAsync(instanceId).ConfigureAwait(false);
+                    var plan = planResult.Value!;
+                    PrintDeletionPlan(plan, _commandLine.HasFlag("json"));
+
+                    if (_commandLine.HasFlag("dry-run"))
+                    {
+                        return 0;
+                    }
+
+                    if (!_commandLine.HasFlag("force"))
+                    {
+                        return UsageError("删除实例需要 --force 确认；使用 --keep-data 可只移除启动器记录。");
+                    }
+
+                    var mode = _commandLine.HasFlag("keep-data")
+                        ? InstanceDeletionMode.RemoveRecordOnly
+                        : InstanceDeletionMode.DeleteManagedData;
+                    var result = await instances
+                        .DeleteAsync(instanceId, new InstanceDeleteOptions { Mode = mode })
+                        .ConfigureAwait(false);
                     if (!result.IsSuccess)
                     {
                         return WriteError(result.Error);
                     }
 
-                    Console.WriteLine($"已删除实例 {instanceId}");
+                    var keptGameData = plan.HasManagedGameData && mode == InstanceDeletionMode.RemoveRecordOnly;
+                    Console.WriteLine(keptGameData
+                        ? $"已移除实例记录 {instanceId}，游戏数据保留在 {plan.GameDirectory}"
+                        : plan.HasManagedGameData
+                            ? $"已删除实例 {instanceId}（含 ECL 托管游戏数据）"
+                            : $"已移除实例记录 {instanceId}，外部游戏目录未删除：{plan.GameDirectory}");
                     return 0;
                 }
 
@@ -285,6 +322,32 @@ internal sealed class CliApplication
         }
 
         return 0;
+    }
+
+    private static void PrintDeletionPlan(InstanceDeletionPlan plan, bool json)
+    {
+        if (json)
+        {
+            Console.WriteLine(JsonSerializer.Serialize(plan, EclJson.Indented));
+            return;
+        }
+
+        Console.WriteLine($"实例：{plan.InstanceName}（{plan.InstanceId}）");
+        Console.WriteLine($"  启动器记录：{plan.RecordDirectory}");
+        if (plan.Find(InstanceDeletionEntryKind.ManagedGameData) is { } managed)
+        {
+            Console.WriteLine($"  ECL 托管游戏目录：{managed.Path}（{(managed.Exists ? "存在" : "不存在")}）");
+            Console.WriteLine("  默认删除托管数据；--keep-data 只移除记录并保留游戏数据。");
+        }
+        else if (plan.Find(InstanceDeletionEntryKind.ExternalGameData) is { } external)
+        {
+            Console.WriteLine($"  外部游戏目录：{external.Path}（只引用，不会删除）");
+            if (plan.IsShared)
+            {
+                Console.WriteLine(
+                    $"  共享引用：{string.Join("、", plan.SharedWith.Select(reference => $"{reference.Name}（{reference.Id}）"))}");
+            }
+        }
     }
 
     private async Task<int> LoaderCommandAsync(string[] args)
@@ -448,25 +511,9 @@ internal sealed class CliApplication
 
         var installService = _provider.GetRequiredService<IVersionInstallService>();
         var localizer = _provider.GetRequiredService<ILocalizer>();
-        var lastStage = (InstallStage?)null;
 
-        var progress = new InlineProgress<InstallProgress>(update =>
-        {
-            if (lastStage != update.Stage)
-            {
-                Console.WriteLine(update.Message);
-                lastStage = update.Stage;
-            }
-
-            if (update.TotalFiles > 0 &&
-                (update.CompletedFiles == update.TotalFiles || update.CompletedFiles % 200 == 0))
-            {
-                Console.WriteLine(
-                    $"  {update.CompletedFiles}/{update.TotalFiles} · {update.CompletedBytes / 1024 / 1024} MB");
-            }
-        });
-
-        var result = await installService.InstallAsync(instanceId, progress).ConfigureAwait(false);
+        using var operations = TrackOperations();
+        var result = await installService.InstallAsync(instanceId).ConfigureAwait(false);
         if (!result.IsSuccess)
         {
             return WriteError(result.Error);
@@ -686,6 +733,108 @@ internal sealed class CliApplication
         return 0;
     }
 
+    private async Task<int> UpdateCommandAsync(string[] args)
+    {
+        if (args.Length > 1 ||
+            (args.Length == 1 && !string.Equals(args[0], "check", StringComparison.OrdinalIgnoreCase)))
+        {
+            return UsageError("update 支持 check。");
+        }
+
+        var settings = _provider.GetRequiredService<ISettingsService>();
+        if (!settings.Get<bool>("launcher.checkUpdates"))
+        {
+            Console.WriteLine("更新检查已关闭（launcher.checkUpdates=false）。");
+            return 0;
+        }
+
+        var channelValue = settings.Get<string>("launcher.updateChannel");
+        var channel = UpdateChannels.TryParse(channelValue, out var parsedChannel)
+            ? parsedChannel
+            : UpdateChannel.Stable;
+
+        var feedValue = _commandLine.GetValue("feed") ??
+                        Environment.GetEnvironmentVariable("ECL_UPDATE_FEED");
+        if (string.IsNullOrWhiteSpace(feedValue))
+        {
+            Console.WriteLine("未配置更新源。设置 ECL_UPDATE_FEED 或传入 --feed <https URL> 后重试。");
+            return 0;
+        }
+
+        if (!Uri.TryCreate(feedValue, UriKind.Absolute, out var feed) ||
+            feed.Scheme != Uri.UriSchemeHttps)
+        {
+            return WriteError(new EclError("update.insecure_feed", "更新源必须是 HTTPS 地址。"));
+        }
+
+        var trustPath = _commandLine.GetValue("trust") ??
+                        Path.Combine(AppContext.BaseDirectory, "update-trust.json");
+        var trust = await UpdateTrustStore.FromFileAsync(trustPath).ConfigureAwait(false);
+        if (!trust.IsSuccess)
+        {
+            return WriteError(trust.Error);
+        }
+
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        var client = new UpdateClient(http, new UpdateSignatureVerifier(trust.Value!));
+        var check = await client.CheckAsync(feed, channel).ConfigureAwait(false);
+        if (!check.IsSuccess)
+        {
+            return WriteError(check.Error);
+        }
+
+        var manifest = check.Value!.Manifest;
+        var current = await GetCurrentDeploymentVersionAsync().ConfigureAwait(false);
+        var available = current is null || manifest.Version.CompareTo(current) > 0;
+        if (_commandLine.HasFlag("json"))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                channel = channel.ToApiValue(),
+                current = current?.ToString(),
+                available,
+                version = manifest.Version.ToString(),
+                package = manifest.Package.FileName,
+                packageSize = manifest.Package.Size,
+                manifest = check.Value.ManifestUri.ToString(),
+            }, EclJson.Indented));
+            return 0;
+        }
+
+        Console.WriteLine($"通道：{channel.ToApiValue()}");
+        Console.WriteLine($"当前版本：{current?.ToString() ?? "未知"}");
+        if (available)
+        {
+            Console.WriteLine($"发现新版本：{manifest.Version}");
+            Console.WriteLine($"更新包：{UpdateFeed.GetPackageUri(check.Value.ManifestUri, manifest.Package)}");
+            Console.WriteLine($"大小：{manifest.Package.Size} 字节");
+        }
+        else
+        {
+            Console.WriteLine("当前已是最新版本。");
+        }
+
+        return 0;
+    }
+
+    private async Task<ReleaseVersion?> GetCurrentDeploymentVersionAsync()
+    {
+        var installRoot = _commandLine.GetValue("install-root");
+        if (!string.IsNullOrWhiteSpace(installRoot))
+        {
+            var current = await new UpdateLayout(installRoot).ReadCurrentAsync().ConfigureAwait(false);
+            if (current.IsSuccess)
+            {
+                return current.Value!.ParsedVersion;
+            }
+        }
+
+        var version = typeof(CliApplication).Assembly.GetName().Version;
+        return version is null
+            ? null
+            : ReleaseVersion.Parse($"{version.Major}.{version.Minor}.{Math.Max(version.Build, 0)}");
+    }
+
     private async Task<int> JavaCommandAsync(string[] args)
     {
         if (args.Length == 0 || string.Equals(args[0], "list", StringComparison.OrdinalIgnoreCase))
@@ -760,26 +909,10 @@ internal sealed class CliApplication
         var requirement = JavaRequirements.Resolve(
             version.IsSuccess ? version.Value : null,
             instance.GameVersion);
-        var lastStage = (JavaInstallStage?)null;
 
-        var progress = new InlineProgress<JavaInstallProgress>(update =>
-        {
-            if (lastStage != update.Stage)
-            {
-                Console.WriteLine(update.Message);
-                lastStage = update.Stage;
-            }
-
-            if (update.TotalFiles > 0 &&
-                (update.CompletedFiles == update.TotalFiles || update.CompletedFiles % 100 == 0))
-            {
-                Console.WriteLine(
-                    $"  {update.CompletedFiles}/{update.TotalFiles} · {update.CompletedBytes / 1024 / 1024} MB");
-            }
-        });
-
+        using var operations = TrackOperations();
         var result = await _provider.GetRequiredService<IJavaInstallService>()
-            .EnsureAsync(requirement, progress)
+            .EnsureAsync(requirement)
             .ConfigureAwait(false);
 
         if (!result.IsSuccess)
@@ -877,12 +1010,7 @@ internal sealed class CliApplication
             case "login-microsoft":
                 {
                     var authentication = _provider.GetRequiredService<IMicrosoftAuthenticationService>();
-                    var settings = _provider.GetRequiredService<ISettingsService>();
-                    var clientId = settings.Get<string>("auth.microsoftClientId")?.Trim();
-                    if (string.IsNullOrWhiteSpace(clientId))
-                    {
-                        return WriteError(new EclError("auth.invalid_client_id", "未配置 Microsoft Client ID。"));
-                    }
+                    var clientId = MicrosoftClientIdentity.DefaultClientId;
 
                     // 仅供实机验证的诊断入口：必须由用户主动触发，不会在启动时自动登录。
                     Console.WriteLine($"Microsoft Client ID: {clientId}");
@@ -925,12 +1053,7 @@ internal sealed class CliApplication
 
             case "refresh":
                 {
-                    var settings = _provider.GetRequiredService<ISettingsService>();
-                    var clientId = settings.Get<string>("auth.microsoftClientId")?.Trim();
-                    if (string.IsNullOrWhiteSpace(clientId))
-                    {
-                        return WriteError(new EclError("auth.invalid_client_id", "未配置 Microsoft Client ID。"));
-                    }
+                    var clientId = MicrosoftClientIdentity.DefaultClientId;
 
                     var accountId = args.ElementAtOrDefault(1);
                     if (string.IsNullOrWhiteSpace(accountId))
@@ -1334,23 +1457,8 @@ internal sealed class CliApplication
 
         if (subCommand == "import")
         {
-            var lastStage = string.Empty;
-            var progress = new InlineProgress<ModpackProgress>(update =>
-            {
-                if (!string.Equals(lastStage, update.Stage, StringComparison.Ordinal))
-                {
-                    Console.WriteLine(update.Message);
-                    lastStage = update.Stage;
-                }
-
-                if (update.Total > 0 &&
-                    (update.Completed == update.Total || update.Completed % 100 == 0))
-                {
-                    Console.WriteLine($"  {update.Completed}/{update.Total}");
-                }
-            });
-
-            var result = await service.ImportAsync(instanceId, path, progress).ConfigureAwait(false);
+            using var operations = TrackOperations();
+            var result = await service.ImportAsync(instanceId, path).ConfigureAwait(false);
             if (!result.IsSuccess)
             {
                 return WriteError(result.Error);
@@ -1570,29 +1678,14 @@ internal sealed class CliApplication
         int? fileId = int.TryParse(_commandLine.GetValue("file-id"), out var parsedFileId) && parsedFileId > 0
             ? parsedFileId
             : null;
-        var lastStage = string.Empty;
-        var progress = new InlineProgress<CurseForgeProgress>(update =>
-        {
-            if (!string.Equals(lastStage, update.Stage, StringComparison.Ordinal))
-            {
-                Console.WriteLine(update.Message);
-                lastStage = update.Stage;
-            }
 
-            if (update.Total > 0 &&
-                (update.Completed == update.Total || update.Completed % 10 == 0))
-            {
-                Console.WriteLine($"  {update.Completed}/{update.Total}");
-            }
-        });
-
+        using var operations = TrackOperations();
         var result = await service
             .InstallAsync(
                 instanceId,
                 reference,
                 fileId,
-                includeDependencies: !_commandLine.HasFlag("no-dependencies"),
-                progress)
+                includeDependencies: !_commandLine.HasFlag("no-dependencies"))
             .ConfigureAwait(false);
         if (!result.IsSuccess)
         {
@@ -1986,8 +2079,10 @@ internal sealed class CliApplication
         return exitCode;
     }
 
-    private sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>
-    {
-        public void Report(T value) => callback(value);
-    }
+    /// <summary>
+    /// 订阅任务中心，让安装、整合包、Java 与 CurseForge 等长任务输出统一的
+    /// 阶段、百分比、速度与失败归因；进度写标准错误，避免污染 <c>--json</c>。
+    /// </summary>
+    private CliOperationReporter TrackOperations() =>
+        new(_provider.GetRequiredService<IOperationStore>(), _provider.GetRequiredService<ILocalizer>());
 }

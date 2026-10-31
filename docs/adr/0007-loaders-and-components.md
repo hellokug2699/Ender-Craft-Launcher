@@ -37,8 +37,8 @@ v0.5 需要支持 Fabric 与 1.12.2 的 Cleanroom，并处理 Fabric API、OptiF
 
 ### 4. OptiFine 显式选择
 
-- OptiFine 只能通过 Cleanroom + 用户显式选择进入安装流程。
-- 默认值为“不安装”；Fabric/原版下 UI 禁用选项，服务端再次校验。
+- OptiFine 仅在用户显式选择时进入安装流程；当前允许 Forge 与 Cleanroom，原版、Fabric、NeoForge 不提供该选项。
+- 默认值为“不安装”；原版、Fabric、NeoForge 下 UI 禁用选项，服务端再次校验。
 - 下载源使用 BMCLAPI 的 OptiFine 列表与文件接口；ECL 不打包 OptiFine。
 
 ### 5. 更新时间来源

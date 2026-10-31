@@ -82,8 +82,10 @@ public partial class VersionImportDialog : Window
             var isolation = version.Isolated ? localizer.Get("instances.importIsolated") : localizer.Get("instances.importShared");
             Detail = version.AlreadyImported
                 ? $"{version.Loader} · {isolation} · {localizer.Get("instances.importAlready")}"
-                : $"{version.Loader} · {isolation} · {version.GameDirectory}";
-            CanImport = !version.AlreadyImported;
+                : version.Problem == DetectedVersionProblem.None
+                    ? $"{version.Loader} · {isolation} · {version.GameDirectory}"
+                    : $"{version.Loader} · {isolation} · {localizer.Get("instances.importUnusable")}：{version.ProblemDetail}";
+            CanImport = version.CanImport;
             _isChecked = CanImport;
         }
 

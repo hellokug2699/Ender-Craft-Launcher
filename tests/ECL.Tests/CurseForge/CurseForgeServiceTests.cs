@@ -4,6 +4,7 @@ using System.Text.Json;
 using Ecl.Download;
 using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Instances;
+using Ecl.Operations;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -46,6 +47,12 @@ public sealed class CurseForgeServiceTests
         using var marker = JsonDocument.Parse(
             await File.ReadAllTextAsync(Path.Combine(gameDirectory, ".ecl-curseforge.json")));
         Assert.Equal(1, marker.RootElement.GetProperty("mods")[0].GetProperty("projectId").GetInt32());
+
+        var snapshot = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
+        Assert.Equal(OperationKind.Install, snapshot.Kind);
+        Assert.Equal(OperationState.Completed, snapshot.State);
+        Assert.Equal("CurseForge", snapshot.Source);
+        Assert.Equal("curseforge.done", snapshot.StageId);
     }
 
     [Fact]

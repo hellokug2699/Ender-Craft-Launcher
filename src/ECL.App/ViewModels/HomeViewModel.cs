@@ -15,6 +15,9 @@ public sealed partial class HomeViewModel : ObservableObject
     /// <summary>由主窗口注入页面导航行为，避免主页依赖主窗口 ViewModel。</summary>
     public Action<string>? Navigate { get; set; }
 
+    /// <summary>打开当前选中实例的工作区（模组与内容在其中管理）。</summary>
+    public Action? OpenInstanceWorkspace { get; set; }
+
     public HomeViewModel(InstancesViewModel launcher)
     {
         Launcher = launcher;
@@ -27,5 +30,5 @@ public sealed partial class HomeViewModel : ObservableObject
     private void OpenInstances() => Navigate?.Invoke("instances");
 
     [RelayCommand]
-    private void OpenContent() => Navigate?.Invoke("content");
+    private void OpenWorkspace() => OpenInstanceWorkspace?.Invoke();
 }

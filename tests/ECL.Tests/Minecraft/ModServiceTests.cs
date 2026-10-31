@@ -111,6 +111,31 @@ public sealed class ModServiceTests
     }
 
     [Fact]
+    public async Task RejectsModOperationsThatEscapeTheInstanceModsDirectory()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instance = await CreateInstanceAsync(provider);
+        var service = provider.GetRequiredService<IModService>();
+        var outside = Path.Combine(environment.Root, "outside.jar");
+        await File.WriteAllTextAsync(outside, "sentinel");
+
+        foreach (var fileName in new[] { "../outside.jar", "..\\outside.jar", outside })
+        {
+            var delete = await service.DeleteAsync(instance.Id, fileName);
+            Assert.False(delete.IsSuccess);
+            Assert.Equal("mod.invalid_file", delete.Error?.Code);
+
+            var toggle = await service.SetEnabledAsync(instance.Id, fileName, enabled: false);
+            Assert.False(toggle.IsSuccess);
+            Assert.Equal("mod.invalid_file", toggle.Error?.Code);
+        }
+
+        Assert.True(File.Exists(outside));
+        Assert.Equal("sentinel", await File.ReadAllTextAsync(outside));
+    }
+
+    [Fact]
     public async Task DetectsDuplicateModIds()
     {
         using var environment = new TestEnvironment();

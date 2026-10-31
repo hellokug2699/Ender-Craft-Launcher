@@ -1,11 +1,13 @@
 <UserControl x:Class="Ecl.App.Views.InstancesView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:Ecl.App.Localization">
+             xmlns:loc="clr-namespace:Ecl.App.Localization"
+             xmlns:behaviors="clr-namespace:Ecl.App.Behaviors">
     <UserControl.InputBindings>
         <KeyBinding Key="F5" Command="{Binding RefreshCommand}" />
     </UserControl.InputBindings>
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" KeyboardNavigation.TabNavigation="Cycle">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" KeyboardNavigation.TabNavigation="Cycle"
+                  behaviors:WheelScroll.IsEnabled="True">
         <StackPanel>
             <Grid Margin="0,0,0,22">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -65,7 +67,7 @@
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Name}" FontSize="16" Style="{StaticResource EmphasisText}" TextTrimming="CharacterEllipsis" />
                                     <WrapPanel Margin="0,8,0,0">
                                         <Border Style="{StaticResource Badge}" Margin="0,0,6,0">
                                             <TextBlock Text="{Binding MinecraftVersionText}" FontSize="10" Foreground="{DynamicResource AccentHoverBrush}" />

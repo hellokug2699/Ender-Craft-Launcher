@@ -23,6 +23,16 @@ public sealed record MicrosoftAuthenticationOptions
     public int RedirectPort { get; init; }
 }
 
+/// <summary>
+/// ECL 使用的 Microsoft OAuth public client 标识符。
+/// 这是公开的应用标识符，不是秘密；登录链路依赖固定的应用注册，
+/// 因此不在设置中暴露给用户修改。
+/// </summary>
+public static class MicrosoftClientIdentity
+{
+    public const string DefaultClientId = "a1e97b44-9c00-4a60-8e32-1119fefe7aab";
+}
+
 public interface IMicrosoftAuthenticationService
 {
     Task<Result<Account>> SignInAsync(

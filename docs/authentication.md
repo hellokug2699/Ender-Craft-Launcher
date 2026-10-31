@@ -2,11 +2,14 @@
 
 > 当前状态：Microsoft 正式账户认证链已经在 Windows 11 实机完成验证。ECL 使用 Microsoft OAuth Authorization Code + PKCE，经 Xbox Live、XSTS、Minecraft Services 完成 Java Edition 权益与档案验证，并使用 Windows DPAPI 保存敏感凭据。令牌刷新在不打开浏览器的情况下完成。
 
-## Client ID 填写位置
+## Client ID
 
-打开 ECL **设置 → 全局 → 账户与身份验证 → Microsoft OAuth Client ID**，填写 Microsoft Entra 管理中心中应用注册的 **Application (client) ID**（GUID 格式）。
+ECL 使用固定的 Microsoft OAuth public client 标识符（`MicrosoftClientIdentity.DefaultClientId`），
+**不提供用户设置项**：登录链路（授权码 + PKCE、`localhost` 回调）依赖这个固定的应用注册。
+该标识符是公开的应用标识，不是秘密，也不是可编辑配置。
 
-ECL 桌面应用属于 public client，不配置、不分发 Client Secret。当前公开仓库中的 Client ID 只是应用标识符，不是秘密。
+需要自行构建并替换 Client ID 的开发者，可以修改 `src/ECL.Auth/MicrosoftAuthentication.cs`
+中的常量后重新构建；不要把 Client Secret 写入客户端或仓库。
 
 ## 登录流程
 
@@ -83,6 +86,10 @@ ECL 支持通过 Authlib-Injector / Yggdrasil 兼容服务器登录第三方账�
 - Authlib-Injector 清单中的版本号只允许路径安全字符，SHA-256 必须是 64 位十六进制；缓存的 jar 只有通过校验并带有 `.sha256` 记录时才用于命令预览。
 
 ## 当前边界
+
+- Microsoft 与第三方账户的凭据持久化当前依赖 Windows DPAPI；在非 Windows 平台，安全凭据存储会返回不支持错误，不能把普通 JSON 文件当作替代方案。
+- `accounts.json` 只保存账户元数据；令牌和第三方 client token 保存在独立的 DPAPI 加密凭据文件中。
+- 账户中心仍需完善注销、凭据彻底清理、失效重认证状态与跨平台安全凭据存储；认证协议已实现不代表这些管理体验全部完成。
 
 - 已实现：Microsoft OAuth、PKCE、浏览器回调、Xbox Live、XSTS、Minecraft Services、Java Edition entitlement、Minecraft profile、Authlib-Injector 第三方账户、Windows DPAPI、安全 token 脱敏、静默刷新。
 - 已完成：真实账户端到端实机验证。

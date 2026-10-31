@@ -1,0 +1,175 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver version, for example 1.0.1"
+        required: true
+        type: string
+      channel:
+        description: "Update channel"
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - beta
+          - dev
+      release_notes:
+        description: "Optional release notes"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, sign and publish
+    runs-on: windows-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Resolve version and channel
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}"
+          $channel = "${{ inputs.channel }}"
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            $version = "${{ github.ref_name }}".TrimStart("v")
+            $channel = if ($version.Contains("-")) { "beta" } else { "stable" }
+          }
+          if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?$') {
+            throw "Invalid version: $version"
+          }
+          if ($channel -notin @("stable", "beta", "dev")) { throw "Invalid channel: $channel" }
+          "ECL_VERSION=$version" >> $env:GITHUB_ENV
+          "ECL_CHANNEL=$channel" >> $env:GITHUB_ENV
+          $notes = "${{ inputs.release_notes }}"
+          if ([string]::IsNullOrWhiteSpace($notes)) { $notes = "ECL $version ($channel)" }
+          $notes | Set-Content -Path "$env:RUNNER_TEMP/release-notes.md" -Encoding utf8NoBOM
+
+      - name: Materialize update signing key
+        shell: pwsh
+        env:
+          ECL_UPDATE_SIGNING_KEY_SECRET: ${{ secrets.ECL_UPDATE_SIGNING_KEY }}
+          ECL_CORE_READ_TOKEN: ${{ secrets.ECL_CORE_READ_TOKEN }}
+        run: |
+          $keyPath = Join-Path $env:RUNNER_TEMP "ecl-update-signing.key"
+          if (-not [string]::IsNullOrWhiteSpace($env:ECL_UPDATE_SIGNING_KEY_SECRET)) {
+            [System.IO.File]::WriteAllText($keyPath, $env:ECL_UPDATE_SIGNING_KEY_SECRET, [System.Text.UTF8Encoding]::new($false))
+          }
+          elseif (-not [string]::IsNullOrWhiteSpace($env:ECL_CORE_READ_TOKEN)) {
+            $headers = @{
+              Authorization = "Bearer $env:ECL_CORE_READ_TOKEN"
+              Accept = "application/vnd.github.raw+json"
+              "X-GitHub-Api-Version" = "2022-11-28"
+            }
+            Invoke-RestMethod -Headers $headers `
+              -Uri "https://api.github.com/repos/hellokug2699/Ender-Craft-Launcher-Core/contents/signing/update-signing.key" `
+              -OutFile $keyPath
+          }
+          else {
+            throw "No update signing key. Configure ECL_UPDATE_SIGNING_KEY (recommended) or ECL_CORE_READ_TOKEN."
+          }
+
+          # Validate the private key against the committed public trust store before signing.
+          $trust = Get-Content "build/update-trust.json" -Raw | ConvertFrom-Json
+          $expected = [string]$trust.keys[0].publicKey
+          $rsa = [System.Security.Cryptography.RSA]::Create()
+          try {
+            $rsa.ImportFromPem([System.IO.File]::ReadAllText($keyPath))
+            $actual = $rsa.ExportSubjectPublicKeyInfoPem()
+          }
+          finally {
+            $rsa.Dispose()
+          }
+          if ($actual.Trim() -ne $expected.Trim()) {
+            throw "Signing key does not match build/update-trust.json. Refusing to sign."
+          }
+          "ECL_UPDATE_SIGNING_KEY=$keyPath" >> $env:GITHUB_ENV
+          Write-Host "Signing key materialized and matched the committed trust store."
+
+      - name: Build signed release artifacts
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File build/pack-release.ps1 `
+            -Version $env:ECL_VERSION `
+            -Channel $env:ECL_CHANNEL `
+            -OutputRoot "artifacts/release" `
+            -SigningKeyPath $env:ECL_UPDATE_SIGNING_KEY `
+            -KeyId "ecl-release-2026-11" `
+            -TrustStorePath "build/update-trust.json" `
+            -ReleaseNotes (Get-Content "$env:RUNNER_TEMP/release-notes.md" -Raw)
+          if ($LASTEXITCODE -ne 0) { throw "pack-release failed" }
+
+      - name: Collect assets
+        shell: pwsh
+        run: |
+          $dir = "artifacts/release/$env:ECL_VERSION"
+          $boot = Join-Path $dir "ECL.Bootstrapper-$env:ECL_VERSION-win-x64.zip"
+          Compress-Archive -Path (Join-Path $dir "bootstrapper/*") -DestinationPath $boot -Force
+          Get-ChildItem $dir | Select-Object Name, Length
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $dir = "artifacts/release/$env:ECL_VERSION"
+          $assets = @(
+            (Join-Path $dir "ECL-$env:ECL_VERSION-win-x64.zip"),
+            (Join-Path $dir "ECL.Bootstrapper-$env:ECL_VERSION-win-x64.zip"),
+            (Join-Path $dir "update-manifest.json"),
+            (Join-Path $dir "update-manifest.sig"),
+            (Join-Path $dir "update-trust.json")
+          )
+          $notes = "$env:RUNNER_TEMP/release-notes.md"
+          $prerelease = $env:ECL_CHANNEL -ne "stable"
+          $versionTag = "v$env:ECL_VERSION"
+
+          function Publish-Release([string]$tag, [string]$title) {
+            $existing = gh release view $tag 2>$null
+            if ($LASTEXITCODE -eq 0 -and $existing) {
+              gh release upload $tag @assets --clobber
+              gh release edit $tag --title $title --notes-file $notes
+            }
+            else {
+              $ghArgs = @("release", "create", $tag, "--title", $title, "--notes-file", $notes, "--target", $env:GITHUB_SHA)
+              if ($prerelease) { $ghArgs += "--prerelease" }
+              gh @ghArgs @assets
+            }
+            if ($LASTEXITCODE -ne 0) { throw "Failed to publish release $tag" }
+          }
+
+          Publish-Release $versionTag "ECL $env:ECL_VERSION"
+          Publish-Release $env:ECL_CHANNEL "ECL $env:ECL_CHANNEL channel ($env:ECL_VERSION)"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ECL-${{ env.ECL_VERSION }}
+          path: artifacts/release/${{ env.ECL_VERSION }}/
+          if-no-files-found: error
+
+      - name: Remove signing key
+        if: always()
+        shell: pwsh
+        run: |
+          $keyPath = Join-Path $env:RUNNER_TEMP "ecl-update-signing.key"
+          if (Test-Path $keyPath) { Remove-Item $keyPath -Force }

@@ -82,27 +82,23 @@ public sealed class LaunchService : ILaunchService
         {
             // 正常启动器不会为了续期打开浏览器：refresh token 静默换新，
             // 只有 refresh token 本身失效才需要用户重新登录。
-            var clientId = _settings.Get<string>("auth.microsoftClientId")?.Trim();
-            if (!string.IsNullOrWhiteSpace(clientId))
+            var refreshed = await _accounts
+                .EnsureFreshAsync(
+                    account,
+                    new MicrosoftAuthenticationOptions { ClientId = MicrosoftClientIdentity.DefaultClientId },
+                    RefreshMargin,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!refreshed.IsSuccess)
             {
-                var refreshed = await _accounts
-                    .EnsureFreshAsync(
-                        account,
-                        new MicrosoftAuthenticationOptions { ClientId = clientId },
-                        RefreshMargin,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-                if (!refreshed.IsSuccess)
-                {
-                    return Failure(
-                        "account",
-                        $"Microsoft 账户凭据刷新失败：{refreshed.Error?.Message}",
-                        dryRun,
-                        total);
-                }
-
-                account = refreshed.Value!;
+                return Failure(
+                    "account",
+                    $"Microsoft 账户凭据刷新失败：{refreshed.Error?.Message}",
+                    dryRun,
+                    total);
             }
+
+            account = refreshed.Value!;
         }
 
         else if (!dryRun && account.Type == AccountType.ThirdParty)

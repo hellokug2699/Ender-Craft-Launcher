@@ -224,7 +224,10 @@ public static class CommandLineBuilder
             .Select(artifact => Versions.VersionFilePlanner.GetLibraryPath(context.Paths, artifact))
             .ToList();
 
-        entries.Add(Versions.VersionFilePlanner.GetClientJarPath(context.Paths, context.Instance.VersionId));
+        entries.Add(Versions.VersionFilePlanner.ResolveClientJarPath(
+            context.Paths,
+            context.Version,
+            context.Instance.VersionId));
         return string.Join(Path.PathSeparator, entries);
     }
 
