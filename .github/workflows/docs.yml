@@ -4,7 +4,7 @@ on:
   push:
     branches: ["**"]
     paths:
-      - "docs/**/*.md"
+      - "**/*.md"
       - "scripts/check_docs.py"
       - ".github/workflows/docs.yml"
   pull_request:
