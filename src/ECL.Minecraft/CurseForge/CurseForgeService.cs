@@ -93,7 +93,7 @@ public sealed class CurseForgeService(
         var primaryFile = fileResult.Value!;
         var warnings = new List<string>();
         var plan = new List<PlannedMod> { new(mod, primaryFile) };
-        var gameDirectory = GetGameDirectory(instance.Id);
+        var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
         var modsDirectory = Path.Combine(gameDirectory, "mods");
         var knownProjects = LoadInstalled(gameDirectory)
             .Where(record => File.Exists(Path.Combine(modsDirectory, record.FileName)))
@@ -180,7 +180,7 @@ public sealed class CurseForgeService(
                 string.Join("; ", exception.Failures.Take(5)));
         }
 
-        var installed = LoadInstalled(GetGameDirectory(instance.Id));
+        var installed = LoadInstalled(InstancePaths.GetGameDirectory(paths, instance));
         var installedAt = DateTimeOffset.UtcNow.ToString("O");
         foreach (var item in downloadable)
         {
@@ -425,8 +425,6 @@ public sealed class CurseForgeService(
 
         return Result<CurseForgeFile>.Ok(file);
     }
-
-    private string GetGameDirectory(string instanceId) => paths.GetInstanceGameDirectory(instanceId);
 
     private static string ExtractSlug(string reference)
     {

@@ -39,9 +39,10 @@
                 </Grid>
             </Border>
             <Grid Margin="0,0,0,10">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <TextBlock Text="{loc:Loc Key=instances.listTitle}" Style="{StaticResource SectionText}" />
-                <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="{loc:Loc Key=instances.importButton}" Command="{Binding ImportVersionsCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,0" />
+                <TextBlock Grid.Column="2" Text="{Binding StatusMessage}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" VerticalAlignment="Center" />
             </Grid>
             <TextBlock Text="{loc:Loc Key=instances.empty}" Style="{StaticResource SubtitleText}" Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}" Margin="0,0,0,14" />
             <ListBox ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedInstance, Mode=TwoWay}" ItemContainerStyle="{StaticResource InstanceItemStyle}" BorderThickness="0" Background="Transparent" Margin="0,0,0,18">

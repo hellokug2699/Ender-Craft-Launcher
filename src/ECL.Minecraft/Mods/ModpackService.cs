@@ -37,7 +37,7 @@ public sealed class ModpackService(
             return Result<ModpackImportReport>.Fail("modpack.not_found", $"整合包不存在：{archivePath}");
         }
 
-        var gameDirectory = paths.GetInstanceGameDirectory(instance.Id);
+        var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
         Directory.CreateDirectory(gameDirectory);
 
         try
@@ -84,7 +84,7 @@ public sealed class ModpackService(
 
         try
         {
-            var gameDirectory = paths.GetInstanceGameDirectory(instance.Id);
+            var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
             var fullOutput = Path.GetFullPath(outputPath);
             var outputDirectory = Path.GetDirectoryName(fullOutput);
             if (!string.IsNullOrEmpty(outputDirectory))

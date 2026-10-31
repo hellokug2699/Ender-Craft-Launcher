@@ -381,7 +381,7 @@ public sealed class ModService(
     }
 
     private string GetModsDirectory(GameInstance instance) =>
-        Path.Combine(paths.GetInstanceGameDirectory(instance.Id), "mods");
+        Path.Combine(InstancePaths.GetGameDirectory(paths, instance), "mods");
 
     private static bool IsModFile(string path) =>
         IsEnabledFile(Path.GetFileName(path)) || IsDisabledFile(Path.GetFileName(path));

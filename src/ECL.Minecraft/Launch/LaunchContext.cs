@@ -43,9 +43,9 @@ public sealed class LaunchContext
 
     public string InstanceDirectory => Paths.GetInstanceDirectory(Instance.Id);
 
-    public string GameDirectory => Paths.GetInstanceGameDirectory(Instance.Id);
+    public string GameDirectory => InstancePaths.GetGameDirectory(Paths, Instance);
 
-    public string NativesDirectory => Paths.GetInstanceNativesDirectory(Instance.Id);
+    public string NativesDirectory => InstancePaths.GetNativesDirectory(Paths, Instance);
 
     public string VersionDirectory => Path.Combine(Paths.VersionsDirectory, Instance.VersionId);
 

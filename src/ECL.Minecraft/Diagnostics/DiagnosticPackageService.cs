@@ -56,7 +56,7 @@ public sealed partial class DiagnosticPackageService(
                 File.Delete(output);
             }
 
-            var gameDirectory = paths.GetInstanceGameDirectory(instance.Id);
+            var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
             var runtimes = await javaLocator.FindAllAsync(cancellationToken).ConfigureAwait(false);
             var entries = 0;
 

@@ -222,7 +222,7 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     public string SelectedInstancePath => SelectedInstance is null
         ? string.Empty
-        : _paths.GetInstanceGameDirectory(SelectedInstance.Model.Id);
+        : InstancePaths.GetGameDirectory(_paths, SelectedInstance.Model);
 
     public string SelectedInstanceCreated => SelectedInstance is null
         ? string.Empty
@@ -1244,6 +1244,36 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
     }
 
+    /// <summary>扫描游戏目录的 versions 文件夹，把其它启动器安装的版本导入为实例。</summary>
+    [RelayCommand]
+    private async Task ImportVersionsAsync()
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        var detected = await _instances.ScanVersionsAsync().ConfigureAwait(true);
+        if (detected.Count == 0)
+        {
+            StatusMessage = _localizer.Get("instances.importNone");
+            return;
+        }
+
+        var dialog = new VersionImportDialog(_instances, detected, _localizer)
+        {
+            Owner = Application.Current?.MainWindow,
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        await RefreshInstancesAsync().ConfigureAwait(true);
+        StatusMessage = _localizer.Get("instances.imported", dialog.ImportedCount);
+    }
+
     private static Task OpenBrowserAsync(Uri uri)
     {
         Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
@@ -1375,7 +1405,7 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     [RelayCommand]
     private void OpenModsFolder() => OpenSelectedDirectory(
-        SelectedInstance is null ? null : Path.Combine(_paths.GetInstanceGameDirectory(SelectedInstance.Model.Id), "mods"));
+        SelectedInstance is null ? null : Path.Combine(InstancePaths.GetGameDirectory(_paths, SelectedInstance.Model), "mods"));
 
     [RelayCommand]
     private void ManageInstanceMods()
@@ -1394,7 +1424,7 @@ public sealed partial class InstancesViewModel : ObservableObject
             return;
         }
 
-        var source = Path.Combine(_paths.GetInstanceGameDirectory(SelectedInstance.Model.Id), "logs", "latest.log");
+        var source = Path.Combine(InstancePaths.GetGameDirectory(_paths, SelectedInstance.Model), "logs", "latest.log");
         if (!File.Exists(source))
         {
             StatusMessage = "该实例尚无 latest.log；请先运行一次游戏。";

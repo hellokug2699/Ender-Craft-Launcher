@@ -65,6 +65,9 @@ internal static class Program
                            [--fabric-api-version <版本>] [--optifine-version <type:patch>]
                                           创建实例；加载器支持 vanilla、fabric、forge、neoforge、cleanroom
           instance delete <实例ID> --force 删除实例
+          instance scan [--json]          扫描 versions 目录中已有的版本
+          instance import <版本ID> [--name <名称>]
+                                          把已有版本导入为实例（引用原目录，不复制）
           loader list --version <版本> [--type fabric|forge|neoforge|cleanroom|fabric-api|optifine] [--json]
                                           列出加载器/组件版本与更新时间
           install <实例ID>                下载/补全版本文件、加载器与组件

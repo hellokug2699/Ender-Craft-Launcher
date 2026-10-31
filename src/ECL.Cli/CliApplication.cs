@@ -182,6 +182,55 @@ internal sealed class CliApplication
                     return 0;
                 }
 
+            case "scan":
+                {
+                    var detected = await instances.ScanVersionsAsync().ConfigureAwait(false);
+                    if (_commandLine.HasFlag("json"))
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(detected, EclJson.Indented));
+                        return 0;
+                    }
+
+                    if (detected.Count == 0)
+                    {
+                        Console.WriteLine("未在 versions 目录发现可导入的版本。");
+                        return 0;
+                    }
+
+                    foreach (var version in detected)
+                    {
+                        var isolation = version.Isolated ? "隔离" : "未隔离";
+                        var importedMark = version.AlreadyImported ? "  [已导入]" : string.Empty;
+                        Console.WriteLine($"  {version.VersionId}  ·  {version.Loader}  ·  {isolation}{importedMark}");
+                        Console.WriteLine($"      游戏目录：{version.GameDirectory}");
+                    }
+
+                    return 0;
+                }
+
+            case "import":
+                {
+                    var versionId = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(versionId))
+                    {
+                        return UsageError("instance import 需要 versions 目录下的版本 ID。");
+                    }
+
+                    var imported = await instances
+                        .ImportAsync(versionId, _commandLine.GetValue("name"))
+                        .ConfigureAwait(false);
+                    if (!imported.IsSuccess)
+                    {
+                        return WriteError(imported.Error);
+                    }
+
+                    Console.WriteLine($"已导入实例 {imported.Value!.Name}");
+                    Console.WriteLine($"  ID      : {imported.Value.Id}");
+                    Console.WriteLine($"  版本    : {imported.Value.VersionId} ({imported.Value.Loader})");
+                    Console.WriteLine($"  游戏目录: {imported.Value.GameDirectory}");
+                    return 0;
+                }
+
             case "delete":
                 {
                     var instanceId = args.ElementAtOrDefault(1);
