@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ECL.Core\ECL.Core.csproj" />
+    <ProjectReference Include="..\..\src\ECL.Deployment\ECL.Deployment.csproj" />
     <ProjectReference Include="..\..\src\ECL.Download\ECL.Download.csproj" />
     <ProjectReference Include="..\..\src\ECL.Configuration\ECL.Configuration.csproj" />
     <ProjectReference Include="..\..\src\ECL.Auth\ECL.Auth.csproj" />

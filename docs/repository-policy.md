@@ -17,7 +17,7 @@ ECL 使用两个仓库：
 
 - C# / XAML 源码、测试、示例配置。
 - 架构文档、ADR、路线图、构建脚本。
-- 更新公钥（用于客户端验证签名，公钥本身不保密）。
+- 更新公钥与信任库（`build/update-trust.json`，用于客户端验证签名，公钥本身不保密）。
 - 本地化文件。
 - “CurseForge 请求经自建代理转发”的说明，以及客户端必须使用的公开代理 API endpoint。客户端需要知道请求目的地，因此 endpoint 不是秘密；代理实现、路由配置、部署材料和 API key 仍必须保留在 private Core。
 - CI 配置（不含任何密钥值）。
@@ -84,6 +84,16 @@ CurseForge 请求经私有代理转发，代理与 key 都不进入 public 仓�
 - 发布环境需要人工审批。
 - 日志中不得输出证书路径以外的敏感信息，不得 `echo` 口令。
 - 临时证书文件在 job 结束后删除（`if: always()`）。
+
+### 更新 Manifest 签名密钥
+
+更新协议使用独立于 Windows 代码签名的 RSA-PSS-SHA256 密钥：
+
+- 私钥位于 private Core 仓库 `signing/update-signing.key`；公钥与 `keyId` 位于 public 仓库 `build/update-trust.json`。
+- Release workflow 优先从 Actions Secret `ECL_UPDATE_SIGNING_KEY` 读取私钥；也可用只读 Core 的 `ECL_CORE_READ_TOKEN` 临时拉取。
+- workflow 必须先校验私钥导出的公钥与 committed `build/update-trust.json` 完全一致，再签名。
+- 私钥只写入 `RUNNER_TEMP`，不输出内容，并在 `always()` 步骤删除；PR 流程不运行 Release workflow。
+- 轮换时保留旧公钥至少一个发布周期，详见 Core 的 `signing/README.md` 与 [deployment.md](deployment.md)。
 
 ## 4. 泄露处理
 

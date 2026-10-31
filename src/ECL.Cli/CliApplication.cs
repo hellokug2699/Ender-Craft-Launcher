@@ -9,6 +9,7 @@ using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Core.Localization;
+using Ecl.Deployment;
 using Ecl.Java;
 using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Diagnostics;
@@ -55,6 +56,7 @@ internal sealed class CliApplication
             "crash" => await CrashCommandAsync(rest).ConfigureAwait(false),
             "diagnostics" => await DiagnosticsCommandAsync(rest).ConfigureAwait(false),
             "settings" => SettingsCommand(rest),
+            "update" => await UpdateCommandAsync(rest).ConfigureAwait(false),
             "java" => await JavaCommandAsync(rest).ConfigureAwait(false),
             "account" => await AccountCommandAsync(rest).ConfigureAwait(false),
             "authserver" => await AuthServerCommandAsync(rest).ConfigureAwait(false),
@@ -729,6 +731,108 @@ internal sealed class CliApplication
         }
 
         return 0;
+    }
+
+    private async Task<int> UpdateCommandAsync(string[] args)
+    {
+        if (args.Length > 1 ||
+            (args.Length == 1 && !string.Equals(args[0], "check", StringComparison.OrdinalIgnoreCase)))
+        {
+            return UsageError("update 支持 check。");
+        }
+
+        var settings = _provider.GetRequiredService<ISettingsService>();
+        if (!settings.Get<bool>("launcher.checkUpdates"))
+        {
+            Console.WriteLine("更新检查已关闭（launcher.checkUpdates=false）。");
+            return 0;
+        }
+
+        var channelValue = settings.Get<string>("launcher.updateChannel");
+        var channel = UpdateChannels.TryParse(channelValue, out var parsedChannel)
+            ? parsedChannel
+            : UpdateChannel.Stable;
+
+        var feedValue = _commandLine.GetValue("feed") ??
+                        Environment.GetEnvironmentVariable("ECL_UPDATE_FEED");
+        if (string.IsNullOrWhiteSpace(feedValue))
+        {
+            Console.WriteLine("未配置更新源。设置 ECL_UPDATE_FEED 或传入 --feed <https URL> 后重试。");
+            return 0;
+        }
+
+        if (!Uri.TryCreate(feedValue, UriKind.Absolute, out var feed) ||
+            feed.Scheme != Uri.UriSchemeHttps)
+        {
+            return WriteError(new EclError("update.insecure_feed", "更新源必须是 HTTPS 地址。"));
+        }
+
+        var trustPath = _commandLine.GetValue("trust") ??
+                        Path.Combine(AppContext.BaseDirectory, "update-trust.json");
+        var trust = await UpdateTrustStore.FromFileAsync(trustPath).ConfigureAwait(false);
+        if (!trust.IsSuccess)
+        {
+            return WriteError(trust.Error);
+        }
+
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        var client = new UpdateClient(http, new UpdateSignatureVerifier(trust.Value!));
+        var check = await client.CheckAsync(feed, channel).ConfigureAwait(false);
+        if (!check.IsSuccess)
+        {
+            return WriteError(check.Error);
+        }
+
+        var manifest = check.Value!.Manifest;
+        var current = await GetCurrentDeploymentVersionAsync().ConfigureAwait(false);
+        var available = current is null || manifest.Version.CompareTo(current) > 0;
+        if (_commandLine.HasFlag("json"))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                channel = channel.ToApiValue(),
+                current = current?.ToString(),
+                available,
+                version = manifest.Version.ToString(),
+                package = manifest.Package.FileName,
+                packageSize = manifest.Package.Size,
+                manifest = check.Value.ManifestUri.ToString(),
+            }, EclJson.Indented));
+            return 0;
+        }
+
+        Console.WriteLine($"通道：{channel.ToApiValue()}");
+        Console.WriteLine($"当前版本：{current?.ToString() ?? "未知"}");
+        if (available)
+        {
+            Console.WriteLine($"发现新版本：{manifest.Version}");
+            Console.WriteLine($"更新包：{UpdateFeed.GetPackageUri(check.Value.ManifestUri, manifest.Package)}");
+            Console.WriteLine($"大小：{manifest.Package.Size} 字节");
+        }
+        else
+        {
+            Console.WriteLine("当前已是最新版本。");
+        }
+
+        return 0;
+    }
+
+    private async Task<ReleaseVersion?> GetCurrentDeploymentVersionAsync()
+    {
+        var installRoot = _commandLine.GetValue("install-root");
+        if (!string.IsNullOrWhiteSpace(installRoot))
+        {
+            var current = await new UpdateLayout(installRoot).ReadCurrentAsync().ConfigureAwait(false);
+            if (current.IsSuccess)
+            {
+                return current.Value!.ParsedVersion;
+            }
+        }
+
+        var version = typeof(CliApplication).Assembly.GetName().Version;
+        return version is null
+            ? null
+            : ReleaseVersion.Parse($"{version.Major}.{version.Minor}.{Math.Max(version.Build, 0)}");
     }
 
     private async Task<int> JavaCommandAsync(string[] args)

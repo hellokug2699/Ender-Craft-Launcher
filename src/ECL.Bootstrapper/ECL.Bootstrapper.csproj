@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Ecl.Bootstrapper</RootNamespace>
+    <AssemblyName>ECL.Bootstrapper</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ECL.Deployment\ECL.Deployment.csproj" />
+  </ItemGroup>
+
+</Project>

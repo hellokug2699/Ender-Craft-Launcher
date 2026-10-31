@@ -88,6 +88,8 @@ flowchart TD
 | `ECL.Auth` | 账户模型、离线 UUID、账户文件 | `Account`, `IAccountService`, `OfflineUuid` |
 | `ECL.Java` | Java 版本解析、运行时探测、需求/兼容性/32-64 位与内存校验、JVM 预设、Mojang/Adoptium/Zulu/Liberica 下载与解压（下载登记 `Java` 任务） | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `JvmPresets`, `IJavaInstallService` |
 | `ECL.Minecraft` | 实例存储、版本 JSON/继承、版本清单分类、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动、Mod/整合包/资源包管理、缺失依赖解析、CurseForge/Modrinth API、统一搜索与下载、版本情报；安装、整合包导入、内容安装与依赖下载登记 Operation | `GameInstance`, `VanillaInstallService`, `IVersionCatalog`, `ILoaderCatalog`, `IJavaSelectionService`, `IModService`, `IModDependencyInstaller`, `IModpackService`, `ICurseForgeClient`, `ICurseForgeService`, `IModrinthClient`, `IContentSearchService`, `IContentInstallService`, `IVersionNewsService`, `ILaunchStep` |
+| `ECL.Deployment` | 更新 Manifest schema/校验、RSA-PSS 签名验证、HTTPS 更新客户端、安全解包、staging、版本指针、切换与回滚 | `UpdateManifest`, `UpdateManifestParser`, `UpdateTrustStore`, `UpdateSignatureVerifier`, `SafeZipExtractor`, `UpdateLayout`, `UpdateInstaller`, `UpdateClient` |
+| `ECL.Bootstrapper` | 读取当前版本指针、启动已安装版本、应用签名更新与回滚；不覆盖运行中的主程序 | `ECL.Bootstrapper.exe` |
 | `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框、任务中心 | `MainViewModel`, `HomeViewModel`, `DownloadViewModel`, `InstancesViewModel`, `ModsViewModel`, `SettingsViewModel`, `OperationCenterViewModel` |
 | `ECL.Cli` | 无 GUI 管理、调试启动链路、长任务进度输出 | `CliApplication`, `ParsedCommandLine`, `CliOperationReporter` |
 | `ECL.Tests` | 单元测试与临时数据目录 | `TestEnvironment`, `FakeProcessLauncher` |
@@ -256,6 +258,16 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 
 > 目录共享、删除保护与迁移的边界说明见 [instance-import.md](instance-import.md)；迁移（P1 1.3）仍未实现。
 
+### 7.10 部署与更新
+
+1. `ECL.Deployment` 定义版本化 Manifest schema、严格路径校验、RSA-PSS-SHA256 detached signature 与受信任公钥集合；未知公钥 / 签名错误 / 产品、平台、架构、版本不匹配全部 fail-closed。
+2. `UpdateClient` 只接受 HTTPS，先验证签名再解析 Manifest；发布包下载后校验大小与 SHA-256。
+3. `SafeZipExtractor` 拒绝绝对路径、盘符、父目录、符号链接、重复条目和超限大小，并确认每个目标仍位于 staging 根目录。
+4. `UpdateInstaller` 先解包到 staging、逐文件校验，再移动到 `versions/<version>`；最后用临时文件 + 原子替换写入 `current.json`。失败时旧版本与指针保持不变；自动更新拒绝降级，显式回滚通过 `RollbackAsync`。
+5. `ECL.Bootstrapper` 是独立进程：启动 `current.json` 指向的版本，或在主程序退出后应用已签名更新；不在运行中的 ECL 内覆盖自身 DLL。
+6. 发布由 `.github/workflows/release.yml` 完成：从受控 Secret/Core 读取私钥，校验其与 public 仓库 `build/update-trust.json` 一致后签名，创建版本 tag 与通道 tag 的 GitHub Release，并在 `always()` 中删除临时私钥。
+7. 程序安装目录与用户数据目录分离；更新、回滚与未来的卸载不触碰实例、账户、配置和用户导入目录。详见 [deployment.md](deployment.md)。
+
 ## 8. 横切关注点
 
 ### 错误模型
@@ -292,7 +304,7 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 
 ### 安全
 
-- 更新包与安装包必须签名验证（规划中）。
+- 更新 Manifest 使用 RSA-PSS-SHA256 detached signature，客户端按 `keyId` 从 `update-trust.json` 选择公钥；未知公钥或签名错误 fail-closed。Windows Authenticode 代码签名仍待证书接入。
 - Microsoft 与第三方账户凭据在 Windows 上使用 DPAPI 加密存储；非 Windows 平台暂不支持该安全凭据存储。离线账户不需要远程令牌。
 - 签名证书、私钥与发布凭据只存在于 private Core 仓库；Microsoft 桌面 OAuth 使用 public client + PKCE，不需要 Client Secret。public 仓库构建不读取私有材料。
 - CurseForge API key 只保存在私有代理服务端；ECL 客户端、构建产物、日志与诊断包都不含 key。代理实现与部署材料只在 private Core 仓库。
@@ -340,7 +352,7 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - 已处理 library `rules`、natives classifier、日志配置路径；已使用版本 JSON 的 `arguments.jvm` 与加载器专属 `arguments.game` 参数（标准游戏参数仍由启动器生成）。
 - Java 自动下载支持 Mojang、Adoptium、Zulu 与 Liberica；32/64 位与内存提示、JVM 预设已接入。
 - Microsoft OAuth / Xbox / XSTS / Minecraft Services 与 Authlib-Injector/Yggdrasil 均已实现；Windows DPAPI 凭据保护已实现，跨平台安全凭据存储仍是缺口。账户管理 UI 的注销、凭据清理与失效重认证体验仍待完善。
-- 未实现更新器与签名验证；签名脚本已预留。
+- 已实现更新协议核心、独立 Bootstrapper、staging/版本指针/回滚与签名 Release workflow；安装器 UI、卸载、主程序内自动检查/下载与 Authenticode 代码签名仍待后续。详见 [deployment.md](deployment.md)。
 - 未实现下载限速；并发、重试、续传、暂停/恢复已生效。
 - 界面固定为 ECL 深色主题（浅色模式已移除），内嵌 HarmonyOS Sans SC 的 Regular / Medium / Bold 三个静态字面；正文、强调与标题通过共享排版 token 区分，主题刷子统一使用 `DynamicResource`。字体与许可细节见 [typography.md](typography.md)。托盘、完整 i18n 热切换与更细的无障碍仍在路线图中。
 - 崩溃分析基于日志/崩溃报告文本与 Mod 元数据排序，不是完整的符号化解析；诊断包导出已做脱敏，详见 [diagnostics.md](diagnostics.md)。

@@ -60,6 +60,8 @@ internal static class Program
 
         命令:
           version                         显示版本、运行时与数据目录
+          update check [--feed <URL>] [--trust <文件>] [--install-root <目录>] [--json]
+                                          按 launcher.checkUpdates / launcher.updateChannel 检查更新
           instance list [--json]          列出实例
           instance create <名称> --version <版本> [--loader <加载器>] [--loader-version <版本>]
                            [--fabric-api-version <版本>] [--optifine-version <type:patch>]
