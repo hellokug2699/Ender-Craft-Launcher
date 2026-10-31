@@ -278,15 +278,17 @@ public sealed partial class InstanceService : IInstanceService
                 continue;
             }
 
-            var (gameVersion, loader) = ReadVersionProfile(jsonPath);
+            var profile = InspectVersion(versionId);
             var isolated = IsIsolated(directory);
             detected.Add(new DetectedVersion(
                 versionId,
-                gameVersion ?? versionId,
-                loader,
+                profile.GameVersion ?? versionId,
+                profile.Loader,
                 isolated,
                 isolated ? directory : _paths.GameRoot,
-                imported.Contains(versionId)));
+                imported.Contains(versionId),
+                profile.Problem,
+                profile.ProblemDetail));
         }
 
         return detected.OrderBy(version => version.VersionId, StringComparer.OrdinalIgnoreCase).ToArray();
@@ -315,6 +317,18 @@ public sealed partial class InstanceService : IInstanceService
         if (candidate.AlreadyImported)
         {
             return Result<GameInstance>.Fail("instance.already_imported", $"该版本已经导入过了：{candidate.VersionId}");
+        }
+
+        switch (candidate.Problem)
+        {
+            case DetectedVersionProblem.IncompleteInheritance:
+                return Result<GameInstance>.Fail(
+                    "instance.version_incomplete",
+                    $"版本 {candidate.VersionId} 的安装不完整，无法导入：{candidate.ProblemDetail}");
+            case DetectedVersionProblem.InvalidManifest:
+                return Result<GameInstance>.Fail(
+                    "instance.version_invalid",
+                    $"版本 {candidate.VersionId} 无法导入：{candidate.ProblemDetail}");
         }
 
         var displayName = string.IsNullOrWhiteSpace(name) ? candidate.VersionId : name.Trim();
@@ -367,21 +381,36 @@ public sealed partial class InstanceService : IInstanceService
             return null;
         }
 
+        // 正常导入的版本位于 ECL 的 versions 目录：用完整继承链解析，
+        // 避免把加载器/整合包配置的名字当成 Minecraft 版本。
+        if (File.Exists(Path.Combine(
+                _paths.VersionsDirectory,
+                instance.VersionId,
+                $"{instance.VersionId}.json")))
+        {
+            var profile = InspectVersion(instance.VersionId);
+            return profile.Problem == DetectedVersionProblem.None ? profile.GameVersion : null;
+        }
+
+        // 兼容可能引用外部 versions 目录的旧实例：只能读取单层 JSON 的显式字段。
         var candidates = new[]
         {
             Path.Combine(instance.GameDirectory, $"{instance.VersionId}.json"),
             Path.Combine(instance.GameDirectory, "versions", instance.VersionId, $"{instance.VersionId}.json"),
-            Path.Combine(_paths.VersionsDirectory, instance.VersionId, $"{instance.VersionId}.json"),
         };
 
         foreach (var path in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            if (!File.Exists(path))
+            if (!File.Exists(path) || !TryReadManifest(path, out var manifest, out _))
             {
                 continue;
             }
 
-            var (gameVersion, _) = ReadVersionProfile(path);
+            // 整合包/加载器版本 JSON 的 id 往往就是整合包名，不能直接当成 Minecraft 版本。
+            // 依次尝试启动器写入的 clientVersion、Forge/NeoForge 的 --fml.mcVersion。
+            var gameVersion = FirstValidVersion(
+                manifest.ClientVersion,
+                manifest.ForgeMinecraftVersion);
             if (!string.IsNullOrWhiteSpace(gameVersion))
             {
                 return gameVersion;
@@ -391,21 +420,142 @@ public sealed partial class InstanceService : IInstanceService
         return null;
     }
 
-    private static (string? GameVersion, string Loader) ReadVersionProfile(string jsonPath)
+    /// <summary>
+    /// 从版本目录检查该版本能否作为实例导入：版本 JSON 可解析、继承链完整、能找到 mainClass。
+    /// 损坏或不完整的安装（其它启动器下载中断、版本 JSON 为空等）在这里就会被标记，
+    /// 不会等到导入之后才在启动阶段失败。
+    /// </summary>
+    private VersionProfile InspectVersion(string versionId)
     {
+        string? gameVersion = null;
+        string? explicitGameVersion = null;
+        string? rootVersionId = null;
+        var loader = "vanilla";
+        var hasMainClass = false;
+        var first = true;
+        var currentId = versionId;
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (true)
+        {
+            if (!visited.Add(currentId))
+            {
+                return new VersionProfile(
+                    gameVersion,
+                    loader,
+                    DetectedVersionProblem.IncompleteInheritance,
+                    $"版本继承链存在循环：{currentId}");
+            }
+
+            if (!VersionRegex().IsMatch(currentId))
+            {
+                return new VersionProfile(
+                    gameVersion,
+                    loader,
+                    DetectedVersionProblem.InvalidManifest,
+                    $"版本 ID 不合法：{currentId}");
+            }
+
+            var jsonPath = Path.Combine(_paths.VersionsDirectory, currentId, $"{currentId}.json");
+            if (!File.Exists(jsonPath))
+            {
+                return first
+                    ? new VersionProfile(
+                        null,
+                        loader,
+                        DetectedVersionProblem.InvalidManifest,
+                        $"未找到版本文件：{jsonPath}")
+                    : new VersionProfile(
+                        gameVersion,
+                        loader,
+                        DetectedVersionProblem.IncompleteInheritance,
+                        $"缺少父版本 {currentId} 的版本文件。");
+            }
+
+            if (!TryReadManifest(jsonPath, out var manifest, out var error))
+            {
+                return new VersionProfile(gameVersion, loader, DetectedVersionProblem.InvalidManifest, error);
+            }
+
+            if (first)
+            {
+                loader = DetectLoader(manifest.MainClass ?? string.Empty, manifest.Libraries);
+                explicitGameVersion = FirstValidVersion(
+                    manifest.ClientVersion,
+                    manifest.ForgeMinecraftVersion);
+                gameVersion = FirstValidVersion(
+                    manifest.ClientVersion,
+                    manifest.InheritsFrom,
+                    manifest.ForgeMinecraftVersion);
+                first = false;
+            }
+
+            hasMainClass |= !string.IsNullOrWhiteSpace(manifest.MainClass);
+            rootVersionId = currentId;
+
+            if (string.IsNullOrWhiteSpace(manifest.InheritsFrom))
+            {
+                break;
+            }
+
+            currentId = manifest.InheritsFrom.Trim();
+        }
+
+        // 直接父版本可能本身也是加载器/整合包配置（多层 inheritsFrom）。
+        // 缺少 clientVersion / --fml.mcVersion 时，继承链最底层的版本 ID 才是 Minecraft 版本。
+        // Cleanroom 只支持 1.12.2，缺少元数据时按该版本回退。
+        gameVersion = explicitGameVersion
+                      ?? (string.Equals(loader, "cleanroom", StringComparison.OrdinalIgnoreCase) ? "1.12.2" : null)
+                      ?? rootVersionId
+                      ?? versionId;
+        if (!VersionRegex().IsMatch(gameVersion))
+        {
+            gameVersion = null;
+        }
+
+        if (!hasMainClass)
+        {
+            return new VersionProfile(
+                gameVersion,
+                loader,
+                DetectedVersionProblem.InvalidManifest,
+                "版本 JSON 没有 mainClass，也无法从父版本继承。");
+        }
+
+        if (gameVersion is null)
+        {
+            return new VersionProfile(
+                null,
+                loader,
+                DetectedVersionProblem.InvalidManifest,
+                "无法确定 Minecraft 版本。");
+        }
+
+        return new VersionProfile(gameVersion, loader, DetectedVersionProblem.None, null);
+    }
+
+    private bool TryReadManifest(
+        string jsonPath,
+        out VersionManifestInfo manifest,
+        out string error)
+    {
+        manifest = VersionManifestInfo.Empty;
+        error = string.Empty;
+
         try
         {
             using var stream = File.OpenRead(jsonPath);
             using var document = JsonDocument.Parse(stream);
             var root = document.RootElement;
-
-            var id = ReadString(root, "id");
-            var inheritsFrom = ReadString(root, "inheritsFrom");
-            var clientVersion = ReadString(root, "clientVersion");
-            var mainClass = ReadString(root, "mainClass") ?? string.Empty;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                error = "版本 JSON 顶层不是对象。";
+                return false;
+            }
 
             var libraries = new List<string>();
-            if (root.TryGetProperty("libraries", out var libraryArray) && libraryArray.ValueKind == JsonValueKind.Array)
+            if (root.TryGetProperty("libraries", out var libraryArray) &&
+                libraryArray.ValueKind == JsonValueKind.Array)
             {
                 foreach (var library in libraryArray.EnumerateArray())
                 {
@@ -416,28 +566,24 @@ public sealed partial class InstanceService : IInstanceService
                 }
             }
 
-            var loader = DetectLoader(mainClass, libraries);
-
-            // 整合包/加载器版本 JSON 的 id 往往就是整合包名，不能直接当成 Minecraft 版本。
-            // 依次尝试启动器写入的 clientVersion、继承版本、Forge/NeoForge 的 --fml.mcVersion；
-            // Cleanroom 只支持 1.12.2，缺失元数据时按该版本回退。
-            var gameVersion = FirstValidVersion(clientVersion, inheritsFrom, ReadForgeMinecraftVersion(root));
-            if (gameVersion is null && string.Equals(loader, "cleanroom", StringComparison.OrdinalIgnoreCase))
-            {
-                gameVersion = "1.12.2";
-            }
-
-            gameVersion ??= id;
-            if (gameVersion is not null && !VersionRegex().IsMatch(gameVersion))
-            {
-                gameVersion = null;
-            }
-
-            return (gameVersion, loader);
+            manifest = new VersionManifestInfo(
+                ReadString(root, "inheritsFrom"),
+                ReadString(root, "clientVersion"),
+                ReadString(root, "mainClass"),
+                libraries,
+                ReadForgeMinecraftVersion(root));
+            return true;
         }
-        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
+        catch (JsonException exception)
         {
-            return (null, "vanilla");
+            _logger.LogWarning(exception, "版本 JSON 无法解析：{Path}", jsonPath);
+            error = "版本 JSON 无法解析（文件可能损坏或写入中断）。";
+            return false;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            error = $"版本文件无法读取：{exception.Message}";
+            return false;
         }
     }
 
@@ -593,4 +739,22 @@ public sealed partial class InstanceService : IInstanceService
 
     [GeneratedRegex("[^a-z0-9]+", RegexOptions.CultureInvariant)]
     private static partial Regex SlugRegex();
+
+    /// <summary>从单个版本 JSON 中读出的、用于扫描/修复的字段。</summary>
+    private sealed record VersionManifestInfo(
+        string? InheritsFrom,
+        string? ClientVersion,
+        string? MainClass,
+        IReadOnlyList<string> Libraries,
+        string? ForgeMinecraftVersion)
+    {
+        public static VersionManifestInfo Empty { get; } = new(null, null, null, [], null);
+    }
+
+    /// <summary>扫描结果：可导入时为 <see cref="DetectedVersionProblem.None"/>。</summary>
+    private sealed record VersionProfile(
+        string? GameVersion,
+        string Loader,
+        DetectedVersionProblem Problem,
+        string? ProblemDetail);
 }

@@ -201,8 +201,18 @@ internal sealed class CliApplication
                     {
                         var isolation = version.Isolated ? "隔离" : "未隔离";
                         var importedMark = version.AlreadyImported ? "  [已导入]" : string.Empty;
-                        Console.WriteLine($"  {version.VersionId}  ·  {version.Loader}  ·  {isolation}{importedMark}");
+                        var problemMark = version.Problem switch
+                        {
+                            DetectedVersionProblem.InvalidManifest => "  [无效]",
+                            DetectedVersionProblem.IncompleteInheritance => "  [不完整]",
+                            _ => string.Empty,
+                        };
+                        Console.WriteLine($"  {version.VersionId}  ·  {version.Loader}  ·  {isolation}{importedMark}{problemMark}");
                         Console.WriteLine($"      游戏目录：{version.GameDirectory}");
+                        if (!string.IsNullOrWhiteSpace(version.ProblemDetail))
+                        {
+                            Console.WriteLine($"      原因：{version.ProblemDetail}");
+                        }
                     }
 
                     return 0;
