@@ -24,8 +24,10 @@
 `files` 步骤的校验范围：
 
 - client、libraries、asset index、logging 文件：检查存在性、大小与 SHA-1；文件被截断或损坏时在真实启动前失败。
+- client jar 按继承链定位：优先使用实例版本目录中的 jar（ECL 安装流程写入），缺失时使用继承链中声明 `downloads.client` 的原版版本目录中的 jar。其它启动器安装的 Fabric/Forge 等加载器版本没有自己的 jar，这一层回退是必需的。
 - 资源对象（`assets/objects/<前两位>/<hash>`）：检查存在性与大小，避免每次启动对数百 MB 资源全量哈希。
 - Dry Run 下缺失/损坏只返回 `Warning`，仍生成预期命令。
+- 导入的实例（`GameDirectory` 指向原安装）由外部启动器维护，文件与清单不一致时只返回 `Warning` 并给出若干示例路径，不阻止启动。
 
 安装失败时由 `InstallTransaction` 清理本次新建的文件、恢复被覆盖的版本 JSON，并在 `logs/install/` 写入诊断 JSON。
 
@@ -60,6 +62,7 @@
 ### 真实启动
 
 - 缺少 Java、版本或关键文件时直接 `Failed`，不会执行后续步骤。
+- 版本文件缺失、继承链缺父版本或 JSON 损坏时，`version` 步骤的失败消息会附带具体原因（缺失文件路径或解析错误），便于定位是哪个版本不完整。
 - Java 版本与游戏版本不匹配时默认只 `Warning`，UI 会在启动前弹窗确认；实例设置可关闭兼容性检验。
 - 未同意 EULA 时 `eula` 步骤 `Failed`；UI 首次真实启动会弹窗要求同意，记录后写入 `eula=true`。
 - 所有步骤成功后，`StartGameStep` 通过 `IProcessLauncher` 启动进程。
@@ -132,7 +135,7 @@ public sealed record LaunchCommand(
 - 现代版本的 natives 以 `natives-<os>[-arch]` classifier 形式出现在 `name` 中；每组按架构选择唯一变体。
 - 类路径只包含主 artifact；natives classifier 与 legacy `Natives` 的 native jar 不进入类路径。
 - 库路径来自 `downloads.artifact.path`，缺失时按 Maven 坐标推导。
-- 追加 `<data>/versions/<versionId>/<versionId>.jar`。
+- 追加实例的 client jar：优先 `<data>/versions/<versionId>/<versionId>.jar`；该文件不存在时回退到继承链中声明 `downloads.client` 的版本目录，兼容其它启动器生成的加载器版本。
 - 版本 JSON 缺失时使用 `<classpath>` 占位（仅 Dry Run）。
 
 ## 5. 失败策略
