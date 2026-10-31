@@ -36,10 +36,11 @@ public sealed class ModDependencyInstallerTests
         Assert.Empty(result.Value.Unresolved);
         Assert.Empty(result.Value.Failed);
 
-        var hit = Assert.Single(install.Hits);
+        var hit = Assert.Single(install.Dependencies);
         Assert.Equal(ContentSource.Modrinth, hit.Source);
-        Assert.Equal("fabric-api", hit.Id);
-        Assert.Equal(ContentKind.Mod, hit.Kind);
+        Assert.Equal("fabric-api", hit.ProjectId);
+        Assert.Equal("version-fabric-api", hit.VersionId);
+        Assert.Equal("fabric-api-0.116.0.jar", hit.FileName);
 
         var snapshot = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
         Assert.Equal(OperationKind.Install, snapshot.Kind);
@@ -63,6 +64,18 @@ public sealed class ModDependencyInstallerTests
             Name = "Just Enough Items",
             Summary = "Recipe viewer",
         };
+        curseForge.SearchResult = new CurseForgeSearchResult([curseForge.Mods[42]], 1, 0, 10);
+        curseForge.ListedFiles.Add(new CurseForgeFile
+        {
+            Id = 7,
+            ModId = 42,
+            FileName = "jei-1.21.1.jar",
+            DisplayName = "JEI 1.0",
+            DownloadUrl = "https://edge.forgecdn.net/files/7/jei-1.21.1.jar",
+            FileLength = 4,
+            ReleaseType = 1,
+            GameVersions = ["1.21.1", "Fabric"],
+        });
         await using var provider = CreateProvider(environment, mods, install, modrinth, curseForge);
         var instance = await CreateInstanceAsync(provider);
 
@@ -71,10 +84,11 @@ public sealed class ModDependencyInstallerTests
 
         Assert.True(result.IsSuccess, result.Error?.ToString());
         Assert.Equal(["jei"], result.Value!.Installed);
-        var hit = Assert.Single(install.Hits);
+        var hit = Assert.Single(install.Dependencies);
         Assert.Equal(ContentSource.CurseForge, hit.Source);
-        Assert.Equal("42", hit.Id);
-        Assert.Equal("Just Enough Items", hit.Name);
+        Assert.Equal("42", hit.ProjectId);
+        Assert.Equal("Just Enough Items", hit.ProjectName);
+        Assert.Equal("jei-1.21.1.jar", hit.FileName);
     }
 
     [Fact]
@@ -94,7 +108,7 @@ public sealed class ModDependencyInstallerTests
         Assert.True(result.IsSuccess, result.Error?.ToString());
         Assert.Empty(result.Value!.Installed);
         Assert.Equal(["unknown-mod-id"], result.Value.Unresolved);
-        Assert.Empty(install.Hits);
+        Assert.Empty(install.Dependencies);
         Assert.NotEmpty(result.Value.Warnings);
 
         var snapshot = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
@@ -134,7 +148,7 @@ public sealed class ModDependencyInstallerTests
             .InstallMissingAsync(instance.Id);
 
         Assert.True(result.IsSuccess);
-        Assert.Empty(install.Hits);
+        Assert.Empty(install.Dependencies);
         Assert.Empty(result.Value!.Installed);
         Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
     }
@@ -225,28 +239,35 @@ public sealed class ModDependencyInstallerTests
 
     private sealed class RecordingContentInstallService : IContentInstallService
     {
-        public List<ContentHit> Hits { get; } = [];
+        public List<ResolvedDependency> Dependencies { get; } = [];
 
         public bool Succeed { get; init; } = true;
+
+        public Task<Result<ContentInstallReport>> InstallResolvedAsync(
+            string instanceId,
+            ResolvedDependency dependency,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            Dependencies.Add(dependency);
+            return Task.FromResult(Succeed
+                ? Result<ContentInstallReport>.Ok(new ContentInstallReport(
+                    dependency.DisplayName,
+                    dependency.Source!.Value,
+                    ContentKind.Mod,
+                    instanceId,
+                    dependency.FileName,
+                    [dependency.FileName!],
+                    []))
+                : Result<ContentInstallReport>.Fail("content.install_failed", "模拟安装失败。"));
+        }
 
         public Task<Result<ContentInstallReport>> InstallAsync(
             string instanceId,
             ContentHit hit,
             IProgress<ContentProgress>? progress = null,
-            CancellationToken cancellationToken = default)
-        {
-            Hits.Add(hit);
-            return Task.FromResult(Succeed
-                ? Result<ContentInstallReport>.Ok(new ContentInstallReport(
-                    hit.Name,
-                    hit.Source,
-                    hit.Kind,
-                    instanceId,
-                    $"{hit.Name}.jar",
-                    [$"{hit.Name}.jar"],
-                    []))
-                : Result<ContentInstallReport>.Fail("content.install_failed", "模拟安装失败。"));
-        }
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
 
         public Task<Result<ContentDownloadReport>> DownloadAsync(
             ContentHit hit,

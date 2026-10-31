@@ -72,6 +72,53 @@ public sealed class ContentInstallTests
     }
 
     [Fact]
+    public async Task InstallsResolvedDependencyWithoutASecondModrinthLookup()
+    {
+        var payload = Encoding.UTF8.GetBytes("demo");
+        using var environment = new TestEnvironment();
+        var downloads = new PayloadDownloadService(payload);
+        var modrinth = new FakeModrinthClient();
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(downloads);
+            services.AddSingleton<IModrinthClient>(modrinth);
+        });
+
+        var instance = await CreateInstanceAsync(provider, "1.21.1", "fabric", "0.16.0");
+        var dependency = new ResolvedDependency(
+            "fabric-api",
+            DependencyResolutionStatus.Resolved,
+            ContentSource.Modrinth,
+            "P16",
+            "fabric-api",
+            "Fabric API",
+            "V116",
+            "0.116.0",
+            "fabric-api.jar",
+            new Uri("https://cdn.modrinth.com/data/P16/versions/V116/fabric-api.jar"),
+            null,
+            payload.Length);
+
+        var result = await provider.GetRequiredService<IContentInstallService>()
+            .InstallResolvedAsync(instance.Id, dependency);
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        var installed = Path.Combine(
+            environment.Paths.GetInstanceGameDirectory(instance.Id),
+            "mods",
+            "fabric-api.jar");
+        Assert.True(File.Exists(installed));
+        Assert.Equal(payload.Length, new FileInfo(installed).Length);
+        Assert.Single(downloads.Requests);
+        Assert.Equal(0, modrinth.VersionCalls);
+
+        var snapshot = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
+        Assert.Equal(OperationKind.Install, snapshot.Kind);
+        Assert.Equal(OperationState.Completed, snapshot.State);
+        Assert.Equal("Fabric API", snapshot.Title);
+    }
+
+    [Fact]
     public async Task DownloadsAndImportsMrpackIntoExistingInstance()
     {
         var payload = CreateMrpack();

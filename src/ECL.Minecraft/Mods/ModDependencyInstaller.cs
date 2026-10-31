@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-using System.Globalization;
 using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Minecraft.Content;
-using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Instances;
-using Ecl.Minecraft.Modrinth;
 using Ecl.Operations;
 using Microsoft.Extensions.Logging;
 
@@ -27,8 +24,9 @@ public sealed record ModDependencyInstallReport(
     IReadOnlyList<string> Warnings);
 
 /// <summary>
-/// 扫描实例中“已启用但缺少强制依赖”的 Mod，按 mod id 在 Modrinth / CurseForge
-/// 精确匹配项目并调用统一内容安装流程。
+/// 扫描实例中“已启用但缺少强制依赖”的 Mod，交给 <see cref="IDependencyResolver"/>
+/// 解析为稳定的依赖图，再用 <see cref="IContentInstallService"/> 安装已解析的文件。
+/// 无法精确解析的依赖只报告，不做模糊安装。
 /// </summary>
 public interface IModDependencyInstaller
 {
@@ -41,8 +39,7 @@ public interface IModDependencyInstaller
 public sealed class ModDependencyInstaller(
     IInstanceService instances,
     IModService mods,
-    IModrinthClient modrinth,
-    ICurseForgeClient curseForge,
+    IDependencyResolver dependencyResolver,
     IContentInstallService contentInstall,
     ILocalizer localizer,
     ILogger<ModDependencyInstaller> logger,
@@ -147,47 +144,55 @@ public sealed class ModDependencyInstaller(
         var failed = new List<string>();
         var warnings = new List<string>();
 
-        for (var index = 0; index < missing.Length; index++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var dependencyId = missing[index];
-
+        // Resolver 先产出稳定依赖图（来源/项目/版本/文件），安装阶段不再按 mod id 二次解析。
+        var resolveProgress = new InlineProgress<DependencyResolutionProgress>(update =>
             progress?.Report(new ModDependencyProgress(
                 "resolve",
-                localizer.Get("mods.dependencies.resolving", dependencyId),
-                index,
-                missing.Length,
-                dependencyId));
+                localizer.Get("mods.dependencies.resolving", update.CurrentDependency ?? string.Empty),
+                update.Completed,
+                update.Total,
+                update.CurrentDependency)));
+        var graph = await dependencyResolver
+            .ResolveManyAsync(
+                missing,
+                new DependencyResolutionContext(instance.GameVersion, instance.Loader),
+                resolveProgress,
+                cancellationToken)
+            .ConfigureAwait(false);
 
-            var hit = await ResolveAsync(dependencyId, instance, cancellationToken).ConfigureAwait(false);
-            if (hit is null)
-            {
-                unresolved.Add(dependencyId);
-                warnings.Add(localizer.Get("mods.dependencies.unresolved", dependencyId));
-                continue;
-            }
+        foreach (var dependency in graph.Unresolved)
+        {
+            unresolved.Add(dependency.RequestedId);
+            warnings.Add(DescribeResolution(dependency));
+        }
+
+        var resolvedDependencies = graph.Resolved;
+        for (var index = 0; index < resolvedDependencies.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var dependency = resolvedDependencies[index];
 
             progress?.Report(new ModDependencyProgress(
                 "install",
-                localizer.Get("mods.dependencies.installing", hit.Name),
+                localizer.Get("mods.dependencies.installing", dependency.DisplayName),
                 index,
-                missing.Length,
-                hit.Name));
+                resolvedDependencies.Count,
+                dependency.DisplayName));
 
             var install = await contentInstall
-                .InstallAsync(instance.Id, hit, progress: null, cancellationToken)
+                .InstallResolvedAsync(instance.Id, dependency, progress: null, cancellationToken)
                 .ConfigureAwait(false);
             if (install.IsSuccess)
             {
-                installed.Add(dependencyId);
+                installed.Add(dependency.RequestedId);
             }
             else
             {
-                failed.Add(dependencyId);
-                warnings.Add($"{dependencyId}: {install.Error?.Message}");
+                failed.Add(dependency.RequestedId);
+                warnings.Add($"{dependency.RequestedId}: {install.Error?.Message}");
                 logger.LogWarning(
-                    "下载依赖 {Dependency} 到实例 {InstanceId} 失败：{Error}",
-                    dependencyId,
+                    "安装依赖 {Dependency} 到实例 {InstanceId} 失败：{Error}",
+                    dependency.RequestedId,
                     instance.Id,
                     install.Error);
             }
@@ -204,108 +209,21 @@ public sealed class ModDependencyInstaller(
             new ModDependencyInstallReport(installed, unresolved, failed, warnings));
     }
 
-    /// <summary>
-    /// 依赖声明的是 mod id（例如 <c>fabric-api</c>），不是项目 ID。
-    /// 先按 slug/项目 ID 精确查询 Modrinth，再回退 CurseForge；不做模糊匹配，避免装错 Mod。
-    /// </summary>
-    private async Task<ContentHit?> ResolveAsync(
-        string dependencyId,
-        GameInstance instance,
-        CancellationToken cancellationToken)
+    private string DescribeResolution(ResolvedDependency dependency) => dependency.Status switch
     {
-        var modrinthHit = await ResolveModrinthAsync(dependencyId, instance, cancellationToken).ConfigureAwait(false);
-        if (modrinthHit is not null)
-        {
-            return modrinthHit;
-        }
+        DependencyResolutionStatus.Ambiguous =>
+            localizer.Get("mods.dependencies.ambiguous", dependency.RequestedId, dependency.Reason ?? string.Empty),
+        DependencyResolutionStatus.Incompatible =>
+            localizer.Get("mods.dependencies.incompatible", dependency.RequestedId, dependency.Reason ?? string.Empty),
+        DependencyResolutionStatus.Failed =>
+            localizer.Get("mods.dependencies.resolveFailed", dependency.RequestedId, dependency.Reason ?? string.Empty),
+        _ => localizer.Get("mods.dependencies.unresolved", dependency.RequestedId),
+    };
 
-        return await ResolveCurseForgeAsync(dependencyId, instance, cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task<ContentHit?> ResolveModrinthAsync(
-        string dependencyId,
-        GameInstance instance,
-        CancellationToken cancellationToken)
+    private sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>
     {
-        var project = await modrinth.GetProjectAsync(dependencyId, cancellationToken).ConfigureAwait(false);
-        if (!project.IsSuccess ||
-            project.Value is not { } value ||
-            value.MappedProjectType != ModrinthProjectType.Mod)
-        {
-            return null;
-        }
-
-        var versions = await modrinth
-            .GetVersionsAsync(
-                value.Id,
-                instance.GameVersion,
-                ModrinthApi.LoaderForModrinth(instance.Loader),
-                cancellationToken)
-            .ConfigureAwait(false);
-        if (!versions.IsSuccess || versions.Value!.Count == 0)
-        {
-            return null;
-        }
-
-        return new ContentHit(
-            ContentSource.Modrinth,
-            value.Id,
-            value.Slug,
-            string.IsNullOrWhiteSpace(value.Title) ? dependencyId : value.Title,
-            value.Description ?? string.Empty,
-            null,
-            value.Downloads,
-            null,
-            value.SourceUrl,
-            value.IconUrl,
-            ContentKind.Mod);
+        public void Report(T value) => callback(value);
     }
-
-    private async Task<ContentHit?> ResolveCurseForgeAsync(
-        string dependencyId,
-        GameInstance instance,
-        CancellationToken cancellationToken)
-    {
-        var bySlug = await curseForge.FindModBySlugAsync(dependencyId, cancellationToken).ConfigureAwait(false);
-        var mod = bySlug.IsSuccess ? bySlug.Value : null;
-
-        if (mod is null)
-        {
-            var query = new CurseForgeSearchQuery
-            {
-                Slug = dependencyId,
-                GameVersion = instance.GameVersion,
-                Loader = CurseForgeLoaders.FromInstanceLoader(instance.Loader),
-                PageSize = 10,
-            };
-            var search = await curseForge.SearchModsAsync(query, cancellationToken).ConfigureAwait(false);
-            mod = search.IsSuccess
-                ? search.Value!.Mods.FirstOrDefault(candidate => Matches(candidate, dependencyId))
-                : null;
-        }
-
-        if (mod is null)
-        {
-            return null;
-        }
-
-        return new ContentHit(
-            ContentSource.CurseForge,
-            mod.Id.ToString(CultureInfo.InvariantCulture),
-            mod.Slug,
-            string.IsNullOrWhiteSpace(mod.Name) ? dependencyId : mod.Name,
-            mod.Summary ?? string.Empty,
-            null,
-            mod.DownloadCount,
-            mod.DateModified,
-            mod.WebsiteUrl,
-            mod.IconUrl,
-            ContentKind.Mod);
-    }
-
-    private static bool Matches(CurseForgeMod mod, string dependencyId) =>
-        string.Equals(mod.Slug, dependencyId, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(mod.Name, dependencyId, StringComparison.OrdinalIgnoreCase);
 
     private static OperationProgressUpdate MapProgress(ModDependencyProgress progress) => new()
     {

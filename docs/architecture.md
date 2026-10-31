@@ -233,7 +233,7 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 2. `ContentSearchService` 把 CurseForge 与 Modrinth 的结果映射为统一的 `ContentHit`；来源过滤支持「全部 / 仅 CurseForge / 仅 Modrinth」，「全部」下两个平台并行请求并交错排列，不跨平台去重。
 3. `ContentInstallService` 统一执行安装/下载：资源包、光影包、数据包按类型落入实例或 `<data>/downloads`；Modrinth Mod 递归补齐必需依赖；CurseForge Mod 复用 `CurseForgeService` 的依赖逻辑；每个入口只登记一个任务，内部导入与下载复用该任务。
 4. 整合包无论来源先下载为归档（`.mrpack` / CurseForge `.zip`），再交给 `IModpackService` 导入；没有实例时可仅下载，或由 `ModpackArchiveInspector` 读取包内 `dependencies`/`manifest.json` 自动创建实例后导入。
-5. `IModDependencyInstaller` 把实例中缺失的强制依赖按 mod id 精确解析到 Modrinth（slug/项目 ID）或 CurseForge（slug/名称），再复用 `IContentInstallService` 安装；无法精确匹配的依赖只报告，不做模糊安装。
+5. `IDependencyResolver` 把缺失的强制依赖解析为 `ResolvedDependencyGraph`：Modrinth 优先，CurseForge 按精确 slug 回退；结果区分 `Resolved` / `NotFound` / `Ambiguous` / `Incompatible` / `Failed`。`ResolvedDependency` 携带来源、项目、版本、文件、URL、SHA-1 与大小，`IContentInstallService.InstallResolvedAsync` 直接安装该文件，安装阶段不再按 mod id 二次解析。
 6. WPF 的内容管理集中在实例工作区（不再有独立“内容”页面）；下载页仍负责搜索、远程下载与整合包下载。
 7. `MojangVersionNewsService` 读取 Mojang 版本清单，为「主页 → 新版本情报」提供数据；主页不承载任何下载动作。
 

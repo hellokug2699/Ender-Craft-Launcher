@@ -40,13 +40,15 @@ WPF 不再提供独立的“内容”页面：Mod、资源包、光影包、整�
 
 ### 下载缺失依赖
 
-“依赖与修复 → 下载缺失依赖”扫描当前实例中“已启用但缺少强制依赖”的 Mod，并按依赖声明的 mod id 在 Modrinth / CurseForge 精确匹配项目后走统一内容安装流程：
+“依赖与修复 → 下载缺失依赖”扫描当前实例中“已启用但缺少强制依赖”的 Mod，并交给 `IDependencyResolver` 生成依赖图：
 
-1. 先按 slug / 项目 ID 查询 Modrinth，并确认存在适配当前游戏版本与加载器的版本；
-2. 未匹配时用 CurseForge 的 slug 精确查询，查找不到再做一次精确名称 / slug 匹配；
-3. 仍无法匹配的依赖列入“未匹配”，不会用模糊搜索结果代替，避免装错 Mod；
-4. 只处理元数据中 `mandatory` 的依赖；可选依赖与平台内置依赖（`minecraft`、`fabricloader` 等）不会自动下载；
-5. 该动作登记为统一任务中心的一个任务，可取消与重试；结果以“安装 / 未匹配 / 失败”计数反馈，并自动重新扫描。
+1. `DependencyResolver` 先按 project ID / slug 查询 Modrinth，确认项目类型为 Mod 且存在适配当前游戏版本与加载器的版本；
+2. Modrinth 未解析时按 slug 查询 CurseForge；只接受精确 slug，不再用项目名称兜底；
+3. 结果区分 `Resolved`、`NotFound`、`Ambiguous`、`Incompatible` 与 `Failed`；同一 slug 匹配多个 CurseForge 项目时报告歧义，不自动选择；
+4. `ResolvedDependency` 携带来源、项目 ID、slug、版本 ID、文件名、URL、SHA-1 与大小；安装阶段直接下载该文件（`IContentInstallService.InstallResolvedAsync`），不再按 mod id 做第二次解析；
+5. 无法解析的依赖只报告，不会用模糊搜索结果代替，避免装错 Mod；
+6. 只处理元数据中 `mandatory` 的依赖；可选依赖与平台内置依赖（`minecraft`、`fabricloader` 等）不会自动下载；
+7. 该动作登记为统一任务中心的一个任务，可取消与重试；结果以“安装 / 未匹配 / 失败”计数反馈，并自动重新扫描。
 
 ## 整合包
 

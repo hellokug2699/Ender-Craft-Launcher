@@ -23,6 +23,16 @@ public interface IContentInstallService
         IProgress<ContentProgress>? progress = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 安装已解析的依赖文件。不再按 mod id 进行第二次解析，直接使用
+    /// <see cref="ResolvedDependency"/> 中的来源、项目、版本与文件信息。
+    /// </summary>
+    Task<Result<ContentInstallReport>> InstallResolvedAsync(
+        string instanceId,
+        ResolvedDependency dependency,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
     /// <summary>只下载到启动器下载目录，不需要实例。</summary>
     Task<Result<ContentDownloadReport>> DownloadAsync(
         ContentHit hit,
@@ -109,6 +119,98 @@ public sealed class ContentInstallService(
         catch (Exception exception)
         {
             operation.Fail(OperationErrors.FromException("content.install_failed", exception));
+            throw;
+        }
+    }
+
+    public async Task<Result<ContentInstallReport>> InstallResolvedAsync(
+        string instanceId,
+        ResolvedDependency dependency,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!dependency.IsResolved ||
+            dependency.Source is null ||
+            dependency.FileUrl is null ||
+            string.IsNullOrWhiteSpace(dependency.FileName))
+        {
+            return Result<ContentInstallReport>.Fail(
+                "dependency.not_resolved",
+                $"依赖 {dependency.DisplayName} 尚未解析完成，无法安装。");
+        }
+
+        var instance = await instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        if (instance is null)
+        {
+            return Result<ContentInstallReport>.Fail("instance.not_found", "实例不存在。");
+        }
+
+        using var operation = new OperationProgressBridge<ContentProgress>(
+            operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Install,
+                Title = dependency.DisplayName,
+                StageId = "dependency",
+                Source = dependency.Source == ContentSource.CurseForge ? "CurseForge" : "Modrinth",
+                CanCancel = true,
+                CanRetry = true,
+            },
+            progress,
+            MapContentProgress);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = cancellation.Token;
+        operation.AttachControl(
+            cancellation,
+            retryToken => InstallResolvedAsync(instanceId, dependency, progress, retryToken));
+
+        try
+        {
+            var targetDirectory = Path.Combine(
+                InstancePaths.GetGameDirectory(paths, instance),
+                ContentKinds.FolderName(ContentKind.Mod));
+            var installed = await DownloadFilesAsync(
+                    new ResolvedDownload(
+                        [
+                            new RemoteFile(
+                                dependency.FileName,
+                                dependency.FileUrl,
+                                dependency.Sha1,
+                                dependency.Size,
+                                dependency.VersionId,
+                                dependency.ProjectId),
+                        ],
+                        []),
+                    targetDirectory,
+                    operation,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!installed.IsSuccess)
+            {
+                Finish(operation, installed);
+                return Result<ContentInstallReport>.Fail(installed.Error!);
+            }
+
+            var files = installed.Value!;
+            var report = new ContentInstallReport(
+                dependency.DisplayName,
+                dependency.Source!.Value,
+                ContentKind.Mod,
+                instance.Id,
+                files.FirstOrDefault(),
+                files,
+                []);
+            Finish(operation, Result<ContentInstallReport>.Ok(report));
+            return Result<ContentInstallReport>.Ok(report);
+        }
+        catch (OperationCanceledException)
+        {
+            operation.Cancel();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            operation.Fail(OperationErrors.FromException("dependency.install_failed", exception));
             throw;
         }
     }
