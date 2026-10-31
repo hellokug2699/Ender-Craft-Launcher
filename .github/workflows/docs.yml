@@ -1,0 +1,30 @@
+name: Documentation
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "docs/**/*.md"
+      - "scripts/check_docs.py"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**/*.md"
+      - "scripts/check_docs.py"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+jobs:
+  docs:
+    name: Validate documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Check Markdown links and ADR metadata
+        run: python scripts/check_docs.py
