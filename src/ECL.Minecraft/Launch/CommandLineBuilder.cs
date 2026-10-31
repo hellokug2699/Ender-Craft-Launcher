@@ -13,7 +13,7 @@ public static class CommandLineBuilder
         var arguments = new List<string>();
         var classpath = BuildClasspath(context);
         var accessToken = context.Account.AccessToken ?? "0";
-        var userType = context.Account.Type == AccountType.Microsoft ? "msa" : "legacy";
+        var userType = UserType(context.Account);
 
         arguments.Add($"-Xmx{context.MemoryMb}M");
         arguments.Add($"-Xms{Math.Min(1024, context.MemoryMb)}M");
@@ -58,6 +58,12 @@ public static class CommandLineBuilder
         arguments.AddRange(VersionArgumentResolver.ResolveJvmArguments(
             context.Version?.Arguments,
             ReplacePlaceholders));
+
+        // Authlib-Injector 只对第三方账户注入；Microsoft/离线账户这里始终为空。
+        if (!string.IsNullOrWhiteSpace(context.JavaAgentArgument))
+        {
+            arguments.Add(context.JavaAgentArgument);
+        }
 
         arguments.Add("-cp");
         arguments.Add(classpath);
@@ -173,7 +179,7 @@ public static class CommandLineBuilder
     {
         var assetsIndex = context.Version?.AssetIndex?.Id ?? context.Version?.Assets ?? "legacy";
         var accessToken = context.Account.AccessToken ?? "0";
-        var userType = context.Account.Type == AccountType.Microsoft ? "msa" : "legacy";
+        var userType = UserType(context.Account);
         return value
             .Replace("${auth_player_name}", context.Account.Name, StringComparison.OrdinalIgnoreCase)
             .Replace("${version_name}", context.Instance.VersionId, StringComparison.OrdinalIgnoreCase)
@@ -217,6 +223,17 @@ public static class CommandLineBuilder
         entries.Add(Versions.VersionFilePlanner.GetClientJarPath(context.Paths, context.Instance.VersionId));
         return string.Join(Path.PathSeparator, entries);
     }
+
+    /// <summary>
+    /// 第三方认证（Authlib-Injector）使用 mojang 身份类型，由注入器接管会话校验；
+    /// Microsoft 账户保持 msa，离线账户保持 legacy。
+    /// </summary>
+    private static string UserType(Account account) => account.Type switch
+    {
+        AccountType.Microsoft => "msa",
+        AccountType.ThirdParty => "mojang",
+        _ => "legacy",
+    };
 
     private static string Quote(string value)
     {

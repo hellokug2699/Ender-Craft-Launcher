@@ -51,6 +51,8 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<ILaunchStep, ValidateGameFilesStep>();
         services.AddSingleton<ILaunchStep, ExtractNativesStep>();
         services.AddSingleton<ILaunchStep, EnsureEulaStep>();
+        services.AddSingleton<IAuthlibInjectorService, AuthlibInjectorService>();
+        services.AddSingleton<ILaunchStep, AuthlibInjectorStep>();
         services.AddSingleton<ILaunchStep, BuildCommandStep>();
         services.AddSingleton<ILaunchStep, StartGameStep>();
         services.AddSingleton<ILaunchService, LaunchService>();
