@@ -12,6 +12,7 @@ ECL ── GET /v1/... ──▶ ECL 代理 ── x-api-key ──▶ https://a
 
 - 代理的源码、路由、部署与凭据材料全部在 private Core 仓库，**不在本仓库**；本仓库只包含客户端与“经代理访问”的说明。
 - 代理地址由 `CurseForgeClient` 中的内置常量决定；客户端路径与 CurseForge 官方 API 一致（`/v1/...`）。
+- API endpoint 是公开客户端配置，且 `curseforge status` 会显示它；它不是凭据或访问控制。代理必须在服务端实施限流、配额与滥用防护，不能依赖隐藏 endpoint。
 - 实际 `.jar` / `.zip` 下载不经过代理，仍由 ECL 直接访问 `edge.forgecdn.net` 等官方 CDN。
 
 关键约束：
