@@ -19,6 +19,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<NavItemViewModel> NavItems { get; }
 
+    public OperationCenterViewModel OperationCenter { get; }
+
     public object CurrentPage => _showingInstanceDetails ? _instanceDetailPage : SelectedNavItem.Page;
 
     [ObservableProperty]
@@ -40,6 +42,7 @@ public sealed partial class MainViewModel : ObservableObject
         ModsViewModel mods,
         SettingsViewModel settings,
         AboutViewModel about,
+        OperationCenterViewModel operationCenter,
         IAppPaths paths,
         ILocalizer localizer)
     {
@@ -49,6 +52,7 @@ public sealed partial class MainViewModel : ObservableObject
         _settings = settings;
         _instances = instances;
         _instanceDetailPage = new InstanceDetailPageViewModel(instances, mods);
+        OperationCenter = operationCenter;
 
         NavItems =
         [

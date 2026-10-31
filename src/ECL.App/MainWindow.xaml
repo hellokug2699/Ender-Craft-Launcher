@@ -108,15 +108,100 @@
         <!-- Content canvas -->
         <Border Grid.Column="1" Background="{DynamicResource BackgroundBrush}">
             <Grid>
-                <Ellipse Width="420" Height="420"
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Ellipse Grid.Row="0"
+                         Width="420" Height="420"
                          HorizontalAlignment="Right"
                          VerticalAlignment="Top"
                          Margin="0,-210,-170,0"
                          Fill="{DynamicResource AccentGlowBrush}"
                          Opacity="0.16"
                          IsHitTestVisible="False" />
-                <ContentControl Content="{Binding CurrentPage}"
+                <ContentControl Grid.Row="0"
+                                Content="{Binding CurrentPage}"
                                 Margin="38,32,38,32" />
+
+                <!-- 任务中心：进度、阶段、速度、ETA、停滞/重试/失败归因 -->
+                <ItemsControl Grid.Row="1"
+                              ItemsSource="{Binding OperationCenter.Operations}"
+                              Margin="38,0,38,18"
+                              Visibility="{Binding OperationCenter.HasOperations, Converter={StaticResource BoolToVisibility}}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource Card}" Padding="14,10" Margin="0,6,0,0">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Title}"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding StateText}"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource TextMutedBrush}"
+                                                   Margin="10,0,0,0" />
+                                    </Grid>
+                                    <TextBlock Grid.Row="1"
+                                               Margin="0,4,0,0"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               TextTrimming="CharacterEllipsis">
+                                        <Run Text="{Binding StageText}" />
+                                        <Run Text="{Binding CurrentItem}" />
+                                    </TextBlock>
+                                    <ProgressBar Grid.Row="2"
+                                                 Height="3"
+                                                 Margin="0,8,0,0"
+                                                 Minimum="0"
+                                                 Maximum="100"
+                                                 Value="{Binding ProgressValue}"
+                                                 IsIndeterminate="{Binding IsIndeterminate}" />
+                                    <Grid Grid.Row="3" Margin="0,6,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding ProgressText}"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding SpeedText}"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Margin="10,0,0,0" />
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding EtaText}"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource TextMutedBrush}"
+                                                   Margin="10,0,0,0" />
+                                    </Grid>
+                                    <TextBlock Grid.Row="4"
+                                               Text="{Binding DiagnosticText}"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource WarningBrush}"
+                                               TextWrapping="Wrap"
+                                               Margin="0,4,0,0"
+                                               Visibility="{Binding HasDiagnostic, Converter={StaticResource BoolToVisibility}}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </Grid>
         </Border>
     </Grid>
