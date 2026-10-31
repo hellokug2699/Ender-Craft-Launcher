@@ -52,6 +52,10 @@ public sealed class ModpackService(
 
             return report;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception exception) when (exception is InvalidDataException or IOException
                                               or UnauthorizedAccessException or JsonException)
         {
@@ -288,7 +292,7 @@ public sealed class ModpackService(
         }
 
         progress?.Report(new ModpackProgress("overrides", "解压整合包覆盖文件…", 0, 0, null));
-        var overrides = ExtractOverrides(archive, gameDirectory, ModrinthOverrideRoots);
+        var overrides = ModpackArchiveExtractor.ExtractOverrides(archive, gameDirectory, ModrinthOverrideRoots);
         WriteMarker(gameDirectory, name, version, archivePath, "modrinth", downloaded, skipped);
 
         logger.LogInformation(
@@ -476,7 +480,7 @@ public sealed class ModpackService(
 
         progress?.Report(new ModpackProgress("overrides", "解压 CurseForge 覆盖文件…", 0, 0, null));
         var overrideRoots = BuildCurseForgeOverrideRoots(GetString(root, "overrides"));
-        var overrides = ExtractOverrides(archive, gameDirectory, overrideRoots);
+        var overrides = ModpackArchiveExtractor.ExtractOverrides(archive, gameDirectory, overrideRoots);
         WriteMarker(gameDirectory, name, version, archivePath, "curseforge", downloaded, skipped);
 
         logger.LogInformation(
@@ -635,43 +639,7 @@ public sealed class ModpackService(
             }
             : null;
 
-    private static int ExtractOverrides(
-        ZipArchive archive,
-        string gameDirectory,
-        IReadOnlyList<string> overrideRoots)
-    {
-        var count = 0;
-        foreach (var entry in archive.Entries)
-        {
-            var normalized = entry.FullName.Replace('\\', '/');
-            var root = overrideRoots.FirstOrDefault(candidate =>
-                normalized.StartsWith(candidate, StringComparison.OrdinalIgnoreCase));
-            if (root is null || string.IsNullOrEmpty(entry.Name))
-            {
-                continue;
-            }
-
-            var relative = normalized[root.Length..];
-            var destination = ResolveSafePath(gameDirectory, relative);
-            if (destination is null)
-            {
-                continue;
-            }
-
-            var directory = Path.GetDirectoryName(destination);
-            if (!string.IsNullOrEmpty(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            entry.ExtractToFile(destination, overwrite: true);
-            count++;
-        }
-
-        return count;
-    }
-
-    private void WriteMarker(
+    private static void WriteMarker(
         string gameDirectory,
         string name,
         string? version,
@@ -775,10 +743,41 @@ public sealed class ModpackService(
         archive.Entries.FirstOrDefault(entry =>
             string.Equals(entry.FullName, name, StringComparison.OrdinalIgnoreCase));
 
+    private const long MaxMetadataEntryBytes = 4L * 1024 * 1024;
+
     private static string ReadText(ZipArchiveEntry entry)
     {
-        using var stream = entry.Open();
-        using var reader = new StreamReader(stream);
+        if (entry.Length < 0 || entry.Length > MaxMetadataEntryBytes)
+        {
+            throw new InvalidDataException(
+                $"整合包元数据条目过大：{entry.FullName}（上限 {MaxMetadataEntryBytes / (1024 * 1024)} MiB）。");
+        }
+
+        using var source = entry.Open();
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        long totalBytes = 0;
+
+        while (true)
+        {
+            var read = source.Read(chunk, 0, chunk.Length);
+            if (read == 0)
+            {
+                break;
+            }
+
+            if (read > MaxMetadataEntryBytes - totalBytes)
+            {
+                throw new InvalidDataException(
+                    $"整合包元数据条目过大：{entry.FullName}（上限 {MaxMetadataEntryBytes / (1024 * 1024)} MiB）。");
+            }
+
+            buffer.Write(chunk, 0, read);
+            totalBytes += read;
+        }
+
+        buffer.Position = 0;
+        using var reader = new StreamReader(buffer);
         return reader.ReadToEnd();
     }
 
@@ -792,8 +791,7 @@ public sealed class ModpackService(
     private static void WriteEntry(ZipArchive archive, string name, string content)
     {
         var entry = archive.CreateEntry(name);
-        using var stream = entry.Open();
-        using var writer = new StreamWriter(stream);
+        using var writer = new StreamWriter(entry.Open());
         writer.Write(content);
     }
 

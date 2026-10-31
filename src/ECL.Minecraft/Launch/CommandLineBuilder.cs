@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Text;
+using Ecl.Auth;
 using Ecl.Java;
 
 namespace Ecl.Minecraft.Launch;
@@ -11,6 +12,8 @@ public static class CommandLineBuilder
     {
         var arguments = new List<string>();
         var classpath = BuildClasspath(context);
+        var accessToken = context.Account.AccessToken ?? "0";
+        var userType = context.Account.Type == AccountType.Microsoft ? "msa" : "legacy";
 
         arguments.Add($"-Xmx{context.MemoryMb}M");
         arguments.Add($"-Xms{Math.Min(1024, context.MemoryMb)}M");
@@ -73,9 +76,9 @@ public static class CommandLineBuilder
         arguments.Add("--uuid");
         arguments.Add(context.Account.Uuid);
         arguments.Add("--accessToken");
-        arguments.Add("0");
+        arguments.Add(accessToken);
         arguments.Add("--userType");
-        arguments.Add("legacy");
+        arguments.Add(userType);
         arguments.Add("--versionType");
         arguments.Add(context.Version?.Type ?? "release");
         arguments.Add("--width");
@@ -169,6 +172,8 @@ public static class CommandLineBuilder
     private static string ReplaceVersionPlaceholders(string value, LaunchContext context, string classpath)
     {
         var assetsIndex = context.Version?.AssetIndex?.Id ?? context.Version?.Assets ?? "legacy";
+        var accessToken = context.Account.AccessToken ?? "0";
+        var userType = context.Account.Type == AccountType.Microsoft ? "msa" : "legacy";
         return value
             .Replace("${auth_player_name}", context.Account.Name, StringComparison.OrdinalIgnoreCase)
             .Replace("${version_name}", context.Instance.VersionId, StringComparison.OrdinalIgnoreCase)
@@ -176,9 +181,9 @@ public static class CommandLineBuilder
             .Replace("${assets_root}", context.Paths.AssetsDirectory, StringComparison.OrdinalIgnoreCase)
             .Replace("${assets_index_name}", assetsIndex, StringComparison.OrdinalIgnoreCase)
             .Replace("${auth_uuid}", context.Account.Uuid, StringComparison.OrdinalIgnoreCase)
-            .Replace("${auth_access_token}", "0", StringComparison.OrdinalIgnoreCase)
-            .Replace("${auth_session}", "0", StringComparison.OrdinalIgnoreCase)
-            .Replace("${user_type}", "legacy", StringComparison.OrdinalIgnoreCase)
+            .Replace("${auth_access_token}", accessToken, StringComparison.OrdinalIgnoreCase)
+            .Replace("${auth_session}", accessToken, StringComparison.OrdinalIgnoreCase)
+            .Replace("${user_type}", userType, StringComparison.OrdinalIgnoreCase)
             .Replace("${version_type}", context.Version?.Type ?? "release", StringComparison.OrdinalIgnoreCase)
             .Replace("${natives_directory}", context.NativesDirectory, StringComparison.OrdinalIgnoreCase)
             .Replace("${library_directory}", context.Paths.LibrariesDirectory, StringComparison.OrdinalIgnoreCase)

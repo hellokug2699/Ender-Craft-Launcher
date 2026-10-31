@@ -88,6 +88,19 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
 
         yield return new OptionDefinition<string>
         {
+            Key = "auth.microsoftClientId",
+            Kind = OptionKind.Text,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.auth",
+            DisplayNameKey = "option.auth.microsoftClientId.name",
+            DescriptionKey = "option.auth.microsoftClientId.desc",
+            Default = "a1e97b44-9c00-4a60-8e32-1119fefe7aab",
+            Order = 10,
+            Validate = value => string.IsNullOrWhiteSpace(value) || Guid.TryParse(value.Trim(), out _),
+        };
+
+        yield return new OptionDefinition<string>
+        {
             Key = "network.downloadSource",
             Kind = OptionKind.Select,
             Scope = OptionScope.Global,
@@ -216,7 +229,7 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             CategoryKey = "category.java",
             DisplayNameKey = "option.java.jvmPreset.name",
             DescriptionKey = "option.java.jvmPreset.desc",
-            Default = "default",
+            Default = "g1",
             Order = 35,
             Choices =
             [

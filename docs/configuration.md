@@ -80,6 +80,8 @@ internal sealed class MyOptionsProvider : IOptionProvider
 
 当前实例选项包括：
 
+实例工作区提供独立详情页，集中展示基本信息、Java/JVM、模组、文件目录、最近启动记录与诊断入口。实例的 JVM 预设、额外参数和内存均可单独覆盖；未设置的字段继承全局。
+
 | Key | 含义 |
 | --- | --- |
 | `instance.java.memoryMb` | 覆盖全局最大内存；留空继承 |
@@ -148,7 +150,7 @@ CLI 使用 `ecl launch <实例ID> --accept-eula` 记录同意；未同意时真�
 | `java.defaultPath` | Global | 全局默认 Java 路径；留空自动选择 |
 | `java.defaultMemoryMb` | Global | 默认最大堆内存 |
 | `java.extraArguments` | Global | 全局额外 JVM 参数 |
-| `java.jvmPreset` | Global | JVM 预设：default / g1 / zgc / aikar |
+| `java.jvmPreset` | Global | JVM 预设：default / g1 / zgc / aikar；默认 `g1`（推荐） |
 | `java.customJvmPreset` | Global | 自定义 JVM 预设 JSON 文件；留空使用内置预设 |
 | `java.runtimeProvider` | Global | Java 下载来源：mojang / adoptium / zulu / liberica |
 | `instance.java.executablePath` | Instance | 实例指定 Java；留空自动选择 |

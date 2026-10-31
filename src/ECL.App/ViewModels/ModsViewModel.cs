@@ -20,10 +20,17 @@ public sealed partial class ModsViewModel : ObservableObject
     private readonly ILocalizer _localizer;
     private bool _initialized;
     private bool _suppressSelectionRefresh;
+    private string? _pendingInstanceId;
+
+    public Action<string, string>? SearchDependency { get; set; }
 
     public ObservableCollection<ModInstanceChoice> Instances { get; } = [];
 
     public ObservableCollection<ModItemViewModel> Mods { get; } = [];
+
+    public ObservableCollection<ModItemViewModel> FilteredMods { get; } = [];
+
+    public ObservableCollection<ModFilterChoice> ModFilters { get; } = [];
 
     public ObservableCollection<PackTypeChoice> PackTypes { get; } = [];
 
@@ -34,6 +41,12 @@ public sealed partial class ModsViewModel : ObservableObject
 
     [ObservableProperty]
     private ModItemViewModel? _selectedMod;
+
+    [ObservableProperty]
+    private string _modSearchText = string.Empty;
+
+    [ObservableProperty]
+    private ModFilterChoice? _selectedModFilter;
 
     [ObservableProperty]
     private PackTypeChoice? _selectedPackType;
@@ -74,6 +87,12 @@ public sealed partial class ModsViewModel : ObservableObject
         _dialogs = dialogs;
         _localizer = localizer;
 
+        ModFilters.Add(new ModFilterChoice("all", localizer.Get("mods.filter.all")));
+        ModFilters.Add(new ModFilterChoice("enabled", localizer.Get("mods.filter.enabled")));
+        ModFilters.Add(new ModFilterChoice("disabled", localizer.Get("mods.filter.disabled")));
+        ModFilters.Add(new ModFilterChoice("issues", localizer.Get("mods.filter.issues")));
+        _selectedModFilter = ModFilters[0];
+
         PackTypes.Add(new PackTypeChoice(ContentPackKind.ResourcePack, localizer.Get("mods.resourcePacks")));
         PackTypes.Add(new PackTypeChoice(ContentPackKind.ShaderPack, localizer.Get("mods.shaderPacks")));
         _selectedPackType = PackTypes[0];
@@ -88,6 +107,34 @@ public sealed partial class ModsViewModel : ObservableObject
             await RefreshAsync().ConfigureAwait(true);
             await RefreshPacksAsync().ConfigureAwait(true);
         }
+    }
+
+    public async Task<string> GetHealthSummaryAsync(string instanceId)
+    {
+        var result = await _mods.ScanAsync(instanceId).ConfigureAwait(true);
+        if (!result.IsSuccess)
+        {
+            return _localizer.Get("instances.healthModsFailed", result.Error?.Message ?? string.Empty);
+        }
+
+        var report = result.Value!;
+        return report.IssueCount == 0
+            ? _localizer.Get("instances.healthModsOk", report.EnabledCount, report.DisabledCount)
+            : _localizer.Get("instances.healthModsIssues", report.EnabledCount, report.DisabledCount, report.IssueCount,
+                string.Join(Environment.NewLine, report.Issues.Take(12).Select(issue => $"{issue.FileName}: {issue.Kind} ({issue.RelatedModId ?? issue.Detail ?? issue.ModId ?? string.Empty})")));
+    }
+
+    public void SelectInstance(string instanceId)
+    {
+        var match = Instances.FirstOrDefault(item => string.Equals(item.Id, instanceId, StringComparison.Ordinal));
+        if (match is null)
+        {
+            _pendingInstanceId = instanceId;
+            return;
+        }
+
+        _pendingInstanceId = null;
+        SelectedInstance = match;
     }
 
     public async Task ActivateAsync()
@@ -111,7 +158,7 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task ReloadInstancesAsync()
     {
-        var selectedId = SelectedInstance?.Id;
+        var selectedId = _pendingInstanceId ?? SelectedInstance?.Id;
         var instances = await _instances.GetInstancesAsync().ConfigureAwait(true);
 
         _suppressSelectionRefresh = true;
@@ -124,11 +171,13 @@ public sealed partial class ModsViewModel : ObservableObject
                     instance.Id,
                     instance.Name,
                     instance.GameVersion,
-                    instance.Loader));
+                    instance.Loader,
+                    instance.LoaderVersion));
             }
 
             SelectedInstance = Instances.FirstOrDefault(item => item.Id == selectedId)
                                ?? Instances.FirstOrDefault();
+            _pendingInstanceId = null;
         }
         finally
         {
@@ -142,6 +191,7 @@ public sealed partial class ModsViewModel : ObservableObject
         if (SelectedInstance is null)
         {
             Mods.Clear();
+            RefreshFilteredMods();
             Summary = _localizer.Get("mods.noInstance");
             return;
         }
@@ -163,6 +213,7 @@ public sealed partial class ModsViewModel : ObservableObject
                 Mods.Add(new ModItemViewModel(mod, _localizer));
             }
 
+            RefreshFilteredMods();
             Summary = _localizer.Get(
                 "mods.summary",
                 report.EnabledCount,
@@ -309,6 +360,83 @@ public sealed partial class ModsViewModel : ObservableObject
             SelectedMod.Enabled ? "mods.disabled" : "mods.enabled",
             SelectedMod.FileName);
         await RefreshAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private async Task EnableSelectedDependenciesAsync()
+    {
+        if (SelectedInstance is null || SelectedMod is null)
+        {
+            StatusMessage = _localizer.Get("mods.selectMod");
+            return;
+        }
+
+        var dependencyIds = SelectedMod.Issues
+            .Where(issue => issue.Kind == ModIssueKind.DisabledDependency && !string.IsNullOrWhiteSpace(issue.RelatedModId))
+            .Select(issue => issue.RelatedModId!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var dependencies = dependencyIds
+            .Select(id => Mods.FirstOrDefault(mod => string.Equals(mod.ModId, id, StringComparison.OrdinalIgnoreCase)))
+            .Where(mod => mod is not null && !mod.Enabled)
+            .Cast<ModItemViewModel>()
+            .ToArray();
+
+        if (dependencies.Length == 0)
+        {
+            StatusMessage = _localizer.Get("mods.dependenciesNone");
+            return;
+        }
+
+        var names = string.Join(", ", dependencies.Select(mod => mod.Name));
+        if (!_dialogs.Confirm(
+                _localizer.Get("mods.enableDependenciesTitle"),
+                _localizer.Get("mods.enableDependenciesConfirm", names)))
+        {
+            return;
+        }
+
+        var enabled = 0;
+        var errors = new List<string>();
+        foreach (var dependency in dependencies)
+        {
+            var result = await _mods.SetEnabledAsync(SelectedInstance.Id, dependency.FileName, true).ConfigureAwait(true);
+            if (result.IsSuccess)
+            {
+                enabled++;
+            }
+            else
+            {
+                errors.Add($"{dependency.FileName}: {result.Error?.Message}");
+            }
+        }
+
+        StatusMessage = errors.Count == 0
+            ? _localizer.Get("mods.dependenciesEnabled", enabled)
+            : _localizer.Get("mods.dependenciesEnabledWithErrors", enabled, string.Join("; ", errors));
+        await RefreshAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private void SearchSelectedDependency()
+    {
+        if (SelectedInstance is null || SelectedMod is null)
+        {
+            StatusMessage = _localizer.Get("mods.selectMod");
+            return;
+        }
+
+        var dependencyId = SelectedMod.Issues
+            .Where(issue => issue.Kind == ModIssueKind.MissingDependency)
+            .Select(issue => issue.RelatedModId)
+            .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id));
+        if (dependencyId is null)
+        {
+            StatusMessage = _localizer.Get("mods.noSearchableDependency");
+            return;
+        }
+
+        SearchDependency?.Invoke(dependencyId, SelectedInstance.Id);
     }
 
     [RelayCommand]
@@ -506,6 +634,41 @@ public sealed partial class ModsViewModel : ObservableObject
             : result.Error?.ToString() ?? _localizer.Get("mods.exportFailed");
     }
 
+    partial void OnModSearchTextChanged(string value) => RefreshFilteredMods();
+
+    partial void OnSelectedModFilterChanged(ModFilterChoice? value) => RefreshFilteredMods();
+
+    private void RefreshFilteredMods()
+    {
+        var selectedFileName = SelectedMod?.FileName;
+        var search = ModSearchText.Trim();
+        var filter = SelectedModFilter?.Key ?? "all";
+
+        var matches = Mods.Where(mod =>
+        {
+            var matchesSearch = search.Length == 0
+                || mod.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || mod.FileName.Contains(search, StringComparison.OrdinalIgnoreCase)
+                || mod.Meta.Contains(search, StringComparison.OrdinalIgnoreCase);
+            var matchesFilter = filter switch
+            {
+                "enabled" => mod.Enabled,
+                "disabled" => !mod.Enabled,
+                "issues" => mod.HasIssues,
+                _ => true,
+            };
+            return matchesSearch && matchesFilter;
+        }).ToArray();
+
+        FilteredMods.Clear();
+        foreach (var mod in matches)
+        {
+            FilteredMods.Add(mod);
+        }
+
+        SelectedMod = FilteredMods.FirstOrDefault(mod => mod.FileName == selectedFileName);
+    }
+
     partial void OnSelectedInstanceChanged(ModInstanceChoice? value)
     {
 
@@ -525,9 +688,28 @@ public sealed partial class ModsViewModel : ObservableObject
     }
 }
 
-public sealed record ModInstanceChoice(string Id, string Name, string GameVersion, string Loader);
+public sealed record ModInstanceChoice(string Id, string Name, string GameVersion, string Loader, string? LoaderVersion)
+{
+    public string LoaderDisplay => Loader.ToLowerInvariant() switch
+    {
+        "vanilla" => "Vanilla",
+        "fabric" => "Fabric",
+        "forge" => "Forge",
+        "neoforge" => "NeoForge",
+        "cleanroom" => "Cleanroom",
+        _ => Loader,
+    };
+
+    public string LoaderVersionDisplay => string.IsNullOrWhiteSpace(LoaderVersion)
+        ? LoaderDisplay
+        : $"{LoaderDisplay} {LoaderVersion}";
+
+    public string GameVersionDisplay => $"Minecraft {GameVersion}";
+}
 
 public sealed record PackTypeChoice(ContentPackKind Kind, string Title);
+
+public sealed record ModFilterChoice(string Key, string Title);
 
 public sealed class ContentPackItemViewModel
 {
@@ -575,7 +757,22 @@ public sealed class ModItemViewModel
 
     public string FileName => _entry.FileName;
 
+    public string? ModId => _entry.Metadata?.ModId;
+
+    public string PlatformText => _entry.Metadata?.Platform switch
+    {
+        ModPlatform.Fabric => _localizer.Get("mods.platform.fabric"),
+        ModPlatform.Forge => _localizer.Get("mods.platform.forge"),
+        ModPlatform.NeoForge => _localizer.Get("mods.platform.neoforge"),
+        ModPlatform.LegacyForge => _localizer.Get("mods.platform.legacyForge"),
+        _ => _localizer.Get("mods.platform.unknown"),
+    };
+
+    public IReadOnlyList<ModIssue> Issues => _entry.Issues;
+
     public bool Enabled => _entry.Enabled;
+
+    public string RecommendationText => string.Join(Environment.NewLine, _entry.Issues.Select(Recommend));
 
     public string StatusText => Enabled
         ? _localizer.Get("mods.enabledLabel")
@@ -584,14 +781,25 @@ public sealed class ModItemViewModel
     public string Name => _entry.Metadata?.Name ?? _entry.FileName;
 
     public string Meta => _entry.Metadata is null
-        ? _entry.FileName
-        : $"{_entry.Metadata.ModId} · {_entry.Metadata.Version} · {_entry.Metadata.Platform}";
+        ? $"{_entry.FileName} · {PlatformText}"
+        : $"{_entry.Metadata.ModId} · {_entry.Metadata.Version} · {PlatformText}";
 
     public string IssuesText => string.Join(
         Environment.NewLine,
         _entry.Issues.Select(issue => Describe(issue)));
 
     public bool HasIssues => _entry.Issues.Count > 0;
+
+    private string Recommend(ModIssue issue) => issue.Kind switch
+    {
+        ModIssueKind.DisabledDependency => _localizer.Get("mod.recommend.disabledDependency", issue.RelatedModId ?? "?"),
+        ModIssueKind.MissingDependency => _localizer.Get("mod.recommend.missingDependency", issue.RelatedModId ?? "?"),
+        ModIssueKind.Conflict => _localizer.Get("mod.recommend.conflict", issue.RelatedModId ?? "?"),
+        ModIssueKind.LoaderMismatch => _localizer.Get("mod.recommend.loaderMismatch", issue.Detail ?? "?"),
+        ModIssueKind.InvalidMetadata => _localizer.Get("mod.recommend.invalidMetadata"),
+        ModIssueKind.DuplicateModId => _localizer.Get("mod.recommend.duplicate"),
+        _ => string.Empty,
+    };
 
     private string Describe(ModIssue issue) => issue.Kind switch
     {

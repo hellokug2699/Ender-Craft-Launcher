@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Ecl.Core;
 using Microsoft.Extensions.Logging;
@@ -9,12 +10,20 @@ namespace Ecl.Auth;
 public sealed partial class AccountService : IAccountService
 {
     private readonly IAccountStore _store;
+    private readonly ISecureCredentialStore _credentials;
+    private readonly IMicrosoftAuthenticationService _microsoftAuthentication;
     private readonly ILogger<AccountService> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public AccountService(IAccountStore store, ILogger<AccountService> logger)
+    public AccountService(
+        IAccountStore store,
+        ISecureCredentialStore credentials,
+        IMicrosoftAuthenticationService microsoftAuthentication,
+        ILogger<AccountService> logger)
     {
         _store = store;
+        _credentials = credentials;
+        _microsoftAuthentication = microsoftAuthentication;
         _logger = logger;
     }
 
@@ -37,16 +46,29 @@ public sealed partial class AccountService : IAccountService
         try
         {
             var document = _store.Load();
-            if (document.DefaultAccountId is not null)
+            var account = document.DefaultAccountId is not null
+                ? document.Accounts.FirstOrDefault(item => item.Id == document.DefaultAccountId)
+                : null;
+            account ??= document.Accounts.FirstOrDefault();
+
+            if (account is null || account.Type != AccountType.Microsoft)
             {
-                var configured = document.Accounts.FirstOrDefault(account => account.Id == document.DefaultAccountId);
-                if (configured is not null)
-                {
-                    return configured;
-                }
+                return account;
             }
 
-            return document.Accounts.FirstOrDefault();
+            var credentials = await _credentials.GetAsync(account.Id, cancellationToken).ConfigureAwait(false);
+            if (!credentials.IsSuccess)
+            {
+                _logger.LogWarning("Microsoft 账户 {AccountId} 缺少安全凭据：{Code}", account.Id, credentials.Error?.Code);
+                return account;
+            }
+
+            return account with
+            {
+                AccessToken = credentials.Value!.MinecraftAccessToken,
+                RefreshToken = credentials.Value.MicrosoftRefreshToken,
+                MinecraftTokenExpiresAt = credentials.Value.MinecraftTokenExpiresAt,
+            };
         }
         finally
         {
@@ -66,11 +88,6 @@ public sealed partial class AccountService : IAccountService
         try
         {
             var document = _store.Load();
-            if (document.Accounts.Any(account => string.Equals(account.Name, name, StringComparison.OrdinalIgnoreCase)))
-            {
-                return Result<Account>.Fail("account.duplicate", $"已存在同名账户：{name}");
-            }
-
             var account = new Account
             {
                 Id = Guid.NewGuid().ToString("N"),
@@ -80,20 +97,141 @@ public sealed partial class AccountService : IAccountService
                 CreatedAt = DateTimeOffset.UtcNow,
             };
 
-            document.Accounts.Add(account);
-            if (makeDefault || document.DefaultAccountId is null)
+            if (IsDuplicate(document.Accounts, account))
             {
-                document.DefaultAccountId = account.Id;
+                return Result<Account>.Fail("account.duplicate", $"已存在同名离线账户：{name}");
             }
 
-            _store.Save(document);
-            _logger.LogInformation("已添加离线账户 {Name}（{Uuid}）。", account.Name, account.Uuid);
-            return Result<Account>.Ok(account);
+            return await AddCoreAsync(document, account, makeDefault, null, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    public Task<Result<Account>> AddAsync(Account account, bool makeDefault = false, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        if (account.Type == AccountType.Microsoft)
+        {
+            if (string.IsNullOrWhiteSpace(account.AccessToken))
+            {
+                return Task.FromResult(Result<Account>.Fail("account.credentials_missing", "Microsoft 账户缺少 Minecraft 登录凭据。"));
+            }
+
+            return AddMicrosoftAsync(
+                account,
+                new AccountCredentials
+                {
+                    MinecraftAccessToken = account.AccessToken,
+                    MicrosoftRefreshToken = account.RefreshToken,
+                    MinecraftTokenExpiresAt = account.MinecraftTokenExpiresAt,
+                },
+                makeDefault,
+                cancellationToken);
+        }
+
+        return AddNonMicrosoftAsync(account, makeDefault, cancellationToken);
+    }
+
+    public async Task<Result<Account>> AddMicrosoftAsync(Account account, AccountCredentials credentials, bool makeDefault = false, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        ArgumentNullException.ThrowIfNull(credentials);
+
+        if (account.Type != AccountType.Microsoft)
+        {
+            return Result<Account>.Fail("account.invalid_type", "只能为 Microsoft 账户保存 Microsoft 凭据。");
+        }
+
+        if (string.IsNullOrWhiteSpace(credentials.MinecraftAccessToken))
+        {
+            return Result<Account>.Fail("account.credentials_missing", "Minecraft access token 为空。");
+        }
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var document = _store.Load();
+            if (IsDuplicate(document.Accounts, account))
+            {
+                return Result<Account>.Fail("account.duplicate", $"已存在同名同类型账户：{account.Name}");
+            }
+
+            var saveCredentials = await _credentials.SaveAsync(account.Id, credentials, cancellationToken).ConfigureAwait(false);
+            if (!saveCredentials.IsSuccess)
+            {
+                return Result<Account>.Fail(saveCredentials.Error!);
+            }
+
+            try
+            {
+                var result = await AddCoreAsync(document, account with
+                {
+                    AccessToken = null,
+                    RefreshToken = null,
+                }, makeDefault, null, cancellationToken).ConfigureAwait(false);
+                if (!result.IsSuccess)
+                {
+                    await _credentials.RemoveAsync(account.Id, cancellationToken).ConfigureAwait(false);
+                }
+
+                return result;
+            }
+            catch
+            {
+                await _credentials.RemoveAsync(account.Id, cancellationToken).ConfigureAwait(false);
+                throw;
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<Result<Account>> AddNonMicrosoftAsync(Account account, bool makeDefault, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(account.Id) || string.IsNullOrWhiteSpace(account.Name) || string.IsNullOrWhiteSpace(account.Uuid))
+        {
+            return Result<Account>.Fail("account.invalid", "账户资料不完整。");
+        }
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var document = _store.Load();
+            if (IsDuplicate(document.Accounts, account))
+            {
+                return Result<Account>.Fail("account.duplicate", $"已存在同名同类型账户：{account.Name}");
+            }
+
+            return await AddCoreAsync(document, account, makeDefault, null, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private Task<Result<Account>> AddCoreAsync(
+        AccountsDocument document,
+        Account account,
+        bool makeDefault,
+        AccountCredentials? credentials,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        document.Accounts.Add(account);
+        if (makeDefault || document.DefaultAccountId is null)
+        {
+            document.DefaultAccountId = account.Id;
+        }
+
+        _store.Save(document);
+        _logger.LogInformation("已添加 {Type} 账户 {Name}（{Uuid}）。", account.Type, account.Name, account.Uuid);
+        return Task.FromResult(Result<Account>.Ok(account));
     }
 
     public async Task<Result> RemoveAsync(string accountId, CancellationToken cancellationToken = default)
@@ -106,6 +244,15 @@ public sealed partial class AccountService : IAccountService
             if (account is null)
             {
                 return Result.Fail("account.not_found", "账户不存在。");
+            }
+
+            if (account.Type == AccountType.Microsoft)
+            {
+                var removeCredentials = await _credentials.RemoveAsync(accountId, cancellationToken).ConfigureAwait(false);
+                if (!removeCredentials.IsSuccess)
+                {
+                    return removeCredentials;
+                }
             }
 
             document.Accounts.Remove(account);
@@ -145,6 +292,185 @@ public sealed partial class AccountService : IAccountService
         }
     }
 
+    public async Task<Result<Account>> RefreshAsync(
+        string accountId,
+        MicrosoftAuthenticationOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        Account account;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var document = _store.Load();
+            var found = document.Accounts.FirstOrDefault(item => item.Id == accountId);
+            if (found is null)
+            {
+                return Result<Account>.Fail("account.not_found", "账户不存在。");
+            }
+
+            if (found.Type != AccountType.Microsoft)
+            {
+                return Result<Account>.Fail("account.invalid_type", "只有 Microsoft 账户需要刷新凭据。");
+            }
+
+            var credentials = await _credentials.GetAsync(accountId, cancellationToken).ConfigureAwait(false);
+            if (!credentials.IsSuccess)
+            {
+                return Result<Account>.Fail(credentials.Error!);
+            }
+
+            account = found with
+            {
+                AccessToken = credentials.Value!.MinecraftAccessToken,
+                RefreshToken = credentials.Value.MicrosoftRefreshToken,
+                MinecraftTokenExpiresAt = credentials.Value.MinecraftTokenExpiresAt,
+            };
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        // 网络请求在锁外执行，避免刷新期间阻塞其他账户读写操作。
+        return await RefreshCoreAsync(account, options, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<Result<Account>> EnsureFreshAsync(
+        Account account,
+        MicrosoftAuthenticationOptions options,
+        TimeSpan margin,
+        CancellationToken cancellationToken = default)
+    {
+        if (account.Type != AccountType.Microsoft)
+        {
+            return Result<Account>.Ok(account);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        // 优先使用凭据里记录的有效期；旧凭据没有记录时，从 token 自身的 exp 声明推断，
+        // 避免“不知道有效期就盲目刷新”。
+        var expiry = account.MinecraftTokenExpiresAt ?? TryReadTokenExpiry(account.AccessToken);
+
+        if (expiry is { } valid && valid - now > margin)
+        {
+            _logger.LogInformation(
+                "Microsoft 账户 {AccountId} 的 Minecraft token 仍有效（剩余 {Remaining}），复用现有凭据，不执行刷新。",
+                account.Id,
+                DescribeRemaining(valid - now));
+            return Result<Account>.Ok(account with { MinecraftTokenExpiresAt = valid });
+        }
+
+        if (expiry is null)
+        {
+            _logger.LogInformation(
+                "Microsoft 账户 {AccountId} 的 Minecraft token 有效期未知，执行一次静默刷新以确认。",
+                account.Id);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Microsoft 账户 {AccountId} 的 Minecraft token 将在 {Remaining} 后过期（提前 {Margin} 刷新），执行静默刷新。",
+                account.Id,
+                DescribeRemaining(expiry.Value - now),
+                DescribeRemaining(margin));
+        }
+
+        var refreshed = await RefreshCoreAsync(account, options, cancellationToken).ConfigureAwait(false);
+        if (refreshed.IsSuccess)
+        {
+            return refreshed;
+        }
+
+        // 刷新失败但旧 token 仍未过期时继续使用旧 token；只有已过期才阻断启动。
+        if (account.MinecraftTokenExpiresAt is { } stillValid &&
+            stillValid > now &&
+            !string.IsNullOrWhiteSpace(account.AccessToken))
+        {
+            return Result<Account>.Ok(account);
+        }
+
+        return refreshed;
+    }
+
+    private async Task<Result<Account>> RefreshCoreAsync(
+        Account account,
+        MicrosoftAuthenticationOptions options,
+        CancellationToken cancellationToken)
+    {
+        var refreshed = await _microsoftAuthentication
+            .RefreshAsync(options, account.RefreshToken ?? string.Empty, cancellationToken)
+            .ConfigureAwait(false);
+        if (!refreshed.IsSuccess)
+        {
+            _logger.LogWarning("刷新 Microsoft 账户 {AccountId} 凭据失败：{Code}", account.Id, refreshed.Error?.Code);
+            return Result<Account>.Fail(refreshed.Error!);
+        }
+
+        var save = await _credentials.SaveAsync(account.Id, refreshed.Value!, cancellationToken).ConfigureAwait(false);
+        if (!save.IsSuccess)
+        {
+            return Result<Account>.Fail(save.Error!);
+        }
+
+        _logger.LogInformation("已静默刷新 Microsoft 账户 {AccountId} 的凭据。", account.Id);
+        return Result<Account>.Ok(account with
+        {
+            AccessToken = refreshed.Value!.MinecraftAccessToken,
+            RefreshToken = refreshed.Value.MicrosoftRefreshToken,
+            MinecraftTokenExpiresAt = refreshed.Value.MinecraftTokenExpiresAt,
+        });
+    }
+
     [GeneratedRegex("^[A-Za-z0-9_]{3,16}$", RegexOptions.CultureInvariant)]
     private static partial Regex UsernameRegex();
+
+    /// <summary>
+    /// 同一个 Minecraft 名字既可能对应正版账户，也可能对应同名的离线账户，
+    /// 因此只有“同 ID”或“同名且同类型”才算重复；同名不同类允许共存。
+    /// </summary>
+    private static bool IsDuplicate(IEnumerable<Account> accounts, Account candidate) =>
+        accounts.Any(existing =>
+            string.Equals(existing.Id, candidate.Id, StringComparison.Ordinal) ||
+            (existing.Type == candidate.Type &&
+             string.Equals(existing.Name, candidate.Name, StringComparison.OrdinalIgnoreCase)));
+
+    /// <summary>旧凭据没有记录有效期时，从 Minecraft token 的 <c>exp</c> 声明推断。</summary>
+    private static DateTimeOffset? TryReadTokenExpiry(string? accessToken)
+    {
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            return null;
+        }
+
+        var segments = accessToken.Split('.');
+        if (segments.Length < 2)
+        {
+            return null;
+        }
+
+        try
+        {
+            var payload = Base64UrlDecode(segments[1]);
+            using var document = JsonDocument.Parse(payload);
+            return document.RootElement.TryGetProperty("exp", out var exp) && exp.TryGetInt64(out var seconds)
+                ? DateTimeOffset.FromUnixTimeSeconds(seconds)
+                : null;
+        }
+        catch (Exception exception) when (exception is FormatException or JsonException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private static byte[] Base64UrlDecode(string value)
+    {
+        var normalized = value.Replace('-', '+').Replace('_', '/');
+        var padding = (4 - (normalized.Length % 4)) % 4;
+        return Convert.FromBase64String(normalized.PadRight(normalized.Length + padding, '='));
+    }
+
+    private static string DescribeRemaining(TimeSpan remaining) =>
+        remaining <= TimeSpan.Zero
+            ? "已过期"
+            : $"{(int)remaining.TotalHours} 小时 {remaining.Minutes} 分钟";
 }

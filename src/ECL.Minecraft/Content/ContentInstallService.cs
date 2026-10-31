@@ -56,6 +56,7 @@ public sealed class ContentInstallService(
     ILogger<ContentInstallService> logger) : IContentInstallService
 {
     private const int MaxDependencyDepth = 4;
+    private const int MaxDependencyFiles = 128;
     private const string ModrinthHost = "modrinth.com";
 
     public async Task<Result<ContentInstallReport>> InstallAsync(
@@ -258,15 +259,55 @@ public sealed class ContentInstallService(
             return Result<ModpackImportResult>.Fail(createResult.Error!);
         }
 
+        var createdInstance = createResult.Value!;
         progress?.Report(new ContentProgress("import", "正在导入整合包…"));
-        var import = await ImportArchiveAsync(createResult.Value!, archive.Value!, progress, cancellationToken)
-            .ConfigureAwait(false);
+
+        Result<ModpackImportResult> import;
+        try
+        {
+            import = await ImportArchiveAsync(createdInstance, archive.Value!, progress, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await RollbackCreatedInstanceAsync(createdInstance.Id).ConfigureAwait(false);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            await RollbackCreatedInstanceAsync(createdInstance.Id).ConfigureAwait(false);
+            logger.LogError(exception, "整合包导入抛出异常，已尝试回滚新建实例 {InstanceId}。", createdInstance.Id);
+            return Result<ModpackImportResult>.Fail(
+                "modpack.import_failed",
+                $"导入整合包失败：{exception.Message}");
+        }
+
         if (!import.IsSuccess)
         {
+            await RollbackCreatedInstanceAsync(createdInstance.Id).ConfigureAwait(false);
             return import;
         }
 
-        return Result<ModpackImportResult>.Ok(import.Value! with { InstanceId = createResult.Value!.Id });
+        return Result<ModpackImportResult>.Ok(import.Value! with { InstanceId = createdInstance.Id });
+    }
+
+    private async Task RollbackCreatedInstanceAsync(string instanceId)
+    {
+        try
+        {
+            var rollback = await instances.DeleteAsync(instanceId, CancellationToken.None).ConfigureAwait(false);
+            if (!rollback.IsSuccess)
+            {
+                logger.LogError(
+                    "回滚整合包实例 {InstanceId} 失败：{Error}",
+                    instanceId,
+                    rollback.Error);
+            }
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "回滚整合包实例 {InstanceId} 时发生异常。", instanceId);
+        }
     }
 
     private async Task<Result<ModpackImportResult>> ImportArchiveAsync(
@@ -535,6 +576,17 @@ public sealed class ContentInstallService(
         int depth,
         CancellationToken cancellationToken)
     {
+        if (files.Count >= MaxDependencyFiles)
+        {
+            const string warning = "Modrinth 必需依赖数量超过 128 个，已停止继续解析；请手动检查整合包依赖。";
+            if (!warnings.Contains(warning, StringComparer.Ordinal))
+            {
+                warnings.Add(warning);
+            }
+
+            return;
+        }
+
         if (depth >= MaxDependencyDepth || string.IsNullOrWhiteSpace(file.VersionId))
         {
             if (depth >= MaxDependencyDepth)
@@ -555,6 +607,16 @@ public sealed class ContentInstallService(
         foreach (var dependency in version.Value!.Dependencies)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (files.Count >= MaxDependencyFiles)
+            {
+                const string warning = "Modrinth 必需依赖数量超过 128 个，已停止继续解析；请手动检查整合包依赖。";
+                if (!warnings.Contains(warning, StringComparer.Ordinal))
+                {
+                    warnings.Add(warning);
+                }
+
+                return;
+            }
             if (!string.Equals(dependency.DependencyType, "required", StringComparison.OrdinalIgnoreCase) ||
                 string.IsNullOrWhiteSpace(dependency.ProjectId))
             {
@@ -843,10 +905,41 @@ public static class ModpackArchiveInspector
         return Result<ModpackMetadata>.Ok(new ModpackMetadata(name, gameVersion, loader, loaderVersion, version));
     }
 
+    private const long MaxMetadataEntryBytes = 4L * 1024 * 1024;
+
     private static string ReadText(ZipArchiveEntry entry)
     {
-        using var stream = entry.Open();
-        using var reader = new StreamReader(stream);
+        if (entry.Length < 0 || entry.Length > MaxMetadataEntryBytes)
+        {
+            throw new InvalidDataException(
+                $"整合包元数据条目过大：{entry.FullName}（上限 {MaxMetadataEntryBytes / (1024 * 1024)} MiB）。");
+        }
+
+        using var source = entry.Open();
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        long totalBytes = 0;
+
+        while (true)
+        {
+            var read = source.Read(chunk, 0, chunk.Length);
+            if (read == 0)
+            {
+                break;
+            }
+
+            if (read > MaxMetadataEntryBytes - totalBytes)
+            {
+                throw new InvalidDataException(
+                    $"整合包元数据条目过大：{entry.FullName}（上限 {MaxMetadataEntryBytes / (1024 * 1024)} MiB）。");
+            }
+
+            buffer.Write(chunk, 0, read);
+            totalBytes += read;
+        }
+
+        buffer.Position = 0;
+        using var reader = new StreamReader(buffer);
         return reader.ReadToEnd();
     }
 

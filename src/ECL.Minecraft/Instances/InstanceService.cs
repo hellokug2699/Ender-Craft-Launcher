@@ -134,6 +134,87 @@ public sealed partial class InstanceService : IInstanceService
         return Result<GameInstance>.Ok(instance);
     }
 
+    public async Task<Result<GameInstance>> UpdateConfigurationAsync(
+        string instanceId,
+        string gameVersion,
+        string loader,
+        string? loaderVersion = null,
+        string? fabricApiVersion = null,
+        string? optiFineVersion = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!AppPaths.IsValidInstanceId(instanceId))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_id", "实例 ID 不合法。");
+        }
+
+        var current = await _store.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        if (current is null)
+        {
+            return Result<GameInstance>.Fail("instance.not_found", "实例不存在。");
+        }
+
+        gameVersion = gameVersion.Trim();
+        loader = loader.Trim().ToLowerInvariant();
+        loaderVersion = string.IsNullOrWhiteSpace(loaderVersion) ? null : loaderVersion.Trim();
+        fabricApiVersion = string.IsNullOrWhiteSpace(fabricApiVersion) ? null : fabricApiVersion.Trim();
+        optiFineVersion = string.IsNullOrWhiteSpace(optiFineVersion) ? null : optiFineVersion.Trim();
+
+        if (!VersionRegex().IsMatch(gameVersion))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_version", "游戏版本格式不正确。");
+        }
+
+        if (!SupportedLoaders.Contains(loader))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_loader", $"不支持的加载器：{loader}");
+        }
+
+        if (loader == "vanilla" && loaderVersion is not null ||
+            loader != "vanilla" && loaderVersion is null)
+        {
+            return Result<GameInstance>.Fail("instance.loader_version_required", "所选加载器版本无效。");
+        }
+
+        if (loader == "cleanroom" && gameVersion != "1.12.2")
+        {
+            return Result<GameInstance>.Fail("instance.cleanroom_version", "Cleanroom 仅支持 Minecraft 1.12.2。");
+        }
+
+        if (loaderVersion is not null && !LoaderVersionRegex().IsMatch(loaderVersion))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_loader_version", "加载器版本格式不正确。");
+        }
+
+        if (fabricApiVersion is not null &&
+            (loader != "fabric" || !LoaderVersionRegex().IsMatch(fabricApiVersion)))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_fabric_api", "Fabric API 版本无效。");
+        }
+
+        if (optiFineVersion is not null &&
+            ((loader != "forge" && loader != "cleanroom") || !OptiFineKeyRegex().IsMatch(optiFineVersion)))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_optifine", "OptiFine 仅支持 Forge / Cleanroom，且版本键格式必须有效。");
+        }
+
+        var updated = current with
+        {
+            GameVersion = gameVersion,
+            VersionId = BuildVersionId(gameVersion, loader, loaderVersion),
+            Loader = loader,
+            LoaderVersion = loaderVersion,
+            FabricApiVersion = loader == "fabric" ? fabricApiVersion : null,
+            OptiFineVersion = optiFineVersion,
+        };
+
+        await _store.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
+        _logger.LogInformation(
+            "已更新实例 {InstanceId} 配置：Minecraft {GameVersion}，加载器 {Loader} {LoaderVersion}。",
+            instanceId, gameVersion, loader, loaderVersion);
+        return Result<GameInstance>.Ok(updated);
+    }
+
     public async Task<Result> DeleteAsync(string instanceId, CancellationToken cancellationToken = default)
     {
         if (!AppPaths.IsValidInstanceId(instanceId))

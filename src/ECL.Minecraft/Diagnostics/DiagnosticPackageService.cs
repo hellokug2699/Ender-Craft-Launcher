@@ -224,7 +224,7 @@ public sealed partial class DiagnosticPackageService(
 
         var result = BearerPattern().Replace(text, "Bearer ***");
         result = TokenPattern().Replace(result, "$1***");
-        result = AccessTokenArgumentPattern().Replace(result, "--accessToken ***");
+        result = SecretRedaction.CommandLine(result);
         return UrlCredentialsPattern().Replace(result, "$1***@");
     }
 
@@ -234,9 +234,6 @@ public sealed partial class DiagnosticPackageService(
 
     [GeneratedRegex("(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+")]
     private static partial Regex BearerPattern();
-
-    [GeneratedRegex("(?i)--accessToken\\s+\\S+")]
-    private static partial Regex AccessTokenArgumentPattern();
 
     [GeneratedRegex("(://)[^/@\\s]+@")]
     private static partial Regex UrlCredentialsPattern();

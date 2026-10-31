@@ -17,6 +17,9 @@ public interface ILaunchService
 
 public sealed class LaunchService : ILaunchService
 {
+    /// <summary>启动前提前多久续期：只有剩余有效期不足这个值时才静默刷新。</summary>
+    public static readonly TimeSpan RefreshMargin = TimeSpan.FromMinutes(30);
+
     private readonly IInstanceService _instances;
     private readonly IAccountService _accounts;
     private readonly ISettingsService _settings;
@@ -59,9 +62,52 @@ public sealed class LaunchService : ILaunchService
         }
 
         var account = await _accounts.GetDefaultAccountAsync(cancellationToken).ConfigureAwait(false);
-        if (account is null)
+        if (account is null && !dryRun)
         {
             return Failure("account", _localizer.Get("launch.account.missing"), dryRun, total);
+        }
+
+        // Health checks validate the machine/game pipeline, not the user's identity.
+        // A synthetic offline identity is used only to construct a dry-run command;
+        // real launches still require a configured account.
+        account ??= new Account
+        {
+            Id = "ecl-health-check",
+            Type = AccountType.Offline,
+            Name = "ECLHealthCheck",
+            Uuid = OfflineUuid.Create("ECLHealthCheck"),
+        };
+
+        if (!dryRun && account.Type == AccountType.Microsoft)
+        {
+            // 正常启动器不会为了续期打开浏览器：refresh token 静默换新，
+            // 只有 refresh token 本身失效才需要用户重新登录。
+            var clientId = _settings.Get<string>("auth.microsoftClientId")?.Trim();
+            if (!string.IsNullOrWhiteSpace(clientId))
+            {
+                var refreshed = await _accounts
+                    .EnsureFreshAsync(
+                        account,
+                        new MicrosoftAuthenticationOptions { ClientId = clientId },
+                        RefreshMargin,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (!refreshed.IsSuccess)
+                {
+                    return Failure(
+                        "account",
+                        $"Microsoft 账户凭据刷新失败：{refreshed.Error?.Message}",
+                        dryRun,
+                        total);
+                }
+
+                account = refreshed.Value!;
+            }
+        }
+
+        if (!dryRun && account.Type == AccountType.Microsoft && string.IsNullOrWhiteSpace(account.AccessToken))
+        {
+            return Failure("account", "Microsoft 账户登录凭据不可用，请重新登录。", dryRun, total);
         }
 
         var context = new LaunchContext

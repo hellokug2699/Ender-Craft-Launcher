@@ -39,6 +39,15 @@
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    FontSize="11"
                                    Margin="0,5,0,0" />
+                        <WrapPanel Margin="0,8,0,0">
+                            <Border Style="{StaticResource Badge}" Margin="0,0,6,0">
+                                <TextBlock Text="{Binding SelectedInstance.LoaderVersionDisplay}" FontSize="10" />
+                            </Border>
+                            <TextBlock Text="{Binding SelectedInstance.GameVersionDisplay}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       VerticalAlignment="Center" />
+                        </WrapPanel>
                         <TextBlock Text="{Binding StatusMessage}"
                                    Foreground="{DynamicResource TextMutedBrush}"
                                    FontSize="10"
@@ -55,6 +64,8 @@
             </Border>
 
             <WrapPanel Margin="0,0,0,8">
+                <Button Content="{loc:Loc Key=mods.searchDependency}" Command="{Binding SearchSelectedDependencyCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                <Button Content="{loc:Loc Key=mods.enableDependencies}" Command="{Binding EnableSelectedDependenciesCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,8" />
                 <Button Content="{loc:Loc Key=mods.toggle}"
                         Command="{Binding ToggleSelectedCommand}"
                         Style="{StaticResource PrimaryButton}"
@@ -98,7 +109,17 @@
                            VerticalAlignment="Center" />
             </Grid>
 
-            <ListBox ItemsSource="{Binding Mods}"
+            <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="190" />
+                </Grid.ColumnDefinitions>
+                <TextBox Text="{Binding ModSearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="{loc:Loc Key=mods.searchPlaceholder}" />
+                <ComboBox Grid.Column="2" ItemsSource="{Binding ModFilters}" SelectedItem="{Binding SelectedModFilter, Mode=TwoWay}" DisplayMemberPath="Title" />
+            </Grid>
+
+            <ListBox ItemsSource="{Binding FilteredMods}"
                      SelectedItem="{Binding SelectedMod, Mode=TwoWay}"
                      Margin="0,0,0,18">
                 <ListBox.ItemTemplate>
@@ -132,6 +153,7 @@
                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                FontSize="10"
                                                Margin="0,4,0,0" />
+                                    <TextBlock Text="{Binding RecommendationText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,5,0,0" Visibility="{Binding HasIssues, Converter={StaticResource BoolToVisibility}}" />
                                     <TextBlock Text="{Binding IssuesText}"
                                                Foreground="{DynamicResource WarningBrush}"
                                                FontSize="10"

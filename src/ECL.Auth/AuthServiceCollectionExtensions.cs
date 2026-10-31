@@ -9,7 +9,9 @@ public static class AuthServiceCollectionExtensions
     public static IServiceCollection AddEclAuth(this IServiceCollection services)
     {
         services.AddSingleton<IAccountStore, JsonAccountStore>();
+        services.AddSingleton<ISecureCredentialStore, WindowsDpapiCredentialStore>();
         services.AddSingleton<IAccountService, AccountService>();
+        services.AddSingleton<IMicrosoftAuthenticationService, MicrosoftAuthenticationService>();
         return services;
     }
 }

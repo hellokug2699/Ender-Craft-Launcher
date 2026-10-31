@@ -3,11 +3,13 @@
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using Ecl.Core;
 using Ecl.Download;
 using Ecl.Minecraft.Content;
 using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Modrinth;
+using Ecl.Minecraft.Mods;
 using Ecl.Tests.CurseForge;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -16,6 +18,33 @@ namespace Ecl.Tests.Modrinth;
 
 public sealed class ContentInstallTests
 {
+    [Fact]
+    public void ModpackArchiveInspectorRejectsOversizedMetadata()
+    {
+        var archivePath = Path.Combine(Path.GetTempPath(), $"ecl-oversized-{Guid.NewGuid():N}.mrpack");
+        try
+        {
+            using (var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
+            {
+                var entry = archive.CreateEntry("modrinth.index.json");
+                using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
+                writer.Write(new string(' ', 4 * 1024 * 1024 + 1));
+            }
+
+            var result = ModpackArchiveInspector.Read(archivePath);
+
+            Assert.False(result.IsSuccess);
+            Assert.Equal("modpack.invalid_archive", result.Error!.Code);
+        }
+        finally
+        {
+            if (File.Exists(archivePath))
+            {
+                File.Delete(archivePath);
+            }
+        }
+    }
+
     [Fact]
     public async Task DownloadsMrpackWithoutAnyInstance()
     {
@@ -67,6 +96,26 @@ public sealed class ContentInstallTests
         Assert.True(File.Exists(Path.Combine(
             environment.Paths.GetInstanceGameDirectory(instance.Id),
             ".ecl-modpack.json")));
+    }
+
+    [Fact]
+    public async Task RollsBackCreatedInstanceWhenModpackImportFails()
+    {
+        var payload = CreateMrpack();
+        using var environment = new TestEnvironment();
+        var modrinth = CreateModrinthClient(payload.Length);
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(new PayloadDownloadService(payload));
+            services.AddSingleton<IModrinthClient>(modrinth);
+            services.AddSingleton<IModpackService>(new FailingModpackService());
+        });
+
+        var result = await provider.GetRequiredService<IContentInstallService>()
+            .CreateInstanceAndImportModpackAsync(CreateModpackHit());
+
+        Assert.False(result.IsSuccess);
+        Assert.Empty(await provider.GetRequiredService<IInstanceService>().GetInstancesAsync());
     }
 
     [Fact]
@@ -203,6 +252,22 @@ public sealed class ContentInstallTests
             environment.Paths.GetInstanceGameDirectory(instance.Id),
             "config",
             "cf.txt")));
+    }
+
+    private sealed class FailingModpackService : IModpackService
+    {
+        public Task<Result<ModpackImportReport>> ImportAsync(
+            string instanceId,
+            string archivePath,
+            IProgress<ModpackProgress>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result<ModpackImportReport>.Fail("test.import_failed", "模拟导入失败。"));
+
+        public Task<Result<ModpackExportReport>> ExportAsync(
+            string instanceId,
+            string outputPath,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private static FakeModrinthClient CreateModrinthClient(int payloadSize)

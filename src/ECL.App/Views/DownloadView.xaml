@@ -125,83 +125,78 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 新建实例（实例下载） -->
+                <!-- 新建实例：按创建流程自上而下排列 -->
                 <Border Style="{StaticResource Card}" Margin="0,0,0,16">
                     <StackPanel>
                         <TextBlock Text="{loc:Loc Key=instances.createTitle}" Style="{StaticResource SectionText}" />
+                        <StackPanel Margin="0,12,0,0">
+                            <TextBlock Text="{loc:Loc Key=instances.name}" Style="{StaticResource LabelText}" />
+                            <TextBox Text="{Binding Game.NewInstanceName, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="{loc:Loc Key=instances.namePlaceholder}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,12,0,0">
+                            <TextBlock Text="{loc:Loc Key=instances.version}" Style="{StaticResource LabelText}" />
+                            <TextBox Text="{Binding Game.NewInstanceVersion, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="{loc:Loc Key=instances.versionPlaceholder}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,12,0,0">
+                            <TextBlock Text="{loc:Loc Key=instances.loader.title}" Style="{StaticResource LabelText}" />
+                            <ComboBox ItemsSource="{Binding Game.LoaderChoices}"
+                                      SelectedItem="{Binding Game.SelectedNewLoader, Mode=TwoWay}"
+                                      ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
+                        </StackPanel>
                         <Grid Margin="0,12,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="12" />
-                                <ColumnDefinition Width="180" />
-                                <ColumnDefinition Width="12" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock Text="{loc:Loc Key=instances.name}" Style="{StaticResource LabelText}" />
-                                <TextBox Text="{Binding Game.NewInstanceName, UpdateSourceTrigger=PropertyChanged}" ToolTip="{loc:Loc Key=instances.namePlaceholder}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="{loc:Loc Key=instances.version}" Style="{StaticResource LabelText}" />
-                                <TextBox Text="{Binding Game.NewInstanceVersion, UpdateSourceTrigger=PropertyChanged}" ToolTip="{loc:Loc Key=instances.versionPlaceholder}" />
-                            </StackPanel>
-                            <Button Grid.Column="4"
-                                    Content="{loc:Loc Key=common.create}"
-                                    Command="{Binding CreateGameInstanceCommand}"
-                                    Style="{StaticResource PrimaryButton}"
-                                    VerticalAlignment="Bottom" />
-                        </Grid>
-                        <Grid Margin="0,12,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="180" />
-                                <ColumnDefinition Width="12" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="8" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="{loc:Loc Key=instances.loader.title}" Style="{StaticResource LabelText}" />
-                                <ComboBox ItemsSource="{Binding Game.LoaderChoices}" SelectedItem="{Binding Game.SelectedNewLoader, Mode=TwoWay}" ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
                                 <TextBlock Text="{loc:Loc Key=instances.loader.version}" Style="{StaticResource LabelText}" />
-                                <ComboBox ItemsSource="{Binding Game.LoaderVersions}" SelectedItem="{Binding Game.SelectedLoaderVersion, Mode=TwoWay}" ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
+                                <ComboBox ItemsSource="{Binding Game.LoaderVersions}"
+                                          SelectedItem="{Binding Game.SelectedLoaderVersion, Mode=TwoWay}"
+                                          ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
                             </StackPanel>
-                            <Button Grid.Column="4"
-                                    Content="{loc:Loc Key=instances.loader.refresh}"
+                            <Button Grid.Column="1" Content="{loc:Loc Key=instances.loader.refresh}"
                                     Command="{Binding Game.RefreshComponentsCommand}"
-                                    Style="{StaticResource GhostButton}"
-                                    VerticalAlignment="Bottom" />
+                                    Style="{StaticResource GhostButton}" VerticalAlignment="Bottom"
+                                    Margin="10,0,0,0" />
                         </Grid>
                         <TextBlock Text="{loc:Loc Key=instances.fabricApi.notice}"
-                                   Foreground="{DynamicResource AccentBrush}"
-                                   FontSize="11"
-                                   FontWeight="SemiBold"
-                                   Margin="0,12,0,0"
-                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold"
+                                   Margin="0,12,0,0" TextWrapping="Wrap"
                                    Visibility="{Binding Game.ShowFabricApiNotice, Converter={StaticResource BoolToVisibility}}" />
-                        <Grid Margin="0,10,0,0" Visibility="{Binding Game.ShowFabricApiNotice, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel Margin="0,10,0,0"
+                                    Visibility="{Binding Game.ShowFabricApiNotice, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="{loc:Loc Key=instances.fabricApi.title}" Style="{StaticResource LabelText}" />
+                            <ComboBox ItemsSource="{Binding Game.FabricApiVersions}"
+                                      SelectedItem="{Binding Game.SelectedFabricApiVersion, Mode=TwoWay}"
+                                      ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,10,0,0"
+                                    Visibility="{Binding Game.ShowOptiFineSelector, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="{loc:Loc Key=instances.optifine.title}" Style="{StaticResource LabelText}" />
+                            <ComboBox ItemsSource="{Binding Game.OptiFineVersions}"
+                                      SelectedItem="{Binding Game.SelectedOptiFineVersion, Mode=TwoWay}"
+                                      ItemTemplate="{StaticResource DisplayNameItemTemplate}"
+                                      IsEnabled="{Binding Game.OptiFineEnabled}" />
+                            <TextBlock Text="{loc:Loc Key=instances.optifine.disabled}"
+                                       Foreground="{DynamicResource TextMutedBrush}" FontSize="10"
+                                       Margin="0,6,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ProgressBar Height="4" Margin="0,10,0,0" IsIndeterminate="True"
+                                     Visibility="{Binding Game.IsLoadingComponents, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Text="{Binding Game.ComponentStatus}" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap" />
+                        <Grid Margin="0,14,0,0">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="180" />
-                                <ColumnDefinition Width="12" />
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="{loc:Loc Key=instances.fabricApi.title}" Style="{StaticResource LabelText}" VerticalAlignment="Center" />
-                            <ComboBox Grid.Column="2" ItemsSource="{Binding Game.FabricApiVersions}" SelectedItem="{Binding Game.SelectedFabricApiVersion, Mode=TwoWay}" ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
+                            <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap" />
+                            <Button Grid.Column="1" Content="{loc:Loc Key=common.create}"
+                                    Command="{Binding CreateGameInstanceCommand}" Style="{StaticResource PrimaryButton}" />
                         </Grid>
-                        <Grid Margin="0,10,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="180" />
-                                <ColumnDefinition Width="12" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="{loc:Loc Key=instances.optifine.title}" Style="{StaticResource LabelText}" VerticalAlignment="Center" />
-                            <ComboBox Grid.Column="2" ItemsSource="{Binding Game.OptiFineVersions}" SelectedItem="{Binding Game.SelectedOptiFineVersion, Mode=TwoWay}" ItemTemplate="{StaticResource DisplayNameItemTemplate}" IsEnabled="{Binding Game.OptiFineEnabled}" />
-                        </Grid>
-                        <TextBlock Text="{loc:Loc Key=instances.optifine.disabled}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap" />
-                        <ProgressBar Height="4" Margin="0,10,0,0" IsIndeterminate="True" Visibility="{Binding Game.IsLoadingComponents, Converter={StaticResource BoolToVisibility}}" />
-                        <TextBlock Text="{Binding Game.ComponentStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
             </StackPanel>
@@ -307,113 +302,143 @@
                 <ProgressBar Height="3" IsIndeterminate="True"
                              Visibility="{Binding IsSearching, Converter={StaticResource BoolToVisibility}}" />
 
-                <ListBox ItemsSource="{Binding Results}"
-                         SelectedItem="{Binding SelectedResult, Mode=TwoWay}"
-                         MaxHeight="380"
-                         Margin="0,8,0,14"
-                         BorderThickness="0">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border Padding="12" Margin="0,0,0,6" Background="{DynamicResource SurfaceAltBrush}"
-                                    BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1" CornerRadius="10">
+                <Grid Height="500" Margin="0,8,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.08*" />
+                        <ColumnDefinition Width="14" />
+                        <ColumnDefinition Width="0.92*" />
+                    </Grid.ColumnDefinitions>
+                    <ListBox Grid.Column="0"
+                             ItemsSource="{Binding Results}"
+                             SelectedItem="{Binding SelectedResult, Mode=TwoWay}"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="12" Margin="0,0,0,8"
+                                        Background="{DynamicResource SurfaceBrush}"
+                                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                                        BorderThickness="1" CornerRadius="12">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="48" />
+                                            <ColumnDefinition Width="12" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="44" Height="44" CornerRadius="10"
+                                                Background="{DynamicResource InputBrush}"
+                                                BorderBrush="{DynamicResource BorderSoftBrush}"
+                                                BorderThickness="1" VerticalAlignment="Top">
+                                            <Image Source="{Binding IconUrl}" Stretch="Uniform" Margin="3" />
+                                        </Border>
+                                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="10" TextTrimming="CharacterEllipsis" Margin="0,4,0,0" />
+                                            <TextBlock Text="{Binding AuthorText}" Foreground="{DynamicResource TextMutedBrush}"
+                                                       FontSize="9" Margin="0,5,0,0" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="3" VerticalAlignment="Top" HorizontalAlignment="Right">
+                                            <Border Style="{StaticResource Badge}">
+                                                <TextBlock Text="{Binding SourceLabel}" FontSize="9">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsModrinth}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Border>
+                                            <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}"
+                                                       FontSize="9" HorizontalAlignment="Right" Margin="0,6,0,0" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <Border Grid.Column="2" Style="{StaticResource Card}" Padding="20"
+                            Visibility="{Binding HasSelectedResult, Converter={StaticResource BoolToVisibility}}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="44" />
+                                        <ColumnDefinition Width="58" />
                                         <ColumnDefinition Width="12" />
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <Border Width="40" Height="40" CornerRadius="8" Background="{DynamicResource InputBrush}"
-                                            BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1"
-                                            VerticalAlignment="Top">
-                                        <Image Source="{Binding IconUrl}" Stretch="Uniform" Margin="2" />
+                                    <Border Width="56" Height="56" CornerRadius="12"
+                                            Background="{DynamicResource InputBrush}"
+                                            BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="1">
+                                        <Image Source="{Binding SelectedResult.IconUrl}" Stretch="Uniform" Margin="4" />
                                     </Border>
-                                    <StackPanel Grid.Column="2">
-                                        <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{Binding Summary}"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   FontSize="10"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   Margin="0,3,0,0" />
-                                        <TextBlock Text="{Binding AuthorText}"
-                                                   Foreground="{DynamicResource TextMutedBrush}"
-                                                   FontSize="9"
-                                                   Margin="0,4,0,0" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="3" VerticalAlignment="Top" HorizontalAlignment="Right">
-                                        <Border Style="{StaticResource Badge}">
-                                            <TextBlock Text="{Binding SourceLabel}" FontSize="9">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsModrinth}" Value="True">
-                                                                <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                        </Border>
-                                        <TextBlock Text="{Binding Meta}"
-                                                   Foreground="{DynamicResource TextMutedBrush}"
-                                                   FontSize="9"
-                                                   HorizontalAlignment="Right"
-                                                   Margin="0,4,0,0" />
+                                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding SelectedResult.Name}" FontSize="17"
+                                                   FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding SelectedResult.AuthorText}"
+                                                   Foreground="{DynamicResource TextMutedBrush}" FontSize="10"
+                                                   Margin="0,5,0,0" TextWrapping="Wrap" />
                                     </StackPanel>
                                 </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-
-                <Border Style="{StaticResource Card}" Margin="0,0,0,14"
-                        Visibility="{Binding HasSelectedResult, Converter={StaticResource BoolToVisibility}}">
-                    <StackPanel>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="{Binding SelectedResult.Name}" FontSize="17" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding SelectedResult.AuthorText}"
-                                           Foreground="{DynamicResource TextMutedBrush}"
-                                           FontSize="10"
-                                           Margin="0,4,0,0" />
+                                <WrapPanel Margin="0,14,0,0">
+                                    <Border Style="{StaticResource Badge}" Margin="0,0,6,6">
+                                        <TextBlock Text="{Binding SelectedResult.SourceLabel}" FontSize="9" />
+                                    </Border>
+                                    <Border Style="{StaticResource Badge}" Margin="0,0,6,6">
+                                        <TextBlock Text="{Binding SelectedResult.Meta}" FontSize="9" />
+                                    </Border>
+                                </WrapPanel>
+                                <Border Height="1" Background="{DynamicResource BorderSoftBrush}" Margin="0,8,0,14" />
                             </StackPanel>
-                            <Button Grid.Column="1"
-                                    Content="{loc:Loc Key=downloads.openPage}"
-                                    Command="{Binding OpenPageCommand}"
-                                    Style="{StaticResource GhostButton}" />
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <TextBlock Text="{Binding SelectedResult.Summary}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
+                                           TextWrapping="Wrap" />
+                            </ScrollViewer>
+                            <StackPanel Grid.Row="2" Margin="0,16,0,0">
+                                <Button Content="{loc:Loc Key=downloads.installToInstance}"
+                                        Command="{Binding InstallCommand}" Style="{StaticResource PrimaryButton}"
+                                        IsEnabled="{Binding CanInstallToInstance}" Margin="0,0,0,8" />
+                                <Button Content="{loc:Loc Key=downloads.downloadOnly}"
+                                        Command="{Binding DownloadCommand}" Style="{StaticResource GhostButton}"
+                                        Margin="0,0,0,8" />
+                                <Button Content="{loc:Loc Key=downloads.createInstanceAndImport}"
+                                        Command="{Binding InstallAsNewInstanceCommand}" Style="{StaticResource GhostButton}"
+                                        Visibility="{Binding CanCreateInstanceFromPack, Converter={StaticResource BoolToVisibility}}"
+                                        Margin="0,0,0,8" />
+                                <Button Content="{loc:Loc Key=downloads.openPage}"
+                                        Command="{Binding OpenPageCommand}" Style="{StaticResource GhostButton}" />
+                                <TextBlock Text="{loc:Loc Key=downloads.installHint}"
+                                           Foreground="{DynamicResource TextMutedBrush}" FontSize="10"
+                                           TextWrapping="Wrap" Margin="0,12,0,0" />
+                            </StackPanel>
                         </Grid>
-                        <TextBlock Text="{Binding SelectedResult.Summary}"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   FontSize="11"
-                                   TextWrapping="Wrap"
-                                   Margin="0,10,0,0" />
-                        <WrapPanel Margin="0,14,0,0">
-                            <Button Content="{loc:Loc Key=downloads.installToInstance}"
-                                    Command="{Binding InstallCommand}"
-                                    Style="{StaticResource PrimaryButton}"
-                                    IsEnabled="{Binding CanInstallToInstance}"
-                                    Margin="0,0,8,8" />
-                            <Button Content="{loc:Loc Key=downloads.downloadOnly}"
-                                    Command="{Binding DownloadCommand}"
-                                    Style="{StaticResource GhostButton}"
-                                    Margin="0,0,8,8" />
-                            <Button Content="{loc:Loc Key=downloads.createInstanceAndImport}"
-                                    Command="{Binding InstallAsNewInstanceCommand}"
-                                    Style="{StaticResource GhostButton}"
-                                    Margin="0,0,8,8"
-                                    Visibility="{Binding CanCreateInstanceFromPack, Converter={StaticResource BoolToVisibility}}" />
-                        </WrapPanel>
-                        <TextBlock Text="{loc:Loc Key=downloads.installHint}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource Card}" Padding="20"
+                            Visibility="{Binding HasSelectedResult, Converter={StaticResource InverseBoolToVisibility}}">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ResultSummary}" FontSize="15" FontWeight="SemiBold"
+                                       TextAlignment="Center" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="10" TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
 
                 <Border Style="{StaticResource Card}" Margin="0,0,0,14"
                         Visibility="{Binding ShowProgress, Converter={StaticResource BoolToVisibility}}">

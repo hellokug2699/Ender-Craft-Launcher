@@ -75,6 +75,10 @@ Cleanroom 的 `version.json` 声明 `javaVersion.majorVersion = 25`，因此 1.1
 
 Linux ARM64 在 Mojang 来源下会返回“平台不支持”；切换到 Adoptium/Zulu/Liberica 可以下载 ARM64 构建。
 
+**用户无需预先安装 Java。** ECL 当前采用按需下载，而不是把 Java 二进制直接塞进启动器安装包：缺少运行时后，用户可在启动确认中同意下载，也可在实例详情页手动下载。运行时安装到 ECL 数据目录并由启动器扫描管理；不同实例可以复用兼容的本机运行时。
+
+默认 Mojang 来源使用 Minecraft 官方运行时清单；Adoptium、Zulu、Liberica 是可选的 OpenJDK 发行版来源。Temurin 等第三方二进制随包提供其许可证与 NOTICE 信息，ECL 应保留这些文件。若未来改为随 ECL 安装包预置 Java，需要针对具体发行版和版本核对再分发条款，不能把“OpenJDK”名称本身视为统一的再分发授权。
+
 ## 5. 32/64 位与内存校验
 
 `JavaPlatformAdvisor` 在 Java 选择后给出警告（不直接阻止启动）：
@@ -89,7 +93,7 @@ Linux ARM64 在 Mojang 来源下会返回“平台不支持”；切换到 Adopt
 
 ## 6. JVM 参数预设
 
-`java.jvmPreset`（全局）与 `instance.java.jvmPreset`（实例覆盖）支持：
+`java.jvmPreset`（全局）与 `instance.java.jvmPreset`（实例覆盖）支持。全局默认值为 `g1`（推荐）；实例留空时继承全局预设：
 
 | 预设 | 内容 |
 | --- | --- |
@@ -148,6 +152,22 @@ ecl launch <实例ID> --dry-run
 
 ## 9. 限制与后续
 
-- JVM 预设目前是内置组合，尚不支持用户自定义/保存预设。
+- 内置预设之外可通过自定义 JSON 文件加载参数；尚不支持在 UI 中编辑并保存新的命名预设。
 - 32/64 位与内存校验只给出警告，不强制阻止启动。
 - Microsoft 账户体系（原 v0.3）因 OAuth 审核限制暂缓，不影响本地离线启动。
+
+
+## Microsoft 账户接入配置（预留）
+
+当前版本尚未实现 Microsoft OAuth / Xbox Live / Minecraft Services 登录链路。设置页的
+**账户与身份验证 → Microsoft OAuth Client ID** 可保存 Microsoft Entra 应用注册的
+Application (client) ID，但它目前不会启动登录，也不会创建 Microsoft 账户。此字段是为后续接入预留，
+不是“已经支持微软登录”的承诺。
+
+准备接入时建议使用 **Mobile and desktop applications / Public client** 类型，并采用
+Authorization Code + PKCE（桌面应用不应内置 Client Secret）。配置桌面端回环重定向 URI
+（例如 `http://localhost`），并启用公共客户端流程。Minecraft 登录还需要后续完成 Xbox Live、
+XSTS 与 Minecraft Services 的令牌交换和正版档案校验；仅有 OAuth access token 并不足以启动正版 Minecraft。
+
+配置位置：**设置 → 全局 → 账户与身份验证 → Microsoft OAuth Client ID**。
+Application (client) ID 是公开标识，不是密码；不要把 Client Secret 提交到仓库、配置文件或客户端程序中。
