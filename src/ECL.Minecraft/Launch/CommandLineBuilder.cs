@@ -26,7 +26,11 @@ public static class CommandLineBuilder
         if (loggingFile is { Id.Length: > 0 } && !string.IsNullOrWhiteSpace(loggingArgument))
         {
             var loggingPath = Versions.VersionFilePlanner.GetLoggingFilePath(context.Paths, loggingFile.Id);
-            arguments.Add(loggingArgument.Replace("${path}", loggingPath, StringComparison.OrdinalIgnoreCase));
+            // 导入的实例可能缺少 logging 资源；指向不存在的文件会让 log4j 配置加载失败。
+            if (File.Exists(loggingPath))
+            {
+                arguments.Add(loggingArgument.Replace("${path}", loggingPath, StringComparison.OrdinalIgnoreCase));
+            }
         }
 
         var instanceJvmArguments = context.GetInstanceSetting<string?>("instance.java.extraArguments");

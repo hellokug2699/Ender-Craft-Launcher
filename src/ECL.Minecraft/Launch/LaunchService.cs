@@ -163,6 +163,10 @@ public sealed class LaunchService : ILaunchService
 
             if (result.Status == LaunchStepStatus.Failed)
             {
+                _logger.LogWarning(
+                    "启动步骤 {StepId} 失败：{Message}",
+                    result.StepId,
+                    result.Message);
                 success = false;
                 break;
             }

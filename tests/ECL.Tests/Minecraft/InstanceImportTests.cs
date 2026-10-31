@@ -102,6 +102,34 @@ public sealed class InstanceImportTests
             .Match(report.CommandLine!, "--gameDir\\s+\"?([^\"\\s]+)\"?")
             .Groups[1].Value.Trim();
         Assert.Equal(Path.GetFullPath(expected), Path.GetFullPath(actualGameDirectory));
+
+        // logging 资源不存在时不能把不存在的路径传给 log4j。
+        Assert.DoesNotContain("-Dlog4j.configurationFile", report.CommandLine!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task LoggingArgumentIsAddedOnlyWhenTheConfigExists()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+        var accounts = provider.GetRequiredService<Ecl.Auth.IAccountService>();
+        var paths = environment.Paths;
+
+        Assert.True((await accounts.AddOfflineAsync("Steve", makeDefault: true)).IsSuccess);
+        CreateVersion(paths.VersionsDirectory, "Shared", "net.minecraft.client.main.Main", isolated: false);
+        var imported = await instances.ImportAsync("Shared");
+        Assert.True(imported.IsSuccess);
+
+        var loggingDirectory = Path.Combine(paths.AssetsDirectory, "logging");
+        Directory.CreateDirectory(loggingDirectory);
+        File.WriteAllText(Path.Combine(loggingDirectory, "client-1.12.xml"), "<Configuration/>");
+
+        var report = await provider.GetRequiredService<ILaunchService>()
+            .LaunchAsync(imported.Value!.Id, dryRun: true);
+
+        Assert.True(report.Success, string.Join(" | ", report.Steps.Select(step => $"{step.StepId}:{step.Status}:{step.Message}")));
+        Assert.Contains("-Dlog4j.configurationFile=", report.CommandLine!, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -133,6 +161,15 @@ public sealed class InstanceImportTests
         {
             id = versionId,
             mainClass,
+            logging = new
+            {
+                client = new
+                {
+                    argument = "-Dlog4j.configurationFile=${path}",
+                    file = new { id = "client-1.12.xml", sha1 = "00", size = 1 },
+                    type = "log4j2-xml",
+                },
+            },
             libraries = mainClass.Contains("fabric", StringComparison.OrdinalIgnoreCase)
                 ?
                 [
