@@ -205,8 +205,8 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 详见 [configuration.md](configuration.md)。概要：
 
 - 全局选项只看 `config/global.json`。
-- 实例选项只看 `instances/<id>/settings.json`；空值表示继承或未设置。
-- 每次读取返回“值 + 来源（Default/Global/Instance）”，UI 用来源标记帮助用户理解覆盖关系。
+- 实例选项只看 `instances/<id>/settings.json`；未设置时是否回退全局值由具体业务读取方显式决定，SettingsService 不自动合并两份配置。
+- `Get` 与 `GetSource` 分别读取值和来源；UI 可用来源标记帮助用户理解设置来自默认值、全局文件还是实例文件。
 
 ### 7.7 CurseForge
 
