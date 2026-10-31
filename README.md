@@ -1,132 +1,112 @@
 # Ender Craft Launcher（ECL）
 
-> **nightly 开发分支说明** · 面向 Windows 的 Minecraft 启动器，使用 C#、.NET 10 与 WPF 构建。
+> **持续开发分支（nightly）** · 面向 Windows 的 Minecraft 启动器，使用 C#、.NET 10 与 WPF 构建。
 
-ECL 致力于提供完整、可靠且易于维护的 Minecraft 实例管理与启动体验。项目以成熟启动器为参考，同时建立自己的配置、安装、下载和诊断体系。
+nightly 是 ECL 的主要活动开发分支，也是新功能、架构调整和快速修复首先集成的地方。这里的功能可能尚未经过完整实机验证，界面、配置和内部接口也可能继续变化。**nightly 不等于稳定发行版**；使用前请备份实例目录、存档和重要配置。
 
-本分支是持续开发中的 nightly 版本，功能、界面和内部结构都可能调整。请勿将 nightly 视为稳定发行版；使用前建议备份实例目录和重要游戏数据。
+## 当前开发基线
 
-## 项目现状
+- **桌面工作台**：主页、下载、实例、内容、设置和关于页面；主页用于启动与状态入口，下载集中在下载中心。
+- **实例工作区**：实例库负责展示和入口；每个实例拥有独立工作区，管理基本信息、账户、Java/JVM、Mod、文件、启动记录和崩溃诊断。
+- **外部实例导入**：扫描 Minecraft versions 目录，识别共享游戏目录和版本隔离目录；导入引用既有文件，不复制原安装。启动、内容管理和诊断使用实例实际游戏目录。
+- **游戏与加载器**：支持原版、Fabric、Forge、NeoForge 与 Cleanroom 安装和启动。
+- **Java 管理**：扫描 Java 安装，包括多 JDK 父目录；按实例选择运行时，支持自动下载、兼容性检查和 JVM 预设。
+- **账户**：支持离线、Microsoft 和 Authlib-Injector / Yggdrasil 第三方账户。Microsoft 使用 OAuth Authorization Code + PKCE，并经 Xbox Live、XSTS、Minecraft Services 验证；敏感凭据使用 Windows DPAPI 保护。第三方账户使用独立认证服务器配置，密码仅用于登录过程，不长期保存。
+- **第三方认证安全**：认证服务器要求 HTTPS（仅 localhost / loopback 允许 HTTP），拒绝不安全重定向；修改认证服务器地址前需重新认证；Injector 下载产物校验 SHA-256，并验证缓存路径与版本元数据。
+- **内容管理**：管理 Mod、资源包、光影包和数据包；检查常见 Mod 元数据问题。
+- **内容平台与整合包**：支持 Modrinth / CurseForge 搜索与安装、Modrinth 依赖解析、Modrinth .mrpack 与 CurseForge .zip 导入，以及 Modrinth 格式导出。
+- **启动与诊断**：执行启动前检查、版本解析、Java 选择、文件校验、natives 解压和进程启动；提供崩溃分析与脱敏诊断包。
+- **CLI 与自动化测试**：提供无图形命令行入口；Windows CI 验证 WPF 构建，Linux CI 验证 Core / CLI 与测试项目。
 
-- **桌面界面**：Windows WPF，采用深色主题与持久侧栏，包含主页、下载、实例、内容、设置和关于页面。
-- **主页工作台**：选择并启动实例、预览启动命令、查看 Java 与账户状态、快速切换实例，并提供下载中心、实例管理和已安装内容入口。主页不展示 Minecraft 正式版或快照版更新资讯。
-- **下载中心**：统一搜索游戏版本、Mod、整合包、数据包、资源包和光影包；支持 CurseForge、Modrinth 来源筛选、游戏版本与加载器过滤、查看项目详情、下载或安装。
-- **实例独立管理**：实例库只展示实例名称、Minecraft 版本、加载器与最近启动时间；每个实例拥有独立工作区，集中管理基本信息、账户、Java/JVM、模组列表、文件目录、启动记录和崩溃诊断。可分别指定 Java、JVM 预设、额外参数和内存；未设置的实例覆盖项继承全局设置。
-- **游戏安装**：支持原版、Fabric、Forge、NeoForge 与 Cleanroom 的安装流程，并处理对应的版本元数据、依赖库和启动参数。
-- **Java 管理**：探测本机 Java，按实例选择运行时；支持扫描全局 Java 目录（包括包含多个 JDK 的父目录）、自动下载运行时、版本兼容性检查和 JVM 参数预设。全局默认启用推荐的 G1 GC 参数，实例可继承或覆盖。
-- **账户**：支持离线、Microsoft 与 Authlib-Injector 第三方账户。Microsoft 登录使用 OAuth Authorization Code + PKCE，经 Xbox Live、XSTS、Minecraft Services 完成 Java Edition 权益与档案验证；敏感令牌使用 Windows DPAPI 持久化，并支持静默刷新。第三方认证服务器强制 HTTPS（仅 localhost 允许 HTTP），认证请求不跟随重定向；修改服务器地址前必须先重新登录。
-- **内容管理**：解析 Mod 元数据，检查重复项、依赖缺失、冲突和加载器不匹配；支持导入、启用、禁用与删除。
-- **整合包**：支持导入 Modrinth .mrpack 与 CurseForge .zip，并提供 Modrinth 格式导出；导入过程包含文件校验与安全解压保护。
-- **资源与光影**：管理资源包、光影包和数据包；相关启用状态与 Minecraft 配置保持同步。
-- **CurseForge / Modrinth**：统一搜索与安装入口；Modrinth 依赖可递归解析，CurseForge 请求通过项目代理服务处理。
-- **启动与诊断**：执行启动前检查、版本解析、Java 选择、文件校验、原生库解压和进程启动；支持崩溃日志分析及脱敏诊断包导出。
-- **下载控制**：下载任务显示进度与速度，并支持暂停和继续。
-- **命令行**：提供无图形界面的安装、实例、Java、Mod、整合包、配置与启动命令。
-- **自动化测试**：核心逻辑由单元测试覆盖；每次推送以 GitHub Actions 中的构建和测试结果为准。
+## 当前路线图
 
-## 尚未实现或仍有限制
+开发顺序以 [docs/roadmap.md](docs/roadmap.md) 为准：
 
-- Quilt、Legacy Fabric 等加载器尚未支持。
-- Mod 更新检查与可选依赖交互选择尚未完成。
-- CurseForge 作者限制第三方分发的文件无法由启动器代为分发。
-- 启动器自动更新、正式安装包和代码签名发布尚未完成。
-- 首次启动向导、托盘和完整的语言热切换等体验功能仍在规划中。
+1. **实例管理可靠性**：导入实例回归、目录与文件所有权、实例迁移、原地变更版本和加载器。
+2. **内容生命周期**：Mod 更新检查、更新预览与批量更新、整合包更新、下载中心分页和筛选。
+3. **日常使用体验**：账户中心、实例工作区收尾、可访问性与诊断、备份和恢复。
+4. **可分发版本**：安装包、签名与更新协议、干净环境安装升级测试、v1.0 发布。
 
-具体开发优先级以 [开发路线图](docs/roadmap.md) 为准。文档描述可能落后于 nightly 实际代码；若有冲突，以代码和自动化测试为准。
+路线图中的每项工作都有交付物和验收条件。未通过测试或必要实机验收的任务不得仅凭代码已提交标记完成。
 
-## 环境要求
+## 已知未完成 / 暂不纳入近期主线
 
-- Windows 10 1809 或更高版本 / Windows 11（运行 WPF 桌面程序）
-- .NET 10 SDK（仓库使用 global.json 锁定 SDK）
-- Java 运行时：根据 Minecraft 版本选择 Java 8、17、21、25 等兼容版本；也可由 ECL 协助下载
+- Mod 更新检查、严格版本范围语义、可选依赖选择和整合包更新。
+- 实例迁移、原地切换 Minecraft 版本 / 加载器、备份恢复。
+- 完整账户中心、注销和 refresh token 失效后的重新授权体验。
+- 正式安装包、签名验证和启动器自更新。
+- Quilt / Legacy Fabric、托盘、首次启动向导和完整语言热切换暂不排入近期主线。
+- CurseForge 作者限制第三方分发的文件无法由启动器绕过来源限制。
 
-Linux 和 macOS 可用于构建 Core、CLI 与测试项目；WPF 桌面程序仅面向 Windows。
+## 获取代码与构建
 
-## 获取代码
-
-~~~powershell
+```powershell
 git clone https://github.com/hellokug2699/Ender-Craft-Launcher.git
 cd Ender-Craft-Launcher
 git switch nightly
-~~~
-
-## 构建、测试与运行
-
-在仓库根目录执行：
-
-~~~powershell
 dotnet restore ECL.sln
 dotnet build ECL.sln -c Release
 dotnet format ECL.sln --verify-no-changes
 dotnet test tests/ECL.Tests/ECL.Tests.csproj -c Release
 dotnet run --project src/ECL.App
-~~~
+```
 
-运行命令行工具示例：
+CLI 示例：
 
-~~~powershell
+```powershell
 dotnet run --project src/ECL.Cli -- version
 dotnet run --project src/ECL.Cli -- account add-offline Steve --default
+dotnet run --project src/ECL.Cli -- instance scan
+dotnet run --project src/ECL.Cli -- instance import <版本目录>
 dotnet run --project src/ECL.Cli -- instance create "Survival" --version 1.21.1
-dotnet run --project src/ECL.Cli -- instance create "Fabric" --version 1.21.1 --loader fabric
 dotnet run --project src/ECL.Cli -- install <实例ID>
-dotnet run --project src/ECL.Cli -- java install <实例ID>
 dotnet run --project src/ECL.Cli -- launch <实例ID> --dry-run
 dotnet run --project src/ECL.Cli -- mod list <实例ID>
 dotnet run --project src/ECL.Cli -- mod check <实例ID>
 dotnet run --project src/ECL.Cli -- modpack import <实例ID> "C:\packs\example.mrpack"
 dotnet run --project src/ECL.Cli -- diagnostics export <实例ID>
-~~~
+```
 
-可使用 --data-dir <目录> 指定独立数据目录，使用 --lang zh-CN|en-US 指定界面语言。
+环境要求：
 
-## 仓库结构
+- Windows 10 1809 或更高版本 / Windows 11：运行 WPF 桌面程序。
+- .NET 10 SDK：具体版本以仓库 global.json 为准。
+- Java：按 Minecraft 版本选择兼容运行时，也可由 ECL 下载。
+- Linux / macOS 可用于构建和测试 Core、CLI；WPF 仅支持 Windows 运行。
 
-~~~text
-src/
-  ECL.Core/            通用基础设施、本地化、路径与结果类型
-  ECL.Configuration/   元数据驱动配置系统
-  ECL.Download/        HTTP 下载、镜像策略、校验与续传
-  ECL.Auth/            Microsoft / 离线账户、OAuth、凭据存储与认证链
-  ECL.Java/            Java 探测、兼容性与运行时安装
-  ECL.Minecraft/       实例、版本、加载器、内容、诊断与启动流程
-  ECL.App/             WPF 桌面界面（MVVM）
-  ECL.Cli/             命令行入口
-tests/
-  ECL.Tests/           自动化单元测试
-docs/                  架构文档、使用说明、路线图与 ADR
-build/                 构建与发布脚本
-~~~
+## 分支工作流
 
-## 数据位置
+```text
+nightly  ──持续开发──>  dev  ──集成验证与验收──>  main
+   │                         │                         │
+   └─快速迭代 / 实验           └─候选集成基线             └─正式稳定基线
+```
 
-默认数据目录位于：
+- 不要把 nightly 的功能状态写成 dev 或 main 已支持。
+- 不要未经维护者确认重置、删除或强推覆盖分支。
+- 合并前重新读取源分支与目标分支 SHA，防止覆盖新提交。
+- CI 必须显示 completed 且 success；必要的真实账户、真实游戏和安装包场景还要完成实机验收。
 
-~~~text
-%LOCALAPPDATA%\EnderCraftLauncher
-~~~
+## 仓库、安全与反馈
 
-实例和游戏文件默认保存在该目录下，也可以在设置中指定其他 .minecraft 目录。环境变量 ECL_GAME_DIR 可覆盖游戏目录。详细布局见 [架构说明](docs/architecture.md)。
+- [公开仓库：Ender-Craft-Launcher](https://github.com/hellokug2699/Ender-Craft-Launcher)
+- [私有仓库：Ender-Craft-Launcher-Core](https://github.com/hellokug2699/Ender-Craft-Launcher-Core)
+- [提交问题与反馈](https://github.com/hellokug2699/Ender-Craft-Launcher/issues)
 
-## 仓库与敏感信息
+公开仓库存放源码、文档、构建脚本和公开配置；私有 Core 仓库只用于签名材料及其他敏感内容。公开仓库普通构建不得依赖私有仓库。禁止提交证书私钥、密码、访问令牌或 API key。OAuth Client ID 是公开标识符，不是 Client Secret。
 
-- [Ender-Craft-Launcher](https://github.com/hellokug2699/Ender-Craft-Launcher)：公开仓库，存放源代码、文档、构建脚本和公开配置。
-- [Ender-Craft-Launcher-Core](https://github.com/hellokug2699/Ender-Craft-Launcher-Core)：私有仓库，仅用于存放不应公开的签名材料及其他敏感内容。
+提交问题时请提供构建版本、操作系统、Minecraft / 加载器 / Java 版本、复现步骤和脱敏日志。分享诊断包前检查本机用户名、文件路径和其他隐私信息。
 
-公开仓库的常规构建不依赖私有 Core 仓库。不得将证书私钥、OAuth 凭据、API 密钥或其他秘密提交到公开仓库。具体规则见 [仓库与保密策略](docs/repository-policy.md)。
-
-公开仓库中的 Microsoft Client ID 是应用的公开标识符，不是 Client Secret；桌面应用不应分发静态 Client Secret。OAuth 访问令牌和刷新令牌不得写入普通配置、日志、命令预览或诊断包。
-
-## 文档索引
+## 文档
 
 - [架构总览](docs/architecture.md)
+- [认证说明](docs/authentication.md)
 - [配置系统](docs/configuration.md)
 - [Java 管理](docs/java.md)
 - [加载器与组件](docs/loaders.md)
 - [Mod、整合包与资源包](docs/mods.md)
 - [CurseForge 集成](docs/curseforge.md)
 - [Modrinth 集成](docs/modrinth.md)
-- [Microsoft 账户认证](docs/authentication.md)
 - [崩溃分析与诊断包](docs/diagnostics.md)
 - [启动流水线](docs/launch-pipeline.md)
 - [仓库与保密策略](docs/repository-policy.md)
@@ -135,8 +115,4 @@ build/                 构建与发布脚本
 
 ## 许可证
 
-本项目采用 GPL-3.0-or-later，详见 [LICENSE](LICENSE)。
-
-Minecraft 是 Mojang Studios 的商标。本项目与 Mojang Studios 或 Microsoft 无关联。
-
-界面字体 HarmonyOS Sans SC 的版权归 Huawei Device Co., Ltd. 所有，并依据其字体许可协议随程序分发；许可全文见 [字体许可文件](src/ECL.App/Fonts/HarmonyOS_Sans_LICENSE.txt)。
+GPL-3.0-or-later，详见 [LICENSE](LICENSE)。Minecraft 是 Mojang Studios 的商标，本项目与 Mojang Studios 或 Microsoft 无关联。
