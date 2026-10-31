@@ -91,7 +91,9 @@ public sealed class MicrosoftAuthenticationTests
                 var form = await request.Content!.ReadAsStringAsync(cancellationToken);
                 var values = form.Split('&', StringSplitOptions.RemoveEmptyEntries)
                     .Select(pair => pair.Split('=', 2))
-                    .ToDictionary(pair => Uri.UnescapeDataString(pair[0]), pair => Uri.UnescapeDataString(pair[1]));
+                    .ToDictionary(
+                        pair => Uri.UnescapeDataString(pair[0].Replace('+', ' ')),
+                        pair => Uri.UnescapeDataString(pair[1].Replace('+', ' ')));
                 RefreshTokenReceived = values["refresh_token"];
                 ScopeReceived = values["scope"];
 
