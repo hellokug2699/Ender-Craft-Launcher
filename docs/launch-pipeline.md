@@ -159,14 +159,15 @@ UI 与 CLI 使用同一份报告，只是渲染方式不同。
 
 `IProcessLauncher` 是接口，测试使用 `FakeProcessLauncher` 验证参数与调用次数。
 
-## 7. 当前缺口
+## 7. 当前边界与缺口
 
-原版与加载器安装、启动闭环已完成，仍缺以下能力：
+- 启动流水线本身提供阶段状态、耗时、警告与失败报告；统一 Operation 任务中心目前主要接入下载批次，启动流程尚未作为 Operation 发布。
+- 崩溃分析与脱敏诊断包已实现，详见 [diagnostics.md](diagnostics.md)；它们不等于完整的 JVM 崩溃符号化分析。
+- 下载并发、重试、断点续传、暂停/恢复、流式进度、速度/ETA 与失败归因已实现；下载限速尚未实现，详见 [operations.md](operations.md)。
+- Java 自动安装支持 Mojang、Adoptium、Zulu 与 Liberica；内置 JVM 预设与外部 JSON 自定义预设均已支持，但 UI 尚不提供命名预设编辑器，详见 [java.md](java.md)。
+- Microsoft 与 Authlib-Injector/Yggdrasil 认证已实现；账户中心的注销、凭据清理与失效重认证体验仍需完善，详见 [authentication.md](authentication.md)。
 
-1. 游戏日志单独落盘、崩溃报告解析与 Mod 嫌疑排序。
-2. 下载限速（并发、重试、续传已实现）。
-3. 下载速度/暂停恢复 UI 与安装失败后的阶段级修复向导（诊断文件已提供）。
-4. Java 运行时的高级匹配（32/64 位与内存已给出警告；JVM 预设已内置，用户自定义预设待补）。
+本文档描述启动流水线，不把下载、崩溃诊断或账户 UI 的缺口混写为启动步骤缺失。
 
 ## 8. 扩展方式
 
