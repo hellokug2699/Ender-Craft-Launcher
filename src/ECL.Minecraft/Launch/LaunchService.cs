@@ -75,6 +75,11 @@ public sealed class LaunchService : ILaunchService
             Uuid = OfflineUuid.Create("ECLHealthCheck"),
         };
 
+        if (!dryRun && account.Type == AccountType.Microsoft && string.IsNullOrWhiteSpace(account.AccessToken))
+        {
+            return Failure("account", "Microsoft 账户登录凭据不可用，请重新登录。", dryRun, total);
+        }
+
         var context = new LaunchContext
         {
             Instance = instance,
