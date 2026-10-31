@@ -29,6 +29,7 @@ ECL 是一个 Windows 优先的 Minecraft 启动器，目标能力对齐 HMCL / 
 flowchart TD
     Core[ECL.Core<br/>路径/结果/日志/本地化]
     Config[ECL.Configuration<br/>元数据配置]
+    Ops[ECL.Operations<br/>任务/进度/诊断]
     Download[ECL.Download<br/>下载源/HTTP/校验]
     Auth[ECL.Auth<br/>账户与离线 UUID]
     Java[ECL.Java<br/>Java 探测]
@@ -40,6 +41,7 @@ flowchart TD
     Config --> Core
     Download --> Core
     Download --> Config
+    Download --> Ops
     Auth --> Core
     Java --> Core
     Java --> Download
@@ -53,6 +55,7 @@ flowchart TD
     App --> Auth
     App --> Java
     App --> Download
+    App --> Ops
     App --> Core
     Cli --> MC
     Cli --> Config
@@ -63,6 +66,7 @@ flowchart TD
     Tests --> MC
     Tests --> Config
     Tests --> Download
+    Tests --> Ops
     Tests --> Auth
     Tests --> Java
     Tests --> Core
@@ -76,7 +80,8 @@ flowchart TD
 | --- | --- | --- |
 | `ECL.Core` | 应用路径、`Result`、JSON 约定、Serilog 配置、JSON 本地化 | `IAppPaths`, `Result<T>`, `EclJson`, `JsonLocalizer` |
 | `ECL.Configuration` | 配置定义、注册表、全局/实例作用域、持久化、可见性 | `OptionDefinition<T>`, `OptionRegistry`, `ISettingsService` |
-| `ECL.Download` | 下载源策略、官方↔BMCLAPI 映射、并发/重试/续传、哈希校验 | `DownloadSourceResolver`, `IDownloadService`, `DownloadRequest` |
+| `ECL.Operations` | 统一任务模型、状态/阶段、字节与项目进度、速度/ETA、停滞检测、失败归因、内存任务快照 | `OperationSnapshot`, `OperationState`, `IOperationService`, `IOperationStore`, `SpeedMeter`, `OperationErrors` |
+| `ECL.Download` | 下载源策略、官方↔BMCLAPI 映射、并发/重试/续传、哈希校验、流式进度与任务发布 | `DownloadSourceResolver`, `IDownloadService`, `DownloadRequest`, `DownloadProgress` |
 | `ECL.Auth` | 账户模型、离线 UUID、账户文件 | `Account`, `IAccountService`, `OfflineUuid` |
 | `ECL.Java` | Java 版本解析、运行时探测、需求/兼容性/32-64 位与内存校验、JVM 预设、Mojang/Adoptium/Zulu/Liberica 下载与解压 | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `JvmPresets`, `IJavaInstallService` |
 | `ECL.Minecraft` | 实例存储、版本 JSON/继承、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动、Mod/整合包/资源包管理、CurseForge/Modrinth API、统一搜索与下载、版本情报 | `GameInstance`, `VanillaInstallService`, `ILoaderCatalog`, `IJavaSelectionService`, `IModService`, `IModpackService`, `ICurseForgeClient`, `ICurseForgeService`, `IModrinthClient`, `IContentSearchService`, `IContentInstallService`, `IVersionNewsService`, `ILaunchStep` |
@@ -305,6 +310,7 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - CurseForge 与 Modrinth 的搜索、一键安装、整合包远程下载与 `.mrpack` 自动建实例导入已完成；不做 Mod 更新检查、可选依赖选择，作者禁止第三方分发或无 CDN 地址的文件无法下载。
 - 实例下载位置（.minecraft 目录）修改后需要重启，已有实例不会自动迁移。
 - 导入实例回归（P1 1.1）已覆盖扫描有效性、导入只读性、共享/隔离启动、缺失文件诊断与内容路径；详见 [instance-import.md](instance-import.md)。目录所有权/共享引用检查（P1 1.2）与迁移（P1 1.3）尚未实现。
+- 统一任务中心（Operation）第一阶段已接入下载：流式字节进度、速度/ETA、停滞/重试/失败归因与主窗口任务条；安装、整合包、Java、备份等任务尚未迁移，详见 [operations.md](operations.md)。
 - 下载页当前为单页结果（PageSize=40），分页与无限滚动仍在路线图中。
 - 资源包/光影包以 `options.txt` 为启用状态唯一事实来源，支持启用/禁用、缺失/重复/未识别条目提示与原子写入；独立配置文件的 shader 实现不会被同步。
 - 首次启动向导本阶段暂缓。

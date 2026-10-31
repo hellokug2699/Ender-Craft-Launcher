@@ -72,6 +72,7 @@ dotnet run --project src/ECL.Cli -- launch <实例ID> --dry-run
 - [Modrinth 集成](docs/modrinth.md)
 - [崩溃分析与诊断包](docs/diagnostics.md)
 - [启动流水线](docs/launch-pipeline.md)
+- [任务进度与诊断](docs/operations.md)
 - [导入实例回归](docs/instance-import.md)
 - [仓库与保密策略](docs/repository-policy.md)
 - [开发路线图](docs/roadmap.md)
