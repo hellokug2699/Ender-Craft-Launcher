@@ -120,7 +120,8 @@ services.AddEclMinecraft();
 │  ├─ global.json                  # 全局配置
 │  └─ eula.json                    # EULA 同意记录
 ├─ accounts/
-│  └─ accounts.json                # 账户与默认账户
+│  ├─ accounts.json                # 账户元数据与默认账户（不保存令牌）
+│  └─ credentials.dat.<account-id> # Windows DPAPI 加密的账户凭据
 ├─ downloads/                      # 无实例时的文件下载目录
 │  ├─ mods/  resourcepacks/  shaderpacks/  datapacks/  modpacks/
 ├─ java/                           # 启动器托管的 Java 运行时
