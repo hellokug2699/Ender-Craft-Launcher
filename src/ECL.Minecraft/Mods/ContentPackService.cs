@@ -597,11 +597,11 @@ public sealed class ContentPackService(
     private string GetDirectory(GameInstance instance, ContentPackKind kind)
     {
         var name = kind == ContentPackKind.ShaderPack ? "shaderpacks" : "resourcepacks";
-        return Path.Combine(paths.GetInstanceGameDirectory(instance.Id), name);
+        return Path.Combine(InstancePaths.GetGameDirectory(paths, instance), name);
     }
 
     private string GetOptionsPath(GameInstance instance) =>
-        Path.Combine(paths.GetInstanceGameDirectory(instance.Id), "options.txt");
+        Path.Combine(InstancePaths.GetGameDirectory(paths, instance), "options.txt");
 
     private sealed record KindSelection(
         IReadOnlyList<string> Enabled,

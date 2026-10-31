@@ -31,15 +31,21 @@ public sealed class LaunchContext
 
     public string? JvmPresetWarning { get; set; }
 
+    /// <summary>
+    /// Authlib-Injector 注入参数（仅第三方账户设置），形如
+    /// <c>-javaagent:&lt;jar&gt;=&lt;authserver&gt;</c>。
+    /// </summary>
+    public string? JavaAgentArgument { get; set; }
+
     public LaunchCommand? Command { get; set; }
 
     public int? ProcessId { get; set; }
 
     public string InstanceDirectory => Paths.GetInstanceDirectory(Instance.Id);
 
-    public string GameDirectory => Paths.GetInstanceGameDirectory(Instance.Id);
+    public string GameDirectory => InstancePaths.GetGameDirectory(Paths, Instance);
 
-    public string NativesDirectory => Paths.GetInstanceNativesDirectory(Instance.Id);
+    public string NativesDirectory => InstancePaths.GetNativesDirectory(Paths, Instance);
 
     public string VersionDirectory => Path.Combine(Paths.VersionsDirectory, Instance.VersionId);
 

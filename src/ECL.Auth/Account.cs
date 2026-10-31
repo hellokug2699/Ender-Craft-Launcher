@@ -33,6 +33,13 @@ public sealed record Account
     [JsonIgnore]
     public DateTimeOffset? MinecraftTokenExpiresAt { get; init; }
 
+    /// <summary>第三方认证服务器的 client token（仅内存，凭据存储负责加密）。</summary>
+    [JsonIgnore]
+    public string? ClientToken { get; init; }
+
+    /// <summary>第三方账户所属的认证服务器 ID；其他类型为 null。</summary>
+    public string? AuthServerId { get; init; }
+
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
 }
 

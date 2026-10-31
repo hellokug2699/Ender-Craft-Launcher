@@ -43,7 +43,7 @@ public sealed class CrashReportService(
             return Result<CrashAnalysis?>.Fail("instance.not_found", "实例不存在。");
         }
 
-        var gameDirectory = paths.GetInstanceGameDirectory(instance.Id);
+        var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
         var source = FindNewestCrashReport(gameDirectory)
                      ?? FindCrashInLatestLog(gameDirectory);
         if (source is null)

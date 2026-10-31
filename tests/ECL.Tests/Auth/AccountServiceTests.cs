@@ -60,29 +60,35 @@ public sealed class AccountServiceTests
     public async Task AllowsSameNameForDifferentAccountTypes()
     {
         using var environment = new TestEnvironment();
-        await using var provider = environment.CreateServices();
+        await using var provider = environment.CreateServices(services =>
+            services.AddSingleton<ISecureCredentialStore, InMemoryCredentialStore>());
         var accounts = provider.GetRequiredService<IAccountService>();
 
         var offline = await accounts.AddOfflineAsync("hellokug");
         Assert.True(offline.IsSuccess);
 
-        var thirdParty = await accounts.AddAsync(new Account
-        {
-            Id = Guid.NewGuid().ToString("N"),
-            Type = AccountType.ThirdParty,
-            Name = "hellokug",
-            Uuid = "0123456789abcdef0123456789abcdef",
-        });
-        Assert.True(thirdParty.IsSuccess, thirdParty.Error?.ToString());
+        var microsoft = await accounts.AddMicrosoftAsync(
+            new Account
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Type = AccountType.Microsoft,
+                Name = "hellokug",
+                Uuid = "0123456789abcdef0123456789abcdef",
+            },
+            new AccountCredentials { MinecraftAccessToken = "mc-access", MicrosoftRefreshToken = "ms-refresh" });
+        Assert.True(microsoft.IsSuccess, microsoft.Error?.ToString());
         Assert.Equal(2, (await accounts.GetAccountsAsync()).Count);
 
-        var duplicate = await accounts.AddAsync(new Account
-        {
-            Id = Guid.NewGuid().ToString("N"),
-            Type = AccountType.ThirdParty,
-            Name = "HELLOKUG",
-            Uuid = "fedcba9876543210fedcba9876543210",
-        });
+        // 同类型同名仍然算重复。
+        var duplicate = await accounts.AddMicrosoftAsync(
+            new Account
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Type = AccountType.Microsoft,
+                Name = "HELLOKUG",
+                Uuid = "fedcba9876543210fedcba9876543210",
+            },
+            new AccountCredentials { MinecraftAccessToken = "mc-access", MicrosoftRefreshToken = "ms-refresh" });
         Assert.False(duplicate.IsSuccess);
         Assert.Equal("account.duplicate", duplicate.Error?.Code);
     }

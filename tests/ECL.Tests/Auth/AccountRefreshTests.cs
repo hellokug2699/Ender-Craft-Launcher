@@ -160,26 +160,4 @@ public sealed class AccountRefreshTests
             }));
         }
     }
-
-    private sealed class InMemoryCredentialStore : ISecureCredentialStore
-    {
-        public Dictionary<string, AccountCredentials> Saved { get; } = [];
-
-        public Task<Result> SaveAsync(string accountId, AccountCredentials credentials, CancellationToken cancellationToken = default)
-        {
-            Saved[accountId] = credentials;
-            return Task.FromResult(Result.Ok());
-        }
-
-        public Task<Result<AccountCredentials>> GetAsync(string accountId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(Saved.TryGetValue(accountId, out var credentials)
-                ? Result<AccountCredentials>.Ok(credentials)
-                : Result<AccountCredentials>.Fail("auth.credentials_missing", "missing"));
-
-        public Task<Result> RemoveAsync(string accountId, CancellationToken cancellationToken = default)
-        {
-            Saved.Remove(accountId);
-            return Task.FromResult(Result.Ok());
-        }
-    }
 }

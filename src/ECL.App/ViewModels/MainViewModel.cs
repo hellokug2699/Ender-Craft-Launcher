@@ -26,6 +26,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     public string VersionText { get; }
 
+    /// <summary>形如“构建于 2026-10-31 13:40”，便于区分分发出去的二进制。</summary>
+    public string BuildTimeText { get; }
+
     public string DataDirectory { get; }
 
     public string GameDirectory { get; }
@@ -65,6 +68,9 @@ public sealed partial class MainViewModel : ObservableObject
         _instances.NavigateToDetails = OpenInstanceDetails;
         _instances.NavigateBackFromDetails = BackToInstances;
         VersionText = $"ECL {typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0"}";
+        BuildTimeText = string.IsNullOrWhiteSpace(BuildInfo.BuildTime)
+            ? string.Empty
+            : localizer.Get("app.buildTime", BuildInfo.BuildTime);
         DataDirectory = paths.Root;
         GameDirectory = paths.GameRoot;
     }

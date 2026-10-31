@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using Ecl.Configuration.Settings;
 using Ecl.Java;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -76,5 +77,67 @@ public sealed class JavaLocatorTests
         var direct = locator.FromPath(home);
         Assert.NotNull(direct);
         Assert.Equal(executable, direct!.ExecutablePath);
+    }
+
+    [Fact]
+    public async Task FindsEveryRuntimeUnderConfiguredJavaDirectory()
+    {
+        using var environment = new TestEnvironment();
+        var root = Path.Combine(environment.Root, "my-java");
+        var java8 = CreateJavaHome(root, "jdk8u412-b08", "1.8.0_412", "Oracle");
+        var java17 = CreateJavaHome(root, "jdk-17.0.9", "17.0.9", "Eclipse Adoptium");
+
+        await using var provider = environment.CreateServices();
+        var settings = provider.GetRequiredService<ISettingsService>();
+        Assert.True(settings.TrySetRaw("java.defaultPath", root, null, out var error), error);
+
+        var locator = provider.GetRequiredService<IJavaLocator>();
+        var runtimes = await locator.FindAllAsync();
+
+        Assert.Contains(runtimes, runtime =>
+            string.Equals(runtime.HomePath, java8, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(runtimes, runtime =>
+            string.Equals(runtime.HomePath, java17, StringComparison.OrdinalIgnoreCase));
+
+        // 直接选择包含多个 Java 的上级目录时，返回其中版本最高的运行时。
+        var fromRoot = locator.FromPath(root);
+        Assert.NotNull(fromRoot);
+        Assert.Equal(java17, fromRoot!.HomePath, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(17, fromRoot.Version?.Major);
+    }
+
+    [Fact]
+    public async Task FindsRuntimesFromMultipleConfiguredDirectories()
+    {
+        using var environment = new TestEnvironment();
+        var rootA = Path.Combine(environment.Root, "java-a");
+        var rootB = Path.Combine(environment.Root, "java-b");
+        var java8 = CreateJavaHome(rootA, "jdk8u412-b08", "1.8.0_412", "Oracle");
+        var java21 = CreateJavaHome(rootB, "jdk-21.0.4", "21.0.4", "Eclipse Adoptium");
+
+        await using var provider = environment.CreateServices();
+        var settings = provider.GetRequiredService<ISettingsService>();
+        Assert.True(settings.TrySetRaw("java.defaultPath", $"{rootA};{rootB}", null, out var error), error);
+
+        var runtimes = await provider.GetRequiredService<IJavaLocator>().FindAllAsync();
+
+        Assert.Contains(runtimes, runtime =>
+            string.Equals(runtime.HomePath, java8, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(runtimes, runtime =>
+            string.Equals(runtime.HomePath, java21, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string CreateJavaHome(string root, string folder, string version, string vendor)
+    {
+        var home = Path.Combine(root, folder);
+        var bin = Path.Combine(home, "bin");
+        Directory.CreateDirectory(bin);
+
+        var executable = Path.Combine(bin, OperatingSystem.IsWindows() ? "java.exe" : "java");
+        File.WriteAllText(executable, string.Empty);
+        File.WriteAllText(
+            Path.Combine(home, "release"),
+            $"JAVA_VERSION=\"{version}\"\nOS_ARCH=\"x86_64\"\nIMPLEMENTOR=\"{vendor}\"\n");
+        return home;
     }
 }

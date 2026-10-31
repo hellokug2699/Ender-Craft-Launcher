@@ -121,7 +121,7 @@ public sealed class ContentInstallService(
         }
 
         var targetDirectory = Path.Combine(
-            paths.GetInstanceGameDirectory(instance.Id),
+            InstancePaths.GetGameDirectory(paths, instance),
             ContentKinds.FolderName(hit.Kind));
         var downloadResult = await DownloadFilesAsync(
                 resolved.Value!,

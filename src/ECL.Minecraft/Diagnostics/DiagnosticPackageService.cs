@@ -56,7 +56,7 @@ public sealed partial class DiagnosticPackageService(
                 File.Delete(output);
             }
 
-            var gameDirectory = paths.GetInstanceGameDirectory(instance.Id);
+            var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
             var runtimes = await javaLocator.FindAllAsync(cancellationToken).ConfigureAwait(false);
             var entries = 0;
 
@@ -225,6 +225,8 @@ public sealed partial class DiagnosticPackageService(
         var result = BearerPattern().Replace(text, "Bearer ***");
         result = TokenPattern().Replace(result, "$1***");
         result = SecretRedaction.CommandLine(result);
+        // 第三方（Yggdrasil）token 不是 JWT：客户端连接 Realms 失败时会把它原样写进日志。
+        result = SignedJwtPattern().Replace(result, "$1***");
         return UrlCredentialsPattern().Replace(result, "$1***@");
     }
 
@@ -234,6 +236,9 @@ public sealed partial class DiagnosticPackageService(
 
     [GeneratedRegex("(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+")]
     private static partial Regex BearerPattern();
+
+    [GeneratedRegex(@"(?i)(SignedJWT:\s*)[A-Za-z0-9._~+/=-]{16,}")]
+    private static partial Regex SignedJwtPattern();
 
     [GeneratedRegex("(://)[^/@\\s]+@")]
     private static partial Regex UrlCredentialsPattern();

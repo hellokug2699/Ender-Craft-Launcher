@@ -884,7 +884,7 @@ public sealed class VanillaInstallService : IVersionInstallService
         }
 
         var destination = Path.Combine(
-            _paths.GetInstanceGameDirectory(instance.Id),
+            InstancePaths.GetGameDirectory(_paths, instance),
             "mods",
             selected.FileName);
         transaction.TrackDirectory(Path.GetDirectoryName(destination)!);
@@ -939,7 +939,7 @@ public sealed class VanillaInstallService : IVersionInstallService
         var url = $"{OptiFineRoot}/{Uri.EscapeDataString(instance.GameVersion)}/" +
                   $"{Uri.EscapeDataString(selected.Type)}/{Uri.EscapeDataString(selected.Patch)}";
         var destination = Path.Combine(
-            _paths.GetInstanceGameDirectory(instance.Id),
+            InstancePaths.GetGameDirectory(_paths, instance),
             "mods",
             selected.FileName);
         transaction.TrackDirectory(Path.GetDirectoryName(destination)!);

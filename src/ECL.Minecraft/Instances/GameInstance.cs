@@ -24,10 +24,16 @@ public sealed record GameInstance
     public string? OptiFineVersion { get; init; }
 
     /// <summary>
-    /// 版本隔离。ECL 始终为每个实例使用独立的 <c>minecraft</c> 游戏目录，
-    /// 该值为 <see langword="true"/> 且不提供关闭入口（UI 中不显示该选项）。
+    /// 版本隔离。ECL 自建实例始终使用独立的 <c>minecraft</c> 游戏目录；
+    /// 导入的既有安装沿用其原始目录，此时该值反映原目录是否按版本隔离。
     /// </summary>
     public bool VersionIsolation { get; init; } = InstanceIsolation.Enabled;
+
+    /// <summary>
+    /// 外部游戏目录（绝对路径）。为空表示使用 ECL 自建的 <c>instances/&lt;id&gt;/minecraft</c>。
+    /// 导入既有安装时指向原目录，ECL 不复制、不改写其中的文件。
+    /// </summary>
+    public string? GameDirectory { get; init; }
 
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
 

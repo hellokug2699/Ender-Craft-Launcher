@@ -105,9 +105,25 @@ public sealed class LaunchService : ILaunchService
             }
         }
 
-        if (!dryRun && account.Type == AccountType.Microsoft && string.IsNullOrWhiteSpace(account.AccessToken))
+        else if (!dryRun && account.Type == AccountType.ThirdParty)
         {
-            return Failure("account", "Microsoft 账户登录凭据不可用，请重新登录。", dryRun, total);
+            // 第三方账户没有固定的过期时间：启动前向认证服务器校验令牌，
+            // 被拒绝时才静默 refresh，绝不会在这里弹出浏览器或要求输入密码。
+            var refreshed = await _accounts
+                .EnsureThirdPartyFreshAsync(account, cancellationToken)
+                .ConfigureAwait(false);
+            if (!refreshed.IsSuccess)
+            {
+                return Failure("account", refreshed.Error?.Message ?? "第三方账户凭据不可用。", dryRun, total);
+            }
+
+            account = refreshed.Value!;
+        }
+
+        if (!dryRun && account.Type is AccountType.Microsoft or AccountType.ThirdParty &&
+            string.IsNullOrWhiteSpace(account.AccessToken))
+        {
+            return Failure("account", "账户登录凭据不可用，请重新登录。", dryRun, total);
         }
 
         var context = new LaunchContext
@@ -147,6 +163,10 @@ public sealed class LaunchService : ILaunchService
 
             if (result.Status == LaunchStepStatus.Failed)
             {
+                _logger.LogWarning(
+                    "启动步骤 {StepId} 失败：{Message}",
+                    result.StepId,
+                    result.Message);
                 success = false;
                 break;
             }

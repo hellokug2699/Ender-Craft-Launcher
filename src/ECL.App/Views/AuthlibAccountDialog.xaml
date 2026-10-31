@@ -1,0 +1,79 @@
+<Window x:Class="Ecl.App.Views.AuthlibAccountDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:Ecl.App.Localization"
+        Title="{loc:Loc Key=authlib.dialog.newTitle}"
+        Width="500"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Background="{DynamicResource BackgroundBrush}"
+        FontFamily="{StaticResource UiFontFamily}">
+    <Border Style="{StaticResource Card}" Margin="16">
+        <StackPanel>
+            <TextBlock Text="{loc:Loc Key=authlib.dialog.title}" Style="{StaticResource SectionText}" />
+            <TextBlock x:Name="IntroText"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       FontSize="10"
+                       Margin="0,6,0,0"
+                       TextWrapping="Wrap" />
+
+            <TextBlock Text="{loc:Loc Key=authlib.serverUrl}" Style="{StaticResource LabelText}" Margin="0,14,0,0" />
+            <TextBox x:Name="ServerUrlBox" Margin="0,6,0,0" />
+            <TextBlock Text="{loc:Loc Key=authlib.serverUrlHint}"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       FontSize="10"
+                       Margin="0,4,0,0"
+                       TextWrapping="Wrap" />
+
+            <TextBlock Text="{loc:Loc Key=authlib.registerUrl}" Style="{StaticResource LabelText}" Margin="0,12,0,0" />
+            <Grid Margin="0,6,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="RegisterUrlBox" />
+                <Button x:Name="OpenRegisterButton"
+                        Grid.Column="1"
+                        Content="{loc:Loc Key=authlib.openRegister}"
+                        Style="{StaticResource GhostButton}"
+                        Margin="8,0,0,0"
+                        Click="OnOpenRegisterClick" />
+            </Grid>
+            <TextBlock Text="{loc:Loc Key=authlib.registerUrlHint}"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       FontSize="10"
+                       Margin="0,4,0,0"
+                       TextWrapping="Wrap" />
+
+            <TextBlock Text="{loc:Loc Key=authlib.username}" Style="{StaticResource LabelText}" Margin="0,12,0,0" />
+            <TextBox x:Name="UsernameBox" Margin="0,6,0,0" />
+
+            <TextBlock Text="{loc:Loc Key=authlib.password}" Style="{StaticResource LabelText}" Margin="0,12,0,0" />
+            <PasswordBox x:Name="PasswordBox" Margin="0,6,0,0" />
+            <TextBlock x:Name="PasswordHintText"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       FontSize="10"
+                       Margin="0,4,0,0"
+                       TextWrapping="Wrap" />
+
+            <TextBlock x:Name="StatusText"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       FontSize="11"
+                       Margin="0,10,0,0"
+                       TextWrapping="Wrap" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <Button x:Name="ConfirmButton"
+                        Content="{loc:Loc Key=authlib.confirm}"
+                        Style="{StaticResource PrimaryButton}"
+                        Click="OnConfirmClick" />
+                <Button Content="{loc:Loc Key=authlib.cancel}"
+                        Style="{StaticResource GhostButton}"
+                        Margin="8,0,0,0"
+                        IsCancel="True" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>
