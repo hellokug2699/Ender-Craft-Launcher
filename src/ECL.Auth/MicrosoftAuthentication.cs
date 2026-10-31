@@ -33,7 +33,12 @@ public sealed class MicrosoftAuthenticationService : IMicrosoftAuthenticationSer
     private static readonly Uri MinecraftLoginEndpoint = new("https://api.minecraftservices.com/authentication/login_with_xbox");
     private static readonly Uri EntitlementsEndpoint = new("https://api.minecraftservices.com/entitlements/mcstore");
     private static readonly Uri ProfileEndpoint = new("https://api.minecraftservices.com/minecraft/profile");
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient;
+
+    public MicrosoftAuthenticationService(HttpClient? httpClient = null)
+    {
+        _httpClient = httpClient ?? new HttpClient();
+    }
 
     public async Task<Result<Account>> SignInAsync(
         MicrosoftAuthenticationOptions options,
