@@ -10,6 +10,7 @@ public static class AuthServiceCollectionExtensions
     {
         services.AddSingleton<IAccountStore, JsonAccountStore>();
         services.AddSingleton<IAccountService, AccountService>();
+        services.AddSingleton<IMicrosoftAuthenticationService, MicrosoftAuthenticationService>();
         return services;
     }
 }
