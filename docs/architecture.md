@@ -310,7 +310,7 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - CurseForge 与 Modrinth 的搜索、一键安装、整合包远程下载与 `.mrpack` 自动建实例导入已完成；不做 Mod 更新检查、可选依赖选择，作者禁止第三方分发或无 CDN 地址的文件无法下载。
 - 实例下载位置（.minecraft 目录）修改后需要重启，已有实例不会自动迁移。
 - 导入实例回归（P1 1.1）已覆盖扫描有效性、导入只读性、共享/隔离启动、缺失文件诊断与内容路径；详见 [instance-import.md](instance-import.md)。目录所有权/共享引用检查（P1 1.2）与迁移（P1 1.3）尚未实现。
-- 统一任务中心（Operation）第一阶段已接入下载：流式字节进度、速度/ETA、停滞/重试/失败归因与主窗口任务条；安装、整合包、Java、备份等任务尚未迁移，详见 [operations.md](operations.md)。
+- 统一任务中心（Operation）已接入下载：流式字节进度、速度/ETA、停滞/重试/失败归因、当前/最近任务条、取消与失败重试、诊断详情；安装、整合包、Java、备份等任务尚未迁移，详见 [operations.md](operations.md)。
 - 下载页当前为单页结果（PageSize=40），分页与无限滚动仍在路线图中。
 - 资源包/光影包以 `options.txt` 为启用状态唯一事实来源，支持启用/禁用、缺失/重复/未识别条目提示与原子写入；独立配置文件的 shader 实现不会被同步。
 - 首次启动向导本阶段暂缓。

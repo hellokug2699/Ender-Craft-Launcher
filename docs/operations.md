@@ -52,6 +52,12 @@ Pending → Running ⇄ Retrying → Completed / Failed / Cancelled
 `Configuration`、`EclInternal`、`Cancelled`。`OperationErrors.Classify` 把异常映射为稳定归因；
 多个失败同时存在时选择最需要用户处理的原因（例如认证优先于网络）。
 
+### 取消与重试
+
+`IOperationControl` 由任务提供者实现：`TryCancel()` 让提供者停止工作，`Retry` 提供重新执行的工厂。
+Operation 层只转交请求并更新 `CanCancel` / `CanRetry`，不猜测业务语义。
+下载批次注册内部取消源与重试工厂；重试会生成新的 Operation，旧失败记录保留，且只允许启动一次。
+
 ## 3. 下载接入
 
 `DownloadAsync` 每个批次自动登记一个 `Download` 任务：
@@ -67,19 +73,27 @@ Pending → Running ⇄ Retrying → Completed / Failed / Cancelled
 旧的 `IProgress<DownloadProgress>` 仍保留，并扩展了 `CurrentFileBytes`、`CurrentFileTotalBytes`、
 `RetryAttempt`、`RetryReason`、`IsTotalBytesKnown`，现有安装器/整合包进度映射无需重写。
 
-## 4. 最小 UI 闭环
+## 4. 任务中心 UI
 
-`OperationCenterViewModel` 订阅 `IOperationStore.Changed`，在主窗口底部显示最多 3 个任务：
+`OperationCenterViewModel` 订阅 `IOperationStore.Changed`，在主窗口底部显示：
 
 ```text
-client.jar                                            进行中
+当前任务
+client.jar                                            进行中   [取消] [详情]
 正在下载文件 libraries/foo.jar
 [███░░░░░░░] 32% · 12.6 MB / 39.4 MB    4.2 MB/s    剩余 6 秒
+最近任务
+example.zip                                            失败     [重试] [详情]
+失败原因：文件校验（SHA1 mismatch）
 ```
 
+- “当前任务”显示未结束任务（最多 2 个），“最近任务”保留最近 1 个已结束任务 2 分钟。
 - 阶段按 `StageId` 本地化（`operations.stage.*`），不在下载层硬编码中文文案。
 - 下载中、重试中、停滞、失败分别显示不同提示；失败带归因。
-- 已结束任务保留 2 分钟，便于确认结果。
+- “详情”展开来源、阶段、错误归因/代码/内部详情与更新时间。
+- “取消”通过 `IOperationControl.TryCancel()` 转交给任务提供者；“重试”通过
+  `IOperationControl.Retry` 让提供者重新执行任务（当前下载批次可用，且只允许启动一次）。
+- 取消、重试与诊断都走稳定接口：UI 不解析异常文本，也不直接引用 `DownloadService`。
 
 ## 5. 测试
 
@@ -91,21 +105,23 @@ client.jar                                            进行中
 - 字节进度、项目进度、ETA；总大小未知时不伪装百分比。
 - 速度平滑、节流、无增量时不制造速度。
 - 错误归因（HTTP 状态、IO、校验、聚合异常）。
+- 取消/重试控制：只有失败任务可重试，重试只启动一次；已结束任务拒绝绑定控制。
 - 并发更新与清理。
 
 `tests/ECL.Tests/Download/DownloadServiceTests.cs` 额外覆盖：批次任务发布、字节与来源、
-重试快照、未知大小 indeterminate、取消归因、空批次不创建任务、跳过已缓存文件。
+重试快照、未知大小 indeterminate、取消归因、空批次不创建任务、跳过已缓存文件、
+暂停/恢复、Range 被忽略、大小不符归因、通过任务中心取消与重试下载。
 
 本阶段本地验证（Windows，.NET SDK 10.0.403）：`dotnet build ECL.sln -c Release` 与
-`dotnet format --verify-no-changes` 通过，`dotnet test -c Release` 334 项全部通过
-（其中 `Ecl.Tests.Operations` 28 项、下载相关 24 项）。Windows / Linux CI：
+`dotnet format --verify-no-changes` 通过，`dotnet test -c Release` 338 项全部通过
+（其中 `Ecl.Tests.Operations` 30 项、下载相关 26 项）。Windows / Linux CI：
 [run #166](https://github.com/hellokug2699/Ender-Craft-Launcher/actions/runs/41184065696)
 `completed` / `success`（提交 `5275520`）。
 
 ## 6. 已知限制与后续
 
 - 安装器、整合包导入、Java 安装、备份/恢复尚未登记 Operation；它们仍通过各自的 `IProgress<T>` 更新 UI。
-- 任务条目前只读：暂停按钮仍位于下载页，取消/重试按钮尚未接入 Operation 控制。
+- 取消与重试目前由下载批次提供；安装类任务需要各自注册 `IOperationControl` 后才能支持。
 - 没有持久化；进程退出后任务记录丢失（接口预留，可替换为持久化 Store）。
 - 并发下载时“当前文件”显示最后一个上报的文件，尚未提供整体/单文件/worker 三段式面板。
 - CLI 尚未消费任务中心；`ecl` 仍只输出阶段文本。
