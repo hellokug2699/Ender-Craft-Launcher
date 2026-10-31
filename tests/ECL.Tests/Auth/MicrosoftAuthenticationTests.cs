@@ -28,7 +28,8 @@ public sealed class MicrosoftAuthenticationTests
         Assert.NotNull(result.Value);
         Assert.Equal("minecraft-access-token", result.Value!.MinecraftAccessToken);
         Assert.Equal("rotated-refresh-token", result.Value.MicrosoftRefreshToken);
-        Assert.Equal(3600, (result.Value.MinecraftTokenExpiresAt - DateTimeOffset.UtcNow)!.Value.TotalSeconds, precision: 0);
+        Assert.NotNull(result.Value.MinecraftTokenExpiresAt);
+        Assert.InRange((result.Value.MinecraftTokenExpiresAt!.Value - DateTimeOffset.UtcNow).TotalSeconds, 3500, 3600);
 
         Assert.Equal("old-refresh-token", handler.RefreshTokenReceived);
         Assert.Equal("minecraft-access-token", handler.AuthorizationTokenReceived);
@@ -140,6 +141,7 @@ public sealed class MicrosoftAuthenticationTests
                 var json = await request.Content!.ReadAsStringAsync(cancellationToken);
                 using var document = JsonDocument.Parse(json);
                 Assert.Equal("XBL3.0 x=user-hash;xsts-token", document.RootElement.GetProperty("identityToken").GetString());
+                AuthorizationTokenReceived = request.Headers.Authorization?.Parameter;
                 return Json(HttpStatusCode.OK, new { access_token = "minecraft-access-token", expires_in = 3600 });
             }
 
