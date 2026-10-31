@@ -187,6 +187,7 @@ https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/<channel>
 
 - `dotnet test --filter FullyQualifiedName~Ecl.Tests.Deployment`：37 项通过，覆盖版本解析、Manifest 校验、路径与重复条目、签名/未知公钥、安全解包、staging/切换/回滚、降级拒绝、HTTPS/下载校验。
 - 端到端：用测试密钥签名 `0.8.0-e2e` → Bootstrapper `--apply --deploy-only` 写入 `current.json` → 启动到 `versions/0.8.0-e2e/ECL.exe`；再部署 `0.8.1-e2e` → `--rollback` 回到 `0.8.0-e2e`，两次退出码均为 0。
+- 使用 Core 仓库的 `signing/update-signing.key` 与 public 仓库 `build/update-trust.json` 打包 `0.8.2-prodtest`，Bootstrapper 校验签名并完成部署，退出码 0；私钥与公钥指纹一致。
 - 未完成：全新 Windows 无 .NET SDK 的安装验收、安装器 UI、卸载、真实签名 Release、125%/150% 缩放下的更新 UI。
 
 ## 9. 用户数据与卸载边界
