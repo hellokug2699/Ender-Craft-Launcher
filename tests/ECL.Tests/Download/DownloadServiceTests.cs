@@ -367,6 +367,101 @@ public sealed class DownloadServiceTests
         Assert.Equal(content.Length, completed.BytesDownloaded);
     }
 
+    [Fact]
+    public async Task ServerIgnoringRangeRestartsFromScratch()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var handler = new StubHandler();
+        var operations = new OperationService();
+        var service = CreateService(provider.GetRequiredService<ISettingsService>(), handler, operations);
+
+        var content = Encoding.UTF8.GetBytes("hello world");
+        var hash = Convert.ToHexString(SHA1.HashData(content)).ToLowerInvariant();
+        var destination = Path.Combine(environment.Root, "downloads", "range-ignored.bin");
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        await File.WriteAllTextAsync(destination + ".part", "hello ");
+
+        handler.Respond = request =>
+        {
+            Assert.Equal("bytes=6-", request.Headers.Range?.ToString());
+            // 服务器忽略 Range，返回 200 + 完整内容；客户端必须从头覆盖 part 文件。
+            return Ok(content);
+        };
+
+        var request = new DownloadRequest(
+            destination,
+            [new Uri("https://example.com/range-ignored.bin")],
+            hash,
+            HashingAlgorithm.Sha1,
+            content.Length);
+
+        await service.DownloadAsync([request]);
+
+        Assert.Equal("hello world", await File.ReadAllTextAsync(destination));
+        Assert.Equal(OperationState.Completed, Assert.Single(operations.Snapshots).State);
+    }
+
+    [Fact]
+    public async Task SizeMismatchFailsOperationWithIntegrityReason()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var handler = new StubHandler();
+        var operations = new OperationService();
+        var service = CreateService(provider.GetRequiredService<ISettingsService>(), handler, operations);
+        handler.Respond = _ => Ok(Encoding.UTF8.GetBytes("abc"));
+
+        var request = new DownloadRequest(
+            Path.Combine(environment.Root, "downloads", "truncated.bin"),
+            [new Uri("https://example.com/truncated.bin")],
+            Size: 10);
+
+        await Assert.ThrowsAsync<DownloadException>(() => service.DownloadAsync([request]));
+
+        var snapshot = Assert.Single(operations.Snapshots);
+        Assert.Equal(OperationState.Failed, snapshot.State);
+        Assert.Equal(OperationErrorKind.FileIntegrity, snapshot.Error?.Kind);
+    }
+
+    [Fact]
+    public async Task PausedDownloadReportsPausedThenCompletesAfterResume()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var handler = new StubHandler();
+        var operations = new OperationService();
+        var progress = new RecordingProgress();
+        var service = CreateService(provider.GetRequiredService<ISettingsService>(), handler, operations);
+        var content = Encoding.UTF8.GetBytes("paused payload");
+        var hash = Convert.ToHexString(SHA1.HashData(content)).ToLowerInvariant();
+        handler.Respond = _ => Ok(content);
+
+        var request = new DownloadRequest(
+            Path.Combine(environment.Root, "downloads", "paused.bin"),
+            [new Uri("https://example.com/paused.bin")],
+            hash,
+            HashingAlgorithm.Sha1,
+            content.Length);
+
+        service.Pause();
+        var download = service.DownloadAsync([request], progress);
+
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (!operations.Snapshots.Any(snapshot => snapshot.IsPaused) && DateTimeOffset.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.Contains(operations.Snapshots, snapshot => snapshot.IsPaused);
+        service.Resume();
+        var result = await download;
+
+        Assert.Equal(1, result.DownloadedFiles);
+        Assert.Contains(progress.Values, value => value.IsPaused);
+        Assert.Equal(OperationState.Completed, Assert.Single(operations.Snapshots).State);
+    }
+
     private static DownloadService CreateService(
         ISettingsService settings,
         StubHandler handler,
