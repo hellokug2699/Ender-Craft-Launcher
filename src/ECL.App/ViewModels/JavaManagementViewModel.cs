@@ -63,7 +63,15 @@ public sealed partial class JavaManagementViewModel(
             Runtimes.Clear();
             foreach (var runtime in ordered)
             {
-                Runtimes.Add(new JavaRuntimeEntryViewModel(runtime, configured.Any(path => Matches(runtime, path))));
+                var entry = new JavaRuntimeEntryViewModel(runtime, configured.Any(path => Matches(runtime, path)));
+                entry.PropertyChanged += (_, args) =>
+                {
+                    if (args.PropertyName == nameof(JavaRuntimeEntryViewModel.IsPriority))
+                    {
+                        SavePriority();
+                    }
+                };
+                Runtimes.Add(entry);
             }
 
             _loaded = true;
@@ -93,14 +101,7 @@ public sealed partial class JavaManagementViewModel(
             return;
         }
 
-        var index = Runtimes.IndexOf(entry);
-        if (index < 0)
-        {
-            return;
-        }
-
-        Runtimes.RemoveAt(index);
-        SavePriority();
+        entry.IsPriority = false;
         StatusMessage = localizer.Get("java.manager.removed");
     }
 
@@ -125,7 +126,15 @@ public sealed partial class JavaManagementViewModel(
         var existing = Runtimes.FirstOrDefault(item => SamePath(item.Runtime.ExecutablePath, runtime.ExecutablePath));
         if (existing is null)
         {
-            Runtimes.Add(new JavaRuntimeEntryViewModel(runtime, true));
+            var imported = new JavaRuntimeEntryViewModel(runtime, true);
+            imported.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(JavaRuntimeEntryViewModel.IsPriority))
+                {
+                    SavePriority();
+                }
+            };
+            Runtimes.Add(imported);
         }
         else
         {
