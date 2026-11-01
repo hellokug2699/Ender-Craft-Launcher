@@ -30,7 +30,7 @@ public static class UpdateChannels
         UpdateChannel.Main => "main",
         UpdateChannel.Dev => "dev",
         UpdateChannel.Nightly => "nightly",
-        _ => "stable",
+        _ => "main",
     };
 
     public static bool TryParse(string? value, out UpdateChannel channel)
