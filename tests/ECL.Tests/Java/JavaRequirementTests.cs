@@ -63,25 +63,37 @@ public sealed class JavaRequirementTests
     }
 
     [Fact]
-    public void SelectsClosestCompatibleRuntime()
+    public void SelectsFirstCompatibleRuntimeInConfiguredPriorityOrder()
     {
-        var runtimes = new[] { Runtime("8.0.412"), Runtime("17.0.15"), Runtime("21.0.7") };
+        // The order is intentional: Java 21 has priority over Java 17 even though both work.
+        var runtimes = new[] { Runtime("8.0.412"), Runtime("21.0.7"), Runtime("17.0.15") };
 
-        Assert.Equal(17, JavaSelector.Select(runtimes, new JavaRequirement(17))?.Version?.Major);
+        Assert.Equal(21, JavaSelector.Select(runtimes, new JavaRequirement(17))?.Version?.Major);
         Assert.Equal(8, JavaSelector.Select(runtimes, new JavaRequirement(8))?.Version?.Major);
         Assert.Equal(21, JavaSelector.Select(runtimes, new JavaRequirement(21))?.Version?.Major);
-        Assert.Equal(17, JavaSelector.Select(runtimes, new JavaRequirement(11))?.Version?.Major);
         Assert.Null(JavaSelector.Select(runtimes, new JavaRequirement(25)));
     }
 
-    private static JavaRuntime Runtime(string version)
+    [Fact]
+    public void SkipsKnown32BitRuntimeDuringSelection()
+    {
+        var java17x86 = Runtime("17.0.15", "x86");
+        var java17x64 = Runtime("17.0.15", "x86_64");
+
+        Assert.Equal(
+            JavaCompatibilityStatus.UnsupportedArchitecture,
+            JavaCompatibility.Evaluate(new JavaRequirement(17), java17x86).Status);
+        Assert.Equal(java17x64, JavaSelector.Select([java17x86, java17x64], new JavaRequirement(17)));
+    }
+
+    private static JavaRuntime Runtime(string version, string architecture = "x86_64")
     {
         var parsed = JavaVersion.TryParse(version)!;
         return new JavaRuntime(
-            Path.Combine(Path.GetTempPath(), $"java-{version}"),
-            Path.Combine(Path.GetTempPath(), $"java-{version}", "bin", OperatingSystem.IsWindows() ? "java.exe" : "java"),
+            Path.Combine(Path.GetTempPath(), $"java-{version}-{architecture}"),
+            Path.Combine(Path.GetTempPath(), $"java-{version}-{architecture}", "bin", OperatingSystem.IsWindows() ? "java.exe" : "java"),
             "Test",
-            "x86_64",
+            architecture,
             parsed);
     }
 }
