@@ -1,8 +1,8 @@
 # ADR 0014：Java 运行时优先级与兼容性策略
 
-- 状态：已采纳
-- 日期：2026-11-01
-- 范围：Java 发现、验证、兼容性评估、启动计划、WPF 与 CLI
+- Status: Completed
+- Date: 2026-11-01
+- Scope: Java 发现、验证、兼容性评估、启动计划、WPF 与 CLI
 
 ## 背景
 
