@@ -403,6 +403,7 @@ public sealed class InstallServiceTests
                 null,
                 true,
                 null,
+                false,
                 [],
                 4096));
     }
