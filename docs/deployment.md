@@ -120,7 +120,7 @@ ECL.Bootstrapper.exe --install-root "C:\Program Files\ECL" --rollback --deploy-o
 现有配置是产品契约，更新模块沿用：
 
 - `launcher.checkUpdates`：关闭时不得执行自动检查；
-- `launcher.updateChannel`：`stable` / `beta` / `dev`。
+- `launcher.updateChannel`：`main` / `dev` / `nightly`（旧值 `stable` / `beta` 仍可读取并兼容映射）。\n\n- `main` 对应正式版；`dev` 对应测试版；`nightly` 对应夜间版。
 
 当前 CLI 已接入设置：
 
