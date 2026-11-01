@@ -82,7 +82,23 @@ ecl workspace skip                 # 稍后配置
 - 卸载程序不删除配置、账户、日志、运行时或工作区。
 - 工作区离线（移动盘拔出、网络中断、盘符变化）时保留登记并提示重新连接或重新定位。
 
-## 8. 尚未完成
+## 8. 工作区迁移
 
-- 工作区迁移状态机与向导（复制 → 校验 → 原子切换 → 保留源）尚未实现。
-- 多工作区根目录的 UI 管理与按实例归属仍在后续阶段。
+`WorkspaceMigrationService` 实现 ADR 0018 §5 的状态机：
+
+```text
+pendingValidation → validating → readyToCopy → copying → verifying → switching → completed
+                                      ↘ interrupted → (resume → copying)
+                                      ↘ failed / rollbackRequired
+```
+
+- 预览（`workspace migrate --to <目录>`）展示源/目标、实例数、文件数、数据量、目标可用空间与阻塞原因。
+- 前置检查：源可用、目标是空目录或不存在、源目标不重叠、目标空间足够、世界 `session.lock` 未被占用。
+- 执行顺序：复制到 `<目标>.ecl-staging` → 逐文件大小校验 + 小文件 SHA-256 → 目录原子移动 → 切换 `workspace.json` → 保留源目录。
+- 中断后可 `--resume`（清理 staging 后重新复制，源只读）或 `--discard`（只删除 staging 与记录）。
+- 切换配置失败时记录 `rollbackRequired`，旧工作区继续有效，可重新 `workspace set`。
+
+尚未完成：
+
+- 多工作区根目录的 UI 管理与按实例归属。
+- 迁移期间对运行中游戏/启动器的进程级检测仅覆盖世界会话锁这一可观测信号。

@@ -2306,6 +2306,9 @@ internal sealed class CliApplication
                     return 0;
                 }
 
+            case "migrate":
+                return await WorkspaceMigrateCommandAsync(workspace).ConfigureAwait(false);
+
             case "roots":
                 {
                     if (json)
@@ -2325,6 +2328,139 @@ internal sealed class CliApplication
             default:
                 return UsageError("workspace 支持 status、set、validate、suggest、adopt-legacy、skip、roots。");
         }
+    }
+
+    /// <summary>
+    /// 工作区迁移：默认只显示计划；--apply 执行复制→校验→切换。--resume/--discard 处理中断。
+    /// 源目录始终保留，ECL 不会自动删除。
+    /// </summary>
+    private async Task<int> WorkspaceMigrateCommandAsync(IWorkspaceService workspace)
+    {
+        var migration = _provider.GetRequiredService<IWorkspaceMigrationService>();
+        var json = _commandLine.HasFlag("json");
+
+        if (_commandLine.HasFlag("resume"))
+        {
+            var resumed = await migration.ResumeAsync().ConfigureAwait(false);
+            if (!resumed.IsSuccess)
+            {
+                return WriteError(resumed.Error);
+            }
+
+            return PrintMigration(resumed.Value!, json);
+        }
+
+        if (_commandLine.HasFlag("discard"))
+        {
+            var discarded = await migration.DiscardAsync().ConfigureAwait(false);
+            if (!discarded.IsSuccess)
+            {
+                return WriteError(discarded.Error);
+            }
+
+            Console.WriteLine("已清理迁移 staging；源工作区未受影响。");
+            return 0;
+        }
+
+        if (_commandLine.HasFlag("status"))
+        {
+            if (migration.Current is null)
+            {
+                Console.WriteLine("没有迁移记录。");
+                return 0;
+            }
+
+            return PrintMigration(migration.Current, json);
+        }
+
+        var target = _commandLine.GetValue("to");
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            return UsageError("workspace migrate 需要 --to <目录>，或使用 --resume / --discard / --status。");
+        }
+
+        var planResult = await migration.PlanAsync(target).ConfigureAwait(false);
+        if (!planResult.IsSuccess)
+        {
+            return WriteError(planResult.Error);
+        }
+
+        var plan = planResult.Value!;
+        if (!_commandLine.HasFlag("apply"))
+        {
+            if (json)
+            {
+                WriteJson(plan);
+                return plan.CanProceed ? 0 : 1;
+            }
+
+            Console.WriteLine($"源工作区 : {plan.SourcePath}");
+            Console.WriteLine($"目标位置 : {plan.TargetPath}");
+            Console.WriteLine($"实例数量 : {plan.InstanceCount}");
+            Console.WriteLine($"文件数量 : {plan.TotalFiles}");
+            Console.WriteLine($"数据大小 : {FormatBytes(plan.TotalBytes)}");
+            if (plan.FreeBytes is { } free)
+            {
+                Console.WriteLine($"目标可用 : {FormatBytes(free)}");
+            }
+
+            foreach (var problem in plan.Problems)
+            {
+                Console.WriteLine($"阻塞     : {problem}");
+            }
+
+            foreach (var warning in plan.Warnings)
+            {
+                Console.WriteLine($"警告     : {_provider.GetRequiredService<ILocalizer>().Get(warning)}");
+            }
+
+            Console.WriteLine(plan.CanProceed
+                ? "计划可执行。加 --apply 开始迁移（复制→校验→切换，源目录保留）。"
+                : "当前条件不满足，未执行迁移。");
+            return plan.CanProceed ? 0 : 1;
+        }
+
+        if (!plan.CanProceed)
+        {
+            return WriteError(new EclError(
+                "workspace.migration.blocked",
+                plan.Problems.FirstOrDefault() ?? "迁移条件不满足。"));
+        }
+
+        var started = await migration.StartAsync(target).ConfigureAwait(false);
+        if (!started.IsSuccess)
+        {
+            return WriteError(started.Error);
+        }
+
+        return PrintMigration(started.Value!, json);
+    }
+
+    private int PrintMigration(WorkspaceMigrationRecord record, bool json)
+    {
+        if (json)
+        {
+            WriteJson(record);
+            return record.State == WorkspaceMigrationState.Completed ? 0 : 1;
+        }
+
+        Console.WriteLine($"迁移状态 : {record.State}");
+        Console.WriteLine($"源工作区 : {record.SourcePath}");
+        Console.WriteLine($"目标位置 : {record.TargetPath}");
+        Console.WriteLine($"文件数量 : {record.CopiedFiles}/{record.TotalFiles}");
+        if (record.ErrorMessage is not null)
+        {
+            Console.WriteLine($"错误     : {record.ErrorMessage}");
+        }
+
+        if (record.State == WorkspaceMigrationState.Completed)
+        {
+            Console.WriteLine("迁移完成；源目录仍保留，可在确认后自行清理。");
+            return 0;
+        }
+
+        Console.WriteLine("迁移未完成。可运行 workspace migrate --resume 或 --discard。");
+        return 1;
     }
 
     /// <summary>会写入工作区的命令必须先通过该检查；未配置时给出可执行的第一步。</summary>

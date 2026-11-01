@@ -18,6 +18,10 @@ public static class EclCoreServiceCollectionExtensions
         services.AddSingleton<IWorkspaceService>(provider => new WorkspaceService(
             paths,
             provider.GetService<ILogger<WorkspaceService>>() ?? NullLogger<WorkspaceService>.Instance));
+        services.AddSingleton<IWorkspaceMigrationService>(provider => new WorkspaceMigrationService(
+            paths,
+            provider.GetRequiredService<IWorkspaceService>(),
+            provider.GetService<ILogger<WorkspaceMigrationService>>() ?? NullLogger<WorkspaceMigrationService>.Instance));
         services.AddSingleton<ILocalizer>(_ => new JsonLocalizer(culture));
         return services;
     }

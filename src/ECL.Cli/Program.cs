@@ -72,6 +72,10 @@ internal static class Program
           workspace adopt-legacy          继续使用旧版数据目录（仅在确有旧数据时可用）
           workspace skip                  暂不配置；创建/下载前仍会要求确认
           workspace roots [--json]        列出已登记的工作区根目录
+          workspace migrate --to <目录> [--apply] [--json]
+                                          预览/执行工作区迁移：复制→校验→切换，源目录保留
+          workspace migrate --resume|--discard|--status
+                                          恢复、放弃或查看中断的迁移
           instance create <名称> --version <版本> [--loader <加载器>] [--loader-version <版本>]
                            [--fabric-api-version <版本>] [--optifine-version <type:patch>]
                                           创建实例；加载器支持 vanilla、fabric、forge、neoforge、cleanroom
