@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.Configuration.Settings;
+using Ecl.Core.Localization;
 using Ecl.Java;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
@@ -45,6 +46,20 @@ public sealed class JavaSelectionServiceTests
         Assert.Equal(JavaCompatibilityStatus.TooOld, explicitSelection.Compatibility?.Status);
         Assert.True(explicitSelection.CompatibilityCheckEnabled);
         Assert.True(explicitSelection.IsExplicitOverride);
+        Assert.False(explicitSelection.IsCompatibilityWarningAcknowledged);
+
+        var prompt = provider.GetRequiredService<ILocalizer>().Get(
+            "instances.java.incompatiblePrompt",
+            java8.Version!.Raw,
+            explicitSelection.Requirement!.Describe());
+        Assert.True(settings.TrySetRaw(
+            "launcher.java.incompatiblePromptAcknowledged",
+            prompt,
+            null,
+            out var acknowledgementError), acknowledgementError);
+
+        var acknowledged = await selection.ResolveAsync(instance, version);
+        Assert.True(acknowledged.IsCompatibilityWarningAcknowledged);
     }
 
     [Fact]
