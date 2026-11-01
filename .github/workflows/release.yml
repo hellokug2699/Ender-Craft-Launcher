@@ -159,24 +159,39 @@ jobs:
           $notes = "$env:RUNNER_TEMP/release-notes.md"
 
           if ($env:ECL_CHANNEL -eq "main") {
-            $tag = "v$env:ECL_VERSION"
-            gh release create $tag @assets --title "ECL $env:ECL_VERSION" --notes-file $notes --target $env:GITHUB_SHA
-            if ($LASTEXITCODE -ne 0) { throw "Failed to publish stable release $tag" }
-            exit 0
+            # Keep an immutable, versioned stable release for humans and rollback.
+            $versionTag = "v$env:ECL_VERSION"
+            gh release create $versionTag @assets --title "ECL $env:ECL_VERSION" --notes-file $notes --target $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { throw "Failed to publish stable release $versionTag" }
+
+            # The updater consumes the stable channel feed at /main/, not /vX.Y.Z/.
+            # Maintain one rolling stable feed alongside immutable versioned releases.
+            $tag = "main"
+            $releaseTitle = "ECL main (latest: $env:ECL_VERSION)"
+          }
+          else {
+            # One mutable Release per prerelease channel: no per-commit Release spam.
+            $tag = $env:ECL_CHANNEL
+            $releaseTitle = $env:ECL_RELEASE_TITLE
           }
 
-          # One mutable Release per prerelease channel: no per-commit Release spam.
-          $tag = $env:ECL_CHANNEL
           gh release view $tag 2>$null
           $releaseExists = ($LASTEXITCODE -eq 0)
           if ($releaseExists) {
             gh release upload $tag @assets --clobber
             if ($LASTEXITCODE -ne 0) { throw "Failed to upload rolling assets for $tag" }
-            gh release edit $tag --title "$env:ECL_RELEASE_TITLE" --notes-file $notes --prerelease
+            if ($env:ECL_CHANNEL -eq "main") {
+              gh release edit $tag --title $releaseTitle --notes-file $notes
+            }
+            else {
+              gh release edit $tag --title $releaseTitle --notes-file $notes --prerelease
+            }
             if ($LASTEXITCODE -ne 0) { throw "Failed to update rolling release metadata for $tag" }
           }
           else {
-            gh release create $tag @assets --title "$env:ECL_RELEASE_TITLE" --notes-file $notes --prerelease --target $env:GITHUB_SHA
+            $createArgs = @("release", "create", $tag) + $assets + @("--title", $releaseTitle, "--notes-file", $notes, "--target", $env:GITHUB_SHA)
+            if ($env:ECL_CHANNEL -ne "main") { $createArgs += "--prerelease" }
+            gh @createArgs
             if ($LASTEXITCODE -ne 0) { throw "Failed to create rolling release $tag" }
           }
 
