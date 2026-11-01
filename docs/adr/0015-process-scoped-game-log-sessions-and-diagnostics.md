@@ -1,6 +1,6 @@
 # ADR 0015：按进程隔离游戏日志会话与诊断证据
 
-- Status: Accepted
+- Status: In Progress
 - Date: 2026-11-01
 - Scope: 游戏进程生命周期、日志采集、崩溃恢复、诊断导出
 

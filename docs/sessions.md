@@ -82,3 +82,10 @@ ecl session recover [--json]
 - 每会话 Log4j2 日志隔离（当前由 stdout/stderr 直接采集，共享 `latest.log` 标记歧义）。
 - 独立 LogHost 进程已实现（见 [loghost.md](loghost.md)）；LogHost 不可用时降级为进程内采集并记录 `CaptureFault`。
 - 保留策略与物理清理尚未实现；当前只增加会话，不自动删除。
+
+## 8. 实机验证（2026-11-02）
+
+- 原版 1.21.1 + 离线账户，经 CLI 真实启动游戏：会话在进程启动前创建，LogHost 启动进程并在退出后完成收尾。
+- 运行中 session list 显示 Running；正常关闭游戏后显示 CaptureCompleted，xitCode=0。
+- 会话目录包含 manifest.json、vents.jsonl、game.stdout.log（实际包含 log4j 输出）、共享 latest.log 与轮转 gzip 归档，归属分别为 SharedOrAmbiguous 与 Possible。
+- 强制结束游戏进程后，session recover 将遗留会话标记为 Interrupted（而非正常退出），随后 session export 成功导出并列出缺失的崩溃证据。

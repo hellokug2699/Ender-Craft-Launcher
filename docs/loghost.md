@@ -59,3 +59,9 @@ ECL.UI (WPF)  ──Named Pipe──▶  ECL.LogHost  ──stdout/stderr──�
 - 多 UI 客户端并发订阅与增量状态推送。
 - 系统关机/注销时的最终 flush 与中断标记。
 - 压力测试：高频日志 + 慢盘 + 队列上限的基准数值。
+
+## 8. 实机验证（2026-11-02）
+
+- 使用 ECL_LOG_HOST_PATH 指向独立宿主启动原版实例：manifest 的 captureHost 记录为 loghost，没有 captureFault。
+- 游戏运行期间关闭 CLI 进程不影响采集；正常退出后会话由 LogHost 收尾为 CaptureCompleted。
+- 首次连接若超过客户端等待窗口会降级为进程内采集并写入 CaptureFault；连接等待窗口随后调整为 15 秒，实机复测走 LogHost 路径。

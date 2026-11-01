@@ -28,6 +28,9 @@ public interface IGameSessionService
 
     void SetCaptureFault(string sessionId, string fault);
 
+    /// <summary>记录实际采集宿主（<c>loghost</c> 或 <c>in-process</c>）。</summary>
+    void SetCaptureHost(string sessionId, string host);
+
     void SetExitCode(string sessionId, int exitCode);
 
     /// <summary>ECL 启动后的恢复。幂等：重复执行不会重复登记文件或破坏证据。</summary>
@@ -172,6 +175,12 @@ public sealed class GameSessionService : IGameSessionService
         });
 
         AppendEvent(session, "artifact.registered", $"{artifact.Kind}:{artifact.Ownership}:{artifact.CapturedPath}");
+    }
+
+    public void SetCaptureHost(string sessionId, string host)
+    {
+        var session = Require(sessionId);
+        Update(session, session.Manifest with { CaptureHost = host });
     }
 
     public void SetCaptureFault(string sessionId, string fault)

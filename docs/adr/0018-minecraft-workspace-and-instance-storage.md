@@ -1,6 +1,6 @@
 # ADR 0018：Minecraft 工作区与实例存储位置
 
-- Status: Accepted
+- Status: Completed
 - Date: 2026-11-01
 - Scope: Minecraft 实例根目录、工作区初始化、外部实例导入、存储迁移与数据保护
 

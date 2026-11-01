@@ -40,7 +40,7 @@ public sealed class NamedPipeLogHostClient : ILogHostClient
                 _pipeName,
                 PipeDirection.InOut,
                 PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-            await pipe.ConnectAsync(3000, cancellationToken).ConfigureAwait(false);
+            await pipe.ConnectAsync(15000, cancellationToken).ConfigureAwait(false);
             _pipe = pipe;
             _reader = ReadLoopAsync(pipe, CancellationToken.None);
 
