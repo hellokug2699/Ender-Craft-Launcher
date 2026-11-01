@@ -3,6 +3,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
+using Ecl.Configuration.Settings;
 using Microsoft.Win32;
 
 namespace Ecl.App.Services;
@@ -38,10 +39,37 @@ public interface IDialogService
     bool OpenUrl(string url);
 }
 
-public sealed class DialogService : IDialogService
+public sealed class DialogService(ISettingsService settings) : IDialogService
 {
-    public bool Confirm(string title, string message) =>
-        MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+    private const string JavaCompatibilityAcknowledgementKey = "launcher.java.incompatiblePromptAcknowledged";
+
+    public bool Confirm(string title, string message)
+    {
+        // Java 兼容性是“首次确认风险、之后尊重选择”的场景。
+        // 使用完整提示文本作为确认凭据：换了实际 Java 或最低要求后会再次提示，
+        // 但同一风险不会在每次启动时打扰用户。
+        if (IsJavaCompatibilityWarning(title, message) &&
+            string.Equals(
+                settings.Get<string?>(JavaCompatibilityAcknowledgementKey),
+                message,
+                StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var accepted = MessageBox.Show(
+            message,
+            title,
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question) == MessageBoxResult.Yes;
+
+        if (accepted && IsJavaCompatibilityWarning(title, message))
+        {
+            settings.TrySetRaw(JavaCompatibilityAcknowledgementKey, message, null, out _);
+        }
+
+        return accepted;
+    }
 
     public InstanceDeletionChoice ChooseInstanceDeletion(
         string title,
@@ -125,4 +153,8 @@ public sealed class DialogService : IDialogService
             return false;
         }
     }
+
+    private static bool IsJavaCompatibilityWarning(string title, string message) =>
+        title.Contains("Java", StringComparison.OrdinalIgnoreCase) &&
+        message.Contains("Java", StringComparison.OrdinalIgnoreCase);
 }
