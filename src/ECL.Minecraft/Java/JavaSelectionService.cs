@@ -16,9 +16,9 @@ public sealed record JavaSelectionResult(
     bool HasAnyDetectedJava,
     string? ExplicitPath,
     bool IsExplicitOverride,
-    bool IsCompatibilityWarningAcknowledged,
     IReadOnlyList<string> Warnings,
-    int MemoryMb);
+    int MemoryMb,
+    bool IsCompatibilityWarningAcknowledged = false);
 
 public static class JavaCompatibilityAcknowledgement
 {
@@ -127,9 +127,9 @@ public sealed class JavaSelectionService(
             discovered.Count > 0,
             explicitPath,
             isExplicitOverride,
-            isCompatibilityWarningAcknowledged,
             warnings,
-            memoryMb);
+            memoryMb,
+            isCompatibilityWarningAcknowledged);
     }
 
     private static IReadOnlyList<JavaRuntime> OrderByGlobalPriority(
