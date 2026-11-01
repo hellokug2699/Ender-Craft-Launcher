@@ -175,11 +175,14 @@ public sealed class JavaSelectionService(
                 continue;
             }
 
-            for (var index = remaining.Count - 1; index >= 0; index--)
+            // Preserve discovery order for a directory that contains multiple runtimes.
+            // Removing while iterating backwards would silently reverse the priority.
+            for (var index = 0; index < remaining.Count;)
             {
                 var runtime = remaining[index];
                 if (!MatchesConfiguredPath(runtime, path))
                 {
+                    index++;
                     continue;
                 }
 
