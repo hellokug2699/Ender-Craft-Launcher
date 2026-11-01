@@ -61,3 +61,5 @@
 ## 当前状态概览
 
 状态应以各 ADR 文件头部为准。本表仅作为目录导航，更新 ADR 状态时应同步更新本表。
+
+| [0017 图形化首次安装程序](0017-graphical-first-run-installer.md) | In Progress | 首次安装 GUI 与 Bootstrapper 部署边界 |
