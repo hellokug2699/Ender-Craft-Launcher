@@ -1,7 +1,8 @@
 # ADR 0008：Forge 与 NeoForge 安装器 processors
 
-- 状态：已接受
-- 日期：2026-10-27
+- Status: Completed
+- Date: 2026-10-27
+- Scope: ECL 架构与实现
 - 相关版本：v0.5（加载器支持扩展）
 
 ## 背景
