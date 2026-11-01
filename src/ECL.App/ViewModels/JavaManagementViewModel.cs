@@ -60,10 +60,11 @@ public sealed partial class JavaManagementViewModel(
             var configured = JavaSearchPath.Split(settings.Get<string>(PriorityKey));
             var discovered = await locator.RefreshAsync().ConfigureAwait(true);
             var ordered = OrderByPriority(discovered, configured);
+            var useDefaultPriority = configured.Count == 0;
             Runtimes.Clear();
             foreach (var runtime in ordered)
             {
-                var entry = new JavaRuntimeEntryViewModel(runtime, configured.Any(path => Matches(runtime, path)));
+                var entry = new JavaRuntimeEntryViewModel(runtime, useDefaultPriority || configured.Any(path => Matches(runtime, path)));
                 entry.PropertyChanged += (_, args) =>
                 {
                     if (args.PropertyName == nameof(JavaRuntimeEntryViewModel.IsPriority))
