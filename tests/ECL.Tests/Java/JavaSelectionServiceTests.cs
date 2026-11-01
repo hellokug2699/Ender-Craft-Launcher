@@ -52,9 +52,10 @@ public sealed class JavaSelectionServiceTests
             "instances.java.incompatiblePrompt",
             java8.Version!.Raw,
             explicitSelection.Requirement!.Describe());
+        var acknowledgementToken = JavaCompatibilityAcknowledgement.Create(java8, explicitSelection.Requirement!);
         Assert.True(settings.TrySetRaw(
             "launcher.java.incompatiblePromptAcknowledged",
-            prompt,
+            acknowledgementToken,
             null,
             out var acknowledgementError), acknowledgementError);
 
@@ -76,7 +77,10 @@ public sealed class JavaSelectionServiceTests
             "instance.java.executablePath", java11.ExecutablePath, changedJavaInstance.Id, out var changedPathError),
             changedPathError);
         Assert.True(changedJavaSettings.TrySetRaw(
-            "launcher.java.incompatiblePromptAcknowledged", prompt, null, out var oldAckError), oldAckError);
+            "launcher.java.incompatiblePromptAcknowledged",
+            JavaCompatibilityAcknowledgement.Create(java8, changedJavaSelection.Requirement!),
+            null,
+            out var oldAckError), oldAckError);
         var changedJavaSelection = await changedJavaProvider.GetRequiredService<IJavaSelectionService>()
             .ResolveAsync(changedJavaInstance, changedJavaVersion);
         Assert.False(changedJavaSelection.IsCompatibilityWarningAcknowledged);
