@@ -112,6 +112,9 @@ public sealed class LaunchPipelineTests
         Directory.CreateDirectory(fakeJavaBin);
         var fakeJava = Path.Combine(fakeJavaBin, OperatingSystem.IsWindows() ? "java.exe" : "java");
         await File.WriteAllTextAsync(fakeJava, string.Empty);
+        await File.WriteAllTextAsync(
+            Path.Combine(fakeJavaHome, "release"),
+            "JAVA_VERSION=\"21.0.1\"\\nIMPLEMENTOR=\"ECL Test Runtime\"\\nOS_ARCH=\"x86_64\"\\n");
 
         var settings = provider.GetRequiredService<ISettingsService>();
         Assert.True(settings.TrySetRaw("java.defaultPath", fakeJava, null, out var javaError), javaError);
