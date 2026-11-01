@@ -26,20 +26,31 @@ public sealed class SessionArtifactCollector
 
     public void CollectAfterExit(GameLogSession session)
     {
-        var manifest = session.Manifest;
+        // 采集发生在进程退出后：重新读取最新 manifest，避免使用启动时的旧
+        // logIsolation/路径快照（隔离确认与 PID 记录由其他写入者更新）。
+        var current = _sessions.Get(session.SessionId) ?? session;
+        var manifest = current.Manifest;
         var gameDirectory = manifest.GameDirectory;
         if (string.IsNullOrWhiteSpace(gameDirectory) || !Directory.Exists(gameDirectory))
         {
             return;
         }
 
+        var artifactsSession = current;
         var since = manifest.CreatedAtUtc.UtcDateTime;
 
-        CollectCrashReports(session, gameDirectory, since, "crash-reports", "client", SessionArtifactKinds.ClientCrashReport);
-        CollectCrashReports(session, gameDirectory, since, "crash-reports", "server", SessionArtifactKinds.ServerCrashReport);
-        CollectFatalErrors(session, gameDirectory, manifest.WorkingDirectory, since);
-        CollectSharedLog(session, gameDirectory);
-        CollectRotatedLogs(session, gameDirectory);
+        CollectCrashReports(artifactsSession, gameDirectory, since, "crash-reports", "client", SessionArtifactKinds.ClientCrashReport);
+        CollectCrashReports(artifactsSession, gameDirectory, since, "crash-reports", "server", SessionArtifactKinds.ServerCrashReport);
+        CollectFatalErrors(artifactsSession, gameDirectory, manifest.WorkingDirectory, since);
+        if (string.Equals(manifest.LogIsolation, "direct", StringComparison.OrdinalIgnoreCase))
+        {
+            CollectIsolatedLog(artifactsSession);
+        }
+        else
+        {
+            CollectSharedLog(artifactsSession, gameDirectory);
+        }
+        CollectRotatedLogs(artifactsSession, gameDirectory);
     }
 
     private void CollectCrashReports(
@@ -81,6 +92,22 @@ public sealed class SessionArtifactCollector
                 Register(session, SessionArtifactKinds.JvmFatalError, file, ArtifactOwnership.Possible, CopyArtifact(session, SessionArtifactKinds.JvmFatalError, file));
             }
         }
+    }
+
+    private void CollectIsolatedLog(GameLogSession session)
+    {
+        var isolated = Path.Combine(session.DirectoryPath, "game.log");
+        if (!File.Exists(isolated))
+        {
+            return;
+        }
+
+        Register(
+            session,
+            SessionArtifactKinds.GameLog,
+            isolated,
+            ArtifactOwnership.Direct,
+            isolated);
     }
 
     private void CollectSharedLog(GameLogSession session, string gameDirectory)

@@ -134,6 +134,8 @@ internal static class Program
           session export <会话ID> [--output <路径>] [--json]
                                           按单次启动导出诊断包
           session recover [--json]        恢复中断会话（幂等）
+          session prune --older-than-days <N> [--apply] [--json]
+                                          显式清理超过保留期的已完成/已中断会话
           crash <实例ID> [--json]         分析最近一次崩溃与可疑 Mod
           diagnostics export <实例ID> [--output <路径>] [--json]
                                           导出脱敏诊断包

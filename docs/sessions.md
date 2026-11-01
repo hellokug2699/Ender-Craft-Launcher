@@ -75,17 +75,36 @@ ecl session list [--json]
 ecl session show <会话ID> [--json]
 ecl session export <会话ID> [--output <路径>] [--json]
 ecl session recover [--json]
+ecl session prune --older-than-days <N> [--apply] [--json]
 ```
 
-## 7. 尚未完成
+## 7. 每会话日志隔离
 
-- 每会话 Log4j2 日志隔离（当前由 stdout/stderr 直接采集，共享 `latest.log` 标记歧义）。
-- 独立 LogHost 进程已实现（见 [loghost.md](loghost.md)）；LogHost 不可用时降级为进程内采集并记录 `CaptureFault`。
-- 保留策略与物理清理尚未实现；当前只增加会话，不自动删除。
+`Log4jIsolation` 为每次启动派生独立的 log4j2 配置：
 
-## 8. 实机验证（2026-11-02）
+- 仅当启动命令使用 `-Dlog4j.configurationFile`、目标是可识别的 Mojang 默认配置（`client-*.xml` 且包含默认文件 appender）时才派生；
+- 把文件 appender 指向 `<session>/game.log`，轮转目录指向 `<session>/rolled/`；
+- 不改写共享实例文件、不覆盖整合包或用户自定义配置；其他配置保持 `shared` 并继续标记归属歧义；
+- 记录配置指纹（SHA-256 前 32 位）与隔离方式；`pending` 会在进程启动后由 LogHost（或进程内退出路径）确认文件是否真正创建，未确认则降级为 `shared` 并写入警告；
+- 隔离成功时证据以 `Direct` 归属登记为会话日志，不再复制共享 `latest.log`。
 
-- 原版 1.21.1 + 离线账户，经 CLI 真实启动游戏：会话在进程启动前创建，LogHost 启动进程并在退出后完成收尾。
-- 运行中 session list 显示 Running；正常关闭游戏后显示 CaptureCompleted，xitCode=0。
-- 会话目录包含 manifest.json、vents.jsonl、game.stdout.log（实际包含 log4j 输出）、共享 latest.log 与轮转 gzip 归档，归属分别为 SharedOrAmbiguous 与 Possible。
-- 强制结束游戏进程后，session recover 将遗留会话标记为 Interrupted（而非正常退出），随后 session export 成功导出并列出缺失的崩溃证据。
+## 8. 保留策略
+
+`session prune --older-than-days <N>` 只清理已完成、已中断且超过保留期的会话：
+
+- 运行中、启动中、排空中、恢复中、`ProcessStateUnknown` 的会话永不清理；
+- 默认只预览；`--apply` 才会删除；执行前重新检查状态，避免删除刚变得活跃的会话；
+- 清理是独立、用户显式发起的操作，不由新启动、关闭窗口或退出 ECL 触发。
+
+## 9. 尚未完成
+
+- 断电/进程强杀下的 manifest 半写故障注入尚未系统化（journal 尾部半条记录已覆盖）。
+- 保留策略尚未接入 UI 设置与自动提示。
+
+## 10. 实机验证（2026-11-02）
+
+- 原版 1.21.1 + 离线账户，经 CLI 真实启动：会话在进程启动前创建，LogHost 启动进程并持有管道，manifest 记录 `captureHost=loghost`、真实 PID 与 Java 版本。
+- 日志隔离实机生效：会话目录生成 `log4j2.xml` 与 `game.log`（2765 字节），manifest `logIsolation=direct`；退出后证据以 `Direct` 归属登记，未再复制共享 `latest.log`。
+- 正常运行后关闭游戏：会话 `CaptureCompleted`、`exitCode=0`，stdout 6368 字节。
+- 强制结束游戏进程后，`session recover` 将遗留会话标记为 `Interrupted`，`session export` 成功并列出缺失的崩溃证据。
+- 两次启动使用不同 SessionId，旧会话证据保留。

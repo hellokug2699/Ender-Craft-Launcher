@@ -99,9 +99,26 @@ internal sealed class GameProcessSupervisor
             stderr);
 
         var startedAt = TryGetStartTime(process);
-        sessions.AttachProcess(session.SessionId, process.Id, startedAt, executable, workingDirectory);
+        sessions.AttachProcess(session.SessionId, process.Id, startedAt, executable, workingDirectory, "loghost");
         _ = supervisor.MonitorAsync(session);
+        _ = VerifyIsolationAsync(sessions, session);
         return supervisor;
+    }
+
+    private static async Task VerifyIsolationAsync(IGameSessionService sessions, GameLogSession session)
+    {
+        var logPath = Path.Combine(session.DirectoryPath, "game.log");
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            await Task.Delay(500).ConfigureAwait(false);
+            if (File.Exists(logPath))
+            {
+                sessions.SetLogIsolation(session.SessionId, "direct", null, null);
+                return;
+            }
+        }
+
+        sessions.SetLogIsolation(session.SessionId, "shared", null, "session.log_isolation_unverified");
     }
 
     private async Task MonitorAsync(GameLogSession session)

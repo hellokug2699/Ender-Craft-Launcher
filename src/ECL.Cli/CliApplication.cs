@@ -2700,6 +2700,42 @@ internal sealed class CliApplication
                     return 0;
                 }
 
+            case "prune":
+                {
+                    if (!int.TryParse(_commandLine.GetValue("older-than-days"), out var days) || days <= 0)
+                    {
+                        return UsageError("session prune 需要 --older-than-days <正整数>。");
+                    }
+
+                    var retention = _provider.GetRequiredService<ISessionRetentionService>();
+                    var plan = retention.Plan(TimeSpan.FromDays(days));
+                    if (json)
+                    {
+                        WriteJson(plan);
+                        return 0;
+                    }
+
+                    Console.WriteLine($"可清理会话：{plan.SessionIds.Count}，约 {plan.Bytes} 字节");
+                    foreach (var id in plan.SessionIds)
+                    {
+                        Console.WriteLine($"  - {id}");
+                    }
+
+                    foreach (var reason in plan.ProtectedReasons)
+                    {
+                        Console.WriteLine($"  ! {reason}");
+                    }
+
+                    if (!_commandLine.HasFlag("apply"))
+                    {
+                        Console.WriteLine("加 --apply 才会真正删除；运行中或状态未知的会话不会被清理。");
+                        return 0;
+                    }
+
+                    var pruned = retention.Apply(plan);
+                    return pruned.IsSuccess ? 0 : WriteError(pruned.Error);
+                }
+
             case "recover":
                 {
                     var report = sessions.Recover();
@@ -2719,7 +2755,7 @@ internal sealed class CliApplication
                 }
 
             default:
-                return UsageError("session 支持 list、show、export、recover。");
+                return UsageError("session 支持 list、show、export、recover 与 prune。");
         }
     }
 

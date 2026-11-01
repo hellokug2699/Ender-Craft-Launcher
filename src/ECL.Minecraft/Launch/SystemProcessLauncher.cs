@@ -152,6 +152,17 @@ internal sealed class SystemProcessLauncher(
                         $"stdout/stderr 采集队列饱和，丢弃 {dropped} 字节。");
                 }
 
+                var current = sessions.Get(session.SessionId)?.Manifest;
+                if (current is { LogIsolation: "pending" })
+                {
+                    var isolated = Path.Combine(session.DirectoryPath, "game.log");
+                    sessions.SetLogIsolation(
+                        session.SessionId,
+                        File.Exists(isolated) ? "direct" : "shared",
+                        null,
+                        File.Exists(isolated) ? null : "session.log_isolation_unverified");
+                }
+
                 artifacts.CollectAfterExit(session);
 
                 var finalState = dropped > 0

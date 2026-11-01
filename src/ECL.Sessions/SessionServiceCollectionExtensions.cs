@@ -12,6 +12,7 @@ public static class SessionServiceCollectionExtensions
         services.TryAddSingleton<IGameSessionService, GameSessionService>();
         services.TryAddSingleton<ISessionExportService, SessionExportService>();
         services.TryAddSingleton<SessionArtifactCollector>();
+        services.TryAddSingleton<ISessionRetentionService, SessionRetentionService>();
         return services;
     }
 }

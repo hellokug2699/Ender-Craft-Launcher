@@ -22,14 +22,15 @@ public interface IGameSessionService
         int processId,
         DateTimeOffset processStartedAtUtc,
         string executablePath,
-        string workingDirectory);
+        string workingDirectory,
+        string? captureHost = null);
 
     void RegisterArtifact(string sessionId, SessionArtifact artifact);
 
     void SetCaptureFault(string sessionId, string fault);
 
-    /// <summary>记录实际采集宿主（<c>loghost</c> 或 <c>in-process</c>）。</summary>
-    void SetCaptureHost(string sessionId, string host);
+    /// <summary>记录日志隔离方式、配置指纹与降级原因。</summary>
+    void SetLogIsolation(string sessionId, string mode, string? fingerprint, string? warning);
 
     /// <summary>采集宿主异常退出：只标记不完整，不终止游戏、不伪造正常完成。</summary>
     void MarkCaptureHostLost(string sessionId, string reason);
@@ -144,7 +145,8 @@ public sealed class GameSessionService : IGameSessionService
         int processId,
         DateTimeOffset processStartedAtUtc,
         string executablePath,
-        string workingDirectory)
+        string workingDirectory,
+        string? captureHost = null)
     {
         var session = Require(sessionId);
         session = Update(session, session.Manifest with
@@ -154,6 +156,7 @@ public sealed class GameSessionService : IGameSessionService
             ExecutablePath = executablePath,
             WorkingDirectory = workingDirectory,
             State = GameSessionState.Running,
+            CaptureHost = captureHost ?? session.Manifest.CaptureHost,
             UpdatedAtUtc = DateTimeOffset.UtcNow,
         });
 
@@ -184,6 +187,21 @@ public sealed class GameSessionService : IGameSessionService
     {
         var session = Require(sessionId);
         Update(session, session.Manifest with { CaptureHost = host });
+    }
+
+    public void SetLogIsolation(string sessionId, string mode, string? fingerprint, string? warning)
+    {
+        var session = Require(sessionId);
+        session = Update(session, session.Manifest with
+        {
+            LogIsolation = mode,
+            LogConfigFingerprint = fingerprint ?? session.Manifest.LogConfigFingerprint,
+            Warnings = warning is null
+                ? session.Manifest.Warnings
+                : AppendWarning(session.Manifest.Warnings, warning),
+        });
+
+        AppendEvent(session, "log.isolation", $"{mode}; fingerprint={fingerprint ?? "-"}; warning={warning ?? "-"}");
     }
 
     public void MarkCaptureHostLost(string sessionId, string reason)
@@ -287,8 +305,24 @@ public sealed class GameSessionService : IGameSessionService
         return new SessionRecoveryReport(sessions.Count, interrupted, reattached, unknown, warnings);
     }
 
-    private GameLogSession Require(string sessionId) =>
-        Get(sessionId) ?? throw new InvalidOperationException($"会话不存在：{sessionId}");
+    private GameLogSession Require(string sessionId)
+    {
+        // UI/LogHost/CLI 可能同时更新同一会话：修改前重新读取磁盘，
+        // 避免用旧缓存覆盖其他进程刚写入的 PID 或状态。
+        var fresh = _store.Load(sessionId)
+                    ?? throw new InvalidOperationException($"会话不存在：{sessionId}");
+
+        lock (_gate)
+        {
+            _cache[sessionId] = fresh;
+            if (!_sequences.ContainsKey(sessionId))
+            {
+                _sequences[sessionId] = SessionJournal.LastSequence(fresh.JournalPath);
+            }
+        }
+
+        return fresh;
+    }
 
     private GameLogSession Update(GameLogSession session, SessionManifest manifest)
     {

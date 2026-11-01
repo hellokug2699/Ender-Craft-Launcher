@@ -49,11 +49,23 @@ internal sealed class StartGameStep(
                 JavaVersion = context.JavaPlan?.Version,
                 MinecraftVersion = context.Instance.GameVersion,
                 Loader = context.Instance.Loader,
-                LogIsolation = showConsole ? "unavailable" : "direct",
+                LogIsolation = showConsole ? "unavailable" : "pending",
             });
 
             sessionId = session.SessionId;
             context.SessionId = sessionId;
+
+            var isolation = Log4jIsolation.Prepare(context.Command!, session.DirectoryPath);
+            if (isolation.IsSuccess)
+            {
+                var plan = isolation.Value!;
+                if (plan.ConfigPath is not null && context.Command is not null)
+                {
+                    context.Command = context.Command with { Arguments = plan.Arguments };
+                }
+
+                sessions.SetLogIsolation(sessionId, plan.Mode, plan.Fingerprint, plan.Warning);
+            }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -67,7 +79,7 @@ internal sealed class StartGameStep(
         try
         {
             var processId = processLauncher.Start(
-                context.Command,
+                context.Command!,
                 context.GameDirectory,
                 showConsole,
                 context.Instance.Id,
@@ -93,4 +105,5 @@ internal sealed class StartGameStep(
                 localizer.Get("launch.start.failed", exception.Message)));
         }
     }
+
 }

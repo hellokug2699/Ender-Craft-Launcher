@@ -221,5 +221,35 @@ public sealed class SessionTests : IDisposable
         Assert.Equal(GameSessionState.CaptureCompleted, service.Get(session.SessionId)!.Manifest.State);
     }
 
+    [Fact]
+    public void RetentionOnlyDeletesFinishedSessionsPastTheAge()
+    {
+        var service = CreateService();
+        var retention = new SessionRetentionService(
+            _environment.Paths,
+            NullLogger<SessionRetentionService>.Instance);
+
+        var completed = service.Create(Request());
+        service.MarkState(completed.SessionId, GameSessionState.CaptureCompleted);
+        var running = service.Create(Request());
+        service.AttachProcess(running.SessionId, 4242, DateTimeOffset.UtcNow, "java.exe", _environment.Root);
+        var unknown = service.Create(Request());
+        service.MarkState(unknown.SessionId, GameSessionState.ProcessStateUnknown);
+
+        var tooYoung = retention.Plan(TimeSpan.FromHours(1));
+        Assert.Empty(tooYoung.SessionIds);
+        Assert.Contains(tooYoung.ProtectedReasons, reason => reason.Contains(running.SessionId));
+
+        var plan = retention.Plan(TimeSpan.Zero);
+        Assert.Contains(completed.SessionId, plan.SessionIds);
+        Assert.DoesNotContain(running.SessionId, plan.SessionIds);
+        Assert.DoesNotContain(unknown.SessionId, plan.SessionIds);
+
+        Assert.True(retention.Apply(plan).IsSuccess);
+        Assert.False(Directory.Exists(completed.DirectoryPath));
+        Assert.True(Directory.Exists(running.DirectoryPath));
+        Assert.True(Directory.Exists(unknown.DirectoryPath));
+    }
+
     public void Dispose() => _environment.Dispose();
 }

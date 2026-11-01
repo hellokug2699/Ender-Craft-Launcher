@@ -191,13 +191,7 @@ internal sealed class HybridProcessLauncher(
     {
         try
         {
-            var processId = logHost.Start(command, workingDirectory, showConsole, instanceId, sessionId);
-            if (sessionId is not null)
-            {
-                sessions.SetCaptureHost(sessionId, "loghost");
-            }
-
-            return processId;
+            return logHost.Start(command, workingDirectory, showConsole, instanceId, sessionId);
         }
         catch (LogHostUnavailableException exception)
         {
