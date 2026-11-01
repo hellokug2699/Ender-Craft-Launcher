@@ -1801,7 +1801,8 @@ public sealed partial class InstancesViewModel : ObservableObject
         var required = selection.Requirement?.Describe() ?? "Java";
         return _dialogs.Confirm(
             _localizer.Get("instances.java.incompatibleTitle"),
-            _localizer.Get("instances.java.incompatiblePrompt", actual, required));
+            _localizer.Get("instances.java.incompatiblePrompt", actual, required),
+            selection.CompatibilityAcknowledgementToken);
     }
 
     private void SelectConfiguredJavaOption(string? configuredPath)
