@@ -62,15 +62,15 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             CategoryKey = "category.launcher",
             DisplayNameKey = "option.launcher.updateChannel.name",
             DescriptionKey = "option.launcher.updateChannel.desc",
-            Default = "stable",
+            Default = "main",
             VisibleWhenKey = "launcher.checkUpdates",
             VisibleWhenValue = "true",
             Order = 40,
             Choices =
             [
-                new OptionChoice("stable", "option.launcher.updateChannel.stable"),
-                new OptionChoice("beta", "option.launcher.updateChannel.beta"),
+                new OptionChoice("main", "option.launcher.updateChannel.main"),
                 new OptionChoice("dev", "option.launcher.updateChannel.dev"),
+                new OptionChoice("nightly", "option.launcher.updateChannel.nightly"),
             ],
         };
 
