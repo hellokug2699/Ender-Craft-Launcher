@@ -10,4 +10,8 @@ public interface IJavaLocator
 
     Task<IReadOnlyList<JavaRuntime>> RefreshAsync(CancellationToken cancellationToken = default) =>
         FindAllAsync(cancellationToken);
+
+    void InvalidateCache()
+    {
+    }
 }
