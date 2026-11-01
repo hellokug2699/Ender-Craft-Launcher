@@ -35,6 +35,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IForgeProcessorRunner, ForgeProcessorRunner>();
         services.AddSingleton<IVersionInstallService, VanillaInstallService>();
         services.AddSingleton<IJavaSelectionService, JavaSelectionService>();
+        services.AddSingleton<IJavaRequirementProvider, ModJavaRequirementProvider>();
         services.AddSingleton<IEulaService, FileEulaService>();
         services.AddSingleton<IModService, ModService>();
         services.AddSingleton<IModDependencyInstaller, ModDependencyInstaller>();

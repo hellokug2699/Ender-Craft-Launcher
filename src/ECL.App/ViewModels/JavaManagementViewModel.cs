@@ -60,12 +60,24 @@ public sealed partial class JavaManagementViewModel(
         {
             var configured = JavaSearchPath.Split(settings.Get<string>(PriorityKey));
             var discovered = await locator.RefreshAsync().ConfigureAwait(true);
-            var ordered = OrderByPriority(discovered, configured);
+            var candidates = configured
+                .Select(path => locator.FromPath(path))
+                .Where(runtime => runtime is not null)
+                .Select(runtime => runtime!)
+                .Concat(discovered)
+                .GroupBy(runtime => runtime.ExecutablePath, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToArray();
+            var priority = JavaPriorityOrdering.Order(candidates, configured);
             var useDefaultPriority = configured.Count == 0;
             Runtimes.Clear();
-            foreach (var runtime in ordered)
+            for (var index = 0; index < priority.Runtimes.Count; index++)
             {
-                var entry = new JavaRuntimeEntryViewModel(runtime, useDefaultPriority || configured.Any(path => Matches(runtime, path)));
+                var runtime = priority.Runtimes[index];
+                var entry = new JavaRuntimeEntryViewModel(
+                    runtime,
+                    useDefaultPriority || index < priority.ConfiguredCount,
+                    localizer);
                 entry.PropertyChanged += (_, args) =>
                 {
                     if (args.PropertyName == nameof(JavaRuntimeEntryViewModel.IsPriority))
@@ -128,7 +140,7 @@ public sealed partial class JavaManagementViewModel(
         var existing = Runtimes.FirstOrDefault(item => SamePath(item.Runtime.ExecutablePath, runtime.ExecutablePath));
         if (existing is null)
         {
-            var imported = new JavaRuntimeEntryViewModel(runtime, true);
+            var imported = new JavaRuntimeEntryViewModel(runtime, true, localizer);
             imported.PropertyChanged += (_, args) =>
             {
                 if (args.PropertyName == nameof(JavaRuntimeEntryViewModel.IsPriority))
@@ -200,45 +212,6 @@ public sealed partial class JavaManagementViewModel(
         locator.InvalidateCache();
     }
 
-    private static IReadOnlyList<JavaRuntime> OrderByPriority(
-        IReadOnlyList<JavaRuntime> discovered,
-        IReadOnlyList<string> configured)
-    {
-        var result = new List<JavaRuntime>();
-        foreach (var path in configured)
-        {
-            var runtime = discovered.FirstOrDefault(item => Matches(item, path));
-            if (runtime is not null && !result.Any(item => SamePath(item.ExecutablePath, runtime.ExecutablePath)))
-            {
-                result.Add(runtime);
-            }
-        }
-
-        result.AddRange(discovered.Where(item => !result.Any(existing =>
-            SamePath(existing.ExecutablePath, item.ExecutablePath))));
-        return result;
-    }
-
-    private static bool Matches(JavaRuntime runtime, string path)
-    {
-        if (SamePath(runtime.ExecutablePath, path) || SamePath(runtime.HomePath, path))
-        {
-            return true;
-        }
-
-        try
-        {
-            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)) + Path.DirectorySeparatorChar;
-            return runtime.ExecutablePath.StartsWith(
-                root,
-                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
-
     private static bool SamePath(string left, string right)
     {
         try
@@ -255,7 +228,10 @@ public sealed partial class JavaManagementViewModel(
     }
 }
 
-public sealed partial class JavaRuntimeEntryViewModel(JavaRuntime runtime, bool isPriority) : ObservableObject
+public sealed partial class JavaRuntimeEntryViewModel(
+    JavaRuntime runtime,
+    bool isPriority,
+    ILocalizer localizer) : ObservableObject
 {
     public JavaRuntime Runtime { get; } = runtime;
 
@@ -265,7 +241,15 @@ public sealed partial class JavaRuntimeEntryViewModel(JavaRuntime runtime, bool 
 
     public string Vendor => Runtime.Vendor ?? "Unknown";
 
-    public string Architecture => Runtime.Architecture ?? "Unknown";
+    public string Architecture => Runtime.ArchitectureLabel;
+
+    public bool IsSupported => !Runtime.IsKnown32Bit;
+
+    public string SupportState => Runtime.IsKnown32Bit
+        ? localizer.Get("java.manager.unsupported32")
+        : Runtime.ResolvedBitness == JavaBitness.Bit64
+            ? localizer.Get("java.manager.supported64")
+            : localizer.Get("java.manager.unknownArch");
 
     public string Path => Runtime.ExecutablePath;
 

@@ -406,11 +406,23 @@ public sealed class InstallServiceTests
                 false,
                 [],
                 4096));
+
+        public Task<EffectiveJavaRequirements> ResolveRequirementsAsync(
+            GameInstance instance,
+            MinecraftVersion? version,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(EffectiveJavaRequirements.Empty);
     }
 
     private sealed class ThrowingJavaSelectionService : IJavaSelectionService
     {
         public Task<JavaSelectionResult> ResolveAsync(
+            GameInstance instance,
+            MinecraftVersion? version,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("spec 0 安装不应解析 Java。");
+
+        public Task<EffectiveJavaRequirements> ResolveRequirementsAsync(
             GameInstance instance,
             MinecraftVersion? version,
             CancellationToken cancellationToken = default) =>

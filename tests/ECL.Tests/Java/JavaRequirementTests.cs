@@ -25,6 +25,13 @@ public sealed class JavaRequirementTests
     }
 
     [Fact]
+    public void UnrecognizedGameVersionHasNoInventedRequirement()
+    {
+        Assert.Null(JavaRequirements.TryInferMinimumMajor("custom-build"));
+        Assert.Equal(21, JavaRequirements.Resolve(new MinecraftVersion { Id = "custom-build" }, "custom-build").MinimumMajor);
+    }
+
+    [Fact]
     public void PrefersDeclaredJavaVersionForFutureVersions()
     {
         var version = new MinecraftVersion

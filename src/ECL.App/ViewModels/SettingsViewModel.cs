@@ -129,7 +129,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        var definitions = _settings.GetDefinitions(scope);
+        var definitions = _settings.GetDefinitions(scope)
+            .Where(definition => !definition.IsHidden);
         var groups = definitions
             .GroupBy(definition => definition.CategoryKey)
             .OrderBy(group => group.Min(definition => definition.Order));

@@ -2,6 +2,7 @@
 
 using Ecl.Auth;
 using Ecl.Configuration.Settings;
+using Ecl.Java;
 using Ecl.Minecraft.Eula;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Launch;
@@ -32,6 +33,38 @@ public sealed class LaunchPipelineTests
         Assert.Contains("--width", report.CommandLine);
         Assert.Equal(0, fake.Calls);
         Assert.Contains(report.Steps, step => step.StepId == "start" && step.Status == LaunchStepStatus.Skipped);
+    }
+
+    [Fact]
+    public async Task DryRunRecordsAndPersistsJavaSelectionPlan()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeProcessLauncher();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IProcessLauncher>(fake));
+
+        var instance = await CreateInstanceAsync(provider);
+        await provider.GetRequiredService<IAccountService>().AddOfflineAsync("Player");
+        ConfigureFakeJava(environment, provider);
+        WriteVersion(environment, "1.21.1", "1.21.1", "net.minecraft.client.main.Main");
+
+        var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: true);
+
+        Assert.True(report.Success);
+        Assert.NotNull(report.JavaPlan);
+        Assert.Equal("21.0.1", report.JavaPlan!.Version);
+        Assert.Equal("x86_64", report.JavaPlan.Architecture);
+        Assert.Equal("Java 21+", report.JavaPlan.RequirementSummary);
+        Assert.Equal(nameof(JavaSelectionReason.GlobalPriority), report.JavaPlan.SelectionReason);
+        Assert.Contains(report.JavaPlan.EvaluatedCandidates, candidate =>
+            candidate.Status == nameof(JavaCandidateStatus.Selected));
+
+        var plans = Directory.GetFiles(
+            Path.Combine(environment.Paths.LogsDirectory, "launch"),
+            $"launch-{instance.Id}-*.json");
+        var plan = Assert.Single(plans);
+        var json = await File.ReadAllTextAsync(plan);
+        Assert.Contains("\"java\"", json, StringComparison.Ordinal);
+        Assert.Contains("GlobalPriority", json, StringComparison.Ordinal);
     }
 
     [Fact]

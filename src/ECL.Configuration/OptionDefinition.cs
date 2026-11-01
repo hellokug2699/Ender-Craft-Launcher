@@ -37,6 +37,9 @@ public abstract class OptionDefinition
     /// <summary>敏感值不应出现在日志或诊断包中。</summary>
     public bool IsSecret { get; init; }
 
+    /// <summary>内部状态或由专用页面管理的配置，不在通用设置编辑器中显示。</summary>
+    public bool IsHidden { get; init; }
+
     /// <summary>空字符串是否表示“未设置 / 继承上层”。对可空数字与实例覆盖项有用。</summary>
     public bool EmptyIsNull { get; init; }
 

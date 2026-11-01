@@ -74,9 +74,10 @@ internal static class Program
           loader list --version <版本> [--type fabric|forge|neoforge|cleanroom|fabric-api|optifine] [--json]
                                           列出加载器/组件版本与更新时间
           install <实例ID>                下载/补全版本文件、加载器与组件
-          launch <实例ID> [--dry-run] [--accept-eula] [--json]
+          launch <实例ID> [--dry-run] [--accept-eula] [--accept-java-risk] [--json]
                                           启动实例；--dry-run 仅生成命令，
-                                          --accept-eula 首次启动时同意 EULA
+                                          --accept-eula 首次启动时同意 EULA，
+                                          --accept-java-risk 显式接受实例固定 Java 的已知风险
           settings list [--instance <实例ID>] [--json]
                                           列出配置项
           settings get <键> [--instance <实例ID>]

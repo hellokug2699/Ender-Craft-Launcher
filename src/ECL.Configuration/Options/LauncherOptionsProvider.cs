@@ -192,6 +192,7 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             DescriptionKey = "option.java.defaultPath.desc",
             Default = null,
             EmptyIsNull = true,
+            IsHidden = true,
             Order = 999,
         };
 

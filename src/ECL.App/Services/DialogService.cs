@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
 using Ecl.Configuration.Settings;
+using Ecl.Java;
 using Microsoft.Win32;
 
 namespace Ecl.App.Services;
@@ -41,16 +42,13 @@ public interface IDialogService
 
 public sealed class DialogService(ISettingsService settings) : IDialogService
 {
-    private const string JavaCompatibilityAcknowledgementKey = "launcher.java.incompatiblePromptAcknowledged";
-
     public bool Confirm(string title, string message, string? acknowledgementToken = null)
     {
         // 使用稳定风险标识而不是显示文案；语言切换不应触发重复确认。
-        // 兼容旧版保存的提示文本，避免升级后同一风险再次打扰用户。
-        var savedAcknowledgement = settings.Get<string?>(JavaCompatibilityAcknowledgementKey);
+        // token 由 Core 计算：规范化路径 + 检测版本 + 有效要求指纹。
+        var savedAcknowledgement = settings.Get<string?>(JavaRiskIdentity.SettingsKey);
         if (!string.IsNullOrWhiteSpace(acknowledgementToken) &&
-            (string.Equals(savedAcknowledgement, acknowledgementToken, StringComparison.Ordinal) ||
-             string.Equals(savedAcknowledgement, message, StringComparison.Ordinal)))
+            string.Equals(savedAcknowledgement, acknowledgementToken, StringComparison.Ordinal))
         {
             return true;
         }
@@ -63,7 +61,7 @@ public sealed class DialogService(ISettingsService settings) : IDialogService
 
         if (accepted && !string.IsNullOrWhiteSpace(acknowledgementToken))
         {
-            settings.TrySetRaw(JavaCompatibilityAcknowledgementKey, acknowledgementToken, null, out _);
+            settings.TrySetRaw(JavaRiskIdentity.SettingsKey, acknowledgementToken, null, out _);
         }
 
         return accepted;

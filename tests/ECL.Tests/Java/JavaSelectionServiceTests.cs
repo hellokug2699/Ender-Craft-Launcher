@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using System.Buffers.Binary;
+using System.IO.Compression;
 using Ecl.Configuration.Settings;
 using Ecl.Core.Localization;
 using Ecl.Java;
@@ -48,7 +50,8 @@ public sealed class JavaSelectionServiceTests
         Assert.True(explicitSelection.IsExplicitOverride);
         Assert.False(explicitSelection.IsCompatibilityWarningAcknowledged);
 
-        var acknowledgementToken = JavaCompatibilityAcknowledgement.Create(java8, explicitSelection.Requirement!);
+        var acknowledgementToken = explicitSelection.CompatibilityAcknowledgementToken;
+        Assert.NotNull(acknowledgementToken);
         Assert.True(settings.TrySetRaw(
             "launcher.java.incompatiblePromptAcknowledged",
             acknowledgementToken,
@@ -74,7 +77,7 @@ public sealed class JavaSelectionServiceTests
             changedPathError);
         Assert.True(changedJavaSettings.TrySetRaw(
             "launcher.java.incompatiblePromptAcknowledged",
-            JavaCompatibilityAcknowledgement.Create(java8, explicitSelection.Requirement!),
+            acknowledgementToken,
             null,
             out var oldAckError), oldAckError);
         var changedJavaSelection = await changedJavaProvider.GetRequiredService<IJavaSelectionService>()
@@ -209,6 +212,68 @@ public sealed class JavaSelectionServiceTests
         Assert.Equal(4096, (await selection.ResolveAsync(instance, version)).MemoryMb);
     }
 
+    [Fact]
+    public async Task ModBytecodeRaisesEffectiveRequirementAboveMinecraftBaseline()
+    {
+        using var environment = new TestEnvironment();
+        var java17 = Runtime(environment, "17.0.15");
+        var java21 = Runtime(environment, "21.0.7");
+        await using var provider = environment.CreateServices(services =>
+            services.AddSingleton<IJavaLocator>(new FakeJavaLocator([java17, java21])));
+
+        var instance = await CreateVersionAsync(provider, environment, "1.20.1", javaMajor: 17);
+        var version = (await provider.GetRequiredService<IVersionResolver>().ResolveAsync(instance.VersionId)).Value!;
+        var mods = Path.Combine(environment.Paths.GetInstanceGameDirectory(instance.Id), "mods");
+        Directory.CreateDirectory(mods);
+        CreateClassJar(Path.Combine(mods, "requires-java21.jar"), classMajor: 65);
+
+        var selection = await provider.GetRequiredService<IJavaSelectionService>()
+            .ResolveAsync(instance, version);
+
+        Assert.Equal(21, selection.Runtime?.Version?.Major);
+        Assert.Equal(21, selection.Requirement?.MinimumMajor);
+        Assert.Contains(selection.Plan!.RequirementSources, source =>
+            source.Kind == JavaRequirementKind.Mod &&
+            source.Evidence == JavaRequirementEvidence.ModClassFileLowerBound);
+    }
+
+    [Fact]
+    public async Task Explicit32BitPinIsBlockedBeforeLaunch()
+    {
+        using var environment = new TestEnvironment();
+        var java17x86 = Runtime(environment, "17.0.15", "x86");
+        await using var provider = environment.CreateServices(services =>
+            services.AddSingleton<IJavaLocator>(new FakeJavaLocator([java17x86])));
+
+        var instance = await CreateVersionAsync(provider, environment, "1.20.1", javaMajor: 17);
+        var version = (await provider.GetRequiredService<IVersionResolver>().ResolveAsync(instance.VersionId)).Value!;
+        Assert.True(provider.GetRequiredService<ISettingsService>().TrySetRaw(
+            "instance.java.executablePath",
+            java17x86.ExecutablePath,
+            instance.Id,
+            out var error), error);
+
+        var selection = await provider.GetRequiredService<IJavaSelectionService>()
+            .ResolveAsync(instance, version);
+
+        Assert.True(selection.IsBlocked);
+        Assert.True(selection.IsExplicitOverride);
+        Assert.Equal(JavaCompatibilityStatus.UnsupportedArchitecture, selection.Compatibility?.Status);
+        Assert.Contains("32", selection.BlockReason, StringComparison.Ordinal);
+    }
+
+    private static void CreateClassJar(string path, int classMajor)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        var entry = archive.CreateEntry("example/Example.class");
+        using var stream = entry.Open();
+        var bytes = new byte[8];
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(0, 4), 0xCAFEBABE);
+        BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(4, 2), 0);
+        BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(6, 2), (ushort)classMajor);
+        stream.Write(bytes);
+    }
+
     private static async Task<GameInstance> CreateVersionAsync(
         IServiceProvider provider,
         TestEnvironment environment,
@@ -235,15 +300,18 @@ public sealed class JavaSelectionServiceTests
         return instance;
     }
 
-    private static JavaRuntime Runtime(TestEnvironment environment, string version)
+    private static JavaRuntime Runtime(
+        TestEnvironment environment,
+        string version,
+        string architecture = "x86_64")
     {
         var parsed = JavaVersion.TryParse(version)!;
-        var home = Path.Combine(environment.Root, "java", version);
+        var home = Path.Combine(environment.Root, "java", version, architecture);
         return new JavaRuntime(
             home,
             Path.Combine(home, "bin", OperatingSystem.IsWindows() ? "java.exe" : "java"),
             "Test",
-            "x86_64",
+            architecture,
             parsed);
     }
 

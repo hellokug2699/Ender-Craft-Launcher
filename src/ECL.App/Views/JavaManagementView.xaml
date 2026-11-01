@@ -39,6 +39,7 @@
                             </StackPanel>
                             <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Architecture}" FontSize="11"/>
+                                <TextBlock Text="{Binding SupportState}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10"/>
                                 <TextBlock Text="{Binding Vendor}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10"/>
                             </StackPanel>
                             <Button Grid.Column="3" Content="↑" Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Style="{StaticResource GhostButton}" Margin="2"/>

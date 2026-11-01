@@ -40,7 +40,9 @@
 - `Paths`：数据目录。
 - `Settings`：配置服务；通过 `GetInstanceSetting<T>` 自动带实例 ID。
 - `DryRun`：是否只预览。
+- `AcceptJavaRisk`：CLI 显式接受实例固定 Java 风险；UI 通过持久化风险记录表达同一语义。
 - `Java` / `JavaExecutable` / `MemoryMb`：Java 解析结果。
+- `JavaPlan`：最终 Java 路径、版本、架构、要求来源、选择原因与被拒候选。
 - `Version`：版本 JSON。
 - `Command`：可执行文件、参数列表、可读命令。
 - `ProcessId`：真实启动后的 PID。
@@ -53,7 +55,7 @@
 
 - 用于 UI 的“预览命令”和 CLI 的 `launch --dry-run`。
 - 缺少版本文件时降级为 `Warning`，使用占位 `mainClass` 继续构建命令。
-- 缺少 Java 时降级为 `Warning`，使用 `java` 作为可执行文件；Java 版本不匹配也降级为 `Warning`。
+- 缺少 Java 时降级为 `Warning`，使用 `java` 作为可执行文件；Java 版本不匹配、要求冲突或 32 位 Java 也降级为 `Warning`。
 - 缺少游戏关键文件时降级为 `Warning`，仍生成预期命令。
 - `natives` 返回 `Skipped`；`eula` 在未同意时返回 `Warning`。
 - `start` 步骤返回 `Skipped`，不启动进程。
@@ -63,7 +65,8 @@
 
 - 缺少 Java、版本或关键文件时直接 `Failed`，不会执行后续步骤。
 - 版本文件缺失、继承链缺父版本或 JSON 损坏时，`version` 步骤的失败消息会附带具体原因（缺失文件路径或解析错误），便于定位是哪个版本不完整。
-- Java 版本与游戏版本不匹配时默认只 `Warning`，UI 会在启动前弹窗确认；实例设置可关闭兼容性检验。
+- Java 版本与游戏/Mod 要求不匹配时：自动选择会失败；实例显式 pin 只有在风险确认记录匹配，或 CLI 传入 `--accept-java-risk` 时才继续。32 位 Java 和要求冲突始终失败，任何确认都不能绕过。
+- 每次启动（含 Dry Run）都在 `LaunchReport.JavaPlan` 中记录 Java 路径、版本、架构、要求来源、选择原因与被拒候选，并写入 `<data>/logs/launch/`。诊断包会收集最近的启动计划。
 - 未同意 EULA 时 `eula` 步骤 `Failed`；UI 首次真实启动会弹窗要求同意，记录后写入 `eula=true`。
 - 所有步骤成功后，`StartGameStep` 通过 `IProcessLauncher` 启动进程。
 - 启动成功后更新实例的 `LastPlayedAt`。
@@ -143,7 +146,7 @@ public sealed record LaunchCommand(
 - 步骤失败 → 立即停止，报告包含已完成和失败步骤。
 - 步骤警告 → 继续，最终 `Success = true`，但保留警告。
 - 步骤异常 → 捕获、记录日志、转换为 `Failed`，不会让 UI 崩溃。
-- `LaunchReport` 包含总耗时、每一步耗时、命令、PID。
+- `LaunchReport` 包含总耗时、每一步耗时、命令、PID 与 `JavaPlan`。
 
 UI 与 CLI 使用同一份报告，只是渲染方式不同。
 

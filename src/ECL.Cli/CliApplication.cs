@@ -16,6 +16,7 @@ using Ecl.Minecraft.Diagnostics;
 using Ecl.Minecraft.Eula;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
+using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Launch;
 using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Mods;
@@ -569,7 +570,9 @@ internal sealed class CliApplication
         }
 
         var launchService = _provider.GetRequiredService<ILaunchService>();
-        var report = await launchService.LaunchAsync(instanceId, dryRun).ConfigureAwait(false);
+        var report = await launchService
+            .LaunchAsync(instanceId, dryRun, _commandLine.HasFlag("accept-java-risk"))
+            .ConfigureAwait(false);
 
         if (_commandLine.HasFlag("json"))
         {
@@ -602,6 +605,31 @@ internal sealed class CliApplication
             Console.WriteLine();
             Console.WriteLine("命令：");
             Console.WriteLine(SecretRedaction.CommandLine(report.CommandLine));
+        }
+
+        if (report.JavaPlan is { } java)
+        {
+            Console.WriteLine();
+            Console.WriteLine(localizer.Get("cli.launch.javaTitle"));
+            Console.WriteLine($"  {localizer.Get("cli.launch.javaPath")}: {java.ExecutablePath ?? "-"}");
+            Console.WriteLine(
+                $"  {localizer.Get("cli.launch.javaVersion")}: {java.Version ?? "-"} ({java.Architecture ?? "-"})");
+            Console.WriteLine(
+                $"  {localizer.Get("cli.launch.javaRequirement")}: {java.RequirementSummary ?? "-"}");
+            Console.WriteLine(
+                $"  {localizer.Get("cli.launch.javaReason")}: {java.SelectionReason} / {java.CompatibilityStatus}");
+            if (java.IsExplicitOverride)
+            {
+                Console.WriteLine($"  {localizer.Get("cli.launch.javaPinned")}: true");
+            }
+
+            foreach (var candidate in java.EvaluatedCandidates.Where(candidate =>
+                         !string.Equals(candidate.Status, "Selected", StringComparison.Ordinal)))
+            {
+                Console.WriteLine(
+                    $"  {localizer.Get("cli.launch.javaRejected")}: {candidate.ExecutablePath} " +
+                    $"[{candidate.Status}] {candidate.Detail}");
+            }
         }
     }
 
@@ -697,7 +725,9 @@ internal sealed class CliApplication
         var localizer = _provider.GetRequiredService<ILocalizer>();
         var instanceId = _commandLine.GetValue("instance");
         var scope = instanceId is null ? OptionScope.Global : OptionScope.Instance;
-        var definitions = settings.GetDefinitions(scope);
+        var definitions = settings.GetDefinitions(scope)
+            .Where(definition => !definition.IsHidden)
+            .ToArray();
 
         if (_commandLine.HasFlag("json"))
         {
@@ -715,7 +745,7 @@ internal sealed class CliApplication
             return 0;
         }
 
-        if (definitions.Count == 0)
+        if (definitions.Length == 0)
         {
             Console.WriteLine("当前作用域没有配置项。");
             return 0;
@@ -852,25 +882,47 @@ internal sealed class CliApplication
 
     private async Task<int> ListJavaAsync()
     {
-        var runtimes = await _provider.GetRequiredService<IJavaLocator>()
-            .FindAllAsync()
-            .ConfigureAwait(false);
+        var locator = _provider.GetRequiredService<IJavaLocator>();
+        var runtimes = await locator.FindAllAsync().ConfigureAwait(false);
+        var settings = _provider.GetRequiredService<ISettingsService>();
+        var localizer = _provider.GetRequiredService<ILocalizer>();
+        var configured = JavaSearchPath.Split(settings.Get<string>("java.defaultPath"));
+        var candidates = configured
+            .Select(path => locator.FromPath(path))
+            .Where(runtime => runtime is not null)
+            .Select(runtime => runtime!)
+            .Concat(runtimes)
+            .GroupBy(runtime => runtime.ExecutablePath, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+        var priority = JavaPriorityOrdering.Order(candidates, configured);
 
         if (_commandLine.HasFlag("json"))
         {
-            Console.WriteLine(JsonSerializer.Serialize(runtimes, EclJson.Indented));
+            Console.WriteLine(JsonSerializer.Serialize(priority.Runtimes, EclJson.Indented));
             return 0;
         }
 
-        if (runtimes.Count == 0)
+        if (priority.Runtimes.Count == 0)
         {
             Console.WriteLine("未发现 Java 运行时。使用 java install <实例ID> 自动下载。");
             return 0;
         }
 
-        foreach (var runtime in runtimes)
+        for (var index = 0; index < priority.Runtimes.Count; index++)
         {
-            Console.WriteLine($"{runtime.Version?.Raw ?? "未知版本"} · {runtime.Vendor ?? "未知厂商"} · {runtime.Architecture ?? "未知架构"}");
+            var runtime = priority.Runtimes[index];
+            var tag = index < priority.ConfiguredCount
+                ? $" [{localizer.Get("java.manager.priorityTag")}]"
+                : string.Empty;
+            var support = runtime.IsKnown32Bit
+                ? $" · {localizer.Get("java.manager.unsupported32")}"
+                : runtime.ResolvedBitness == JavaBitness.Unknown
+                    ? $" · {localizer.Get("java.manager.unknownArch")}"
+                    : string.Empty;
+            Console.WriteLine(
+                $"{runtime.Version?.Raw ?? "未知版本"} · {runtime.Vendor ?? "未知厂商"} · " +
+                $"{runtime.ArchitectureLabel}{support}{tag}");
             Console.WriteLine($"  home: {runtime.HomePath}");
             Console.WriteLine($"  exe : {runtime.ExecutablePath}");
         }
@@ -906,9 +958,20 @@ internal sealed class CliApplication
             Console.WriteLine(localizer.Get("instances.java.usingGameVersion", instance.GameVersion));
         }
 
-        var requirement = JavaRequirements.Resolve(
-            version.IsSuccess ? version.Value : null,
-            instance.GameVersion);
+        var requirements = await _provider.GetRequiredService<IJavaSelectionService>()
+            .ResolveRequirementsAsync(instance, version.IsSuccess ? version.Value : null)
+            .ConfigureAwait(false);
+        if (requirements.HasConflicts)
+        {
+            return WriteError(new EclError("java.requirements_conflict", requirements.Explain()));
+        }
+
+        if (requirements.IsUnknown)
+        {
+            Console.WriteLine(localizer.Get("instances.java.unknownRequirement", instance.GameVersion));
+        }
+
+        var requirement = requirements.ToRequirement();
 
         using var operations = TrackOperations();
         var result = await _provider.GetRequiredService<IJavaInstallService>()

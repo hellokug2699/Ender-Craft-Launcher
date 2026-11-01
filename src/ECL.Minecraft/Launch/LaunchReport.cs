@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using Ecl.Java;
+
 namespace Ecl.Minecraft.Launch;
 
 public enum LaunchStepStatus
@@ -23,4 +25,5 @@ public sealed record LaunchReport(
     string? CommandLine,
     int? ProcessId,
     IReadOnlyList<LaunchStepResult> Steps,
-    TimeSpan Duration);
+    TimeSpan Duration,
+    JavaLaunchPlan? JavaPlan = null);

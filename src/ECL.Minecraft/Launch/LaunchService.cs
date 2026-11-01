@@ -5,6 +5,7 @@ using Ecl.Auth;
 using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Localization;
+using Ecl.Java;
 using Ecl.Minecraft.Instances;
 using Microsoft.Extensions.Logging;
 
@@ -13,6 +14,12 @@ namespace Ecl.Minecraft.Launch;
 public interface ILaunchService
 {
     Task<LaunchReport> LaunchAsync(string instanceId, bool dryRun, CancellationToken cancellationToken = default);
+
+    Task<LaunchReport> LaunchAsync(
+        string instanceId,
+        bool dryRun,
+        bool acceptJavaRisk,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class LaunchService : ILaunchService
@@ -46,7 +53,17 @@ public sealed class LaunchService : ILaunchService
         _logger = logger;
     }
 
-    public async Task<LaunchReport> LaunchAsync(string instanceId, bool dryRun, CancellationToken cancellationToken = default)
+    public Task<LaunchReport> LaunchAsync(
+        string instanceId,
+        bool dryRun,
+        CancellationToken cancellationToken = default) =>
+        LaunchAsync(instanceId, dryRun, acceptJavaRisk: false, cancellationToken);
+
+    public async Task<LaunchReport> LaunchAsync(
+        string instanceId,
+        bool dryRun,
+        bool acceptJavaRisk,
+        CancellationToken cancellationToken = default)
     {
         var total = Stopwatch.StartNew();
 
@@ -129,6 +146,7 @@ public sealed class LaunchService : ILaunchService
             Paths = _paths,
             Settings = _settings,
             DryRun = dryRun,
+            AcceptJavaRisk = acceptJavaRisk,
         };
 
         var results = new List<LaunchStepResult>();
@@ -181,13 +199,61 @@ public sealed class LaunchService : ILaunchService
             dryRun,
             total.Elapsed);
 
-        return new LaunchReport(
+        var report = new LaunchReport(
             success,
             dryRun,
             context.Command?.Display,
             context.ProcessId,
             results,
-            total.Elapsed);
+            total.Elapsed,
+            context.JavaPlan);
+        PersistJavaPlan(instance.Id, dryRun, success, context.JavaPlan);
+        return report;
+    }
+
+    /// <summary>
+    /// 启动计划需要可复现：记录最终 Java 路径、版本、架构、要求摘要、选择原因与被拒候选。
+    /// 写入失败不能影响启动，只记录日志。
+    /// </summary>
+    private void PersistJavaPlan(
+        string instanceId,
+        bool dryRun,
+        bool success,
+        JavaLaunchPlan? plan)
+    {
+        if (plan is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var directory = Path.Combine(_paths.LogsDirectory, "launch");
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(
+                directory,
+                $"launch-{instanceId}-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fff}-{(dryRun ? "dryrun" : "launch")}.json");
+            var payload = new
+            {
+                recordedAt = DateTimeOffset.UtcNow.ToString("O"),
+                instanceId,
+                dryRun,
+                success,
+                java = plan,
+            };
+            File.WriteAllText(
+                path,
+                System.Text.Json.JsonSerializer.Serialize(payload, Ecl.Core.Json.EclJson.Indented));
+            _logger.LogInformation(
+                "已记录启动 Java 计划：{Path}（{Reason}，{Requirement}）。",
+                path,
+                plan.SelectionReason,
+                plan.RequirementSummary ?? "unknown");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(exception, "写入启动 Java 计划失败，不影响本次启动。");
+        }
     }
 
     private static LaunchReport Failure(string stepId, string message, bool dryRun, Stopwatch timer)

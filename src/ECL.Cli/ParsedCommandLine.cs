@@ -13,6 +13,7 @@ public sealed class ParsedCommandLine
         "default",
         "dry-run",
         "accept-eula",
+        "accept-java-risk",
         "verbose",
         "check",
         "no-dependencies",

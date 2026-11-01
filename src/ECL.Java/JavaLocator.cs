@@ -83,25 +83,25 @@ public sealed class JavaLocator : IJavaLocator
 
         AddHome(candidates, Environment.GetEnvironmentVariable("JAVA_HOME"));
         AddPathEnvironment(candidates);
-        AddHomeChildren(candidates, _paths.JavaDirectory, depth: 2);
+        AddHomeChildren(candidates, cancellationToken, _paths.JavaDirectory, depth: 2);
 
         if (OperatingSystem.IsWindows())
         {
-            AddHomeChildren(candidates, GetProgramFilesPath("Java"), depth: 2);
-            AddHomeChildren(candidates, GetProgramFilesPath("Eclipse Adoptium"), depth: 2);
-            AddHomeChildren(candidates, GetProgramFilesPath("Microsoft"), depth: 2);
-            AddHomeChildren(candidates, GetProgramFilesPath("BellSoft"), depth: 2);
-            AddHomeChildren(candidates, GetProgramFilesPath("Zulu"), depth: 2);
-            AddHomeChildren(candidates, GetProgramFilesPath("Amazon Corretto"), depth: 2);
-            AddHomeChildren(candidates, GetProgramFilesPath("IBM Semeru"), depth: 2);
-            AddHomeChildren(candidates, GetLocalAppDataPath("Programs", "Eclipse Adoptium"), depth: 2);
-            AddHomeChildren(candidates, GetUserProfilePath(".jdks"), depth: 2);
+            AddHomeChildren(candidates, cancellationToken, GetProgramFilesPath("Java"), depth: 2);
+            AddHomeChildren(candidates, cancellationToken, GetProgramFilesPath("Eclipse Adoptium"), depth: 2);
+            AddHomeChildren(candidates, cancellationToken, GetProgramFilesPath("Microsoft"), depth: 2);
+            AddHomeChildren(candidates, cancellationToken, GetProgramFilesPath("BellSoft"), depth: 2);
+            AddHomeChildren(candidates, cancellationToken, GetProgramFilesPath("Zulu"), depth: 2);
+            AddHomeChildren(candidates, cancellationToken, GetProgramFilesPath("Amazon Corretto"), depth: 2);
+            AddHomeChildren(candidates, cancellationToken, GetProgramFilesPath("IBM Semeru"), depth: 2);
+            AddHomeChildren(candidates, cancellationToken, GetLocalAppDataPath("Programs", "Eclipse Adoptium"), depth: 2);
+            AddHomeChildren(candidates, cancellationToken, GetUserProfilePath(".jdks"), depth: 2);
         }
         else
         {
-            AddHomeChildren(candidates, "/usr/lib/jvm", depth: 2);
-            AddHomeChildren(candidates, "/usr/java", depth: 2);
-            AddHomeChildren(candidates, "/opt/java", depth: 2);
+            AddHomeChildren(candidates, cancellationToken, "/usr/lib/jvm", depth: 2);
+            AddHomeChildren(candidates, cancellationToken, "/usr/java", depth: 2);
+            AddHomeChildren(candidates, cancellationToken, "/opt/java", depth: 2);
         }
 
         // 用户在全局设置中指定的 Java 目录通常包含多个 JDK/JRE，
@@ -110,7 +110,7 @@ public sealed class JavaLocator : IJavaLocator
         {
             foreach (var root in provider.GetSearchRoots())
             {
-                AddConfiguredRoot(candidates, root);
+                AddConfiguredRoot(candidates, cancellationToken, root);
             }
         }
 
@@ -168,7 +168,7 @@ public sealed class JavaLocator : IJavaLocator
             // 选择的是包含多个 Java 的上级目录：返回其中版本最高的运行时。
             var nested = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var visited = 0;
-            AddJavaHomes(nested, fullPath, MaxScanDepth, ref visited);
+            AddJavaHomes(nested, CancellationToken.None, fullPath, MaxScanDepth, ref visited);
 
             return nested
                 .Select(CreateRuntime)
@@ -242,8 +242,13 @@ public sealed class JavaLocator : IJavaLocator
         }
     }
 
-    private static void AddHomeChildren(HashSet<string> candidates, string? root, int depth)
+    private static void AddHomeChildren(
+        HashSet<string> candidates,
+        CancellationToken cancellationToken,
+        string? root,
+        int depth)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
         {
             return;
@@ -268,10 +273,11 @@ public sealed class JavaLocator : IJavaLocator
 
         foreach (var child in children)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             AddHome(candidates, child);
             if (depth > 1)
             {
-                AddHomeChildren(candidates, child, depth - 1);
+                AddHomeChildren(candidates, cancellationToken, child, depth - 1);
             }
         }
     }
@@ -280,8 +286,12 @@ public sealed class JavaLocator : IJavaLocator
     /// 从用户配置的根目录查找 Java。支持“根目录本身就是 Java 主目录”、
     /// “根目录下有一层或多层 JDK/JRE”等布局，并限制深度和目录数量以避免误选磁盘根目录时长时间扫描。
     /// </summary>
-    private static void AddConfiguredRoot(HashSet<string> candidates, string root)
+    private static void AddConfiguredRoot(
+        HashSet<string> candidates,
+        CancellationToken cancellationToken,
+        string root)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(root))
         {
             return;
@@ -301,7 +311,7 @@ public sealed class JavaLocator : IJavaLocator
             }
 
             var visited = 0;
-            AddJavaHomes(candidates, root, MaxScanDepth, ref visited);
+            AddJavaHomes(candidates, cancellationToken, root, MaxScanDepth, ref visited);
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or PathTooLongException)
@@ -310,8 +320,14 @@ public sealed class JavaLocator : IJavaLocator
         }
     }
 
-    private static void AddJavaHomes(HashSet<string> candidates, string directory, int depth, ref int visited)
+    private static void AddJavaHomes(
+        HashSet<string> candidates,
+        CancellationToken cancellationToken,
+        string directory,
+        int depth,
+        ref int visited)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (depth < 0 || visited >= MaxScanDirectories)
         {
             return;
@@ -343,6 +359,7 @@ public sealed class JavaLocator : IJavaLocator
 
         foreach (var child in children)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (visited >= MaxScanDirectories)
             {
                 return;
@@ -361,7 +378,7 @@ public sealed class JavaLocator : IJavaLocator
                 continue;
             }
 
-            AddJavaHomes(candidates, child, depth - 1, ref visited);
+            AddJavaHomes(candidates, cancellationToken, child, depth - 1, ref visited);
         }
     }
 
@@ -394,7 +411,14 @@ public sealed class JavaLocator : IJavaLocator
             vendor = InferVendor(home);
         }
 
-        return new JavaRuntime(home, executable, vendor, architecture, version);
+        // release 文件缺失（例如旧版 JDK6）或没有 OS_ARCH 时，用 PE/ELF 头补齐位数证据。
+        var bitness = JavaArchitecture.Classify(architecture);
+        if (bitness == JavaBitness.Unknown)
+        {
+            bitness = JavaArchitecture.DetectExecutableBitness(executable);
+        }
+
+        return new JavaRuntime(home, executable, vendor, architecture, version, Bitness: bitness);
     }
 
     private static string InferVendor(string home)

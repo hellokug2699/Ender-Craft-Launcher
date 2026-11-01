@@ -32,7 +32,7 @@ flowchart TD
     Ops[ECL.Operations<br/>任务/进度/诊断]
     Download[ECL.Download<br/>下载源/HTTP/校验]
     Auth[ECL.Auth<br/>账户与离线 UUID]
-    Java[ECL.Java<br/>Java 探测]
+    Java[ECL.Java<br/>Java 探测/要求/选择]
     MC[ECL.Minecraft<br/>实例/版本/安装/启动]
     App[ECL.App<br/>WPF + MVVM]
     Cli[ECL.Cli<br/>命令行]
@@ -86,8 +86,8 @@ flowchart TD
 | `ECL.Operations` | 统一任务模型、状态/阶段、字节与项目进度、速度/ETA、停滞检测、失败归因、内存任务快照、嵌套任务作用域与业务进度桥接 | `OperationSnapshot`, `OperationState`, `IOperationService`, `IOperationStore`, `IOperationControl`, `OperationProgressBridge<T>`, `OperationScope`, `SpeedMeter`, `OperationErrors`, `OperationFormat` |
 | `ECL.Download` | 下载源策略、官方↔BMCLAPI 映射、并发/重试/续传、哈希校验、流式进度与任务发布（存在上层业务任务时只转发进度） | `DownloadSourceResolver`, `IDownloadService`, `DownloadRequest`, `DownloadProgress` |
 | `ECL.Auth` | 账户模型、离线 UUID、账户文件 | `Account`, `IAccountService`, `OfflineUuid` |
-| `ECL.Java` | Java 版本解析、运行时探测、需求/兼容性/32-64 位与内存校验、JVM 预设、Mojang/Adoptium/Zulu/Liberica 下载与解压（下载登记 `Java` 任务） | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `JvmPresets`, `IJavaInstallService` |
-| `ECL.Minecraft` | 实例存储、版本 JSON/继承、版本清单分类、原版/加载器安装、加载器目录、Java 选择、启动上下文与步骤、进程启动、Mod/整合包/资源包管理、缺失依赖解析、CurseForge/Modrinth API、统一搜索与下载、版本情报；安装、整合包导入、内容安装与依赖下载登记 Operation | `GameInstance`, `VanillaInstallService`, `IVersionCatalog`, `ILoaderCatalog`, `IJavaSelectionService`, `IModService`, `IModDependencyInstaller`, `IModpackService`, `ICurseForgeClient`, `ICurseForgeService`, `IModrinthClient`, `IContentSearchService`, `IContentInstallService`, `IVersionNewsService`, `ILaunchStep` |
+| `ECL.Java` | Java 版本解析、运行时探测、有效要求/证据合并、优先级选择、风险身份、32-64 位与内存校验、JVM 预设、Mojang/Adoptium/Zulu/Liberica 下载与解压（下载登记 `Java` 任务） | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `EffectiveJavaRequirements`, `JavaSelectionPlanner`, `JavaRiskIdentity`, `JvmPresets`, `IJavaInstallService` |
+| `ECL.Minecraft` | 实例存储、版本 JSON/继承、版本清单分类、原版/加载器安装、加载器目录、Java 要求聚合与选择、启动计划、启动上下文与步骤、进程启动、Mod/整合包/资源包管理、缺失依赖解析、CurseForge/Modrinth API、统一搜索与下载、版本情报；安装、整合包导入、内容安装与依赖下载登记 Operation | `GameInstance`, `VanillaInstallService`, `IVersionCatalog`, `ILoaderCatalog`, `IJavaSelectionService`, `IJavaRequirementProvider`, `IModService`, `IModDependencyInstaller`, `IModpackService`, `ICurseForgeClient`, `ICurseForgeService`, `IModrinthClient`, `IContentSearchService`, `IContentInstallService`, `IVersionNewsService`, `ILaunchStep` |
 | `ECL.Deployment` | 更新 Manifest schema/校验、RSA-PSS 签名验证、HTTPS 更新客户端、安全解包、staging、版本指针、切换与回滚 | `UpdateManifest`, `UpdateManifestParser`, `UpdateTrustStore`, `UpdateSignatureVerifier`, `SafeZipExtractor`, `UpdateLayout`, `UpdateInstaller`, `UpdateClient` |
 | `ECL.Bootstrapper` | 读取当前版本指针、启动已安装版本、应用签名更新与回滚；不覆盖运行中的主程序 | `ECL.Bootstrapper.exe` |
 | `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框、任务中心 | `MainViewModel`, `HomeViewModel`, `DownloadViewModel`, `InstancesViewModel`, `ModsViewModel`, `SettingsViewModel`, `OperationCenterViewModel` |

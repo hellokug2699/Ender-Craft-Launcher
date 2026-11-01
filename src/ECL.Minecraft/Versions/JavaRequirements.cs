@@ -23,7 +23,14 @@ public static partial class JavaRequirements
         return new JavaRequirement(InferMinimumMajor(gameVersion), component);
     }
 
-    private static int InferMinimumMajor(string gameVersion)
+    private static int InferMinimumMajor(string gameVersion) =>
+        TryInferMinimumMajor(gameVersion) ?? 21;
+
+    /// <summary>
+    /// 只对可识别的版本号返回推断值；无法识别时返回 null，
+    /// 让调用方把它表达为“要求未知”，而不是伪装成确定的最低版本。
+    /// </summary>
+    public static int? TryInferMinimumMajor(string gameVersion)
     {
         var legacy = ModernVersionRegex().Match(gameVersion);
         if (legacy.Success)
@@ -65,8 +72,8 @@ public static partial class JavaRequirements
             return major >= 26 ? 25 : 21;
         }
 
-        // 无法识别的自定义版本：版本 JSON 通常已提供 javaVersion，这里保守回退到 21。
-        return 21;
+        // 无法识别的自定义版本不制造确定要求；版本 JSON 通常已经提供 javaVersion。
+        return null;
     }
 
     [GeneratedRegex(@"^1\.(\d+)(?:\.(\d+))?")]

@@ -762,7 +762,22 @@ public sealed partial class InstancesViewModel : ObservableObject
         // 新建 Forge/Cleanroom 实例时版本 JSON 可能尚未写入；此时按 GameVersion 推断
         // Java 要求，避免“先有版本 JSON 才能下载 Java、先有 Java 才能安装加载器”的死循环。
         var version = versionResult.IsSuccess ? versionResult.Value : null;
-        var requirement = JavaRequirements.Resolve(version, instance.GameVersion);
+        var requirements = await _javaSelection
+            .ResolveRequirementsAsync(instance, version)
+            .ConfigureAwait(true);
+        if (requirements.HasConflicts)
+        {
+            JavaDownloadStatus = _localizer.Get("instances.java.conflict", requirements.Explain());
+            StatusMessage = JavaDownloadStatus;
+            return;
+        }
+
+        if (requirements.IsUnknown)
+        {
+            JavaDownloadStatus = _localizer.Get("instances.java.unknownRequirement", instance.GameVersion);
+        }
+
+        var requirement = requirements.ToRequirement();
         if (!versionResult.IsSuccess)
         {
             JavaDownloadStatus = _localizer.Get("instances.java.usingGameVersion", instance.GameVersion);
@@ -1777,6 +1792,22 @@ public sealed partial class InstancesViewModel : ObservableObject
             .ResolveAsync(instance, versionResult.Value)
             .ConfigureAwait(true);
 
+        if (selection.IsBlocked)
+        {
+            var blockedMessage = selection.Compatibility?.Status switch
+            {
+                JavaCompatibilityStatus.UnsupportedArchitecture => _localizer.Get(
+                    "instances.java.unsupported32",
+                    selection.Runtime?.DisplayName ?? "Java"),
+                JavaCompatibilityStatus.RequirementsConflict => _localizer.Get(
+                    "instances.java.conflict",
+                    selection.Decision?.Requirements?.Explain() ?? string.Empty),
+                _ => selection.BlockReason ?? _localizer.Get("instances.java.blocked"),
+            };
+            _dialogs.ShowError(_localizer.Get("instances.java.blockedTitle"), blockedMessage);
+            return false;
+        }
+
         if (selection.Runtime is null)
         {
             var shouldDownload = _dialogs.Confirm(
@@ -1797,11 +1828,32 @@ public sealed partial class InstancesViewModel : ObservableObject
             return true;
         }
 
+        // 未知要求不是不兼容；按优先级选择后只提示，不弹风险确认。
+        if (selection.Compatibility.Status == JavaCompatibilityStatus.UnknownRequirement)
+        {
+            return true;
+        }
+
+        // 自动选择永远不应选中已知不兼容的运行时；如果出现，这是内部错误而不是用户风险。
+        if (!selection.IsExplicitOverride)
+        {
+            _dialogs.ShowError(
+                _localizer.Get("instances.java.blockedTitle"),
+                _localizer.Get("instances.java.autoSelectionIncompatible"));
+            return false;
+        }
+
         var actual = selection.Runtime.Version?.Raw ?? selection.Runtime.DisplayName;
         var required = selection.Requirement?.Describe() ?? "Java";
+        var message = selection.Compatibility.Status == JavaCompatibilityStatus.Unknown
+            ? _localizer.Get("instances.java.unknownPrompt", actual)
+            : _localizer.Get("instances.java.incompatiblePrompt", actual, required);
         return _dialogs.Confirm(
-            _localizer.Get("instances.java.incompatibleTitle"),
-            _localizer.Get("instances.java.incompatiblePrompt", actual, required),
+            _localizer.Get(
+                selection.Compatibility.Status == JavaCompatibilityStatus.Unknown
+                    ? "instances.java.unknownTitle"
+                    : "instances.java.incompatibleTitle"),
+            message,
             selection.CompatibilityAcknowledgementToken);
     }
 
@@ -1872,9 +1924,36 @@ public sealed partial class InstancesViewModel : ObservableObject
                 .ConfigureAwait(true);
 
 
+            if (selection.IsBlocked)
+            {
+                var blockedMessage = selection.Compatibility?.Status switch
+                {
+                    JavaCompatibilityStatus.UnsupportedArchitecture => _localizer.Get(
+                        "instances.java.unsupported32",
+                        selection.Runtime?.DisplayName ?? "Java"),
+                    JavaCompatibilityStatus.RequirementsConflict => _localizer.Get(
+                        "instances.java.conflict",
+                        selection.Decision?.Requirements?.Explain() ?? string.Empty),
+                    _ => selection.BlockReason ?? _localizer.Get("instances.java.blocked"),
+                };
+                JavaStatus = WithWarnings(blockedMessage);
+                return;
+            }
+
             if (selection.Runtime is null)
             {
-                JavaStatus = WithWarnings(_localizer.Get("instances.java.notFound"));
+                var message = selection.Decision?.Failure switch
+                {
+                    JavaSelectionFailure.RequirementsConflict => _localizer.Get(
+                        "instances.java.conflict",
+                        selection.Decision.Requirements?.Explain() ?? string.Empty),
+                    JavaSelectionFailure.NoCompatibleCandidate => _localizer.Get(
+                        "instances.java.noCompatibleReasons",
+                        selection.Requirement?.Describe() ?? "Java",
+                        DescribeRejectedCandidates(selection.Decision)),
+                    _ => _localizer.Get("instances.java.notFound"),
+                };
+                JavaStatus = WithWarnings(message);
                 return;
             }
 
@@ -1893,10 +1972,25 @@ public sealed partial class InstancesViewModel : ObservableObject
                 return;
             }
 
-            JavaStatus = WithWarnings(_localizer.Get(
-                "instances.java.incompatible",
-                selection.Runtime.Version?.Raw ?? selection.Runtime.DisplayName,
-                selection.Requirement?.Describe() ?? "Java"));
+            if (selection.Compatibility.Status == JavaCompatibilityStatus.UnknownRequirement)
+            {
+                JavaStatus = WithWarnings(
+                    _localizer.Get("instances.java.unknownRequirement", selection.Runtime.DisplayName));
+                return;
+            }
+
+            if (selection.Compatibility.Status == JavaCompatibilityStatus.UnsupportedArchitecture)
+            {
+                JavaStatus = WithWarnings(
+                    _localizer.Get("instances.java.unsupported32", selection.Runtime.DisplayName));
+                return;
+            }
+
+            var actual = selection.Runtime.Version?.Raw ?? selection.Runtime.DisplayName;
+            var required = selection.Requirement?.Describe() ?? "Java";
+            JavaStatus = WithWarnings(selection.IsCompatibilityWarningAcknowledged
+                ? _localizer.Get("instances.java.incompatibleAcknowledged", actual, required)
+                : _localizer.Get("instances.java.incompatible", actual, required));
 
             string WithWarnings(string text) => selection.Warnings.Count == 0
                 ? text
@@ -1907,6 +2001,31 @@ public sealed partial class InstancesViewModel : ObservableObject
             JavaStatus = exception.Message;
         }
     }
+
+    private string DescribeRejectedCandidates(JavaSelectionDecision? decision)
+    {
+        if (decision is null || decision.RejectedCandidates.Count == 0)
+        {
+            return _localizer.Get("instances.java.notFound");
+        }
+
+        return string.Join(
+            "，",
+            decision.RejectedCandidates
+                .GroupBy(candidate => candidate.Status)
+                .Select(group => $"{DescribeCandidateStatus(group.Key)} ×{group.Count()}"));
+    }
+
+    private string DescribeCandidateStatus(JavaCandidateStatus status) => _localizer.Get(status switch
+    {
+        JavaCandidateStatus.TooOld => "instances.java.candidate.tooOld",
+        JavaCandidateStatus.TooNew => "instances.java.candidate.tooNew",
+        JavaCandidateStatus.Unsupported32Bit => "instances.java.candidate.unsupported32Bit",
+        JavaCandidateStatus.UnknownVersion => "instances.java.candidate.unknownVersion",
+        JavaCandidateStatus.CompatibleButNotPreferred => "instances.java.candidate.compatibleButNotPreferred",
+        JavaCandidateStatus.RequirementsConflict => "instances.java.candidate.requirementsConflict",
+        _ => "instances.java.candidate.unknownVersion",
+    });
 
     private static string FormatJava(JavaRuntime runtime)
     {

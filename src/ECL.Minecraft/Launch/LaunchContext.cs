@@ -21,7 +21,12 @@ public sealed class LaunchContext
 
     public required bool DryRun { get; init; }
 
+    /// <summary>CLI 显式接受 Java 风险；UI 通过持久化确认记录表达同一语义。</summary>
+    public bool AcceptJavaRisk { get; init; }
+
     public JavaRuntime? Java { get; set; }
+
+    public JavaLaunchPlan? JavaPlan { get; set; }
 
     public MinecraftVersion? Version { get; set; }
 

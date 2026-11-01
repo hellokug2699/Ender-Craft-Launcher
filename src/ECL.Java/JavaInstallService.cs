@@ -487,10 +487,17 @@ public sealed class JavaInstallService : IJavaInstallService
             preferred.Count > 0 &&
             preferred[0].Manifest?.Url is not null)
         {
-            return (
-                requirement.Component,
-                preferred[0],
-                JavaVersion.TryParse(preferred[0].Version?.Name));
+            var preferredVersion = JavaVersion.TryParse(preferred[0].Version?.Name);
+
+            // Minecraft 声明的组件可能低于实例的有效要求（例如 Mod 要求 Java 25），
+            // 此时继续按主版本挑选，不能为了“组件名匹配”安装一个不兼容的运行时。
+            if (preferredVersion is null || requirement.IsCompatible(preferredVersion))
+            {
+                return (
+                    requirement.Component,
+                    preferred[0],
+                    preferredVersion);
+            }
         }
 
         var candidates = components

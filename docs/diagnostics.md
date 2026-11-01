@@ -38,6 +38,7 @@ ecl diagnostics export <实例ID> [--output <路径>] [--json]
 - `instance.json`、实例 `settings.json`、全局 `config/global.json`；
 - 最近 5 个崩溃报告、最近 5 个 Minecraft 日志、最近 5 个实例日志；
 - 该实例最近 5 个安装失败诊断；
+- 该实例最近 5 个启动 Java 计划（`launch/launch-<实例ID>-*.json`）；
 - 最近 3 个启动器日志（`logs/ecl-*.log`）。
 
 **不包含** `accounts/accounts.json`。所有文本在写入 zip 前经过 `DiagnosticPackageService.Redact`：

@@ -123,6 +123,12 @@ public sealed partial class DiagnosticPackageService(
                     entries += AddFile(archive, $"install/{Path.GetFileName(diagnostic)}", diagnostic);
                 }
 
+                var launchDirectory = Path.Combine(paths.LogsDirectory, "launch");
+                foreach (var plan in NewestFiles(launchDirectory, $"launch-{instance.Id}-*.json", 5))
+                {
+                    entries += AddFile(archive, $"launch/{Path.GetFileName(plan)}", plan);
+                }
+
                 foreach (var log in NewestFiles(paths.LogsDirectory, "ecl-*.log", 3))
                 {
                     entries += AddFile(archive, $"launcher-logs/{Path.GetFileName(log)}", log);

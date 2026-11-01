@@ -19,7 +19,8 @@ public sealed record JavaPlatformIssue(
     long? LimitMb = null);
 
 /// <summary>
-/// 32/64 位与内存需求校验。只产生警告，不阻止用户启动；真正的 Java 兼容性仍由启动流水线决定。
+/// 平台与内存诊断。32 位 Java 的拒绝由选择器和启动步骤负责；
+/// 这里保留可解释的平台/内存提示，避免把架构禁止伪装成普通警告。
 /// </summary>
 public static class JavaPlatformAdvisor
 {
@@ -37,17 +38,19 @@ public static class JavaPlatformAdvisor
         var issues = new List<JavaPlatformIssue>();
         var osArch = osArchitecture ?? RuntimeInformation.OSArchitecture;
         var javaArch = runtime.Architecture;
+        var java32 = runtime.IsKnown32Bit;
+        var java64 = runtime.Is64Bit;
 
         var os64 = osArch is Architecture.X64 or Architecture.Arm64;
         var os32 = osArch is Architecture.X86 or Architecture.Arm;
         var osArm64 = osArch == Architecture.Arm64;
 
-        if (Is32Bit(javaArch) && os64)
+        if (java32 && os64)
         {
             issues.Add(new JavaPlatformIssue(JavaPlatformIssueKind.Java32BitOn64BitOs));
         }
 
-        if (Is64Bit(javaArch) && os32)
+        if (java64 && os32)
         {
             issues.Add(new JavaPlatformIssue(JavaPlatformIssueKind.Java64BitOn32BitOs));
         }
@@ -57,7 +60,7 @@ public static class JavaPlatformAdvisor
             issues.Add(new JavaPlatformIssue(JavaPlatformIssueKind.X64JavaOnArm64Os));
         }
 
-        if (Is32Bit(javaArch) && memoryMb > 1024)
+        if (java32 && memoryMb > 1024)
         {
             issues.Add(new JavaPlatformIssue(
                 JavaPlatformIssueKind.MemoryTooHighFor32BitJava,
@@ -90,34 +93,9 @@ public static class JavaPlatformAdvisor
         }
     }
 
-    public static bool Is32Bit(string? architecture)
-    {
-        if (string.IsNullOrWhiteSpace(architecture))
-        {
-            return false;
-        }
+    public static bool Is32Bit(string? architecture) => JavaArchitecture.Is32Bit(architecture);
 
-        var value = architecture.ToLowerInvariant();
-        return value.Contains("32", StringComparison.Ordinal) ||
-               value.Contains("i386", StringComparison.Ordinal) ||
-               value.Contains("i686", StringComparison.Ordinal) ||
-               (value.Contains("x86", StringComparison.Ordinal) && !value.Contains("64", StringComparison.Ordinal)) ||
-               (value.Contains("arm", StringComparison.Ordinal) &&
-                !value.Contains("64", StringComparison.Ordinal) &&
-                !value.Contains("aarch64", StringComparison.Ordinal));
-    }
-
-    public static bool Is64Bit(string? architecture)
-    {
-        if (string.IsNullOrWhiteSpace(architecture))
-        {
-            return false;
-        }
-
-        var value = architecture.ToLowerInvariant();
-        return value.Contains("64", StringComparison.Ordinal) ||
-               value.Contains("aarch64", StringComparison.Ordinal);
-    }
+    public static bool Is64Bit(string? architecture) => JavaArchitecture.Is64Bit(architecture);
 
     public static bool IsX64(string? architecture)
     {
