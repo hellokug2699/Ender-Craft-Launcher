@@ -60,21 +60,23 @@ public static class WorkspaceRecommender
             }
         }
 
-        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        if (!string.IsNullOrWhiteSpace(documents))
+        // 只有在没有合适的非系统固定磁盘时，才把文档目录作为可见回退建议。
+        // 回退同样只是建议，必须由用户确认，绝不静默采用。
+        if (suggestions.Count == 0)
         {
-            var candidate = Path.Combine(documents, GamesFolderName, WorkspaceFolderName);
-            if (seen.Add(candidate))
+            var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            if (!string.IsNullOrWhiteSpace(documents))
             {
-                suggestions.Add(new WorkspaceSuggestion(
-                    candidate,
-                    "workspace.reason.documentsFallback",
-                    suggestions.Count == 0));
+                var candidate = Path.Combine(documents, GamesFolderName, WorkspaceFolderName);
+                if (seen.Add(candidate))
+                {
+                    suggestions.Add(new WorkspaceSuggestion(candidate, "workspace.reason.documentsFallback", true));
+                }
             }
         }
 
-        // 极端情况下（无文档目录）给出用户数据根目录之外的明确占位建议会让用户困惑，
-        // 因此宁可只返回空列表，由 UI 要求用户显式选择。
+        // 极端情况下（无文档目录）返回空列表，由 UI 要求用户显式选择，
+        // 而不是给出用户数据目录等不合适的位置。
         return suggestions;
     }
 

@@ -9,6 +9,7 @@ using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Core.Localization;
+using Ecl.Core.Storage;
 using Ecl.Deployment;
 using Ecl.Java;
 using Ecl.Minecraft.CurseForge;
@@ -46,6 +47,7 @@ internal sealed class CliApplication
         return command switch
         {
             "version" => PrintVersion(),
+            "workspace" => await WorkspaceCommandAsync(rest).ConfigureAwait(false),
             "instance" => await InstanceCommandAsync(rest).ConfigureAwait(false),
             "install" => await InstallCommandAsync(rest).ConfigureAwait(false),
             "launch" => await LaunchCommandAsync(rest).ConfigureAwait(false),
@@ -94,6 +96,11 @@ internal sealed class CliApplication
         {
             case "create":
                 {
+                    if (await RequireManagedWorkspaceAsync().ConfigureAwait(false) is { } workspaceError)
+                    {
+                        return workspaceError;
+                    }
+
                     var name = args.ElementAtOrDefault(1);
                     var version = _commandLine.GetValue("version");
                     if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(version))
@@ -510,6 +517,11 @@ internal sealed class CliApplication
             return UsageError("install 需要实例 ID。");
         }
 
+        if (await RequireManagedWorkspaceAsync().ConfigureAwait(false) is { } workspaceError)
+        {
+            return workspaceError;
+        }
+
         var installService = _provider.GetRequiredService<IVersionInstallService>();
         var localizer = _provider.GetRequiredService<ILocalizer>();
 
@@ -541,6 +553,11 @@ internal sealed class CliApplication
         if (string.IsNullOrWhiteSpace(instanceId))
         {
             return UsageError("launch 需要实例 ID。");
+        }
+
+        if (await RequireManagedWorkspaceAsync().ConfigureAwait(false) is { } launchWorkspaceError)
+        {
+            return launchWorkspaceError;
         }
 
         var dryRun = _commandLine.HasFlag("dry-run");
@@ -1520,6 +1537,11 @@ internal sealed class CliApplication
 
         if (subCommand == "import")
         {
+            if (await RequireManagedWorkspaceAsync().ConfigureAwait(false) is { } workspaceError)
+            {
+                return workspaceError;
+            }
+
             using var operations = TrackOperations();
             var result = await service.ImportAsync(instanceId, path).ConfigureAwait(false);
             if (!result.IsSuccess)
@@ -2122,6 +2144,234 @@ internal sealed class CliApplication
             }
         }
     }
+
+    /// <summary>
+    /// 工作区命令：选择、校验、建议、旧布局沿用。所有会写入工作区的命令都必须先确认
+    /// 工作区（ADR 0018），避免在用户不知情时把实例写进数据目录。
+    /// </summary>
+    private async Task<int> WorkspaceCommandAsync(string[] args)
+    {
+        var workspace = _provider.GetRequiredService<IWorkspaceService>();
+        var paths = _provider.GetRequiredService<IAppPaths>();
+        var json = _commandLine.HasFlag("json");
+        var subCommand = args.Length == 0 ? "status" : args[0].ToLowerInvariant();
+
+        switch (subCommand)
+        {
+            case "status":
+                {
+                    var primary = workspace.Primary;
+                    WorkspacePathCheck? check = null;
+                    if (primary is not null)
+                    {
+                        var validation = await workspace.ValidatePrimaryAsync().ConfigureAwait(false);
+                        check = validation.Value;
+                    }
+
+                    if (json)
+                    {
+                        WriteJson(new
+                        {
+                            configured = workspace.IsConfigured,
+                            primary,
+                            check,
+                            roots = workspace.Roots,
+                            storage = workspace.GetStorageLayout(),
+                        });
+                        return 0;
+                    }
+
+                    Console.WriteLine($"已配置      : {(workspace.IsConfigured ? "是" : "否")}");
+                    Console.WriteLine($"工作区      : {primary?.Path ?? "（未设置）"}");
+                    if (check is not null)
+                    {
+                        Console.WriteLine($"状态        : {check.Status}");
+                        if (check.FreeBytes is { } free)
+                        {
+                            Console.WriteLine($"可用空间    : {FormatBytes(free)}");
+                        }
+
+                        if (check.ProblemMessage is not null)
+                        {
+                            Console.WriteLine($"问题        : {check.ProblemMessage}");
+                        }
+
+                        foreach (var warning in check.WarningCodes)
+                        {
+                            Console.WriteLine($"警告        : {warning}");
+                        }
+                    }
+
+                    Console.WriteLine($"数据目录    : {paths.Root}");
+                    Console.WriteLine($"运行时目录  : {paths.RuntimesDirectory}");
+                    Console.WriteLine($"已登记根目录: {workspace.Roots.Count}");
+                    return 0;
+                }
+
+            case "set":
+                {
+                    var path = args.ElementAtOrDefault(1) ?? _commandLine.GetValue("path");
+                    if (string.IsNullOrWhiteSpace(path))
+                    {
+                        return UsageError("workspace set 需要目标目录。");
+                    }
+
+                    var result = await workspace.InitializeAsync(path).ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    var root = result.Value!;
+                    var check = workspace.Check(root.Path, createIfMissing: false);
+                    if (json)
+                    {
+                        WriteJson(new { workspace = root, check });
+                        return 0;
+                    }
+
+                    Console.WriteLine($"已设置 Minecraft 工作区：{root.Path}");
+                    Console.WriteLine("之后创建实例、安装游戏与下载内容都会写入该目录。");
+                    PrintWarnings(check);
+                    return 0;
+                }
+
+            case "validate":
+                {
+                    var result = await workspace.ValidatePrimaryAsync().ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    var check = result.Value!;
+                    if (json)
+                    {
+                        WriteJson(check);
+                        return check.IsUsable ? 0 : 1;
+                    }
+
+                    Console.WriteLine($"路径  : {check.Path}");
+                    Console.WriteLine($"状态  : {check.Status}");
+                    Console.WriteLine($"可用  : {(check.IsUsable ? "是" : "否")}");
+                    if (check.ProblemMessage is not null)
+                    {
+                        Console.WriteLine($"问题  : {check.ProblemMessage}");
+                    }
+
+                    PrintWarnings(check);
+                    return check.IsUsable ? 0 : 1;
+                }
+
+            case "suggest":
+                {
+                    var suggestions = workspace.Suggest();
+                    if (json)
+                    {
+                        WriteJson(suggestions);
+                        return 0;
+                    }
+
+                    if (suggestions.Count == 0)
+                    {
+                        Console.WriteLine("没有可自动推荐的目录，请显式指定工作区路径。");
+                        return 0;
+                    }
+
+                    foreach (var suggestion in suggestions)
+                    {
+                        Console.WriteLine($"{(suggestion.IsRecommended ? "*" : " ")} {suggestion.Path}  ({suggestion.ReasonCode})");
+                    }
+
+                    return 0;
+                }
+
+            case "adopt-legacy":
+                {
+                    var result = await workspace.AdoptLegacyAsync().ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    Console.WriteLine($"已继续使用旧版数据目录：{result.Value!.Path}");
+                    Console.WriteLine("该位置位于启动器数据目录中，建议稍后迁移到用户可见的数据盘。");
+                    return 0;
+                }
+
+            case "skip":
+                {
+                    await workspace.SkipOnboardingAsync().ConfigureAwait(false);
+                    Console.WriteLine("已跳过工作区配置。创建实例或下载前仍会要求确认工作区。");
+                    return 0;
+                }
+
+            case "roots":
+                {
+                    if (json)
+                    {
+                        WriteJson(workspace.Roots);
+                        return 0;
+                    }
+
+                    foreach (var root in workspace.Roots)
+                    {
+                        Console.WriteLine($"{root.Id}  {root.Kind,-8}  {root.Status,-10}  {root.Path}");
+                    }
+
+                    return 0;
+                }
+
+            default:
+                return UsageError("workspace 支持 status、set、validate、suggest、adopt-legacy、skip、roots。");
+        }
+    }
+
+    /// <summary>会写入工作区的命令必须先通过该检查；未配置时给出可执行的第一步。</summary>
+    private async Task<int?> RequireManagedWorkspaceAsync()
+    {
+        var workspace = _provider.GetRequiredService<IWorkspaceService>();
+        if (!workspace.IsConfigured)
+        {
+            Console.Error.WriteLine("[workspace.not_configured] 尚未确认 Minecraft 工作区。");
+            Console.Error.WriteLine("请先运行：ecl workspace set <目录>");
+            return 1;
+        }
+
+        var result = await workspace.ValidatePrimaryAsync().ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return WriteError(result.Error);
+        }
+
+        var check = result.Value!;
+        if (!check.IsUsable)
+        {
+            Console.Error.WriteLine($"[{check.ProblemCode ?? "workspace.unavailable"}] {check.ProblemMessage}");
+            Console.Error.WriteLine("请运行 ecl workspace set <目录> 重新定位工作区。");
+            return 1;
+        }
+
+        return null;
+    }
+
+    private static void WriteJson<T>(T value) =>
+        Console.WriteLine(JsonSerializer.Serialize(value, EclJson.Indented));
+
+    private static void PrintWarnings(WorkspacePathCheck check)
+    {
+        foreach (var warning in check.WarningCodes)
+        {
+            Console.WriteLine($"警告：{warning}");
+        }
+    }
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        >= 1024L * 1024 * 1024 => $"{bytes / (1024d * 1024 * 1024):F1} GB",
+        >= 1024L * 1024 => $"{bytes / (1024d * 1024):F1} MB",
+        _ => $"{bytes} B",
+    };
 
     private int UsageError(string message)
     {

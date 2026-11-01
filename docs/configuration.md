@@ -61,7 +61,7 @@ internal sealed class MyOptionsProvider : IOptionProvider
 - 影响所有实例。
 - 全局选项不能写入实例作用域。
 
-`launcher.minecraftDirectory`（实例下载位置）是启动早期读取的全局选项：它把实例与游戏文件的根目录从默认数据目录切换到任意 `.minecraft` 目录。修改后标记为需要重启；已有实例不会自动迁移。启动时还会读取环境变量 `ECL_GAME_DIR` 作为相同语义的覆盖（优先级高于设置）。
+Minecraft 工作区不再由 `launcher.minecraftDirectory` 决定：它改由 `config/workspace.json` 管理，首次启动时必须由用户确认（详见 [workspace.md](workspace.md)）。旧键仅作为一次性迁移输入保留：存在显式值且不等于数据目录时，会迁移为主工作区；之后修改该键不再生效，设置页也不再显示它。环境变量 `ECL_GAME_DIR` 仍可用于测试与高级隔离。
 
 ### Instance
 

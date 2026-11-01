@@ -1,0 +1,119 @@
+<Window x:Class="Ecl.App.Views.WorkspaceSetupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:Ecl.App.Localization"
+        Title="{loc:Loc Key=workspace.setup.title}"
+        Width="800"
+        Height="660"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BackgroundBrush}">
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock Text="{loc:Loc Key=workspace.setup.title}" Style="{StaticResource TitleText}" />
+            <TextBlock Text="{loc:Loc Key=workspace.setup.description}"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       Margin="0,10,0,0" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,20,0,0">
+            <StackPanel>
+                <Border x:Name="LegacyCard"
+                        Style="{StaticResource Card}"
+                        Visibility="Collapsed"
+                        Margin="0,0,0,12"
+                        BorderBrush="{DynamicResource AccentBorderBrush}">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Loc Key=workspace.setup.legacyTitle}"
+                                   Style="{StaticResource EmphasisText}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock x:Name="LegacyPathText"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Margin="0,6,0,10" />
+                        <Button Content="{loc:Loc Key=workspace.setup.legacyAdopt}"
+                                Style="{StaticResource GhostButton}"
+                                HorizontalAlignment="Left"
+                                Click="AdoptLegacy_Click" />
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Loc Key=workspace.setup.suggestions}"
+                                   Style="{StaticResource LabelText}" />
+                        <ListBox x:Name="SuggestionsList"
+                                 Margin="0,8,0,0"
+                                 Background="{DynamicResource SurfaceAltBrush}"
+                                 BorderBrush="{DynamicResource BorderBrush}"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 SelectionChanged="Suggestions_SelectionChanged">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="2,4">
+                                        <TextBlock Text="{Binding Path}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Reason}"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource TextMutedBrush}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Loc Key=workspace.setup.path}" Style="{StaticResource LabelText}" />
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="PathBox"
+                                     FontSize="12"
+                                     Padding="8,6"
+                                     TextChanged="PathBox_TextChanged" />
+                            <Button Grid.Column="1"
+                                    Content="{loc:Loc Key=workspace.setup.browse}"
+                                    Style="{StaticResource GhostButton}"
+                                    Margin="8,0,0,0"
+                                    Click="Browse_Click" />
+                        </Grid>
+                        <TextBlock x:Name="StatusText"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Margin="0,10,0,0" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid Grid.Row="2" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button Content="{loc:Loc Key=workspace.setup.later}"
+                    Style="{StaticResource GhostButton}"
+                    HorizontalAlignment="Left"
+                    Click="Later_Click" />
+            <Button x:Name="AcceptButton"
+                    Grid.Column="1"
+                    Content="{loc:Loc Key=workspace.setup.accept}"
+                    Style="{StaticResource PrimaryButton}"
+                    MinWidth="140"
+                    Click="Accept_Click" />
+        </Grid>
+    </Grid>
+</Window>

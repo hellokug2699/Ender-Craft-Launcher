@@ -38,6 +38,8 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             DescriptionKey = "option.launcher.minecraftDirectory.desc",
             Default = string.Empty,
             RequiresRestart = true,
+            // 工作区由专用页面（workspace.json）管理；旧键只作为一次性迁移输入保留。
+            IsHidden = true,
             Order = 20,
             Validate = path => string.IsNullOrWhiteSpace(path) || Path.IsPathFullyQualified(path),
         };

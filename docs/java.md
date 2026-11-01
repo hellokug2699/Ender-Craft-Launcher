@@ -136,7 +136,7 @@ Minecraft 启动运行时不支持 32 位 Java。ECL 在发现阶段记录位数
 ## 7. 数据目录
 
 ```text
-<data>/java/
+<data>/Runtimes/
   java-runtime-delta/          # Mojang 组件名
     bin/java(.exe)
     release
@@ -144,11 +144,12 @@ Minecraft 启动运行时不支持 32 位 Java。ECL 在发现阶段记录位数
   adoptium-java-runtime-delta/ # 第三方运行时：<provider>-<component>
   zulu-java-21/
   liberica-java-21/
+<data>/java/                    # 旧版目录：只读兼容，不再写入
 <data>/cache/java/
   mod-requirements.json        # Mod class 版本缓存（路径 + 长度 + 修改时间）
 ```
 
-`JavaLocator` 会扫描 `<data>/java`（深度 2），因此下载完成后无需手工导入。它还会扫描全局设置 `java.defaultPath` 指定的目录：如果该目录是 `D:\JavaRuntimes` 这类父目录，会在有限深度内递归查找 `bin/java(.exe)`，并跳过符号链接，避免误选磁盘根目录时长时间扫描。
+`JavaLocator` 会扫描 `<data>/Runtimes`（深度 2），并继续识别旧版 `<data>/java` 中已有的运行时（不迁移、不删除），因此下载完成后无需手工导入。它还会扫描全局设置 `java.defaultPath` 指定的目录：如果该目录是 `<盘符>:\JavaRuntimes` 这类父目录，会在有限深度内递归查找 `bin/java(.exe)`，并跳过符号链接，避免误选磁盘根目录时长时间扫描。
 
 Mod class 版本扫描有界（最多 512 个 jar、每个 jar 最多 20000 个 class、并发 4）并可取消；结果按文件长度/修改时间缓存，单个损坏 jar 不会中断其它候选。
 

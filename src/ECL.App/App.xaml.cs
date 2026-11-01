@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using Ecl.App.Localization;
 using Ecl.App.Services;
 using Ecl.App.ViewModels;
+using Ecl.App.Views;
 using Ecl.Auth;
 using Ecl.Configuration;
 using Ecl.Configuration.Settings;
@@ -73,6 +74,14 @@ public partial class App : Application
             _services = services.BuildServiceProvider();
             _logger = _services.GetRequiredService<ILogger<App>>();
             DispatcherUnhandledException += OnDispatcherUnhandledException;
+
+            // ADR 0018：首次启动必须先确认 Minecraft 工作区，之后才允许创建实例或下载。
+            var workspace = _services.GetRequiredService<IWorkspaceService>();
+            if (!workspace.IsConfigured)
+            {
+                var setup = new WorkspaceSetupWindow(workspace, _services.GetRequiredService<ILocalizer>());
+                setup.ShowDialog();
+            }
 
             var window = _services.GetRequiredService<MainWindow>();
             MainWindow = window;

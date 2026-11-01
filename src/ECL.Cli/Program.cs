@@ -65,6 +65,13 @@ internal static class Program
           update check [--feed <URL>] [--trust <文件>] [--install-root <目录>] [--json]
                                           按 launcher.checkUpdates / launcher.updateChannel 检查更新
           instance list [--json]          列出实例
+          workspace status [--json]       查看工作区配置、可用性与存储边界
+          workspace set <目录>            确认 Minecraft 工作区（实例与游戏文件所在位置）
+          workspace validate [--json]     校验当前工作区是否仍可用
+          workspace suggest [--json]      推荐可见的数据盘目录
+          workspace adopt-legacy          继续使用旧版数据目录（仅在确有旧数据时可用）
+          workspace skip                  暂不配置；创建/下载前仍会要求确认
+          workspace roots [--json]        列出已登记的工作区根目录
           instance create <名称> --version <版本> [--loader <加载器>] [--loader-version <版本>]
                            [--fabric-api-version <版本>] [--optifine-version <type:patch>]
                                           创建实例；加载器支持 vanilla、fabric、forge、neoforge、cleanroom
@@ -143,6 +150,7 @@ internal static class Program
           --help                          显示帮助
 
         示例:
+          ecl workspace set "<可见数据盘目录，例如 <盘符>:\Games\ECL>"
           ecl account add-offline Steve --default
           ecl instance create "Survival" --version 1.21.1
           ecl install survival-a1b2c3
