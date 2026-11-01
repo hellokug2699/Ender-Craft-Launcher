@@ -52,7 +52,6 @@ public sealed partial class InstancesViewModel : ObservableObject
     private bool _initialized;
     private bool _suppressAccountSelection;
     private bool _suppressJavaSelection;
-    private bool _suppressJavaCheck;
     private bool _suppressVersionReload;
     private IReadOnlyList<MinecraftGameVersion> _allVersions = [];
 
@@ -172,9 +171,6 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     [ObservableProperty]
     private string _javaStatus = string.Empty;
-
-    [ObservableProperty]
-    private bool _disableJavaCompatibilityCheck;
 
     [ObservableProperty]
     private string _instanceJvmArguments = string.Empty;
@@ -1720,26 +1716,6 @@ public sealed partial class InstancesViewModel : ObservableObject
         _ = UpdateJavaStatusAsync();
     }
 
-    partial void OnDisableJavaCompatibilityCheckChanged(bool value)
-    {
-        if (_suppressJavaCheck || SelectedInstance is null)
-        {
-            return;
-        }
-
-        _settings.TrySetRaw(
-            "instance.java.disableCompatibilityCheck",
-            value ? "true" : "false",
-            SelectedInstance.Model.Id,
-            out var error);
-
-        if (error is not null)
-        {
-            StatusMessage = error;
-        }
-
-        _ = UpdateJavaStatusAsync();
-    }
 
     partial void OnSelectedAccountChanged(AccountItemViewModel? value)
     {
@@ -1815,8 +1791,7 @@ public sealed partial class InstancesViewModel : ObservableObject
             return false;
         }
 
-        if (!selection.CompatibilityCheckEnabled ||
-            selection.Compatibility is null ||
+        if (selection.Compatibility is null ||
             selection.Compatibility.IsCompatible)
         {
             return true;
@@ -1864,9 +1839,6 @@ public sealed partial class InstancesViewModel : ObservableObject
             SelectConfiguredJavaOption(configured);
             _suppressJavaSelection = false;
 
-            _suppressJavaCheck = true;
-            DisableJavaCompatibilityCheck = _settings.Get<bool>("instance.java.disableCompatibilityCheck", instance.Id);
-            _suppressJavaCheck = false;
 
             await UpdateJavaStatusAsync().ConfigureAwait(true);
         }
@@ -1898,9 +1870,6 @@ public sealed partial class InstancesViewModel : ObservableObject
                 .ResolveAsync(instance, versionResult.Value)
                 .ConfigureAwait(true);
 
-            _suppressJavaCheck = true;
-            DisableJavaCompatibilityCheck = !selection.CompatibilityCheckEnabled;
-            _suppressJavaCheck = false;
 
             if (selection.Runtime is null)
             {
@@ -1908,12 +1877,6 @@ public sealed partial class InstancesViewModel : ObservableObject
                 return;
             }
 
-            if (!selection.CompatibilityCheckEnabled)
-            {
-                JavaStatus = WithWarnings(
-                    _localizer.Get("instances.java.checkDisabled", selection.Runtime.DisplayName));
-                return;
-            }
 
             if (selection.Compatibility is null || selection.Compatibility.IsCompatible)
             {
