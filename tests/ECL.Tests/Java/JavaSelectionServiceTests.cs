@@ -48,10 +48,6 @@ public sealed class JavaSelectionServiceTests
         Assert.True(explicitSelection.IsExplicitOverride);
         Assert.False(explicitSelection.IsCompatibilityWarningAcknowledged);
 
-        var prompt = provider.GetRequiredService<ILocalizer>().Get(
-            "instances.java.incompatiblePrompt",
-            java8.Version!.Raw,
-            explicitSelection.Requirement!.Describe());
         var acknowledgementToken = JavaCompatibilityAcknowledgement.Create(java8, explicitSelection.Requirement!);
         Assert.True(settings.TrySetRaw(
             "launcher.java.incompatiblePromptAcknowledged",
@@ -78,7 +74,7 @@ public sealed class JavaSelectionServiceTests
             changedPathError);
         Assert.True(changedJavaSettings.TrySetRaw(
             "launcher.java.incompatiblePromptAcknowledged",
-            JavaCompatibilityAcknowledgement.Create(java8, changedJavaSelection.Requirement!),
+            JavaCompatibilityAcknowledgement.Create(java8, explicitSelection.Requirement!),
             null,
             out var oldAckError), oldAckError);
         var changedJavaSelection = await changedJavaProvider.GetRequiredService<IJavaSelectionService>()
