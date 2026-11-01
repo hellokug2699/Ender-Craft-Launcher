@@ -50,9 +50,7 @@ internal sealed class ResolveJavaStep(IJavaSelectionService selection, ILocalize
         {
             var required = result.Requirement?.Describe() ?? "Java";
             var message = localizer.Get(
-                result.IsExplicitOverride
-                    ? "launch.java.incompatibleExplicit"
-                    : "launch.java.incompatible",
+                "launch.java.incompatible",
                 result.Runtime.Version?.Raw ?? result.Runtime.DisplayName,
                 required);
 
@@ -62,10 +60,14 @@ internal sealed class ResolveJavaStep(IJavaSelectionService selection, ILocalize
             {
                 if (result.IsCompatibilityWarningAcknowledged)
                 {
+                    var acknowledgedMessage = localizer.Get(
+                        "launch.java.found",
+                        result.Runtime.DisplayName,
+                        context.MemoryMb);
                     return new LaunchStepResult(
                         Id,
-                        LaunchStepStatus.Success,
-                        localizer.Get("launch.java.incompatibleAcknowledged", result.Runtime.DisplayName));
+                        result.Warnings.Count > 0 ? LaunchStepStatus.Warning : LaunchStepStatus.Success,
+                        AppendWarnings(acknowledgedMessage, result.Warnings));
                 }
 
                 return new LaunchStepResult(
