@@ -29,6 +29,9 @@
             <DataTemplate DataType="{x:Type vm:InstanceDetailPageViewModel}">
                 <views:InstanceDetailView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:JavaManagementViewModel}">
+                <views:JavaManagementView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
                 <views:SettingsView />
             </DataTemplate>
