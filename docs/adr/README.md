@@ -62,6 +62,4 @@
 
 状态应以各 ADR 文件头部为准。本表仅作为目录导航，更新 ADR 状态时应同步更新本表。
 
-| [0017 图形化首次安装程序](0017-graphical-first-run-installer.md) | In Progress | 首次安装 GUI 与 Bootstrapper 部署边界 |
-
-| [0018 Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md) | Accepted | 工作区选择、外部实例与迁移数据保护 |
+| ADR | Status | 范围 |\n|---|---|---|\n| [0017 图形化首次安装程序](0017-graphical-first-run-installer.md) | In Progress | 首次安装 GUI 与 Bootstrapper 部署边界 |\n| [0018 Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md) | Accepted | 工作区选择、外部实例与迁移数据保护 |\n
