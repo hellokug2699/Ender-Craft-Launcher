@@ -56,6 +56,10 @@ public static class JavaCompatibility
 
 public static class JavaSelector
 {
+    /// <summary>
+    /// 按调用方提供的优先级选择第一个兼容运行时。
+    /// 全局 Java 设置因此表达“优先级”，而不是“强制指定某个版本”。
+    /// </summary>
     public static JavaRuntime? Select(IReadOnlyList<JavaRuntime> runtimes, JavaRequirement? requirement)
     {
         if (runtimes.Count == 0)
@@ -65,26 +69,17 @@ public static class JavaSelector
 
         if (requirement is null)
         {
-            return runtimes
-                .OrderByDescending(runtime => runtime.Version)
-                .FirstOrDefault();
+            return runtimes[0];
         }
 
-        var compatible = runtimes
-            .Where(runtime => requirement.IsCompatible(runtime.Version))
-            .ToArray();
-
-        if (compatible.Length == 0)
+        foreach (var runtime in runtimes)
         {
-            return null;
+            if (requirement.IsCompatible(runtime.Version))
+            {
+                return runtime;
+            }
         }
 
-        // 优先选择与最低要求相同的主版本，避免不必要的“越新越好”。
-        return compatible
-            .OrderBy(runtime => runtime.Version!.Major == requirement.MinimumMajor ? 0 : 1)
-            .ThenBy(runtime => runtime.Version!.Major)
-            .ThenByDescending(runtime => runtime.Version!.Minor)
-            .ThenByDescending(runtime => runtime.Version!.Patch)
-            .First();
+        return null;
     }
 }
