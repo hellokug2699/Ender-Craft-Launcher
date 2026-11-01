@@ -40,12 +40,16 @@ ECL 同时维护 `main`、`dev`、`nightly` 三条长期分支。此前版本号
 
 不得在 UI、打包脚本或更新器中另行拼接独立版本字符串。预发布后缀必须保留，版本比较必须遵循 SemVer 预发布排序规则。
 
-### 4. 发布边界
+### 4. 构建、发布与更新源分离
 
-- `dev` 与 `nightly` 分支推送生成对应频道的预发布构建。
-- `main` 只接受 `vMAJOR.MINOR.PATCH` 标签作为正式发布入口；普通 push 不得自动发布正式版。
-- 发布工作流必须拒绝未知分支、格式错误版本和频道不匹配的标签。
-- 安装包、更新 Manifest 和 GitHub Release 元数据必须一致；发布前应验证所有预期文件存在。
+- **Build** 是一次 CI 执行及其可追溯产物；**Release** 是面向用户的发布记录；**Channel** 是客户端选择更新源的策略。三者不得混为一谈。
+- `dev` 与 `nightly` 分支的每次推送都执行签名构建，并上传有期限的 Actions Artifact，供高级用户下载指定构建。
+- `dev` 与 `nightly` 不为每次提交创建独立 GitHub Release；每个频道只维护一个滚动 Release，固定 Tag 分别为 `dev`、`nightly`。
+- `main` 只接受 `vMAJOR.MINOR.PATCH` 标签作为正式版本发布入口；正式版本 Release 不可变，同时维护唯一的 `main` 滚动 Release 供自动更新客户端读取。
+- 滚动频道资产更新完成后才移动对应 Tag；清理旧版本资产必须发生在新 Manifest 与签名发布后，避免遗留资产无限累积。
+- 分支构建按队列执行，只有仍对应当前分支 HEAD 的构建可以更新滚动源；过期构建可以保留为短期 Actions Artifact，但不得覆盖较新的频道版本。
+- `main`、`dev`、`nightly` 滚动源必须分别提供 `update-manifest.json`、`update-manifest.sig` 与 Manifest 指定的完整包。
+- 发布工作流必须拒绝未知分支、格式错误版本和频道不匹配的标签。安装包、更新 Manifest 和 Release 元数据必须一致；发布前应验证所有预期文件存在。
 
 ## 后果
 
@@ -61,7 +65,7 @@ ECL 同时维护 `main`、`dev`、`nightly` 三条长期分支。此前版本号
 - 发布工作流需要维护版本注入、签名密钥和 Release 权限。
 - 修改 `VersionPrefix` 会影响后续所有分支构建，版本升级应通过代码审查。
 - GitHub Actions 环境审批、Secrets 和仓库权限属于部署前置条件，不应通过跳过签名或降低安全要求来规避。
-- 频道 latest Release 与不可变构建历史应区分；不得让不同构建静默覆盖同一个不可追溯的版本资产。
+- 滚动 Release 只保留最新频道资产；指定历史构建通过短期 Actions Artifact 获取，Artifact 过期后不保证继续提供。正式版本仍保留不可变 Release。
 
 ## 验收标准
 
@@ -71,3 +75,4 @@ ECL 同时维护 `main`、`dev`、`nightly` 三条长期分支。此前版本号
 4. 预发布版本比较遵循 SemVer。
 5. 未配置签名密钥、签名公钥不匹配、缺失资产或频道错误时，发布必须失败关闭。
 6. CI 与 Release 工作流均有可检查的成功结果。
+7. Nightly 每次提交不会增加独立 Release 条目；滚动 Tag、Manifest 与包必须指向同一构建。
