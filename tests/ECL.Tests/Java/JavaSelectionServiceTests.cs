@@ -60,6 +60,37 @@ public sealed class JavaSelectionServiceTests
 
         var acknowledged = await selection.ResolveAsync(instance, version);
         Assert.True(acknowledged.IsCompatibilityWarningAcknowledged);
+
+        // 风险组合改变后必须重新确认：切换到另一条 Java 路径。
+        var java11 = Runtime(environment, "11.0.27");
+        fakeLocator = new FakeJavaLocator([java8, java11, java17]);
+        // 本测试中的 locator 由 DI 单例提供，改用独立实例验证不同 Java 的确认状态。
+        await using var changedJavaProvider = environment.CreateServices(services =>
+            services.AddSingleton<IJavaLocator>(fakeLocator));
+        var changedJavaInstance = await CreateVersionAsync(
+            changedJavaProvider, environment, "1.20.1");
+        var changedJavaVersion = (await changedJavaProvider.GetRequiredService<IVersionResolver>()
+            .ResolveAsync(changedJavaInstance.VersionId)).Value!;
+        var changedJavaSettings = changedJavaProvider.GetRequiredService<ISettingsService>();
+        Assert.True(changedJavaSettings.TrySetRaw(
+            "instance.java.executablePath", java11.ExecutablePath, changedJavaInstance.Id, out var changedPathError),
+            changedPathError);
+        Assert.True(changedJavaSettings.TrySetRaw(
+            "launcher.java.incompatiblePromptAcknowledged", prompt, null, out var oldAckError), oldAckError);
+        var changedJavaSelection = await changedJavaProvider.GetRequiredService<IJavaSelectionService>()
+            .ResolveAsync(changedJavaInstance, changedJavaVersion);
+        Assert.False(changedJavaSelection.IsCompatibilityWarningAcknowledged);
+
+        // 同一 Java 但最低版本要求变化，也必须重新确认。
+        var newerInstance = await CreateVersionAsync(changedJavaProvider, environment, "1.21.1", javaMajor: 21);
+        var newerVersion = (await changedJavaProvider.GetRequiredService<IVersionResolver>()
+            .ResolveAsync(newerInstance.VersionId)).Value!;
+        Assert.True(changedJavaSettings.TrySetRaw(
+            "instance.java.executablePath", java8.ExecutablePath, newerInstance.Id, out var newerPathError),
+            newerPathError);
+        var newerSelection = await changedJavaProvider.GetRequiredService<IJavaSelectionService>()
+            .ResolveAsync(newerInstance, newerVersion);
+        Assert.False(newerSelection.IsCompatibilityWarningAcknowledged);
     }
 
     [Fact]
