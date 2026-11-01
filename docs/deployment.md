@@ -110,10 +110,15 @@ ECL.Bootstrapper.exe --install-root "C:\Program Files\ECL" --apply `
 
 # 回滚到上一版本
 ECL.Bootstrapper.exe --install-root "C:\Program Files\ECL" --rollback --deploy-only
+
+# 清理异常中断留下的 staging（不触碰 current 指向的版本）
+ECL.Bootstrapper.exe --install-root "C:\Program Files\ECL" --cleanup
 ```
 
 退出码：`0` 成功；`2` 参数错误；`3` 信任/签名/公钥错误；`4` 部署失败；`5` 启动失败。
-引导程序使用 `.update.lock` 防止并发更新，日志写入 `bootstrapper.log`。
+引导程序使用 `.update.lock` 防止并发更新，日志写入 `bootstrapper.log`；`--apply`、`--rollback` 与 `--cleanup` 都在锁内执行。
+部署前会自动清理未完成的 `staging/`，`versions/` 与 `current.json` 不受影响。
+安装介质中的 Bootstrapper 以单文件自包含方式发布，首次安装不要求目标机器预装 .NET 运行时。
 
 ## 6. 设置与检查
 
@@ -209,7 +214,17 @@ git checkout <commit-or-tag>
 - 端到端：用测试密钥签名 `0.8.0-e2e` → Bootstrapper `--apply --deploy-only` 写入 `current.json` → 启动到 `versions/0.8.0-e2e/ECL.exe`；再部署 `0.8.1-e2e` → `--rollback` 回到 `0.8.0-e2e`，两次退出码均为 0。
 - 使用 Core 仓库的 `signing/update-signing.key` 与 public 仓库 `build/update-trust.json` 打包 `0.8.2-prodtest`，Bootstrapper 校验签名并完成部署，退出码 0；私钥与公钥指纹一致。
 - GitHub Actions 实际 Release 测试（run `41220030330`）：通过 tag `v0.8.0-dev.1` 触发，成功生成 `v0.8.0-dev.1` 与 `beta` 两个 Release；`update-manifest.sig` 用 public 信任库验签通过，`beta` 资产 `ECL-0.8.0-dev.1-win-x64.zip` 的 GitHub digest 与 Manifest `package.sha256` 一致，job 日志未出现私钥标记。CI run `41220734282` 在 Linux 交叉路径修复后通过。
-- 未完成：全新 Windows 无 .NET SDK 的安装验收、安装器 UI、卸载、真实稳定版 Release、125%/150% 缩放下的更新 UI。
+
+2026-11-02，安装介质端到端（本地 Windows、临时安装目录）：
+
+- `pack-release.ps1` 用 Core 签名密钥打包两个版本（`0.8.1-local.1`、`0.8.2-local.1`），产出 `installer/` 介质：Installer、单文件自包含 Bootstrapper、Manifest、签名、信任库与 `ECL-package.zip`。
+- 完整程序包内包含 `ECL.LogHost.exe` 及其依赖，安装后由 Bootstrapper 启动 LogHost。
+- 静默安装 `--silent --install-root <目录>`：退出码 0；生成 `current.json`、`versions/<版本>/ECL.exe`，未创建任何 Minecraft 工作区目录。
+- 升级到第二个版本：退出码 0，`previousVersion` 正确指向旧版本，两个版本目录并存。
+- `--rollback --deploy-only`：退出码 0，`current.json` 回到旧版本，版本目录内容未修改。
+- 篡改 `update-manifest.json` 后重新安装：Bootstrapper 退出码 3、安装器退出码 4，未生成 `current.json` 或版本目录（fail-closed）。
+- `--cleanup` 与部署前自动清理只删除 `staging/`；自动化测试确认 `versions/` 与 `current.json` 不受影响。
+- 未完成：全新 Windows 无 .NET SDK、无 .NET 运行时的安装验收；卸载器；Authenticode 签名；GUI 自动化（当前 GUI 仅人工冒烟）。
 
 ## 9. 用户数据与卸载边界
 

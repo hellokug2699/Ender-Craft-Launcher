@@ -17,6 +17,7 @@
     <Content Include="../../build/update-trust.json" Link="update-trust.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\ECL.Deployment\ECL.Deployment.csproj" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 </Project>

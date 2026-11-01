@@ -59,6 +59,15 @@ try {
         $versionProperty
     if ($LASTEXITCODE -ne 0) { throw "发布 ECL.App 失败" }
 
+    # LogHost 与主程序一起部署：活动会话由独立进程持有管道。
+    dotnet publish src/ECL.LogHost/ECL.LogHost.csproj `
+        -c Release `
+        -r $Runtime `
+        --self-contained $selfContainedValue `
+        -o $publish `
+        $versionProperty
+    if ($LASTEXITCODE -ne 0) { throw "发布 ECL.LogHost 失败" }
+
     dotnet publish src/ECL.Bootstrapper/ECL.Bootstrapper.csproj `
         -c Release `
         -r $Runtime `
@@ -172,10 +181,44 @@ try {
         }
     }
 
+    # 安装介质中的 Bootstrapper 采用单文件自包含发布：介质契约只携带一个 EXE，
+    # 目标机器无需预装 .NET 运行时即可完成部署。
+    $bootstrapSingle = Join-Path $releaseRoot "bootstrapper-single"
+    New-Item -ItemType Directory -Force -Path $bootstrapSingle | Out-Null
+    dotnet publish src/ECL.Bootstrapper/ECL.Bootstrapper.csproj `
+        -c Release `
+        -r $Runtime `
+        --self-contained true `
+        -p:PublishSingleFile=true `
+        -p:IncludeNativeLibrariesForSelfExtract=true `
+        -o $bootstrapSingle `
+        $versionProperty
+    if ($LASTEXITCODE -ne 0) { throw "发布单文件 ECL.Bootstrapper 失败" }
+
+    # 首次安装介质（ADR 0017）：安装器 + Bootstrapper + 信任库 + Manifest + 签名 + 完整包。
+    $installer = Join-Path $releaseRoot "installer"
+    if (Test-Path $installer) { Remove-Item $installer -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $installer | Out-Null
+
+    dotnet publish src/ECL.Installer/ECL.Installer.csproj `
+        -c Release `
+        -r $Runtime `
+        --self-contained $selfContainedValue `
+        -o $installer `
+        $versionProperty
+    if ($LASTEXITCODE -ne 0) { throw "发布 ECL.Installer 失败" }
+
+    Copy-Item (Join-Path $bootstrapSingle "ECL.Bootstrapper.exe") $installer -Force
+    Copy-Item $manifestPath $installer -Force
+    if (Test-Path $trustPath) { Copy-Item $trustPath $installer -Force }
+    if (Test-Path $signaturePath) { Copy-Item $signaturePath $installer -Force }
+    Copy-Item $zipPath (Join-Path $installer "ECL-package.zip") -Force
+
     Write-Host "发布目录：$releaseRoot" -ForegroundColor Green
     Write-Host "  包：$zipPath"
     Write-Host "  清单：$manifestPath"
     Write-Host "  引导程序：$bootstrap/ECL.Bootstrapper.exe"
+    Write-Host "  安装介质：$installer"
 }
 finally {
     Pop-Location

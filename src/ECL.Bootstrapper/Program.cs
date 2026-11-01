@@ -45,8 +45,30 @@ internal static class Program
                 return ApplyAsync(layout, installer, options.Deploy, log);
             }
 
+            if (options.Cleanup)
+            {
+                using var cleanupLock = AcquireUpdateLock(layout.InstallRoot);
+                if (cleanupLock is null)
+                {
+                    Console.Error.WriteLine("另一个更新进程正在运行。");
+                    return 4;
+                }
+
+                var removed = installer.CleanupStaging();
+                Console.WriteLine($"已清理 {removed} 个未完成的 staging 目录；当前版本未被触碰。");
+                log.Write($"清理 staging：{removed} 个目录");
+                return 0;
+            }
+
             if (options.Rollback)
             {
+                using var rollbackLock = AcquireUpdateLock(layout.InstallRoot);
+                if (rollbackLock is null)
+                {
+                    Console.Error.WriteLine("另一个更新进程正在运行。");
+                    return 4;
+                }
+
                 var rollback = installer.RollbackAsync().GetAwaiter().GetResult();
                 if (!rollback.IsSuccess)
                 {
@@ -82,6 +104,12 @@ internal static class Program
         {
             Console.Error.WriteLine("另一个更新进程正在运行。");
             return 4;
+        }
+
+        var cleaned = installer.CleanupStaging();
+        if (cleaned > 0)
+        {
+            log.Write($"部署前清理未完成 staging：{cleaned} 个目录");
         }
 
         if (!File.Exists(layout.TrustFile) && deploy.TrustFile is null)
@@ -253,9 +281,10 @@ internal static class Program
               --package <ECL-*.zip>
               [--trust <update-trust.json>] [--deploy-only]
           ECL.Bootstrapper.exe [--install-root <目录>] --rollback [--deploy-only]
+          ECL.Bootstrapper.exe [--install-root <目录>] --cleanup
 
         默认读取 <install-root>/current.json 并启动其中的版本。更新部署在独立进程中完成，
-        不会覆盖正在运行的 ECL。
+        不会覆盖正在运行的 ECL。--cleanup 只清理未完成的 staging，不触碰 current 版本。
         """;
 
     private sealed record DeployOptions(
@@ -268,6 +297,7 @@ internal static class Program
         string? InstallRoot,
         DeployOptions? Deploy,
         bool Rollback,
+        bool Cleanup,
         bool DeployOnly,
         bool Help,
         IReadOnlyList<string> ApplicationArguments)
@@ -280,6 +310,7 @@ internal static class Program
             string? package = null;
             string? trust = null;
             var rollback = false;
+            var cleanup = false;
             var apply = false;
             var deployOnly = false;
             var help = false;
@@ -310,6 +341,9 @@ internal static class Program
                     case "--rollback":
                         rollback = true;
                         break;
+                    case "--cleanup":
+                        cleanup = true;
+                        break;
                     case "--deploy-only":
                         deployOnly = true;
                         break;
@@ -337,7 +371,7 @@ internal static class Program
                 deploy = new DeployOptions(manifest, signature, package, trust);
             }
 
-            return new BootstrapperOptions(installRoot, deploy, rollback, deployOnly, help, application);
+            return new BootstrapperOptions(installRoot, deploy, rollback, cleanup, deployOnly, help, application);
         }
 
         private static string TakeValue(string[] args, ref int index, string name)

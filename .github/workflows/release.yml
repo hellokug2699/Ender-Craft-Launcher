@@ -131,6 +131,8 @@ jobs:
           $dir = "artifacts/release/$env:ECL_VERSION"
           $boot = Join-Path $dir "ECL.Bootstrapper-$env:ECL_VERSION-win-x64.zip"
           Compress-Archive -Path (Join-Path $dir "bootstrapper/*") -DestinationPath $boot -Force
+          $installerMedia = Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.zip"
+          Compress-Archive -Path (Join-Path $dir "installer/*") -DestinationPath $installerMedia -Force
           Get-ChildItem $dir | Select-Object Name, Length
 
       # Every build remains independently downloadable for a limited period.
@@ -178,6 +180,7 @@ jobs:
           $assets = @(
             (Join-Path $dir "ECL-$env:ECL_VERSION-win-x64.zip"),
             (Join-Path $dir "ECL.Bootstrapper-$env:ECL_VERSION-win-x64.zip"),
+            (Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.zip"),
             (Join-Path $dir "update-manifest.json"),
             (Join-Path $dir "update-manifest.sig"),
             (Join-Path $dir "update-trust.json")
