@@ -35,13 +35,25 @@ public partial class MainWindow : Window
             var bootstrapper = Path.Combine(source, "ECL.Bootstrapper.exe");
             var manifest = Path.Combine(source, "update-manifest.json");
             var signature = Path.Combine(source, "update-manifest.sig");
-            var package = Path.Combine(source, "ECL-package.zip");
+            var packageDialog = new OpenFileDialog
+            {
+                Title = "选择 ECL 签名安装包",
+                Filter = "ECL 安装包 (*.zip)|*.zip",
+                InitialDirectory = source,
+                CheckFileExists = true
+            };
+            if (packageDialog.ShowDialog(this) != true) return;
+            var package = packageDialog.FileName;
             var trust = Path.Combine(source, "update-trust.json");
-            foreach (var required in new[] { bootstrapper, manifest, signature, package, trust })
+            foreach (var required in new[] { bootstrapper, manifest, signature, trust })
                 if (!File.Exists(required)) throw new FileNotFoundException("安装介质不完整，缺少文件：" + Path.GetFileName(required), required);
 
+            if (File.Exists(Path.Combine(root, "current.json")) ||
+                File.Exists(Path.Combine(root, "ECL.Bootstrapper.exe")))
+                throw new InvalidOperationException("目标目录已包含 ECL 部署文件。当前安装器版本不会覆盖现有安装，请先使用现有 ECL 的更新功能。");
+
             Directory.CreateDirectory(root);
-            File.Copy(bootstrapper, Path.Combine(root, "ECL.Bootstrapper.exe"), overwrite: true);
+            File.Copy(bootstrapper, Path.Combine(root, "ECL.Bootstrapper.exe"), overwrite: false);
             File.Copy(trust, Path.Combine(root, "update-trust.json"), overwrite: true);
             StatusText.Text = "正在启动独立部署程序，验证签名并安装版本…";
             var start = new ProcessStartInfo(Path.Combine(root, "ECL.Bootstrapper.exe"))
