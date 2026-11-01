@@ -196,6 +196,7 @@ public sealed partial class JavaManagementViewModel(
     {
         var paths = Runtimes.Where(item => item.IsPriority).Select(item => item.Runtime.ExecutablePath);
         settings.TrySetRaw(PriorityKey, string.Join(';', paths), null, out _);
+        locator.InvalidateCache();
     }
 
     private static IReadOnlyList<JavaRuntime> OrderByPriority(
