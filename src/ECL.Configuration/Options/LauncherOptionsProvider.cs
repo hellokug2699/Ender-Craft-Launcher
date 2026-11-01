@@ -168,17 +168,7 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             Order = 50,
         };
 
-        yield return new OptionDefinition<string>
-        {
-            Key = "java.defaultPath",
-            Kind = OptionKind.Path,
-            Scope = OptionScope.Global,
-            CategoryKey = "category.java",
-            DisplayNameKey = "option.java.defaultPath.name",
-            DescriptionKey = "option.java.defaultPath.desc",
-            Default = string.Empty,
-            Order = 10,
-        };
+        // java.defaultPath remains a persisted compatibility key, edited through JavaManagementView.
 
         yield return new OptionDefinition<int>
         {
