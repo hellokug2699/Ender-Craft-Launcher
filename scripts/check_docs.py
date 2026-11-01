@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate local Markdown links and basic ADR metadata without third-party packages."""
+"""Validate local Markdown links and ADR metadata without third-party packages."""
 from pathlib import Path
 import re
 import sys
@@ -7,11 +7,42 @@ from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 ADR_DIR = ROOT / "docs" / "adr"
-LINK_RE = re.compile(r"(?<!!)\[[^\]]*\]\((<[^>]+>|[^)]+)\)")
+LINK_RE = re.compile(r"(?<!!)\\[[^\\]]*\\]\\((<[^>]+>|[^)]+)\\)")
+STATUS_RE = re.compile(
+    r"^- (?:Status: (?:Proposed|Accepted|In Progress|Completed|Superseded|Rejected|Deprecated)|状态：(?:提案中|已批准未开始|正在进行|已完成|已被取代|已拒绝|已废弃))$",
+    re.MULTILINE,
+)
 errors = []
 
+
+def without_fenced_code(markdown_text: str) -> str:
+    """Remove fenced code blocks so example links are not treated as live links."""
+    lines = markdown_text.splitlines()
+    output = []
+    fence_char = None
+    fence_length = 0
+
+    for line in lines:
+        match = re.match(r"^\\s*(`{3,}|~{3,})", line)
+        if fence_char is None:
+            if match:
+                fence_char = match.group(1)[0]
+                fence_length = len(match.group(1))
+                output.append("")
+            else:
+                output.append(line)
+            continue
+
+        if match and match.group(1)[0] == fence_char and len(match.group(1)) >= fence_length:
+            fence_char = None
+            fence_length = 0
+        output.append("")
+
+    return "\\n".join(output)
+
+
 for markdown in sorted(path for path in ROOT.rglob("*.md") if ".git" not in path.parts):
-    text = markdown.read_text(encoding="utf-8")
+    text = without_fenced_code(markdown.read_text(encoding="utf-8"))
     for match in LINK_RE.finditer(text):
         raw = match.group(1).strip()
         if raw.startswith("<") and raw.endswith(">"):
@@ -34,8 +65,8 @@ for markdown in sorted(path for path in ROOT.rglob("*.md") if ".git" not in path
 
 for adr in sorted(ADR_DIR.glob("*.md")):
     text = adr.read_text(encoding="utf-8")
-    if not re.search(r"^- 状态：.+$", text, re.MULTILINE):
-        errors.append(f"{adr.relative_to(ROOT)}: missing '- 状态：...' metadata")
+    if not STATUS_RE.search(text):
+        errors.append(f"{adr.relative_to(ROOT)}: missing or invalid Status metadata")
 
 if errors:
     print("Documentation checks failed:")
