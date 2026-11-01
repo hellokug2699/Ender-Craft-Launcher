@@ -78,7 +78,19 @@ public sealed class JavaSelectionService(
         }
 
         var discovered = await locator.FindAllAsync(cancellationToken).ConfigureAwait(false);
-        var runtimes = OrderByGlobalPriority(discovered, globalPaths);
+
+        // A configured global path is an explicit user choice, not merely a hint
+        // to the discovery cache. Resolve it directly so a runtime configured
+        // after an earlier scan (or outside known search roots) remains selectable.
+        var configuredRuntimes = globalPaths
+            .Select(locator.FromPath)
+            .Where(candidate => candidate is not null)
+            .Select(candidate => candidate!)
+            .Concat(discovered)
+            .GroupBy(candidate => candidate.ExecutablePath, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+        var runtimes = OrderByGlobalPriority(configuredRuntimes, globalPaths);
 
         if (runtime is null)
         {
