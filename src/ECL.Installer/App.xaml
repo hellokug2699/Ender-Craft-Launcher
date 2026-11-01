@@ -1,0 +1,15 @@
+<Application x:Class="Ecl.Installer.App" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" StartupUri="MainWindow.xaml">
+  <Application.Resources>
+    <FontFamily x:Key="UiFont">pack://application:,,,/Fonts/#HarmonyOS Sans SC</FontFamily>
+    <SolidColorBrush x:Key="Page" Color="#101116"/>
+    <SolidColorBrush x:Key="Panel" Color="#191B23"/>
+    <SolidColorBrush x:Key="PanelAlt" Color="#222530"/>
+    <SolidColorBrush x:Key="Text" Color="#F2F3F7"/>
+    <SolidColorBrush x:Key="Muted" Color="#969BAA"/>
+    <SolidColorBrush x:Key="Accent" Color="#A78BFA"/>
+    <SolidColorBrush x:Key="Line" Color="#303440"/>
+    <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Text}"/><Setter Property="FontFamily" Value="{StaticResource UiFont}"/></Style>
+    <Style TargetType="Button"><Setter Property="FontFamily" Value="{StaticResource UiFont}"/><Setter Property="Foreground" Value="{StaticResource Text}"/><Setter Property="Background" Value="{StaticResource PanelAlt}"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="14,9"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Setter.Value></Setter></Style>
+    <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Background" Value="{StaticResource Accent}"/><Setter Property="Foreground" Value="#171321"/><Setter Property="BorderThickness" Value="0"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+  </Application.Resources>
+</Application>
