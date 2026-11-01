@@ -1,7 +1,8 @@
 # ADR 0010：CurseForge 改由私有代理转发
 
-- 状态：已采纳
-- 日期：2026-10-30
+- Status: Completed
+- Date: 2026-10-30
+- Scope: ECL 架构与实现
 
 ## 背景
 
