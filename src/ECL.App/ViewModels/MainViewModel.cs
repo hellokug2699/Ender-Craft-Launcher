@@ -13,6 +13,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly DownloadViewModel _download;
     private readonly ModsViewModel _mods;
     private readonly SettingsViewModel _settings;
+    private readonly JavaManagementViewModel _javaManagement;
     private readonly InstancesViewModel _instances;
     private readonly InstanceDetailPageViewModel _instanceDetailPage;
     private bool _showingInstanceDetails;
@@ -41,6 +42,7 @@ public sealed partial class MainViewModel : ObservableObject
         InstancesViewModel instances,
         ModsViewModel mods,
         SettingsViewModel settings,
+        JavaManagementViewModel javaManagement,
         AboutViewModel about,
         OperationCenterViewModel operationCenter,
         IAppPaths paths,
@@ -50,6 +52,7 @@ public sealed partial class MainViewModel : ObservableObject
         _download = download;
         _mods = mods;
         _settings = settings;
+        _javaManagement = javaManagement;
         _instances = instances;
         _instanceDetailPage = new InstanceDetailPageViewModel(instances, mods);
         OperationCenter = operationCenter;
@@ -60,6 +63,7 @@ public sealed partial class MainViewModel : ObservableObject
             new NavItemViewModel("download", localizer.Get("nav.download"), download),
             new NavItemViewModel("instances", localizer.Get("nav.instances"), instances),
             new NavItemViewModel("settings", localizer.Get("nav.settings"), settings),
+            new NavItemViewModel("java", localizer.Get("nav.java"), javaManagement),
             new NavItemViewModel("about", localizer.Get("nav.about"), about),
         ];
 
@@ -143,6 +147,9 @@ public sealed partial class MainViewModel : ObservableObject
         {
             case DownloadViewModel download:
                 _ = download.ActivateAsync();
+                break;
+            case JavaManagementViewModel javaManagement:
+                _ = javaManagement.ActivateAsync();
                 break;
         }
     }
