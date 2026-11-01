@@ -58,7 +58,7 @@ public sealed partial class JavaManagementViewModel(
         try
         {
             var configured = JavaSearchPath.Split(settings.Get<string>(PriorityKey));
-            var discovered = await locator.FindAllAsync().ConfigureAwait(true);
+            var discovered = await locator.RefreshAsync().ConfigureAwait(true);
             var ordered = OrderByPriority(discovered, configured);
             Runtimes.Clear();
             foreach (var runtime in ordered)
