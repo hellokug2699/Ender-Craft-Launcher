@@ -719,5 +719,18 @@
   "mods.platform.forge": "Forge",
   "mods.platform.neoforge": "NeoForge",
   "mods.platform.legacyForge": "Legacy Forge",
-  "mods.platform.unknown": "Loader unknown"
+  "mods.platform.unknown": "Loader unknown",
+  "nav.java": "Java",
+  "java.manager.title": "Java Runtime Manager",
+  "java.manager.description": "Manage global Java priority. Removing a runtime from priority does not uninstall it.",
+  "java.manager.scanning": "Scanning Java runtimes…",
+  "java.manager.count": "Found {0} Java runtimes",
+  "java.manager.rescan": "Rescan",
+  "java.manager.import": "Import Java",
+  "java.manager.importTitle": "Select Java executable",
+  "java.manager.invalidRuntime": "The selected file is not a recognized Java runtime.",
+  "java.manager.imported": "Added {0}",
+  "java.manager.removed": "Removed from priority list",
+  "java.manager.priority": "Include in global priority",
+  "java.manager.openFolder": "Open folder"
 }
