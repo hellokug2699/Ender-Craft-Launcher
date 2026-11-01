@@ -122,7 +122,7 @@ public sealed class UpdateManifestTests
         Assert.Equal(
             "update.channel_invalid",
             unwrap(UpdateManifestParser.Parse(
-                Encoding.UTF8.GetBytes(json.Replace("\"channel\":\"stable\"", "\"channel\":\"nightly\"")))).Error?.Code);
+                Encoding.UTF8.GetBytes(json.Replace("\"channel\":\"main\"", "\"channel\":\"invalid\"")))).Error?.Code);
         Assert.Equal(
             "update.platform_unsupported",
             unwrap(UpdateManifestParser.Parse(
