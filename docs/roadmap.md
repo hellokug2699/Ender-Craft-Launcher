@@ -9,9 +9,9 @@
 本轮按 ADR 完成六条主线的第一阶段落地，详细验证记录见各专项文档：
 
 - 存储与工作区（ADR 0018，Completed）：`StorageLayout`、`workspace.json`、首启引导、路径校验、外部根登记、可恢复迁移与 `workspace` CLI。见 [workspace.md](workspace.md)。
-- 日志会话与证据（ADR 0015，In Progress）：`Ecl.Sessions`、manifest/journal、有界采集、恢复、证据置信度、按会话导出、日志页与 CLI。见 [sessions.md](sessions.md)。
+- 日志会话与证据（ADR 0015，Completed）：`Ecl.Sessions`、manifest/journal、有界采集、恢复、证据置信度、按会话导出、日志页与 CLI。见 [sessions.md](sessions.md)。
 - LogHost 与内存压力（ADR 0019，In Progress）：独立采集宿主、命名管道协议、UI 独立性、压力分级；宿主异常退出会把活动会话标记为采集不完整。见 [loghost.md](loghost.md)。
-- 部署与安装（ADR 0016/0017，In Progress）：退出码契约测试、staging 清理、安装介质契约、`InstallerService`、静默安装、真实安装/升级/回滚/篡改拒绝验证。见 [deployment.md](deployment.md)、[installer.md](installer.md)。
+- 部署（ADR 0016，Completed）与安装（ADR 0017，In Progress）：退出码契约测试、staging 清理、安装介质契约、`InstallerService`、静默安装、真实安装/升级/回滚/篡改拒绝验证。见 [deployment.md](deployment.md)、[installer.md](installer.md)。
 - Java 策略（ADR 0014，Completed）：`java why`、托管运行时 staging 与确定性冲突后缀。见 [java.md](java.md)。
 
 仍待完成：每会话 Log4j2 隔离与保留策略、LogHost 崩溃后的文件日志回退、安装包 Authenticode 与卸载器、干净无 .NET 环境验收、压力/断电故障注入。

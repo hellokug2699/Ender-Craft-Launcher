@@ -45,7 +45,7 @@ internal static class Program
 
             if (command.Action == BootstrapperAction.Cleanup)
             {
-                using var cleanupLock = AcquireUpdateLock(layout.InstallRoot);
+                using var cleanupLock = UpdateLock.TryAcquire(layout.InstallRoot);
                 if (cleanupLock is null)
                 {
                     Console.Error.WriteLine("另一个更新进程正在运行。");
@@ -60,7 +60,7 @@ internal static class Program
 
             if (command.Action == BootstrapperAction.Rollback)
             {
-                using var rollbackLock = AcquireUpdateLock(layout.InstallRoot);
+                using var rollbackLock = UpdateLock.TryAcquire(layout.InstallRoot);
                 if (rollbackLock is null)
                 {
                     Console.Error.WriteLine("另一个更新进程正在运行。");
@@ -97,7 +97,7 @@ internal static class Program
         BootstrapperDeploy deploy,
         BootstrapperLog log)
     {
-        using var updateLock = AcquireUpdateLock(layout.InstallRoot);
+        using var updateLock = UpdateLock.TryAcquire(layout.InstallRoot);
         if (updateLock is null)
         {
             Console.Error.WriteLine("另一个更新进程正在运行。");
@@ -219,22 +219,6 @@ internal static class Program
         process.WaitForExit();
         log.Write($"ECL {current.Version} 退出，退出码 {process.ExitCode}。");
         return process.ExitCode;
-    }
-
-    private static FileStream? AcquireUpdateLock(string installRoot)
-    {
-        try
-        {
-            return new FileStream(
-                Path.Combine(installRoot, ".update.lock"),
-                FileMode.OpenOrCreate,
-                FileAccess.ReadWrite,
-                FileShare.None);
-        }
-        catch (IOException)
-        {
-            return null;
-        }
     }
 
     private static int Fail(EclError error, BootstrapperLog log)

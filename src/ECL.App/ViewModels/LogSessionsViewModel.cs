@@ -327,6 +327,12 @@ public sealed partial class SessionRow : ObservableObject
             $"{localizer.Get("logs.evidence")} {manifest.Artifacts.Count}",
         };
 
+        foreach (var artifact in manifest.Artifacts)
+        {
+            lines.Add($"  · {artifact.Kind} [{artifact.Ownership}]" +
+                      (string.IsNullOrWhiteSpace(artifact.Warning) ? string.Empty : $" {artifact.Warning}"));
+        }
+
         if (manifest.CaptureFault is not null)
         {
             lines.Add($"{localizer.Get("logs.captureFault")} {manifest.CaptureFault}");

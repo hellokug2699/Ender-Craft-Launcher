@@ -1,6 +1,6 @@
 # ADR 0016：独立 Bootstrapper 与安全部署边界
 
-- Status: In Progress
+- Status: Completed
 - Date: 2026-11-01
 - Scope: Windows 部署、版本切换、更新应用、启动与回滚
 
