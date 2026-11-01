@@ -7,7 +7,7 @@ from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 ADR_DIR = ROOT / "docs" / "adr"
-LINK_RE = re.compile(r"(?<!!)\\[[^\\]]*\\]\\((<[^>]+>|[^)]+)\\)")
+LINK_RE = re.compile(r"(?<!!)\[[^\]]*\]\((<[^>]+>|[^)]+)\)")
 STATUS_RE = re.compile(
     r"^- (?:Status: (?:Proposed|Accepted|In Progress|Completed|Superseded|Rejected|Deprecated)|状态：(?:提案中|已批准未开始|正在进行|已完成|已被取代|已拒绝|已废弃))$",
     re.MULTILINE,
@@ -23,7 +23,7 @@ def without_fenced_code(markdown_text: str) -> str:
     fence_length = 0
 
     for line in lines:
-        match = re.match(r"^\\s*(`{3,}|~{3,})", line)
+        match = re.match(r"^\s*(`{3,}|~{3,})", line)
         if fence_char is None:
             if match:
                 fence_char = match.group(1)[0]
@@ -38,7 +38,7 @@ def without_fenced_code(markdown_text: str) -> str:
             fence_length = 0
         output.append("")
 
-    return "\\n".join(output)
+    return "\n".join(output)
 
 
 for markdown in sorted(path for path in ROOT.rglob("*.md") if ".git" not in path.parts):
