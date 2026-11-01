@@ -74,7 +74,7 @@ public sealed partial class MainViewModel : ObservableObject
         _mods.SearchDependency = OpenDependencySearch;
         _instances.NavigateToDetails = OpenInstanceDetails;
         _instances.NavigateBackFromDetails = BackToInstances;
-        VersionText = $"ECL {typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0"}";
+        VersionText = $"ECL {BuildInfo.Version}";
         BuildTimeText = string.IsNullOrWhiteSpace(BuildInfo.BuildTime)
             ? string.Empty
             : localizer.Get("app.buildTime", BuildInfo.BuildTime);
