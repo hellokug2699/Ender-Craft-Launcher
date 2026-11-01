@@ -15,6 +15,7 @@ public sealed record JavaSelectionResult(
     JavaCompatibilityResult? Compatibility,
     bool HasAnyDetectedJava,
     string? ExplicitPath,
+    bool IsExplicitOverride,
     IReadOnlyList<string> Warnings,
     int MemoryMb);
 
@@ -48,16 +49,19 @@ public sealed class JavaSelectionService(
         var warnings = new List<string>();
         JavaRuntime? runtime = null;
         string? explicitPath = null;
+        var isExplicitOverride = false;
 
-        // 实例级路径是显式 pin：只有这里可以直接指定某个 Java。
+        // 实例级路径是显式 pin：用户明确选择后，即使版本不是推荐版本也保留选择，启动前给出警告。
         if (!string.IsNullOrWhiteSpace(instancePath))
         {
             var path = instancePath.Trim().Trim('"');
             explicitPath = path;
+            isExplicitOverride = true;
             runtime = locator.FromPath(path);
             if (runtime is null)
             {
                 warnings.Add(localizer.Get("launch.java.configuredInvalid", path));
+                isExplicitOverride = false;
             }
         }
 
@@ -70,7 +74,7 @@ public sealed class JavaSelectionService(
                       ?? (requirement is null ? runtimes.FirstOrDefault() : null);
         }
 
-        // 兼容性检查现在是强制策略；旧配置键仍可存在于配置文件中，但不再改变启动行为。
+        // 兼容性检查仍然始终执行；实例显式 pin 只是允许用户承担风险，不会关闭检查。
         var compatibility = requirement is null
             ? null
             : JavaCompatibility.Evaluate(requirement, runtime);
@@ -100,6 +104,7 @@ public sealed class JavaSelectionService(
             compatibility,
             discovered.Count > 0,
             explicitPath,
+            isExplicitOverride,
             warnings,
             memoryMb);
     }
@@ -147,7 +152,7 @@ public sealed class JavaSelectionService(
         var executable = NormalizePath(runtime.ExecutablePath);
         var home = NormalizePath(runtime.HomePath);
 
-        if (string.Equals(fullConfigured, executable, PathComparison)) ||
+        if (string.Equals(fullConfigured, executable, PathComparison) ||
             string.Equals(fullConfigured, home, PathComparison))
         {
             return true;
