@@ -101,6 +101,7 @@ internal static class Program
                                           清除配置项
           java list [--json]              列出发现的 Java 运行时
           java install <实例ID>           自动下载该版本需要的 Java 运行时
+          java why <实例ID> [--json]      解释 Java 选择：有效要求、被拒候选与固定/自动模式
           mod list <实例ID> [--json]      列出 Mod、启用状态与问题
           mod check <实例ID> [--json]     检查依赖/冲突/重复/加载器不匹配
           mod enable|disable <实例ID> <文件>

@@ -896,7 +896,108 @@ internal sealed class CliApplication
             return await InstallJavaAsync(args).ConfigureAwait(false);
         }
 
-        return UsageError("java 支持 list 与 install。");
+        if (string.Equals(args[0], "why", StringComparison.OrdinalIgnoreCase))
+        {
+            return await ExplainJavaAsync(args).ConfigureAwait(false);
+        }
+
+        return UsageError("java 支持 list、install 与 why。");
+    }
+
+    /// <summary>
+    /// “Why this Java?”：展示有效要求、选择原因、固定/自动模式与被拒候选。
+    /// 与 WPF 实例详情使用同一个 Core 选择结果，避免两套规则。
+    /// </summary>
+    private async Task<int> ExplainJavaAsync(string[] args)
+    {
+        var instanceId = args.ElementAtOrDefault(1);
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            return UsageError("java why 需要实例 ID。");
+        }
+
+        var instance = await _provider.GetRequiredService<IInstanceService>()
+            .GetAsync(instanceId)
+            .ConfigureAwait(false);
+        if (instance is null)
+        {
+            return WriteError(new EclError("instance.not_found", $"实例不存在：{instanceId}"));
+        }
+
+        var version = await _provider.GetRequiredService<IVersionResolver>()
+            .ResolveAsync(instance.VersionId)
+            .ConfigureAwait(false);
+        var selection = await _provider.GetRequiredService<IJavaSelectionService>()
+            .ResolveAsync(instance, version.IsSuccess ? version.Value : null)
+            .ConfigureAwait(false);
+        var decision = selection.Decision;
+
+        if (_commandLine.HasFlag("json"))
+        {
+            WriteJson(new
+            {
+                instance = new { instance.Id, instance.Name, instance.GameVersion },
+                selection,
+                decision,
+                plan = selection.Plan,
+            });
+            return 0;
+        }
+
+        Console.WriteLine($"实例      : {instance.Name} ({instance.Id})");
+        Console.WriteLine($"游戏版本  : {instance.GameVersion}");
+        Console.WriteLine($"要求      : {selection.Requirement?.Describe() ?? decision?.Requirements?.Describe() ?? "未知"}");
+        if (decision?.Requirements is { } requirements)
+        {
+            Console.WriteLine($"要求来源  : {requirements.Explain()}");
+        }
+
+        var runtime = selection.Runtime ?? decision?.Runtime;
+        if (runtime is null)
+        {
+            Console.WriteLine("结果      : 没有可用的兼容 Java");
+        }
+        else
+        {
+            Console.WriteLine($"结果      : {runtime.Version?.Raw ?? "未知版本"} · {runtime.Vendor ?? "未知厂商"} · {runtime.ArchitectureLabel}");
+            Console.WriteLine($"路径      : {runtime.ExecutablePath}");
+        }
+
+        Console.WriteLine($"选择方式  : {(selection.IsExplicitOverride ? "实例固定（不会被静默替换）" : "按全局优先级自动选择")}");
+        Console.WriteLine($"选择原因  : {decision?.Explanation ?? selection.Plan?.SelectionReason ?? "未知"}");
+        Console.WriteLine($"兼容状态  : {selection.Plan?.CompatibilityStatus ?? decision?.Reason.ToString() ?? "未知"}");
+        if (decision?.RequiresRiskAcknowledgement == true)
+        {
+            Console.WriteLine($"风险确认  : 需要（{decision.RiskIdentity ?? "未知身份"}）");
+        }
+
+        if (selection.IsBlocked || decision?.IsBlocked == true)
+        {
+            Console.WriteLine($"已阻止    : {selection.BlockReason ?? decision?.Failure.ToString()}");
+        }
+
+        var rejected = decision?.RejectedCandidates ?? [];
+        if (rejected.Count > 0)
+        {
+            Console.WriteLine("未选候选  :");
+            foreach (var candidate in rejected)
+            {
+                Console.WriteLine(
+                    $"  - {candidate.Runtime.Version?.Raw ?? "未知版本"} · {candidate.Runtime.ExecutablePath}");
+                Console.WriteLine($"    {candidate.Status}: {candidate.Detail}");
+            }
+        }
+
+        if (selection.Warnings.Count > 0)
+        {
+            Console.WriteLine("警告      :");
+            foreach (var warning in selection.Warnings)
+            {
+                Console.WriteLine($"  ! {warning}");
+            }
+        }
+
+        return selection.IsBlocked ? 1 : 0;
     }
 
     private async Task<int> ListJavaAsync()
