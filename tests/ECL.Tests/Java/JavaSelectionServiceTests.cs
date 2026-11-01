@@ -42,15 +42,36 @@ public sealed class JavaSelectionServiceTests
         var explicitSelection = await selection.ResolveAsync(instance, version);
         Assert.Equal(8, explicitSelection.Runtime?.Version?.Major);
         Assert.Equal(JavaCompatibilityStatus.TooOld, explicitSelection.Compatibility?.Status);
+        Assert.True(explicitSelection.CompatibilityCheckEnabled);
+    }
 
+    [Fact]
+    public async Task GlobalJavaPathsArePriorityOrderedButSkipIncompatibleEntries()
+    {
+        using var environment = new TestEnvironment();
+        var java8 = Runtime(environment, "8.0.412");
+        var java17 = Runtime(environment, "17.0.15");
+        var java21 = Runtime(environment, "21.0.7");
+        var fakeLocator = new FakeJavaLocator([java21, java8, java17]);
+
+        await using var provider = environment.CreateServices(services =>
+            services.AddSingleton<IJavaLocator>(fakeLocator));
+
+        var settings = provider.GetRequiredService<ISettingsService>();
         Assert.True(settings.TrySetRaw(
-            "instance.java.disableCompatibilityCheck",
-            "true",
-            instance.Id,
-            out var checkError), checkError);
+            "java.defaultPath",
+            string.Join(';', java8.ExecutablePath, java21.ExecutablePath, java17.ExecutablePath),
+            null,
+            out var pathError), pathError);
 
-        var disabled = await selection.ResolveAsync(instance, version);
-        Assert.False(disabled.CompatibilityCheckEnabled);
+        var instance = await CreateVersionAsync(provider, environment, "1.20.1", javaMajor: 17);
+        var version = (await provider.GetRequiredService<IVersionResolver>().ResolveAsync(instance.VersionId)).Value!;
+        var selection = await provider.GetRequiredService<IJavaSelectionService>()
+            .ResolveAsync(instance, version);
+
+        // Java 8 是第一优先级，但不兼容 Java 17+ 的实例，因此跳过；Java 21 才是首个兼容项。
+        Assert.Equal(21, selection.Runtime?.Version?.Major);
+        Assert.True(selection.Compatibility?.IsCompatible);
     }
 
     [Fact]
