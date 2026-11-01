@@ -31,6 +31,7 @@ Preparing → Starting → Running → GameExitedDraining
 - 进程创建成功后立即记录 PID、进程启动时间、可执行文件与工作目录。
 - 游戏退出不等于采集完成：先排空管道、刷新文件，再标记完成。
 - 管道读取与磁盘写入通过有界队列解耦；队列饱和时丢弃并写入缺口标记，游戏写入端不会被阻塞。
+  实现使用 `Wait` + `TryWrite`：队列满时返回 false 并累计丢弃字节，保证“写入 + 丢弃”覆盖全部输入（完成时另写缺口标记）。
 
 ## 3. 恢复
 
@@ -99,7 +100,7 @@ ecl session prune --older-than-days <N> [--apply] [--json]
 
 ## 9. 尚未完成
 
-- 断电/进程强杀下的 manifest 半写故障注入尚未系统化（journal 尾部半条记录已覆盖）。
+- 断电/强杀覆盖：会话目录缺 manifest、manifest 停在 Starting、PID 检查点前中断、退出后排空未完成、journal 尾部半条记录、孤儿目录；均有自动化故障注入测试。
 - 保留策略尚未接入 UI 设置与自动提示。
 
 ## 10. 实机验证（2026-11-02）

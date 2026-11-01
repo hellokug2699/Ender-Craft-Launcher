@@ -24,7 +24,9 @@ public sealed class SessionLogWriter : IAsyncDisposable
         _stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read, 64 * 1024, FileOptions.SequentialScan);
         _channel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(capacity)
         {
-            FullMode = BoundedChannelFullMode.DropWrite,
+            // Wait 模式下 TryWrite 在队列满时返回 false，而不是“接受后丢弃”：
+            // 我们据此显式累计丢弃字节，保证写入与丢弃之和等于输入总量。
+            FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
             SingleWriter = false,
         });
