@@ -180,6 +180,44 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             Order = 10,
         };
 
+        yield return new OptionDefinition<string>
+        {
+            Key = "java.downloadRoot",
+            Kind = OptionKind.Path,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.java",
+            DisplayNameKey = "option.java.downloadRoot.name",
+            DescriptionKey = "option.java.downloadRoot.desc",
+            Default = string.Empty,
+            Order = 15,
+            Validate = path => string.IsNullOrWhiteSpace(path) || Path.IsPathFullyQualified(path),
+        };
+
+        yield return new OptionDefinition<string>
+        {
+            Key = "java.downloadFolderTemplate",
+            Kind = OptionKind.Text,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.java",
+            DisplayNameKey = "option.java.downloadFolderTemplate.name",
+            DescriptionKey = "option.java.downloadFolderTemplate.desc",
+            Default = "Java[version]",
+            Order = 16,
+            Validate = template =>
+                !string.IsNullOrWhiteSpace(template) &&
+                template.Trim() == template &&
+                template is not ("." or "..") &&
+                !template.Contains(Path.DirectorySeparatorChar) &&
+                !template.Contains(Path.AltDirectorySeparatorChar) &&
+                !template.Contains(':') &&
+                !template.Contains('*') &&
+                !template.Contains('?') &&
+                !template.Contains('"') &&
+                !template.Contains('<') &&
+                !template.Contains('>') &&
+                !template.Contains('|'),
+        };
+
         yield return new OptionDefinition<int>
         {
             Key = "java.defaultMemoryMb",
