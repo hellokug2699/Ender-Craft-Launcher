@@ -17,7 +17,7 @@ public enum InstanceDeletionChoice
 
 public interface IDialogService
 {
-    bool Confirm(string title, string message);
+    bool Confirm(string title, string message, string? acknowledgementToken = null);
 
     /// <summary>
     /// 展示删除计划并选择删除模式：
@@ -43,16 +43,14 @@ public sealed class DialogService(ISettingsService settings) : IDialogService
 {
     private const string JavaCompatibilityAcknowledgementKey = "launcher.java.incompatiblePromptAcknowledged";
 
-    public bool Confirm(string title, string message)
+    public bool Confirm(string title, string message, string? acknowledgementToken = null)
     {
-        // Java 兼容性是“首次确认风险、之后尊重选择”的场景。
-        // 使用完整提示文本作为确认凭据：换了实际 Java 或最低要求后会再次提示，
-        // 但同一风险不会在每次启动时打扰用户。
-        if (IsJavaCompatibilityWarning(title, message) &&
-            string.Equals(
-                settings.Get<string?>(JavaCompatibilityAcknowledgementKey),
-                message,
-                StringComparison.Ordinal))
+        // 使用稳定风险标识而不是显示文案；语言切换不应触发重复确认。
+        // 兼容旧版保存的提示文本，避免升级后同一风险再次打扰用户。
+        var savedAcknowledgement = settings.Get<string?>(JavaCompatibilityAcknowledgementKey);
+        if (!string.IsNullOrWhiteSpace(acknowledgementToken) &&
+            (string.Equals(savedAcknowledgement, acknowledgementToken, StringComparison.Ordinal) ||
+             string.Equals(savedAcknowledgement, message, StringComparison.Ordinal)))
         {
             return true;
         }
@@ -63,9 +61,9 @@ public sealed class DialogService(ISettingsService settings) : IDialogService
             MessageBoxButton.YesNo,
             MessageBoxImage.Question) == MessageBoxResult.Yes;
 
-        if (accepted && IsJavaCompatibilityWarning(title, message))
+        if (accepted && !string.IsNullOrWhiteSpace(acknowledgementToken))
         {
-            settings.TrySetRaw(JavaCompatibilityAcknowledgementKey, message, null, out _);
+            settings.TrySetRaw(JavaCompatibilityAcknowledgementKey, acknowledgementToken, null, out _);
         }
 
         return accepted;
@@ -153,8 +151,4 @@ public sealed class DialogService(ISettingsService settings) : IDialogService
             return false;
         }
     }
-
-    private static bool IsJavaCompatibilityWarning(string title, string message) =>
-        title.Contains("Java", StringComparison.OrdinalIgnoreCase) &&
-        message.Contains("Java", StringComparison.OrdinalIgnoreCase);
 }
