@@ -20,6 +20,7 @@ public enum JavaCompatibilityStatus
 {
     Compatible,
     TooOld,
+    UnsupportedArchitecture,
     Unknown,
 }
 
@@ -38,9 +39,19 @@ public static class JavaCompatibility
         if (requirement is null)
         {
             return new JavaCompatibilityResult(
-                JavaCompatibilityStatus.Compatible,
+                runtime is { IsSupportedArchitecture: false }
+                    ? JavaCompatibilityStatus.UnsupportedArchitecture
+                    : JavaCompatibilityStatus.Compatible,
                 new JavaRequirement(0),
                 runtime?.Version);
+        }
+
+        if (runtime?.IsSupportedArchitecture == false)
+        {
+            return new JavaCompatibilityResult(
+                JavaCompatibilityStatus.UnsupportedArchitecture,
+                requirement,
+                runtime.Version);
         }
 
         if (runtime?.Version is null)
@@ -62,19 +73,14 @@ public static class JavaSelector
     /// </summary>
     public static JavaRuntime? Select(IReadOnlyList<JavaRuntime> runtimes, JavaRequirement? requirement)
     {
-        if (runtimes.Count == 0)
-        {
-            return null;
-        }
-
-        if (requirement is null)
-        {
-            return runtimes[0];
-        }
-
         foreach (var runtime in runtimes)
         {
-            if (requirement.IsCompatible(runtime.Version))
+            if (!runtime.IsSupportedArchitecture)
+            {
+                continue;
+            }
+
+            if (requirement is null || requirement.IsCompatible(runtime.Version))
             {
                 return runtime;
             }
