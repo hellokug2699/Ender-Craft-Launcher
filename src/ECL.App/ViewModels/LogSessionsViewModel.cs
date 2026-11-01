@@ -6,6 +6,8 @@ using System.Text;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Ecl.App.Services;
+using Ecl.Core.Diagnostics;
 using Ecl.Core.Localization;
 using Ecl.Sessions;
 
@@ -18,11 +20,13 @@ namespace Ecl.App.ViewModels;
 public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
 {
     private const int MaxVisibleLines = 2000;
+    private int _maxLines = MaxVisibleLines;
     private const int InitialTailBytes = 64 * 1024;
 
     private readonly IGameSessionService _sessions;
     private readonly ISessionExportService _exporter;
     private readonly ILocalizer _localizer;
+    private readonly IMemoryPressureMonitor _pressure;
     private readonly DispatcherTimer _timer;
     private readonly Dictionary<string, StreamReader> _readers = new(StringComparer.Ordinal);
     private bool _disposed;
@@ -49,13 +53,16 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     public LogSessionsViewModel(
         IGameSessionService sessions,
         ISessionExportService exporter,
-        ILocalizer localizer)
+        ILocalizer localizer,
+        IMemoryPressureMonitor pressure)
     {
         _sessions = sessions;
         _exporter = exporter;
         _localizer = localizer;
+        _pressure = pressure;
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += (_, _) => OnTick();
+        _pressure.LevelChanged += OnPressureChanged;
     }
 
     public void Activate()
@@ -131,6 +138,44 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         LoadInitialTail(value);
     }
 
+    private void OnPressureChanged(object? sender, MemoryPressureLevel level)
+    {
+        switch (level)
+        {
+            case MemoryPressureLevel.Critical:
+                _maxLines = 400;
+                _timer.Interval = TimeSpan.FromSeconds(4);
+                TrimLines(_maxLines);
+                StatusMessage = _localizer.Get("logs.pressure.critical");
+                break;
+            case MemoryPressureLevel.Elevated:
+                _maxLines = 800;
+                _timer.Interval = TimeSpan.FromSeconds(2);
+                TrimLines(_maxLines);
+                StatusMessage = _localizer.Get("logs.pressure.elevated");
+                break;
+            case MemoryPressureLevel.Recovery:
+                _maxLines = 1200;
+                _timer.Interval = TimeSpan.FromSeconds(2);
+                TrimLines(_maxLines);
+                StatusMessage = _localizer.Get("logs.pressure.recovery");
+                break;
+            default:
+                _maxLines = MaxVisibleLines;
+                _timer.Interval = TimeSpan.FromSeconds(1);
+                StatusMessage = string.Empty;
+                break;
+        }
+    }
+
+    private void TrimLines(int maxLines)
+    {
+        while (Lines.Count > maxLines)
+        {
+            Lines.RemoveAt(0);
+        }
+    }
+
     private void OnTick()
     {
         if (_disposed || SelectedSession is not { } row)
@@ -196,7 +241,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
                 Lines.Add(line);
             }
 
-            while (Lines.Count > MaxVisibleLines)
+            while (Lines.Count > _maxLines)
             {
                 Lines.RemoveAt(0);
             }

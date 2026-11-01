@@ -66,4 +66,4 @@
 | [0016 独立 Bootstrapper 与安全部署边界](0016-independent-bootstrapper-and-safe-deployment-boundaries.md) | In Progress | 部署、更新、回滚与用户数据边界 |
 | [0017 图形化首次安装程序](0017-graphical-first-run-installer.md) | In Progress | 首次安装 GUI 与 Bootstrapper 部署边界 |
 | [0018 Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md) | Accepted | 工作区选择、外部实例与迁移数据保护 |
-| [0019 内存压力下的进程保活与诊断连续性](0019-memory-pressure-process-survival-and-diagnostic-continuity.md) | Accepted | 游戏、LogHost 与主 UI 的资源压力生存边界 |
+| [0019 内存压力下的进程保活与诊断连续性](0019-memory-pressure-process-survival-and-diagnostic-continuity.md) | In Progress | 游戏、LogHost 与主 UI 的资源压力生存边界 |

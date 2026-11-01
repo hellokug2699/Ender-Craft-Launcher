@@ -80,5 +80,5 @@ ecl session recover [--json]
 ## 7. 尚未完成
 
 - 每会话 Log4j2 日志隔离（当前由 stdout/stderr 直接采集，共享 `latest.log` 标记歧义）。
-- 独立 LogHost 进程：目前采集仍运行在 ECL 主进程内，主进程退出会中断管道读取（ADR 0019 阶段）。
+- 独立 LogHost 进程已实现（见 [loghost.md](loghost.md)）；LogHost 不可用时降级为进程内采集并记录 `CaptureFault`。
 - 保留策略与物理清理尚未实现；当前只增加会话，不自动删除。

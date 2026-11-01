@@ -802,5 +802,8 @@
   "logs.refreshed": "共 {0} 个会话",
   "logs.isolation.direct": "会话独立",
   "logs.isolation.shared": "共享日志",
-  "logs.isolation.unavailable": "无文件日志"
+  "logs.isolation.unavailable": "无文件日志",
+  "logs.pressure.elevated": "内存压力升高：已限制日志视图与刷新频率。",
+  "logs.pressure.critical": "内存压力严重：已暂停非必要刷新，仅保留最近日志。" ,
+  "logs.pressure.recovery": "内存压力缓解：正在分批恢复视图。"
 }

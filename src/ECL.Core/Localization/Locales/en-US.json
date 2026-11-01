@@ -802,5 +802,8 @@
   "logs.refreshed": "{0} sessions",
   "logs.isolation.direct": "Session-scoped",
   "logs.isolation.shared": "Shared log",
-  "logs.isolation.unavailable": "No file log"
+  "logs.isolation.unavailable": "No file log",
+  "logs.pressure.elevated": "Memory pressure elevated: log view and refresh rate are limited.",
+  "logs.pressure.critical": "Memory pressure critical: non-essential refresh paused, only recent lines kept." ,
+  "logs.pressure.recovery": "Memory pressure relieved: restoring the view gradually."
 }

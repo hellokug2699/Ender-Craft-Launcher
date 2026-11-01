@@ -115,6 +115,58 @@ public sealed class LogHostTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task CaptureContinuesAfterUiClientDisconnects()
+    {
+        var pipeName = "ecl-test-" + Guid.NewGuid().ToString("N")[..10];
+        var artifacts = new SessionArtifactCollector(_sessions, NullLogger<SessionArtifactCollector>.Instance);
+        var server = new LogHostServer(_sessions, artifacts, NullLogger<LogHostServer>.Instance, pipeName);
+        using var cancellation = new CancellationTokenSource();
+        var serverTask = server.RunAsync(cancellation.Token);
+
+        var session = _sessions.Create(new SessionCreateRequest
+        {
+            InstanceId = "demo-abc123",
+            InstanceName = "Demo",
+            GameDirectory = Path.Combine(_root, "games"),
+            LogIsolation = "direct",
+        });
+        Directory.CreateDirectory(Path.Combine(_root, "games"));
+
+        var (executable, arguments) = OperatingSystem.IsWindows()
+            ? ("cmd.exe", (IReadOnlyList<string>)["/c", "ping -n 4 127.0.0.1 >nul & echo finished"])
+            : ("/bin/sh", (IReadOnlyList<string>)["-c", "sleep 2; echo finished"]);
+
+        var client = new NamedPipeLogHostClient(pipeName);
+        await client.ConnectAsync();
+        var started = await client.StartProcessAsync(new LogHostStartRequest(
+            session.SessionId,
+            "demo-abc123",
+            executable,
+            Path.Combine(_root, "games"),
+            arguments));
+        Assert.True(started.Success, started.Error);
+
+        // 模拟 UI 退出：只断开控制连接，不通知 LogHost 结束会话。
+        await client.DisposeAsync();
+        await Task.Delay(300);
+        Assert.Equal(GameSessionState.Running, _sessions.Get(session.SessionId)!.Manifest.State);
+
+        var completed = await WaitForStateAsync(session.SessionId, GameSessionState.CaptureCompleted, TimeSpan.FromSeconds(20));
+        Assert.True(completed, $"会话未完成，当前状态：{_sessions.Get(session.SessionId)?.Manifest.State}");
+        Assert.Contains("finished", await File.ReadAllTextAsync(session.StdoutPath));
+
+        cancellation.Cancel();
+        try
+        {
+            await serverTask;
+        }
+        catch (OperationCanceledException)
+        {
+            // 正常退出。
+        }
+    }
+
     private async Task<bool> WaitForStateAsync(string sessionId, GameSessionState state, TimeSpan timeout)
     {
         var deadline = DateTimeOffset.UtcNow + timeout;

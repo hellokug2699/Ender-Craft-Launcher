@@ -67,6 +67,7 @@ public partial class App : Application
             services.AddSingleton<SettingsViewModel>();
             services.AddSingleton<JavaManagementViewModel>();
             services.AddSingleton<LogSessionsViewModel>();
+            services.AddSingleton<IMemoryPressureMonitor, MemoryPressureMonitor>();
             services.AddSingleton<AboutViewModel>();
             services.AddSingleton<OperationCenterViewModel>();
             services.AddSingleton<MainViewModel>();
@@ -88,6 +89,8 @@ public partial class App : Application
             MainWindow = window;
             window.Show();
             splash.Close();
+
+            _services.GetRequiredService<IMemoryPressureMonitor>().Start();
 
             await _services.GetRequiredService<MainViewModel>().InitializeAsync();
         }
