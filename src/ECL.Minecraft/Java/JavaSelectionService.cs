@@ -43,7 +43,7 @@ public sealed class JavaSelectionService(
     IJavaLocator locator,
     ILocalizer localizer) : IJavaSelectionService
 {
-    private const string JavaCompatibilityAcknowledgementKey = "launcher.java.incompatiblePromptAcknowledged";
+    private const string JavaCompatibilityAcknowledgementKey = "instance.java.incompatiblePromptAcknowledged";
 
     public async Task<JavaSelectionResult> ResolveAsync(
         GameInstance instance,
@@ -90,21 +90,17 @@ public sealed class JavaSelectionService(
             ? null
             : JavaCompatibility.Evaluate(requirement, runtime);
 
-        var acknowledgement = settings.Get<string?>(JavaCompatibilityAcknowledgementKey);
-        var warningMessage = compatibility is { IsCompatible: false } &&
-                              requirement is not null &&
-                              runtime is not null
-            ? localizer.Get(
-                "instances.java.incompatiblePrompt",
-                runtime.Version?.Raw ?? runtime.DisplayName,
-                requirement.Describe())
+        var acknowledgement = settings.Get<string?>(JavaCompatibilityAcknowledgementKey, instance.Id);
+        var acknowledgementFingerprint = compatibility is { IsCompatible: false } &&
+                                          requirement is not null &&
+                                          runtime is not null &&
+                                          isExplicitOverride
+            ? JavaCompatibilityAcknowledgement.Create(runtime, requirement)
             : null;
-        var isCompatibilityWarningAcknowledged = compatibility is { IsCompatible: false } &&
-                                                  isExplicitOverride &&
-                                                  warningMessage is not null &&
+        var isCompatibilityWarningAcknowledged = acknowledgementFingerprint is not null &&
                                                   string.Equals(
                                                       acknowledgement,
-                                                      warningMessage,
+                                                      acknowledgementFingerprint,
                                                       StringComparison.Ordinal);
 
         var instanceMemory = settings.Get<int?>("instance.java.memoryMb", instance.Id);
