@@ -56,9 +56,18 @@ internal sealed class ResolveJavaStep(IJavaSelectionService selection, ILocalize
                 result.Runtime.Version?.Raw ?? result.Runtime.DisplayName,
                 required);
 
-            // 自动选择绝不能绕过硬兼容性要求；实例显式选择则允许用户承担风险并继续启动。
+            // 自动选择绝不能绕过兼容性要求；实例显式选择则允许用户承担风险并继续启动。
+            // 用户确认过同一 Java + 要求组合后，不再重复提示。
             if (result.IsExplicitOverride)
             {
+                if (result.IsCompatibilityWarningAcknowledged)
+                {
+                    return new LaunchStepResult(
+                        Id,
+                        LaunchStepStatus.Success,
+                        localizer.Get("launch.java.incompatibleAcknowledged", result.Runtime.DisplayName));
+                }
+
                 return new LaunchStepResult(
                     Id,
                     LaunchStepStatus.Warning,
