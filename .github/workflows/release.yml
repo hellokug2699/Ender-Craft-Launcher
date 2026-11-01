@@ -2,27 +2,9 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main, dev, nightly]
+    tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Semver version, for example 1.0.1"
-        required: true
-        type: string
-      channel:
-        description: "Update channel"
-        required: true
-        default: stable
-        type: choice
-        options:
-          - stable
-          - beta
-          - dev
-      release_notes:
-        description: "Optional release notes"
-        required: false
-        type: string
 
 permissions:
   contents: write
@@ -45,24 +27,54 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Resolve version and channel
+      - name: Resolve version and channel from branch
         shell: pwsh
+        env:
+          ECL_BASE_VERSION: "0.8.0"
+          ECL_REF_NAME: ${{ github.ref_name }}
+          ECL_REF_TYPE: ${{ github.ref_type }}
+          ECL_RUN_NUMBER: ${{ github.run_number }}
+          ECL_RUN_ATTEMPT: ${{ github.run_attempt }}
+          ECL_COMMIT_SHA: ${{ github.sha }}
         run: |
-          $version = "${{ inputs.version }}"
-          $channel = "${{ inputs.channel }}"
-          if ([string]::IsNullOrWhiteSpace($version)) {
-            $version = "${{ github.ref_name }}".TrimStart("v")
-            $channel = if ($version.Contains("-")) { "beta" } else { "stable" }
+          $base = [xml](Get-Content "Directory.Build.props" -Raw)
+          $baseVersion = [string]$base.Project.PropertyGroup.VersionPrefix
+          if ($baseVersion -notmatch '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$') {
+            throw "Directory.Build.props VersionPrefix must be MAJOR.MINOR.PATCH."
           }
-          if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?$') {
-            throw "Invalid version: $version"
+
+          if ($env:ECL_REF_TYPE -eq "tag") {
+            $version = $env:ECL_REF_NAME -replace '^v', ''
+            if ($version -notmatch '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$') {
+              throw "Release tags must be stable SemVer tags such as v1.2.3."
+            }
+            $channel = "main"
           }
-          if ($channel -notin @("stable", "beta", "dev")) { throw "Invalid channel: $channel" }
+          else {
+            $channel = $env:ECL_REF_NAME
+            if ($channel -notin @("main", "dev", "nightly")) {
+              throw "Unsupported release branch: $channel"
+            }
+            if ($channel -eq "main") {
+              throw "The main branch publishes stable releases only from vMAJOR.MINOR.PATCH tags."
+            }
+
+            $date = [DateTime]::UtcNow.ToString("yyyyMMdd")
+            $attempt = [int]$env:ECL_RUN_ATTEMPT
+            $version = "$baseVersion-$channel.$date.$($env:ECL_RUN_NUMBER).$attempt"
+          }
+
           "ECL_VERSION=$version" >> $env:GITHUB_ENV
           "ECL_CHANNEL=$channel" >> $env:GITHUB_ENV
-          $notes = "${{ inputs.release_notes }}"
-          if ([string]::IsNullOrWhiteSpace($notes)) { $notes = "ECL $version ($channel)" }
-          $notes | Set-Content -Path "$env:RUNNER_TEMP/release-notes.md" -Encoding utf8NoBOM
+          "ECL_RELEASE_TAG=$channel" >> $env:GITHUB_ENV
+          "ECL_PRERELEASE=$([bool]($channel -ne 'main'))" >> $env:GITHUB_ENV
+          "ECL_RELEASE_TITLE=ECL $version ($channel)" >> $env:GITHUB_ENV
+          "ECL_RELEASE_NOTES=Automated $channel build from $env:ECL_COMMIT_SHA" >> $env:GITHUB_ENV
+          @"
+          ECL $version
+          Channel: $channel
+          Commit: $env:ECL_COMMIT_SHA
+          "@ | Set-Content -Path "$env:RUNNER_TEMP/release-notes.md" -Encoding utf8NoBOM
 
       - name: Materialize update signing key
         shell: pwsh
@@ -85,10 +97,9 @@ jobs:
               -OutFile $keyPath
           }
           else {
-            throw "No update signing key. Configure ECL_UPDATE_SIGNING_KEY (recommended) or ECL_CORE_READ_TOKEN."
+            throw "No update signing key. Configure ECL_UPDATE_SIGNING_KEY or ECL_CORE_READ_TOKEN."
           }
 
-          # Validate the private key against the committed public trust store before signing.
           $trust = Get-Content "build/update-trust.json" -Raw | ConvertFrom-Json
           $expected = [string]$trust.keys[0].publicKey
           $rsa = [System.Security.Cryptography.RSA]::Create()
@@ -96,14 +107,11 @@ jobs:
             $rsa.ImportFromPem([System.IO.File]::ReadAllText($keyPath))
             $actual = $rsa.ExportSubjectPublicKeyInfoPem()
           }
-          finally {
-            $rsa.Dispose()
-          }
+          finally { $rsa.Dispose() }
           if ($actual.Trim() -ne $expected.Trim()) {
-            throw "Signing key does not match build/update-trust.json. Refusing to sign."
+            throw "Signing key does not match build/update-trust.json."
           }
           "ECL_UPDATE_SIGNING_KEY=$keyPath" >> $env:GITHUB_ENV
-          Write-Host "Signing key materialized and matched the committed trust store."
 
       - name: Build signed release artifacts
         shell: pwsh
@@ -140,30 +148,23 @@ jobs:
             (Join-Path $dir "update-trust.json")
           )
           $notes = "$env:RUNNER_TEMP/release-notes.md"
-          $prerelease = $env:ECL_CHANNEL -ne "stable"
-          $versionTag = "v$env:ECL_VERSION"
-
-          function Publish-Release([string]$tag, [string]$title) {
-            $existing = gh release view $tag 2>$null
-            if ($LASTEXITCODE -eq 0 -and $existing) {
-              gh release upload $tag @assets --clobber
-              gh release edit $tag --title $title --notes-file $notes
-            }
-            else {
-              $ghArgs = @("release", "create", $tag, "--title", $title, "--notes-file", $notes, "--target", $env:GITHUB_SHA)
-              if ($prerelease) { $ghArgs += "--prerelease" }
-              gh @ghArgs @assets
-            }
-            if ($LASTEXITCODE -ne 0) { throw "Failed to publish release $tag" }
+          $tag = if ($env:ECL_CHANNEL -eq "main") { "v$env:ECL_VERSION" } else { $env:ECL_CHANNEL }
+          $existing = gh release view $tag 2>$null
+          if ($LASTEXITCODE -eq 0 -and $existing) {
+            gh release upload $tag @assets --clobber
+            gh release edit $tag --title "$env:ECL_RELEASE_TITLE" --notes-file $notes
           }
-
-          Publish-Release $versionTag "ECL $env:ECL_VERSION"
-          Publish-Release $env:ECL_CHANNEL "ECL $env:ECL_CHANNEL channel ($env:ECL_VERSION)"
+          else {
+            $args = @("release", "create", $tag, "--title", "$env:ECL_RELEASE_TITLE", "--notes-file", $notes, "--target", $env:GITHUB_SHA)
+            if ($env:ECL_CHANNEL -ne "main") { $args += "--prerelease" }
+            gh @args @assets
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Failed to publish release $tag" }
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ECL-${{ env.ECL_VERSION }}
+          name: ECL-${{ env.ECL_VERSION }}-${{ env.ECL_CHANNEL }}
           path: artifacts/release/${{ env.ECL_VERSION }}/
           if-no-files-found: error
 
