@@ -1,6 +1,6 @@
 # ADR 0011：全局下载任务与页面解耦
 
-- 状态：已被 `ECL.Operations` 统一任务模型取代
+- Status: Superseded
 
 ## 背景
 
