@@ -177,6 +177,8 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             Kind = OptionKind.Text,
             Scope = OptionScope.Global,
             CategoryKey = "category.java",
+            DisplayNameKey = "option.java.defaultPath.name",
+            DescriptionKey = "option.java.defaultPath.desc",
             Default = null,
             EmptyIsNull = true,
             Order = 999,
