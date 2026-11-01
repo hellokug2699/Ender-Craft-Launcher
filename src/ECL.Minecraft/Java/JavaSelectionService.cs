@@ -83,7 +83,7 @@ public sealed class JavaSelectionService(
         // to the discovery cache. Resolve it directly so a runtime configured
         // after an earlier scan (or outside known search roots) remains selectable.
         var configuredRuntimes = globalPaths
-            .Select(locator.FromPath)
+            .Select(path => ResolveConfiguredRuntime(locator, path))
             .Where(candidate => candidate is not null)
             .Select(candidate => candidate!)
             .Concat(discovered)
@@ -153,6 +153,40 @@ public sealed class JavaSelectionService(
             memoryMb,
             isCompatibilityWarningAcknowledged,
             acknowledgementToken);
+    }
+
+    private static JavaRuntime? ResolveConfiguredRuntime(IJavaLocator locator, string configuredPath)
+    {
+        var path = configuredPath.Trim().Trim('"');
+        if (File.Exists(path))
+        {
+            return locator.FromPath(path);
+        }
+
+        if (!Directory.Exists(path))
+        {
+            return null;
+        }
+
+        // A configured parent directory may contain several Java installations.
+        // FromPath intentionally returns one runtime for such a directory, which
+        // would collapse the candidates and can hide an older compatible runtime.
+        // Only resolve directories that are themselves a Java home or its bin folder.
+        var executableName = OperatingSystem.IsWindows() ? "java.exe" : "java";
+        var directExecutable = Path.Combine(path, "bin", executableName);
+        if (File.Exists(directExecutable))
+        {
+            return locator.FromPath(path);
+        }
+
+        var directoryName = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
+        if (string.Equals(directoryName, "bin", StringComparison.OrdinalIgnoreCase) &&
+            File.Exists(Path.Combine(path, executableName)))
+        {
+            return locator.FromPath(path);
+        }
+
+        return null;
     }
 
     private static IReadOnlyList<JavaRuntime> OrderByGlobalPriority(
