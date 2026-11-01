@@ -109,7 +109,7 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
         {
             Key = "network.proxyMode",
             Kind = OptionKind.Select,
-            Scope = OptionKind.Select == OptionKind.Select ? OptionScope.Global : OptionScope.Global,
+            Scope = OptionScope.Global,
             CategoryKey = "category.network",
             DisplayNameKey = "option.network.proxyMode.name",
             DescriptionKey = "option.network.proxyMode.desc",
@@ -268,7 +268,7 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             Scope = OptionScope.Global,
             CategoryKey = "category.game",
             DisplayNameKey = "option.game.windowHeight.name",
-            UnitKey = "unit.px",
+            UnitKey = "option.game.windowHeight.name",
             Default = 720,
             Min = 480,
             Max = 4320,
