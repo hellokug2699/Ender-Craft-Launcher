@@ -684,7 +684,6 @@
   "instance.detail.delete": "Delete instance…",
   "instance.detail.java": "Java runtime",
   "instance.detail.javaDesc": "ECL can download and manage the Java version required by this instance; no separate Java installation is needed. An instance selection overrides the global Java, while Auto inherits the global strategy.",
-  "instance.detail.disableJavaCheck": "Disable Java compatibility check",
   "instance.detail.jvm": "JVM and memory",
   "instance.detail.jvmDesc": "Unset instance values inherit global settings. Instance extra arguments replace, rather than append to, global extra arguments.",
   "instance.detail.jvmPreset": "JVM preset",
