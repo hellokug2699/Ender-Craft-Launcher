@@ -55,7 +55,7 @@ ECL.UI (WPF)  ──Named Pipe──▶  ECL.LogHost  ──stdout/stderr──�
 
 ## 7. 尚未完成
 
-- LogHost 崩溃后的文件日志回退与 `RecoveryPending` 自动恢复流程。
+- LogHost 崩溃后，主程序会把仍在运行的会话标记为 `CaptureIncomplete` 并记录 `CaptureFault`；文件日志回退与 `RecoveryPending` 自动恢复流程仍未实现。
 - 多 UI 客户端并发订阅与增量状态推送。
 - 系统关机/注销时的最终 flush 与中断标记。
 - 压力测试：高频日志 + 慢盘 + 队列上限的基准数值。

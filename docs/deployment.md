@@ -115,7 +115,7 @@ ECL.Bootstrapper.exe --install-root "C:\Program Files\ECL" --rollback --deploy-o
 ECL.Bootstrapper.exe --install-root "C:\Program Files\ECL" --cleanup
 ```
 
-退出码：`0` 成功；`2` 参数错误；`3` 信任/签名/公钥错误；`4` 部署失败；`5` 启动失败。
+退出码：`0` 成功；`2` 参数错误；`3` 信任/签名/公钥错误；`4` 部署失败；`5` 启动失败。该映射由 `BootstrapperExitCodes` 统一提供并被单元测试锁定，失败路径不得临时发明新的退出码。
 引导程序使用 `.update.lock` 防止并发更新，日志写入 `bootstrapper.log`；`--apply`、`--rollback` 与 `--cleanup` 都在锁内执行。
 部署前会自动清理未完成的 `staging/`，`versions/` 与 `current.json` 不受影响。
 安装介质中的 Bootstrapper 以单文件自包含方式发布，首次安装不要求目标机器预装 .NET 运行时。

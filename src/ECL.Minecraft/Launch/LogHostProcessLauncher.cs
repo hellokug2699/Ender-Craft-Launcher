@@ -15,6 +15,7 @@ public sealed class LogHostUnavailableException(string message) : Exception(mess
 /// </summary>
 internal sealed class LogHostProcessLauncher(
     IAppPaths paths,
+    Ecl.Sessions.IGameSessionService sessions,
     ILogger<LogHostProcessLauncher> logger) : IProcessLauncher
 {
     public const string ExecutablePathEnvironmentVariable = "ECL_LOG_HOST_PATH";
@@ -22,6 +23,8 @@ internal sealed class LogHostProcessLauncher(
     private static readonly SemaphoreSlim ConnectGate = new(1, 1);
     private static NamedPipeLogHostClient? _client;
     private static Process? _spawnedHost;
+    private readonly Dictionary<string, string> _sessions = new(StringComparer.Ordinal);
+    private readonly object _sessionsGate = new();
 
     public int Start(
         LaunchCommand command,
@@ -53,7 +56,38 @@ internal sealed class LogHostProcessLauncher(
         }
 
         logger.LogInformation("LogHost 已启动实例 {InstanceId} 的游戏进程，PID {Pid}。", instanceId, pid);
+        lock (_sessionsGate)
+        {
+            _sessions[sessionId] = instanceId;
+        }
+
         return pid;
+    }
+
+    /// <summary>LogHost 异常退出：把仍在运行的活动会话标记为采集不完整，不终止游戏。</summary>
+    private void OnHostExited(object? sender, EventArgs e)
+    {
+        string[] sessionIds;
+        lock (_sessionsGate)
+        {
+            sessionIds = _sessions.Keys.ToArray();
+            _sessions.Clear();
+        }
+
+        foreach (var sessionId in sessionIds)
+        {
+            try
+            {
+                sessions.MarkCaptureHostLost(sessionId, "LogHost 进程已退出，采集可能不完整。");
+            }
+            catch (InvalidOperationException)
+            {
+                // 会话已收尾或不存在。
+            }
+        }
+
+        _client?.Dispose();
+        _client = null;
     }
 
     private NamedPipeLogHostClient EnsureConnected()
@@ -120,6 +154,8 @@ internal sealed class LogHostProcessLauncher(
 
         _spawnedHost = Process.Start(startInfo)
                        ?? throw new LogHostUnavailableException("无法启动 ECL.LogHost.exe。");
+        _spawnedHost.EnableRaisingEvents = true;
+        _spawnedHost.Exited += OnHostExited;
         logger.LogInformation("已启动独立日志宿主，PID {Pid}。", _spawnedHost.Id);
     }
 

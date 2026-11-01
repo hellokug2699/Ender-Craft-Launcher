@@ -31,6 +31,9 @@ public interface IGameSessionService
     /// <summary>记录实际采集宿主（<c>loghost</c> 或 <c>in-process</c>）。</summary>
     void SetCaptureHost(string sessionId, string host);
 
+    /// <summary>采集宿主异常退出：只标记不完整，不终止游戏、不伪造正常完成。</summary>
+    void MarkCaptureHostLost(string sessionId, string reason);
+
     void SetExitCode(string sessionId, int exitCode);
 
     /// <summary>ECL 启动后的恢复。幂等：重复执行不会重复登记文件或破坏证据。</summary>
@@ -181,6 +184,18 @@ public sealed class GameSessionService : IGameSessionService
     {
         var session = Require(sessionId);
         Update(session, session.Manifest with { CaptureHost = host });
+    }
+
+    public void MarkCaptureHostLost(string sessionId, string reason)
+    {
+        var session = Get(sessionId);
+        if (session is null || session.Manifest.State != GameSessionState.Running)
+        {
+            return;
+        }
+
+        SetCaptureFault(sessionId, reason);
+        MarkState(sessionId, GameSessionState.CaptureIncomplete, reason);
     }
 
     public void SetCaptureFault(string sessionId, string fault)

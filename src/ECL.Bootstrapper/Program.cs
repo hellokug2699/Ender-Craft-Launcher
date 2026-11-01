@@ -25,7 +25,7 @@ internal static class Program
         {
             Console.Error.WriteLine(exception.Message);
             Console.WriteLine(Usage);
-            return 2;
+            return BootstrapperExitCodes.ArgumentError;
         }
 
         if (options.Help)
@@ -51,7 +51,7 @@ internal static class Program
                 if (cleanupLock is null)
                 {
                     Console.Error.WriteLine("另一个更新进程正在运行。");
-                    return 4;
+                    return BootstrapperExitCodes.DeployError;
                 }
 
                 var removed = installer.CleanupStaging();
@@ -66,7 +66,7 @@ internal static class Program
                 if (rollbackLock is null)
                 {
                     Console.Error.WriteLine("另一个更新进程正在运行。");
-                    return 4;
+                    return BootstrapperExitCodes.DeployError;
                 }
 
                 var rollback = installer.RollbackAsync().GetAwaiter().GetResult();
@@ -89,7 +89,7 @@ internal static class Program
         {
             log.Write($"未处理异常：{exception}");
             Console.Error.WriteLine(exception.Message);
-            return 1;
+            return BootstrapperExitCodes.DeployError;
         }
     }
 
@@ -103,7 +103,7 @@ internal static class Program
         if (updateLock is null)
         {
             Console.Error.WriteLine("另一个更新进程正在运行。");
-            return 4;
+            return BootstrapperExitCodes.DeployError;
         }
 
         var cleaned = installer.CleanupStaging();
@@ -243,12 +243,7 @@ internal static class Program
     {
         Console.Error.WriteLine(error);
         log.Write($"失败：{error.Code} {error}");
-        return error.Code switch
-        {
-            "update.trust_missing" or "update.unknown_key" or "update.signature_invalid" => 3,
-            "update.executable_missing" or "update.launch_failed" => 5,
-            _ => 4,
-        };
+        return BootstrapperExitCodes.FromError(error);
     }
 
     private static ReleaseVersion GetBootstrapperVersion()

@@ -151,5 +151,75 @@ public sealed class SessionTests : IDisposable
         Assert.Equal(2, service.List().Count);
     }
 
+    [Fact]
+    public void RecoveryMarksIdentityMismatchAsUnknownInsteadOfInterrupted()
+    {
+        using var current = Process.GetCurrentProcess();
+        var executable = current.MainModule?.FileName;
+        if (string.IsNullOrWhiteSpace(executable))
+        {
+            return;
+        }
+
+        var service = CreateService();
+        var session = service.Create(Request());
+        // PID 存活但启动时间不匹配：PID 复用/错误附着的典型情形。
+        service.AttachProcess(
+            session.SessionId,
+            current.Id,
+            new DateTimeOffset(current.StartTime.ToUniversalTime(), TimeSpan.Zero).AddHours(-1),
+            executable,
+            _environment.Root);
+
+        var report = service.Recover();
+
+        Assert.Equal(1, report.Unknown);
+        Assert.Equal(GameSessionState.ProcessStateUnknown, service.Get(session.SessionId)!.Manifest.State);
+    }
+
+    [Fact]
+    public void CorruptManifestDoesNotBreakListingOrRecovery()
+    {
+        var service = CreateService();
+        var valid = service.Create(Request());
+        var corrupt = service.Create(Request("demo-other"));
+        File.WriteAllText(corrupt.ManifestPath, "{ not json");
+
+        var list = service.List();
+        var report = service.Recover();
+
+        Assert.Contains(list, session => session.SessionId == valid.SessionId);
+        Assert.DoesNotContain(list, session => session.SessionId == corrupt.SessionId);
+        Assert.True(File.Exists(corrupt.ManifestPath));
+        Assert.Equal(1, report.Scanned);
+    }
+
+    [Fact]
+    public void HostLossMarksRunningSessionIncompleteWithoutFakingSuccess()
+    {
+        var service = CreateService();
+        var session = service.Create(Request());
+        service.AttachProcess(session.SessionId, 4242, DateTimeOffset.UtcNow, "java.exe", _environment.Root);
+
+        service.MarkCaptureHostLost(session.SessionId, "LogHost 崩溃");
+
+        var manifest = service.Get(session.SessionId)!.Manifest;
+        Assert.Equal(GameSessionState.CaptureIncomplete, manifest.State);
+        Assert.Contains("LogHost 崩溃", manifest.CaptureFault);
+        Assert.Contains("session.capture.fault", manifest.Warnings);
+    }
+
+    [Fact]
+    public void HostLossDoesNotRewriteCompletedSession()
+    {
+        var service = CreateService();
+        var session = service.Create(Request());
+        service.MarkState(session.SessionId, GameSessionState.CaptureCompleted);
+
+        service.MarkCaptureHostLost(session.SessionId, "迟到的宿主退出");
+
+        Assert.Equal(GameSessionState.CaptureCompleted, service.Get(session.SessionId)!.Manifest.State);
+    }
+
     public void Dispose() => _environment.Dispose();
 }

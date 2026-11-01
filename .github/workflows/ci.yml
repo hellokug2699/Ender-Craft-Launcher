@@ -39,6 +39,38 @@ jobs:
       - name: Test
         run: dotnet test tests/ECL.Tests/ECL.Tests.csproj -c Release --no-build
 
+      # 未签名打包只用于验证发布脚本与安装介质组装；签名产物仍由 release workflow 生成。
+      - name: Verify release packaging and installer media
+        shell: pwsh
+        run: |
+          dotnet build src/ECL.Installer/ECL.Installer.csproj -c Release --no-restore
+          pwsh -NoProfile -File build/pack-release.ps1 `
+            -Version 0.0.0-ci -Channel nightly -OutputRoot artifacts/ci-release -Unsigned
+          if ($LASTEXITCODE -ne 0) { throw "pack-release failed" }
+
+          $release = "artifacts/ci-release/0.0.0-ci"
+          $media = Join-Path $release "installer"
+          foreach ($file in @(
+            "ECL.Installer.exe",
+            "ECL.Bootstrapper.exe",
+            "update-manifest.json",
+            "update-trust.json",
+            "ECL-package.zip"
+          )) {
+            if (-not (Test-Path (Join-Path $media $file))) { throw "安装介质缺少 $file" }
+          }
+
+          $package = Join-Path $release "ECL-0.0.0-ci-win-x64.zip"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($package)
+          try {
+            $names = $zip.Entries | ForEach-Object { $_.FullName }
+            foreach ($required in @("ECL.exe", "ECL.LogHost.exe")) {
+              if ($names -notcontains $required) { throw "程序包缺少 $required" }
+            }
+          }
+          finally { $zip.Dispose() }
+
   linux:
     name: Test (Linux, Core + CLI)
     runs-on: ubuntu-latest
