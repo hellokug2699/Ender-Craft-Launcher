@@ -268,7 +268,7 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             Scope = OptionScope.Global,
             CategoryKey = "category.game",
             DisplayNameKey = "option.game.windowHeight.name",
-            UnitKey = "option.game.windowHeight.name",
+            UnitKey = "unit.px",
             Default = 720,
             Min = 480,
             Max = 4320,
