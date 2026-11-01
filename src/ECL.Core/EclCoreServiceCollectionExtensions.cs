@@ -2,7 +2,10 @@
 
 using System.Globalization;
 using Ecl.Core.Localization;
+using Ecl.Core.Storage;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ecl.Core;
 
@@ -12,6 +15,9 @@ public static class EclCoreServiceCollectionExtensions
     {
         services.AddSingleton(paths);
         services.AddSingleton<IAppPaths>(paths);
+        services.AddSingleton<IWorkspaceService>(provider => new WorkspaceService(
+            paths,
+            provider.GetService<ILogger<WorkspaceService>>() ?? NullLogger<WorkspaceService>.Instance));
         services.AddSingleton<ILocalizer>(_ => new JsonLocalizer(culture));
         return services;
     }

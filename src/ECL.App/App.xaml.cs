@@ -12,6 +12,7 @@ using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Core.Logging;
+using Ecl.Core.Storage;
 using Ecl.Download;
 using Ecl.Java;
 using Ecl.Minecraft;
@@ -36,8 +37,11 @@ public partial class App : Application
         {
             var paths = AppPaths.Create();
 
-            // 实例下载位置在建立 DI 容器之前读取：切换游戏目录需要重启启动器。
-            paths.SetGameRoot(SettingsBootstrap.ReadGlobalString(paths, "launcher.minecraftDirectory"));
+            // 工作区在建立 DI 容器之前装配：主工作区来自 config/workspace.json，
+            // 旧版 launcher.minecraftDirectory 只作为一次性迁移输入。
+            WorkspaceBootstrap.Apply(
+                paths,
+                SettingsBootstrap.ReadGlobalString(paths, "launcher.minecraftDirectory"));
             paths.EnsureCreated();
 
             var language = SettingsBootstrap.ReadGlobalString(paths, "launcher.language")

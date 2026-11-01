@@ -32,7 +32,9 @@ internal static class Program
         }
 
         var paths = AppPaths.Create(commandLine.DataDirectory);
-        paths.SetGameRoot(SettingsBootstrap.ReadGlobalString(paths, "launcher.minecraftDirectory"));
+        Ecl.Core.Storage.WorkspaceBootstrap.Apply(
+            paths,
+            SettingsBootstrap.ReadGlobalString(paths, "launcher.minecraftDirectory"));
         paths.EnsureCreated();
 
         var language = commandLine.Language ?? SettingsBootstrap.ReadGlobalString(paths, "launcher.language") ?? CultureInfo.CurrentUICulture.Name;

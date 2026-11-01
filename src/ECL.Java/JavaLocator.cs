@@ -83,7 +83,9 @@ public sealed class JavaLocator : IJavaLocator
 
         AddHome(candidates, Environment.GetEnvironmentVariable("JAVA_HOME"));
         AddPathEnvironment(candidates);
-        AddHomeChildren(candidates, cancellationToken, _paths.JavaDirectory, depth: 2);
+        AddHomeChildren(candidates, cancellationToken, _paths.RuntimesDirectory, depth: 2);
+        // 旧版目录只读兼容：不迁移、不删除用户已有的托管运行时。
+        AddHomeChildren(candidates, cancellationToken, _paths.LegacyJavaDirectory, depth: 2);
 
         if (OperatingSystem.IsWindows())
         {

@@ -192,7 +192,7 @@ public sealed class JavaInstallService : IJavaInstallService
                 return Result<JavaRuntime>.Fail("java.manifest_invalid", _localizer.Get("java.error.manifestInvalid"));
             }
 
-            var runtimeDirectory = Path.Combine(_paths.JavaDirectory, component);
+            var runtimeDirectory = Path.Combine(_paths.RuntimesDirectory, component);
             Directory.CreateDirectory(runtimeDirectory);
             var root = Path.GetFullPath(runtimeDirectory) + Path.DirectorySeparatorChar;
 
@@ -338,7 +338,7 @@ public sealed class JavaInstallService : IJavaInstallService
             var package = packageResult.Value!;
             var component = SanitizeComponent(package.Component);
             var runtimeId = $"{provider.Id}-{component}";
-            var destination = Path.Combine(_paths.JavaDirectory, runtimeId);
+            var destination = Path.Combine(_paths.RuntimesDirectory, runtimeId);
 
             var cacheDirectory = Path.Combine(_paths.CacheDirectory, "java");
             Directory.CreateDirectory(cacheDirectory);

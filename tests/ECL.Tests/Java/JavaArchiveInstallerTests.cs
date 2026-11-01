@@ -34,7 +34,7 @@ public sealed class JavaArchiveInstallerTests
         var runtime = result.Value!;
         Assert.Equal(21, runtime.Version?.Major);
         Assert.True(File.Exists(runtime.ExecutablePath));
-        Assert.StartsWith(environment.Paths.JavaDirectory, runtime.HomePath, StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith(environment.Paths.RuntimesDirectory, runtime.HomePath, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
