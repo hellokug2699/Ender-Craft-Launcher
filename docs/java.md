@@ -2,19 +2,19 @@
 
 Minecraft 对 Java 版本的要求随版本变化：1.16 及以下通常需要 Java 8，1.17 需要 16，1.18–1.20.4 通常需要 17，1.20.5–1.21.x 需要 21；2026 年起的 26.x 需要 Java 25（版本 JSON 可能声明 26）。Java 管理模块负责“选哪个 Java、能不能用、没有怎么办”。
 
-**ECL 只检查最低 Java 主版本，不限制最高版本。** 例如 1.20.1 使用 Java 8 会被判定过低并提示；1.20.1 使用 Java 25 不会被阻止。
+**ECL 只检查最低 Java 主版本，不限制最高版本。** 例如 1.20.1 使用 Java 8 会被判定过低；1.20.1 使用 Java 25 不会因为“太新”而被阻止。
 
 ## 1. 选择顺序
 
-1. **实例指定**：`instance.java.executablePath`（实例工作区中的 Java 选择器）。
-2. **全局指定**：`java.defaultPath`（设置 → Java → Java 目录 / 路径）。
-3. **自动选择**：扫描本机 Java，按版本要求挑选最合适的运行时。
-4. **默认 Java**：若没有满足最低要求的运行时，使用探测到的最高版本，并在兼容性检查中提示。
-5. **未找到**：真实启动失败并提示下载；UI 可直接点击“下载 Java”。
+1. **实例指定**：`instance.java.executablePath` 是实例级显式 pin；如果存在，则优先使用该 Java，但仍必须通过兼容性检查。
+2. **全局优先级**：`java.defaultPath` 中的 Java 按用户配置顺序参与候选排序；第一个不兼容当前实例的 Java 会被跳过。
+3. **自动发现**：未列入全局优先级的已发现 Java 作为后备候选，仍按发现顺序参与选择。
+4. **无兼容运行时**：返回结构化的“没有满足要求的 Java”结果；不能为了启动而自动选择一个已知不兼容的运行时。
+5. **未找到 Java**：真实启动失败并提示下载；UI 可直接点击“下载 Java”。
 
-`java.defaultPath` 支持三种写法：单个 `java.exe`、单个 Java 主目录，或一个包含多个 JDK/JRE 的上级目录（例如 `D:\java`）。多个路径可以用分号或换行分隔。配置为上级目录时，ECL 不会把其中某个 Java 直接当作“全局指定”，而是把目录下的所有运行时加入自动选择，避免因最高版本不兼容而误选。
+`java.defaultPath` 支持单个 `java.exe`、单个 Java 主目录、包含多个 JDK/JRE 的上级目录，以及用分号或换行分隔的多个路径。多个路径的顺序就是全局 Java 优先级；父目录会把其下已发现的运行时作为该位置的候选组，而不会把父目录本身锁定为某一个 Java。
 
-实例工作区的 Java 选择器包含“自动（默认 Java）”与所有探测到的运行时。选择“自动”会清空实例路径，交由自动逻辑决定。实例库页面只展示实例，Java 与 JVM 设置统一在实例工作区中完成。
+实例工作区的 Java 选择器包含“自动”与所有探测到的运行时。选择“自动”会清空实例路径，交由上述优先级与兼容性逻辑决定。实例级显式 Java 仍用于高级用户的固定运行时场景，但不能绕过硬兼容性要求。
 
 ## 2. 版本要求
 
@@ -37,6 +37,8 @@ Minecraft 对 Java 版本的要求随版本变化：1.16 及以下通常需要 J
 
 Cleanroom 的 `version.json` 声明 `javaVersion.majorVersion = 25`，因此 1.12.2 Cleanroom 实例会被要求使用 Java 25，而不是原版 1.12.2 的 Java 8。
 
+后续应继续将 Loader、Mod 等运行时约束合并到实例的有效 Java 要求中；单独一个 Minecraft 版本要求不能代表整个实例的最终要求。
+
 ## 3. 兼容性检查
 
 `JavaCompatibility` 返回三种状态：
@@ -47,21 +49,20 @@ Cleanroom 的 `version.json` 声明 `javaVersion.majorVersion = 25`，因此 1.1
 | `TooOld` | 低于最低版本，例如 1.20.1 使用 Java 8 |
 | `Unknown` | 无法解析 Java 版本 |
 
-**不存在“Java 版本过高”的拦截**：高于最低要求一律视为兼容。
+**不存在“Java 版本过高”的拦截**：高于最低要求一律视为兼容，除非未来引入有证据支持的更具体约束。
 
-行为：
+Java 兼容性检查是启动前置条件：
 
-- UI 在实例工作区显示“兼容 / 可能不兼容 / 未找到 Java”。
-- 真实启动前，若低于最低要求且检查开启，弹出确认框；用户仍可选择继续。
-- 启动流水线的 `ResolveJavaStep` 同时返回 `Warning`，CLI 会看到同样的警告。
-- 实例设置 `instance.java.disableCompatibilityCheck` 可关闭该实例的检查；关闭后 UI 不再弹窗，流水线不再警告（但找不到 Java 仍会失败）。
-- 实例工作区的 Java 卡片也提供同一开关，便于直接操作。
+- UI 在实例工作区显示兼容状态。
+- 已知不兼容的 Java 不会被自动选择。
+- 实例显式指定了不兼容 Java 时，启动流水线会拒绝真实启动；不会再提供“忽略兼容性检查后继续”的绕过路径。
+- 旧配置中的 `instance.java.disableCompatibilityCheck` 不再改变 Core 的启动行为；后续 UI 与配置文档应移除该选项。
+- Dry-run 可以报告不兼容状态供用户诊断，但真实启动必须阻止。
 
 ## 4. 自动下载 Java
 
 当没有可用/兼容的 Java 时，UI“下载 Java”与 CLI `java install <实例ID>` 会调用 `IJavaInstallService`。
-若实例的版本 JSON 尚未生成（例如刚创建、加载器安装还未完成），会按实例的 `GameVersion`
-推断 Java 要求，避免“先有版本 JSON 才能下载 Java、先有 Java 才能安装加载器”的死循环。
+若实例的版本 JSON 尚未生成（例如刚创建、加载器安装还未完成），会按实例的 `GameVersion` 推断 Java 要求，避免“先有版本 JSON 才能下载 Java、先有 Java 才能安装加载器”的死循环。
 
 1. 读取所选来源的 Java 运行时列表：
    - `mojang`：`https://piston-meta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json`（镜像受四档下载源策略控制）。
@@ -69,7 +70,7 @@ Cleanroom 的 `version.json` 声明 `javaVersion.majorVersion = 25`，因此 1.1
    - `zulu`：Azul Metadata API（`api.azul.com`，JDK zip/tar.gz）。
    - `liberica`：BellSoft API（`api.bell-sw.com`，JDK zip/tar.gz）。
    来源由 `java.runtimeProvider` 选择，默认 `mojang`。
-2. 按当前平台选择架构与包类型：Windows zip，Linux/macOS tar.gz；支持 x64、x86（有构建时）与 arm64。
+2. 按当前平台选择架构与包类型：Windows zip，Linux/macOS tar.gz；ECL 不接受 32 位 Java 作为 Minecraft 启动运行时。
 3. Mojang 优先使用版本 JSON 指定的 `component`；第三方按 `MinimumMajor` 选择对应 feature 版本。
 4. 第三方下载到 `<data>/cache/java/`，校验 SHA-1/SHA-256（提供方给出时），再解压到 `<data>/java/<provider>-<component>/`；解压后会重新探测 `bin/java`，找不到可执行文件则判定失败。
 5. Mojang 仍走 manifest + `file` 条目流程，创建 `link` 条目（Linux/macOS），设置可执行位。
@@ -77,21 +78,18 @@ Cleanroom 的 `version.json` 声明 `javaVersion.majorVersion = 25`，因此 1.1
 
 Linux ARM64 在 Mojang 来源下会返回“平台不支持”；切换到 Adoptium/Zulu/Liberica 可以下载 ARM64 构建。
 
-**用户无需预先安装 Java。** ECL 当前采用按需下载，而不是把 Java 二进制直接塞进启动器安装包：缺少运行时后，用户可在启动确认中同意下载，也可在实例详情页手动下载。运行时安装到 ECL 数据目录并由启动器扫描管理；不同实例可以复用兼容的本机运行时。
-
-默认 Mojang 来源使用 Minecraft 官方运行时清单；Adoptium、Zulu、Liberica 是可选的 OpenJDK 发行版来源。Temurin 等第三方二进制随包提供其许可证与 NOTICE 信息，ECL 应保留这些文件。若未来改为随 ECL 安装包预置 Java，需要针对具体发行版和版本核对再分发条款，不能把“OpenJDK”名称本身视为统一的再分发授权。
+**用户无需预先安装 Java。** ECL 当前采用按需下载，而不是把 Java 二进制直接塞进启动器安装包：缺少运行时后，用户可在实例详情页手动下载。运行时安装到 ECL 数据目录并由启动器扫描管理；不同实例可以复用兼容的本机运行时。
 
 ## 5. 32/64 位与内存校验
 
-`JavaPlatformAdvisor` 在 Java 选择后给出警告（不直接阻止启动）：
+Minecraft 启动运行时不支持 32 位 Java。Java discovery 应明确识别 32 位运行时并排除它们，而不是让它们进入正常候选列表。
 
-- 64 位系统 + 32 位 Java：提示改用 64 位 Java。
+`JavaPlatformAdvisor` 仍可在 Java 选择后提供平台与内存方面的诊断：
+
+- 64 位系统 + 32 位 Java：应作为不可用候选，而不是普通 Warning。
 - 32 位系统 + 64 位 Java：提示很可能无法启动。
 - ARM64 系统 + x64 Java：提示可能需要模拟层。
-- 32 位 Java + 内存 > 1024 MB：提示超出 32 位 Java 的实用上限。
 - 分配内存 > 系统可用内存：提示可能卡顿或启动失败。
-
-警告会出现在实例页 Java 状态和启动流水线的 `java` 步骤中。
 
 ## 6. JVM 参数预设
 
@@ -141,8 +139,7 @@ Linux ARM64 在 Mojang 来源下会返回“平台不支持”；切换到 Adopt
 - Java 下拉框：自动 / 本机运行时。
 - “刷新”：重新扫描。
 - “下载 Java”：按当前实例版本要求下载。
-- “关闭 Java 兼容性检验”：实例级开关。
-- 状态文本 + 下载进度。
+- Java 状态展示当前实际选择结果及兼容性原因。
 - 下载运行时同时登记统一任务中心的 `Java` 任务（阶段、字节、速度、失败归因、取消/重试），见 [operations.md](operations.md)。
 
 实例库只展示实例名称、Minecraft 版本、加载器与最近启动时间，并提供“打开工作区”入口；Java、JVM、账户、模组与诊断等设置都集中在实例工作区。
@@ -159,7 +156,8 @@ ecl launch <实例ID> --dry-run
 
 ## 9. 限制与后续
 
-- 内置预设之外可通过自定义 JSON 文件加载参数；尚不支持在 UI 中编辑并保存新的命名预设。
-- 32/64 位与内存校验只给出警告，不强制阻止启动。
+- 当前全局 Java 优先级仍复用 `java.defaultPath` 的有序路径表示；后续 UI 应将其升级为真正的可排序 Java 列表，并提供导入、移出管理、打开文件夹等操作。
+- Mod/Loader 的 Java 需求需要进入有效要求聚合器，不能只看 Minecraft 版本。
+- 32 位 Java 不应进入 Minecraft 启动候选。
 - Mojang 运行时在不支持的平台/架构上可能不可用；可切换 Adoptium、Zulu 或 Liberica，具体构建取决于供应商发布情况。
 - Microsoft 账户登录需要 Windows DPAPI 安全凭据存储；非 Windows 平台暂不支持该凭据持久化。认证流程详见 [authentication.md](authentication.md)。
