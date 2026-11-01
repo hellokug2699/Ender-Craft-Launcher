@@ -30,7 +30,6 @@ jobs:
       - name: Resolve version and channel from branch
         shell: pwsh
         env:
-          ECL_BASE_VERSION: "0.8.0"
           ECL_REF_NAME: ${{ github.ref_name }}
           ECL_REF_TYPE: ${{ github.ref_type }}
           ECL_RUN_NUMBER: ${{ github.run_number }}
@@ -39,13 +38,13 @@ jobs:
         run: |
           $base = [xml](Get-Content "Directory.Build.props" -Raw)
           $baseVersion = [string]$base.Project.PropertyGroup.VersionPrefix
-          if ($baseVersion -notmatch '^(0|[1-9]\d*)\\.(0|[1-9]\d*)\\.(0|[1-9]\d*)$') {
+          if ($baseVersion -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
             throw "Directory.Build.props VersionPrefix must be MAJOR.MINOR.PATCH."
           }
 
           if ($env:ECL_REF_TYPE -eq "tag") {
             $version = $env:ECL_REF_NAME -replace '^v', ''
-            if ($version -notmatch '^(0|[1-9]\d*)\\.(0|[1-9]\d*)\\.(0|[1-9]\d*)$') {
+            if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
               throw "Release tags must be stable SemVer tags such as v1.2.3."
             }
             $channel = "main"
@@ -66,7 +65,6 @@ jobs:
 
           "ECL_VERSION=$version" >> $env:GITHUB_ENV
           "ECL_CHANNEL=$channel" >> $env:GITHUB_ENV
-          "ECL_RELEASE_TAG=$channel" >> $env:GITHUB_ENV
           "ECL_PRERELEASE=$([bool]($channel -ne 'main'))" >> $env:GITHUB_ENV
           "ECL_RELEASE_TITLE=ECL $version ($channel)" >> $env:GITHUB_ENV
           "ECL_RELEASE_NOTES=Automated $channel build from $env:ECL_COMMIT_SHA" >> $env:GITHUB_ENV
