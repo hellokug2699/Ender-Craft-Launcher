@@ -1,7 +1,8 @@
 # ADR 0001：WPF + .NET 10 + 模块化单体
 
-- 状态：已采纳
-- 日期：2026-10-26
+- Status: Completed
+- Date: 2026-10-26
+- Scope: ECL 架构与实现
 
 ## 背景
 
