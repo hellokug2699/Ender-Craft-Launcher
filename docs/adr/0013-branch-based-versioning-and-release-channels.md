@@ -1,7 +1,8 @@
 # ADR 0013：分支驱动的版本与发布频道
 
-- 状态：Accepted
-- 日期：2026-11-01
+- Status: In Progress
+- Date: 2026-11-01
+- Scope: ECL 架构与实现
 
 ## 背景
 
