@@ -170,6 +170,18 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
 
         // java.defaultPath remains a persisted compatibility key, edited through JavaManagementView.
 
+        // Internal acknowledgement state. Hidden from the generic settings editor.
+        yield return new OptionDefinition<string?>
+        {
+            Key = "launcher.java.incompatiblePromptAcknowledged",
+            Kind = OptionKind.Text,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.java",
+            Default = null,
+            EmptyIsNull = true,
+            Order = 999,
+        };
+
         yield return new OptionDefinition<int>
         {
             Key = "java.defaultMemoryMb",
