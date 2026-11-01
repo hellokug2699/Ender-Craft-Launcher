@@ -207,7 +207,7 @@ public sealed class JavaSelectionService(
         {
             return Path.GetFullPath(path);
         }
-        catch (Exception) when (true)
+        catch (Exception)
         {
             return path;
         }
