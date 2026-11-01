@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
 
-    [ValidateSet("stable", "beta", "dev")]
+    [ValidateSet("main", "dev", "nightly", "stable", "beta")]
     [string]$Channel = "dev",
 
     [ValidateSet("win-x64", "win-arm64")]
@@ -34,6 +34,7 @@ try {
         throw "版本号必须是 semver（例如 1.0.1 或 1.0.1-rc.1）：$Version"
     }
 
+    $channel = switch ($Channel) { "stable" { "main" } "beta" { "dev" } default { $Channel } }
     $architecture = if ($Runtime -eq "win-arm64") { "arm64" } else { "x64" }
     $releaseRoot = Join-Path $root (Join-Path $OutputRoot $Version)
     $publish = Join-Path $releaseRoot "app"
@@ -87,7 +88,7 @@ try {
     $manifest = [ordered]@{
         schemaVersion         = 1
         product               = "ECL"
-        channel               = $Channel
+        channel               = $channel
         version               = $Version
         platform              = "windows"
         architecture          = $architecture
