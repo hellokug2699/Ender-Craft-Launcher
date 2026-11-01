@@ -53,6 +53,19 @@ internal sealed class MinecraftOptionsProvider : IOptionProvider
             Order = 20,
         };
 
+        // 保留配置键以兼容旧配置与旧 UI；JavaSelectionService 已不再读取它。
+        yield return new OptionDefinition<bool>
+        {
+            Key = "instance.java.disableCompatibilityCheck",
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Instance,
+            CategoryKey = "category.instance",
+            DisplayNameKey = "option.instance.disableJavaCheck.name",
+            DescriptionKey = "option.instance.disableJavaCheck.desc",
+            Default = false,
+            Order = 25,
+        };
+
         yield return new OptionDefinition<string?>
         {
             Key = "instance.java.extraArguments",
