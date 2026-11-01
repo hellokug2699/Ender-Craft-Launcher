@@ -16,36 +16,34 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
-        BootstrapperOptions options;
-        try
+        var parsed = BootstrapperCommandLine.Parse(args);
+        if (!parsed.IsSuccess)
         {
-            options = BootstrapperOptions.Parse(args);
-        }
-        catch (ArgumentException exception)
-        {
-            Console.Error.WriteLine(exception.Message);
+            Console.Error.WriteLine(parsed.Error!.Message);
             Console.WriteLine(Usage);
             return BootstrapperExitCodes.ArgumentError;
         }
 
-        if (options.Help)
+        var command = parsed.Value!;
+
+        if (command.Help)
         {
             Console.WriteLine(Usage);
             return 0;
         }
 
-        var layout = new UpdateLayout(options.InstallRoot ?? AppContext.BaseDirectory);
+        var layout = new UpdateLayout(command.InstallRoot ?? AppContext.BaseDirectory);
         var installer = new UpdateInstaller(layout);
         using var log = BootstrapperLog.Open(layout.InstallRoot);
 
         try
         {
-            if (options.Deploy is not null)
+            if (command.Deploy is not null)
             {
-                return ApplyAsync(layout, installer, options.Deploy, log);
+                return ApplyAsync(layout, installer, command.Deploy, log);
             }
 
-            if (options.Cleanup)
+            if (command.Action == BootstrapperAction.Cleanup)
             {
                 using var cleanupLock = AcquireUpdateLock(layout.InstallRoot);
                 if (cleanupLock is null)
@@ -60,7 +58,7 @@ internal static class Program
                 return 0;
             }
 
-            if (options.Rollback)
+            if (command.Action == BootstrapperAction.Rollback)
             {
                 using var rollbackLock = AcquireUpdateLock(layout.InstallRoot);
                 if (rollbackLock is null)
@@ -78,12 +76,12 @@ internal static class Program
                 Console.WriteLine($"已回滚到 {rollback.Value!.Version}");
             }
 
-            if (options.DeployOnly)
+            if (command.DeployOnly)
             {
                 return 0;
             }
 
-            return Launch(layout, options.ApplicationArguments, log);
+            return Launch(layout, command.ApplicationArguments, log);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -96,7 +94,7 @@ internal static class Program
     private static int ApplyAsync(
         UpdateLayout layout,
         UpdateInstaller installer,
-        DeployOptions deploy,
+        BootstrapperDeploy deploy,
         BootstrapperLog log)
     {
         using var updateLock = AcquireUpdateLock(layout.InstallRoot);
@@ -281,105 +279,6 @@ internal static class Program
         默认读取 <install-root>/current.json 并启动其中的版本。更新部署在独立进程中完成，
         不会覆盖正在运行的 ECL。--cleanup 只清理未完成的 staging，不触碰 current 版本。
         """;
-
-    private sealed record DeployOptions(
-        string ManifestPath,
-        string SignaturePath,
-        string PackagePath,
-        string? TrustFile);
-
-    private sealed record BootstrapperOptions(
-        string? InstallRoot,
-        DeployOptions? Deploy,
-        bool Rollback,
-        bool Cleanup,
-        bool DeployOnly,
-        bool Help,
-        IReadOnlyList<string> ApplicationArguments)
-    {
-        public static BootstrapperOptions Parse(string[] args)
-        {
-            string? installRoot = null;
-            string? manifest = null;
-            string? signature = null;
-            string? package = null;
-            string? trust = null;
-            var rollback = false;
-            var cleanup = false;
-            var apply = false;
-            var deployOnly = false;
-            var help = false;
-            var application = new List<string>();
-
-            for (var index = 0; index < args.Length; index++)
-            {
-                switch (args[index])
-                {
-                    case "--install-root":
-                        installRoot = TakeValue(args, ref index, "--install-root");
-                        break;
-                    case "--apply":
-                        apply = true;
-                        break;
-                    case "--manifest":
-                        manifest = TakeValue(args, ref index, "--manifest");
-                        break;
-                    case "--signature":
-                        signature = TakeValue(args, ref index, "--signature");
-                        break;
-                    case "--package":
-                        package = TakeValue(args, ref index, "--package");
-                        break;
-                    case "--trust":
-                        trust = TakeValue(args, ref index, "--trust");
-                        break;
-                    case "--rollback":
-                        rollback = true;
-                        break;
-                    case "--cleanup":
-                        cleanup = true;
-                        break;
-                    case "--deploy-only":
-                        deployOnly = true;
-                        break;
-                    case "--help":
-                    case "-h":
-                    case "/?":
-                        help = true;
-                        break;
-                    default:
-                        application.Add(args[index]);
-                        break;
-                }
-            }
-
-            DeployOptions? deploy = null;
-            if (apply || manifest is not null || signature is not null || package is not null)
-            {
-                if (string.IsNullOrWhiteSpace(manifest) ||
-                    string.IsNullOrWhiteSpace(signature) ||
-                    string.IsNullOrWhiteSpace(package))
-                {
-                    throw new ArgumentException("--apply 需要同时提供 --manifest、--signature 与 --package。");
-                }
-
-                deploy = new DeployOptions(manifest, signature, package, trust);
-            }
-
-            return new BootstrapperOptions(installRoot, deploy, rollback, cleanup, deployOnly, help, application);
-        }
-
-        private static string TakeValue(string[] args, ref int index, string name)
-        {
-            if (index + 1 >= args.Length || string.IsNullOrWhiteSpace(args[index + 1]))
-            {
-                throw new ArgumentException($"{name} 需要参数值。");
-            }
-
-            index++;
-            return args[index];
-        }
-    }
 
     private sealed class BootstrapperLog : IDisposable
     {
