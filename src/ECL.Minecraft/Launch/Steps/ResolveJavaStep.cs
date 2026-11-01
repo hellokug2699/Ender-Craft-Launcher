@@ -36,16 +36,6 @@ internal sealed class ResolveJavaStep(IJavaSelectionService selection, ILocalize
         context.Java = result.Runtime;
         context.JavaExecutable = result.Runtime.ExecutablePath;
 
-        if (!result.CompatibilityCheckEnabled && result.Compatibility is { IsCompatible: false })
-        {
-            return new LaunchStepResult(
-                Id,
-                LaunchStepStatus.Success,
-                AppendWarnings(
-                    localizer.Get("launch.java.checkDisabled", result.Runtime.DisplayName),
-                    result.Warnings));
-        }
-
         if (result.Compatibility is { Status: JavaCompatibilityStatus.Unknown })
         {
             return new LaunchStepResult(
@@ -59,15 +49,16 @@ internal sealed class ResolveJavaStep(IJavaSelectionService selection, ILocalize
         if (result.Compatibility is { IsCompatible: false })
         {
             var required = result.Requirement?.Describe() ?? "Java";
+            var message = localizer.Get(
+                "launch.java.incompatible",
+                result.Runtime.Version?.Raw ?? result.Runtime.DisplayName,
+                required);
+
+            // Java 兼容性是启动前置条件，不再允许通过“忽略警告”继续启动。
             return new LaunchStepResult(
                 Id,
-                LaunchStepStatus.Warning,
-                AppendWarnings(
-                    localizer.Get(
-                        "launch.java.incompatible",
-                        result.Runtime.Version?.Raw ?? result.Runtime.DisplayName,
-                        required),
-                    result.Warnings));
+                context.DryRun ? LaunchStepStatus.Warning : LaunchStepStatus.Failed,
+                AppendWarnings(message, result.Warnings));
         }
 
         var foundMessage = localizer.Get("launch.java.found", result.Runtime.DisplayName, context.MemoryMb);
