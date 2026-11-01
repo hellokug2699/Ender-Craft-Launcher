@@ -39,6 +39,21 @@ ECL 使用两个仓库：
 - 在 public 仓库出现代理服务端源码、内部路由实现、部署配置、Secret 名称、密钥或部署步骤。公开客户端 endpoint 可以且必须存在于客户端配置/代码中，不得把它误当作凭据。
 - 在 Core 仓库放业务代码、文档、截图、构建产物、可公开的配置。
 - 让 public 仓库的构建、测试、CI 依赖 Core 仓库或私有子模块。
+- 在提交中出现开发者本机绝对路径（例如非系统盘的工程目录、用户目录）、临时文件或构建产物。
+
+### 提交卫生检查
+
+`scripts/check-commit-hygiene.ps1` 在提交前与 CI 中检查暂存区/已跟踪文件：
+
+```powershell
+# 提交前检查暂存区
+pwsh -NoProfile -File scripts/check-commit-hygiene.ps1
+
+# 全量检查已跟踪文件（CI 使用）
+pwsh -NoProfile -File scripts/check-commit-hygiene.ps1 -All
+```
+
+规则不保存任何开发者路径，而是识别形态：非系统盘绝对路径、用户目录绝对路径（Windows `%USERPROFILE%` 或 Unix home）、当前仓库绝对路径、私钥/令牌材料，以及 `bin/`、`obj/`、`artifacts/`、`*.tmp`、`.update.lock` 等不应入库的文件。命中任意规则即失败（退出码 1）。
 
 ## 2. 构建与签名分离
 

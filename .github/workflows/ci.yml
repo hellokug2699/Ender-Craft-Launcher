@@ -26,6 +26,10 @@ jobs:
       - name: Restore
         run: dotnet restore ECL.sln
 
+      - name: Verify commit hygiene
+        shell: pwsh
+        run: ./scripts/check-commit-hygiene.ps1 -All
+
       - name: Build
         run: dotnet build ECL.sln -c Release --no-restore
 

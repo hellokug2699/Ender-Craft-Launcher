@@ -205,7 +205,7 @@
   "option.network.speedLimitMbps.name": "下载限速",
   "option.network.speedLimitMbps.desc": "0 表示不限制（限速将在后续版本接入）。",
   "option.java.defaultPath.name": "Java 目录 / 路径",
-  "option.java.defaultPath.desc": "留空则自动查找。可填 java.exe、单个 Java 主目录，或包含多个 JDK/JRE 的上级目录（例如 D:\\java）；ECL 会扫描其中的 Java。多个路径用分号分隔。",
+  "option.java.defaultPath.desc": "留空则自动查找。可填 java.exe、单个 Java 主目录，或包含多个 JDK/JRE 的上级目录；ECL 会扫描其中的 Java。多个路径用分号分隔。",
   "option.java.defaultMemoryMb.name": "默认最大内存",
   "option.java.defaultMemoryMb.desc": "分配给游戏的最大堆内存。",
   "option.java.extraArguments.name": "额外 JVM 参数",

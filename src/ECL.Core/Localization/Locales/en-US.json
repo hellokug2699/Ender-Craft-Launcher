@@ -205,7 +205,7 @@
   "option.network.speedLimitMbps.name": "Download limit",
   "option.network.speedLimitMbps.desc": "0 means unlimited (rate limiting will be added later).",
   "option.java.defaultPath.name": "Java directory / path",
-  "option.java.defaultPath.desc": "Leave empty to auto-detect. Accepts java.exe, a single Java home, or a parent directory containing multiple JDKs/JREs (for example D:\\java); ECL scans it for runtimes. Separate multiple paths with semicolons.",
+  "option.java.defaultPath.desc": "Leave empty to auto-detect. Accepts java.exe, a single Java home, or a parent directory containing multiple JDKs/JREs; ECL scans it for runtimes. Separate multiple paths with semicolons.",
   "option.java.defaultMemoryMb.name": "Default max memory",
   "option.java.defaultMemoryMb.desc": "Maximum heap memory allocated to the game.",
   "option.java.extraArguments.name": "Extra JVM arguments",

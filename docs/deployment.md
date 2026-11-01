@@ -140,7 +140,7 @@ ecl update check --json
 
 ```powershell
 ./build/pack-release.ps1 -Version 1.0.1 -Channel stable `
-  -SigningKeyPath "D:\Core\signing\update-signing.key" `
+  -SigningKeyPath ".\signing\update-signing.key" `
   -KeyId "ecl-release-2026-11" `
   -TrustStorePath "build/update-trust.json"
 ```
@@ -194,7 +194,7 @@ https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/<channel>
 ```powershell
 git checkout <commit-or-tag>
 ./build/pack-release.ps1 -Version 0.8.0-local.1 -Channel nightly `
-  -SigningKeyPath "D:\\Core\\signing\\update-signing.key" `
+  -SigningKeyPath ".\\signing\\update-signing.key" `
   -KeyId "ecl-release-2026-11" `
   -TrustStorePath "build/update-trust.json"
 ```
