@@ -17,6 +17,8 @@
     <ProjectReference Include="..\..\src\ECL.Java\ECL.Java.csproj" />
     <ProjectReference Include="..\..\src\ECL.Minecraft\ECL.Minecraft.csproj" />
     <ProjectReference Include="..\..\src\ECL.Sessions\ECL.Sessions.csproj" />
+    <ProjectReference Include="..\..\src\ECL.LogHost.Contracts\ECL.LogHost.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\ECL.LogHost\ECL.LogHost.csproj" />
     <ProjectReference Include="..\..\src\ECL.Cli\ECL.Cli.csproj" />
     <ProjectReference Include="..\..\src\ECL.Operations\ECL.Operations.csproj" />
   </ItemGroup>

@@ -32,7 +32,9 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IInstanceService, InstanceService>();
         services.AddSingleton<IVersionResolver, VersionResolver>();
         services.AddSingleton<IVersionCatalog, MojangVersionCatalog>();
-        services.AddSingleton<IProcessLauncher, SystemProcessLauncher>();
+        services.AddSingleton<SystemProcessLauncher>();
+        services.AddSingleton<LogHostProcessLauncher>();
+        services.AddSingleton<IProcessLauncher, HybridProcessLauncher>();
         services.AddSingleton<ILoaderCatalog, LoaderCatalog>();
         services.AddSingleton<IForgeProcessorRunner, ForgeProcessorRunner>();
         services.AddSingleton<IVersionInstallService, VanillaInstallService>();
