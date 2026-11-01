@@ -40,6 +40,7 @@ ECL 启动后由 `GameSessionService.Recover()` 处理遗留会话：
 - 进程仍存在但身份不匹配 → `ProcessStateUnknown`；
 - 进程不存在 → `Interrupted`（原本正在排空 → `CaptureIncomplete`）；
 - PID 单独不足以证明身份，避免 PID 复用导致的错误附着；
+- 若采集宿主已退出（记录的主机 PID 不存在），保留 `Running` 并标记 `session.recovered.hostUnverified`，同时把会话独立 `game.log` 登记为 `Direct` 证据；
 - 恢复幂等：重复执行不会重复登记文件或破坏证据。
 
 ## 4. 证据与置信度

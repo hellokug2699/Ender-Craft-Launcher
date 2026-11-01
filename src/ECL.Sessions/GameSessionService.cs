@@ -23,7 +23,8 @@ public interface IGameSessionService
         DateTimeOffset processStartedAtUtc,
         string executablePath,
         string workingDirectory,
-        string? captureHost = null);
+        string? captureHost = null,
+        int? captureHostProcessId = null);
 
     void RegisterArtifact(string sessionId, SessionArtifact artifact);
 
@@ -146,7 +147,8 @@ public sealed class GameSessionService : IGameSessionService
         DateTimeOffset processStartedAtUtc,
         string executablePath,
         string workingDirectory,
-        string? captureHost = null)
+        string? captureHost = null,
+        int? captureHostProcessId = null)
     {
         var session = Require(sessionId);
         session = Update(session, session.Manifest with
@@ -157,6 +159,7 @@ public sealed class GameSessionService : IGameSessionService
             WorkingDirectory = workingDirectory,
             State = GameSessionState.Running,
             CaptureHost = captureHost ?? session.Manifest.CaptureHost,
+            CaptureHostProcessId = captureHostProcessId ?? session.Manifest.CaptureHostProcessId,
             UpdatedAtUtc = DateTimeOffset.UtcNow,
         });
 
@@ -258,12 +261,38 @@ public sealed class GameSessionService : IGameSessionService
             if (probe.Alive && probe.IdentityMatch)
             {
                 reattached++;
+                var manifest = current.Manifest;
+                var recoveredWarnings = manifest.Warnings;
+                var hostLost = string.Equals(manifest.CaptureHost, "loghost", StringComparison.OrdinalIgnoreCase) &&
+                               !IsProcessAlive(manifest.CaptureHostProcessId);
+                if (hostLost)
+                {
+                    recoveredWarnings = AppendWarning(recoveredWarnings, "session.recovered.hostUnverified");
+                }
+
                 current = Update(current, current.Manifest with
                 {
                     State = GameSessionState.Running,
-                    Warnings = AppendWarning(current.Manifest.Warnings, "session.recovered.reattached"),
+                    Warnings = AppendWarning(recoveredWarnings, "session.recovered.reattached"),
                 });
                 AppendEvent(current, "recovery.reattached", $"pid={current.Manifest.ProcessId}");
+
+                // 独立文件日志由游戏进程直接写入，宿主退出后仍可作为 Direct 证据。
+                var isolated = Path.Combine(current.DirectoryPath, "game.log");
+                if (hostLost && File.Exists(isolated))
+                {
+                    RegisterArtifact(current.SessionId, new SessionArtifact
+                    {
+                        Id = $"game_log:{Path.GetFileName(isolated)}",
+                        Kind = SessionArtifactKinds.GameLog,
+                        SourcePath = isolated,
+                        CapturedPath = isolated,
+                        Size = new FileInfo(isolated).Length,
+                        Ownership = ArtifactOwnership.Direct,
+                        Warning = "采集宿主已退出，使用会话独立文件日志作为证据。",
+                    });
+                }
+
                 continue;
             }
 
@@ -370,6 +399,24 @@ public sealed class GameSessionService : IGameSessionService
 
     private static IReadOnlyList<string> AppendWarning(IReadOnlyList<string> warnings, string warning) =>
         warnings.Contains(warning, StringComparer.Ordinal) ? warnings : [.. warnings, warning];
+
+    private static bool IsProcessAlive(int? processId)
+    {
+        if (processId is not { } id || id <= 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById(id);
+            return !process.HasExited;
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
 
     private static (bool Alive, bool IdentityMatch) Probe(SessionManifest manifest)
     {

@@ -251,5 +251,67 @@ public sealed class SessionTests : IDisposable
         Assert.True(Directory.Exists(unknown.DirectoryPath));
     }
 
+    [Fact]
+    public void RecoveryUsesIsolatedFileWhenCaptureHostIsGone()
+    {
+        using var current = Process.GetCurrentProcess();
+        var executable = current.MainModule?.FileName;
+        if (string.IsNullOrWhiteSpace(executable))
+        {
+            return;
+        }
+
+        var service = CreateService();
+        var session = service.Create(Request());
+        service.AttachProcess(
+            session.SessionId,
+            current.Id,
+            new DateTimeOffset(current.StartTime.ToUniversalTime(), TimeSpan.Zero),
+            executable,
+            _environment.Root,
+            "loghost",
+            int.MaxValue);
+        var isolated = Path.Combine(session.DirectoryPath, "game.log");
+        File.WriteAllText(isolated, "session log");
+
+        service.Recover();
+
+        var manifest = service.Get(session.SessionId)!.Manifest;
+        Assert.Equal(GameSessionState.Running, manifest.State);
+        Assert.Contains("session.recovered.hostUnverified", manifest.Warnings);
+        Assert.Contains(manifest.Artifacts, artifact =>
+            artifact.Kind == SessionArtifactKinds.GameLog
+            && artifact.Ownership == ArtifactOwnership.Direct
+            && artifact.CapturedPath == isolated);
+    }
+
+    [Fact]
+    public void RecoveryKeepsLiveCaptureHostQuiet()
+    {
+        using var current = Process.GetCurrentProcess();
+        var executable = current.MainModule?.FileName;
+        if (string.IsNullOrWhiteSpace(executable))
+        {
+            return;
+        }
+
+        var service = CreateService();
+        var session = service.Create(Request());
+        service.AttachProcess(
+            session.SessionId,
+            current.Id,
+            new DateTimeOffset(current.StartTime.ToUniversalTime(), TimeSpan.Zero),
+            executable,
+            _environment.Root,
+            "loghost",
+            current.Id);
+
+        service.Recover();
+
+        var manifest = service.Get(session.SessionId)!.Manifest;
+        Assert.Equal(GameSessionState.Running, manifest.State);
+        Assert.DoesNotContain("session.recovered.hostUnverified", manifest.Warnings);
+    }
+
     public void Dispose() => _environment.Dispose();
 }

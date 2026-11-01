@@ -106,6 +106,9 @@ public sealed record SessionManifest
 
     public string? CaptureHost { get; init; }
 
+    /// <summary>采集宿主进程 ID；用于恢复时判断宿主是否仍存活。</summary>
+    public int? CaptureHostProcessId { get; init; }
+
     public string? CaptureFault { get; init; }
 
     public IReadOnlyList<string> Warnings { get; init; } = [];

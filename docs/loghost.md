@@ -53,15 +53,21 @@ ECL.UI (WPF)  ──Named Pipe──▶  ECL.LogHost  ──stdout/stderr──�
 - 协议带版本号；版本不兼容时优先保证已有会话继续采集，UI 显示兼容性警告。
 - 可通过 `ECL_LOG_HOST_PATH` 指定 LogHost 可执行文件路径，便于测试与自定义部署。
 
-## 7. 尚未完成
+## 7. 崩溃与恢复
 
-- LogHost 崩溃后，主程序会把仍在运行的会话标记为 `CaptureIncomplete` 并记录 `CaptureFault`；文件日志回退与 `RecoveryPending` 自动恢复流程仍未实现。
+- 主程序检测到宿主退出时，把仍在运行的会话标记为 `CaptureIncomplete` 并记录 `CaptureFault`，不终止游戏。
+- ECL 重启恢复时，如果 `captureHost=loghost` 且记录的宿主 PID 已不存在：保留 `Running`、写入 `session.recovered.hostUnverified`，并把会话独立 `game.log` 登记为 `Direct` 证据；stdout 管道不可恢复。
+- 若游戏进程身份无法确认，仍按 `Interrupted` / `ProcessStateUnknown` 处理，不伪造正常退出。
+
+## 8. 尚未完成
+
 - 多 UI 客户端并发订阅与增量状态推送。
 - 系统关机/注销时的最终 flush 与中断标记。
 - 压力测试：高频日志 + 慢盘 + 队列上限的基准数值。
 
-## 8. 实机验证（2026-11-02）
+## 9. 实机验证（2026-11-02）
 
-- 使用 ECL_LOG_HOST_PATH 指向独立宿主启动原版实例：manifest 的 captureHost 记录为 loghost，没有 captureFault。
-- 游戏运行期间关闭 CLI 进程不影响采集；正常退出后会话由 LogHost 收尾为 CaptureCompleted。
-- 首次连接若超过客户端等待窗口会降级为进程内采集并写入 CaptureFault；连接等待窗口随后调整为 15 秒，实机复测走 LogHost 路径。
+- 使用 `ECL_LOG_HOST_PATH` 指向独立宿主启动原版 1.21.1：manifest 的 `captureHost` 记录为 `loghost`，无 `captureFault`，PID 与启动时间由宿主记录。
+- 主程序断开后采集继续；关闭游戏后会话由 LogHost 收尾为 `CaptureCompleted`（退出码 0，stdout 6368 字节，独立 `game.log` 2765 字节）。
+- 冷启动连接窗口调整为 15 秒后，实机复测稳定走 LogHost 路径，不再降级为进程内采集。
+- 宿主异常退出时，活动会话被标记为 `CaptureIncomplete`；ECL 重启恢复时登记独立文件日志为 `Direct` 证据。

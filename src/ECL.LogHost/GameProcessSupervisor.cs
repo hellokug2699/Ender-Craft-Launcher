@@ -99,7 +99,14 @@ internal sealed class GameProcessSupervisor
             stderr);
 
         var startedAt = TryGetStartTime(process);
-        sessions.AttachProcess(session.SessionId, process.Id, startedAt, executable, workingDirectory, "loghost");
+        sessions.AttachProcess(
+            session.SessionId,
+            process.Id,
+            startedAt,
+            executable,
+            workingDirectory,
+            "loghost",
+            Environment.ProcessId);
         _ = supervisor.MonitorAsync(session);
         _ = VerifyIsolationAsync(sessions, session);
         return supervisor;
