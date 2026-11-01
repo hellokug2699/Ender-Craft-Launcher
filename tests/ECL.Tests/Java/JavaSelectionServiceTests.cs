@@ -65,7 +65,7 @@ public sealed class JavaSelectionServiceTests
         await using var changedJavaProvider = environment.CreateServices(services =>
             services.AddSingleton<IJavaLocator>(fakeLocator));
         var changedJavaInstance = await CreateVersionAsync(
-            changedJavaProvider, environment, "1.20.1");
+            changedJavaProvider, environment, "1.20.1", instanceName: "Java Test Java11");
         var changedJavaVersion = (await changedJavaProvider.GetRequiredService<IVersionResolver>()
             .ResolveAsync(changedJavaInstance.VersionId)).Value!;
         var changedJavaSettings = changedJavaProvider.GetRequiredService<ISettingsService>();
@@ -82,7 +82,7 @@ public sealed class JavaSelectionServiceTests
         Assert.False(changedJavaSelection.IsCompatibilityWarningAcknowledged);
 
         // 同一 Java 但最低版本要求变化，也必须重新确认。
-        var newerInstance = await CreateVersionAsync(changedJavaProvider, environment, "1.21.1", javaMajor: 21);
+        var newerInstance = await CreateVersionAsync(changedJavaProvider, environment, "1.21.1", javaMajor: 21, instanceName: "Java Test Java21");
         var newerVersion = (await changedJavaProvider.GetRequiredService<IVersionResolver>()
             .ResolveAsync(newerInstance.VersionId)).Value!;
         Assert.True(changedJavaSettings.TrySetRaw(
@@ -213,10 +213,11 @@ public sealed class JavaSelectionServiceTests
         IServiceProvider provider,
         TestEnvironment environment,
         string gameVersion,
-        int javaMajor = 17)
+        int javaMajor = 17,
+        string instanceName = "Java Test")
     {
         var created = await provider.GetRequiredService<IInstanceService>()
-            .CreateAsync("Java Test", gameVersion);
+            .CreateAsync(instanceName, gameVersion);
         Assert.True(created.IsSuccess);
         var instance = created.Value!;
 
