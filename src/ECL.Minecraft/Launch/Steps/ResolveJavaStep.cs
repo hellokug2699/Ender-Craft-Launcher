@@ -50,11 +50,21 @@ internal sealed class ResolveJavaStep(IJavaSelectionService selection, ILocalize
         {
             var required = result.Requirement?.Describe() ?? "Java";
             var message = localizer.Get(
-                "launch.java.incompatible",
+                result.IsExplicitOverride
+                    ? "launch.java.incompatibleExplicit"
+                    : "launch.java.incompatible",
                 result.Runtime.Version?.Raw ?? result.Runtime.DisplayName,
                 required);
 
-            // Java 兼容性是启动前置条件，不再允许通过“忽略警告”继续启动。
+            // 自动选择绝不能绕过硬兼容性要求；实例显式选择则允许用户承担风险并继续启动。
+            if (result.IsExplicitOverride)
+            {
+                return new LaunchStepResult(
+                    Id,
+                    LaunchStepStatus.Warning,
+                    AppendWarnings(message, result.Warnings));
+            }
+
             return new LaunchStepResult(
                 Id,
                 context.DryRun ? LaunchStepStatus.Warning : LaunchStepStatus.Failed,
