@@ -684,7 +684,6 @@
   "instance.detail.delete": "删除此实例…",
   "instance.detail.java": "Java 运行环境",
   "instance.detail.javaDesc": "ECL 会按实例要求自动下载并管理 Java，无需单独安装；实例选择可覆盖全局 Java，选择“自动”则继承全局策略。",
-  "instance.detail.disableJavaCheck": "关闭 Java 兼容性检查",
   "instance.detail.jvm": "JVM 与内存",
   "instance.detail.jvmDesc": "实例未设置的项目会继承全局配置。实例额外参数会覆盖全局额外参数，不会拼接。",
   "instance.detail.jvmPreset": "JVM 预设",
