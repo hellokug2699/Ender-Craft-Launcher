@@ -106,7 +106,6 @@
                             <Button Grid.Column="2" Content="{loc:Loc Key=instance.detail.selectJava}" Command="{Binding Instances.BrowseJavaCommand}" Style="{StaticResource GhostButton}" />
                         </Grid>
                         <TextBlock Text="{Binding Instances.JavaStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
-                        <CheckBox Content="{loc:Loc Key=instance.detail.disableJavaCheck}" IsChecked="{Binding Instances.DisableJavaCompatibilityCheck, Mode=TwoWay}" Margin="0,10,0,0" />
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                             <Button Content="{loc:Loc Key=instances.java.download}" Command="{Binding Instances.DownloadJavaCommand}" Style="{StaticResource PrimaryButton}" />
                             <Button Content="{loc:Loc Key=instances.java.refresh}" Command="{Binding Instances.RefreshJavaCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
