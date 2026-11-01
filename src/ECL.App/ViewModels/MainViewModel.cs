@@ -14,6 +14,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly ModsViewModel _mods;
     private readonly SettingsViewModel _settings;
     private readonly JavaManagementViewModel _javaManagement;
+    private readonly LogSessionsViewModel _logSessions;
     private readonly InstancesViewModel _instances;
     private readonly InstanceDetailPageViewModel _instanceDetailPage;
     private bool _showingInstanceDetails;
@@ -43,6 +44,7 @@ public sealed partial class MainViewModel : ObservableObject
         ModsViewModel mods,
         SettingsViewModel settings,
         JavaManagementViewModel javaManagement,
+        LogSessionsViewModel logSessions,
         AboutViewModel about,
         OperationCenterViewModel operationCenter,
         IAppPaths paths,
@@ -53,6 +55,7 @@ public sealed partial class MainViewModel : ObservableObject
         _mods = mods;
         _settings = settings;
         _javaManagement = javaManagement;
+        _logSessions = logSessions;
         _instances = instances;
         _instanceDetailPage = new InstanceDetailPageViewModel(instances, mods);
         OperationCenter = operationCenter;
@@ -64,6 +67,7 @@ public sealed partial class MainViewModel : ObservableObject
             new NavItemViewModel("instances", localizer.Get("nav.instances"), instances),
             new NavItemViewModel("settings", localizer.Get("nav.settings"), settings),
             new NavItemViewModel("java", localizer.Get("nav.java"), javaManagement),
+            new NavItemViewModel("logs", localizer.Get("nav.logs"), logSessions),
             new NavItemViewModel("about", localizer.Get("nav.about"), about),
         ];
 
@@ -150,6 +154,9 @@ public sealed partial class MainViewModel : ObservableObject
                 break;
             case JavaManagementViewModel javaManagement:
                 _ = javaManagement.ActivateAsync();
+                break;
+            case LogSessionsViewModel logSessions:
+                logSessions.Activate();
                 break;
         }
     }

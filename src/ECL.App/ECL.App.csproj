@@ -17,6 +17,7 @@
     <ProjectReference Include="..\ECL.Auth\ECL.Auth.csproj" />
     <ProjectReference Include="..\ECL.Java\ECL.Java.csproj" />
     <ProjectReference Include="..\ECL.Minecraft\ECL.Minecraft.csproj" />
+    <ProjectReference Include="..\ECL.Sessions\ECL.Sessions.csproj" />
     <ProjectReference Include="..\ECL.Operations\ECL.Operations.csproj" />
   </ItemGroup>
 

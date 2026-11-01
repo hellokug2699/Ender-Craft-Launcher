@@ -32,6 +32,9 @@
             <DataTemplate DataType="{x:Type vm:JavaManagementViewModel}">
                 <views:JavaManagementView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:LogSessionsViewModel}">
+                <views:LogSessionsView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
                 <views:SettingsView />
             </DataTemplate>
