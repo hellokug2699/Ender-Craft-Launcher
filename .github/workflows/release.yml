@@ -177,7 +177,10 @@ jobs:
 
           gh release view $tag 2>$null
           $releaseExists = ($LASTEXITCODE -eq 0)
+          $oldAssets = @()
           if ($releaseExists) {
+            $oldAssets = @(gh release view $tag --json assets --jq '.assets[].name')
+            if ($LASTEXITCODE -ne 0) { throw "Failed to enumerate existing assets for $tag" }
             gh release upload $tag @assets --clobber
             if ($LASTEXITCODE -ne 0) { throw "Failed to upload rolling assets for $tag" }
             if ($env:ECL_CHANNEL -eq "main") {
@@ -199,6 +202,16 @@ jobs:
           # assets are uploaded so the channel tag always identifies the published build.
           gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$env:GITHUB_SHA" -F force=true
           if ($LASTEXITCODE -ne 0) { throw "Failed to move rolling channel tag $tag to $env:GITHUB_SHA" }
+
+          # Package names contain the unique build version. Remove stale assets only
+          # after the new manifest/signature are published and the channel tag has moved.
+          $currentAssetNames = @($assets | ForEach-Object { [System.IO.Path]::GetFileName($_) })
+          foreach ($oldAsset in $oldAssets) {
+            if ($oldAsset -and $oldAsset -notin $currentAssetNames) {
+              gh release delete-asset $tag $oldAsset --yes
+              if ($LASTEXITCODE -ne 0) { throw "Failed to remove stale asset $oldAsset from $tag" }
+            }
+          }
 
       - name: Remove signing key
         if: always()
