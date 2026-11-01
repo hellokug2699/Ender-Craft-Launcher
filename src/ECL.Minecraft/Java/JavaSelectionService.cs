@@ -18,7 +18,8 @@ public sealed record JavaSelectionResult(
     bool IsExplicitOverride,
     IReadOnlyList<string> Warnings,
     int MemoryMb,
-    bool IsCompatibilityWarningAcknowledged = false);
+    bool IsCompatibilityWarningAcknowledged = false,
+    string? CompatibilityAcknowledgementToken = null);
 
 public static class JavaCompatibilityAcknowledgement
 {
@@ -99,12 +100,16 @@ public sealed class JavaSelectionService(
                 runtime.Version?.Raw ?? runtime.DisplayName,
                 requirement.Describe())
             : null;
+        var acknowledgementToken = compatibility is { IsCompatible: false } &&
+                                   requirement is not null &&
+                                   runtime is not null &&
+                                   isExplicitOverride
+            ? JavaCompatibilityAcknowledgement.Create(runtime, requirement)
+            : null;
         var acknowledgement = settings.Get<string?>(JavaCompatibilityAcknowledgementKey);
-        var isCompatibilityWarningAcknowledged = warningMessage is not null &&
-                                                  string.Equals(
-                                                      acknowledgement,
-                                                      warningMessage,
-                                                      StringComparison.Ordinal);
+        var isCompatibilityWarningAcknowledged = acknowledgementToken is not null &&
+                                                  (string.Equals(acknowledgement, acknowledgementToken, StringComparison.Ordinal) ||
+                                                   string.Equals(acknowledgement, warningMessage, StringComparison.Ordinal));
 
         var instanceMemory = settings.Get<int?>("instance.java.memoryMb", instance.Id);
         var globalMemory = settings.Get<int>("java.defaultMemoryMb");
@@ -134,7 +139,8 @@ public sealed class JavaSelectionService(
             isExplicitOverride,
             warnings,
             memoryMb,
-            isCompatibilityWarningAcknowledged);
+            isCompatibilityWarningAcknowledged,
+            acknowledgementToken);
     }
 
     private static IReadOnlyList<JavaRuntime> OrderByGlobalPriority(
