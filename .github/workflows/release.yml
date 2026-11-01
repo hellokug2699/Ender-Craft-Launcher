@@ -39,13 +39,13 @@ jobs:
         run: |
           $base = [xml](Get-Content "Directory.Build.props" -Raw)
           $baseVersion = [string]$base.Project.PropertyGroup.VersionPrefix
-          if ($baseVersion -notmatch '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$') {
+          if ($baseVersion -notmatch '^(0|[1-9]\d*)\\.(0|[1-9]\d*)\\.(0|[1-9]\d*)$') {
             throw "Directory.Build.props VersionPrefix must be MAJOR.MINOR.PATCH."
           }
 
           if ($env:ECL_REF_TYPE -eq "tag") {
             $version = $env:ECL_REF_NAME -replace '^v', ''
-            if ($version -notmatch '^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$') {
+            if ($version -notmatch '^(0|[1-9]\d*)\\.(0|[1-9]\d*)\\.(0|[1-9]\d*)$') {
               throw "Release tags must be stable SemVer tags such as v1.2.3."
             }
             $channel = "main"
