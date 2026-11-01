@@ -1,4 +1,4 @@
-name: Release
+name: ECL channel builds
 
 on:
   push:
@@ -9,13 +9,15 @@ on:
 permissions:
   contents: write
 
+# A newer push to the same channel supersedes an older queued build.
+# Stable tags are unique refs, so they are not cancelled by other releases.
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
+  group: ecl-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   release:
-    name: Build, sign and publish
+    name: Build, sign and publish channel snapshot
     runs-on: windows-latest
     environment: release
     steps:
@@ -51,11 +53,8 @@ jobs:
           }
           else {
             $channel = $env:ECL_REF_NAME
-            if ($channel -notin @("main", "dev", "nightly")) {
-              throw "Unsupported release branch: $channel"
-            }
-            if ($channel -eq "main") {
-              throw "The main branch publishes stable releases only from vMAJOR.MINOR.PATCH tags."
+            if ($channel -notin @("dev", "nightly")) {
+              throw "workflow_dispatch must target dev or nightly; stable releases are tag-only."
             }
 
             $date = [DateTime]::UtcNow.ToString("yyyyMMdd")
@@ -65,13 +64,15 @@ jobs:
 
           "ECL_VERSION=$version" >> $env:GITHUB_ENV
           "ECL_CHANNEL=$channel" >> $env:GITHUB_ENV
-          "ECL_PRERELEASE=$([bool]($channel -ne 'main'))" >> $env:GITHUB_ENV
-          "ECL_RELEASE_TITLE=ECL $version ($channel)" >> $env:GITHUB_ENV
-          "ECL_RELEASE_NOTES=Automated $channel build from $env:ECL_COMMIT_SHA" >> $env:GITHUB_ENV
+          "ECL_RELEASE_TITLE=ECL $channel (latest: $version)" >> $env:GITHUB_ENV
           @"
           ECL $version
           Channel: $channel
           Commit: $env:ECL_COMMIT_SHA
+          Build: $env:GITHUB_RUN_NUMBER (attempt $env:ECL_RUN_ATTEMPT)
+
+          This is the latest rolling $channel build. Older build history is available
+          in GitHub Actions artifacts and workflow runs.
           "@ | Set-Content -Path "$env:RUNNER_TEMP/release-notes.md" -Encoding utf8NoBOM
 
       - name: Materialize update signing key
@@ -132,7 +133,17 @@ jobs:
           Compress-Archive -Path (Join-Path $dir "bootstrapper/*") -DestinationPath $boot -Force
           Get-ChildItem $dir | Select-Object Name, Length
 
-      - name: Publish GitHub Release
+      # Every build remains independently downloadable for a limited period.
+      # The updater does not consume Actions artifacts; it uses the signed rolling feed below.
+      - name: Archive this build in Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: ECL-${{ env.ECL_VERSION }}-${{ env.ECL_CHANNEL }}-${{ github.sha }}
+          path: artifacts/release/${{ env.ECL_VERSION }}/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish stable release or update rolling channel feed
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -146,25 +157,33 @@ jobs:
             (Join-Path $dir "update-trust.json")
           )
           $notes = "$env:RUNNER_TEMP/release-notes.md"
-          $tag = if ($env:ECL_CHANNEL -eq "main") { "v$env:ECL_VERSION" } else { $env:ECL_CHANNEL }
-          $existing = gh release view $tag 2>$null
-          if ($LASTEXITCODE -eq 0 -and $existing) {
+
+          if ($env:ECL_CHANNEL -eq "main") {
+            $tag = "v$env:ECL_VERSION"
+            gh release create $tag @assets --title "ECL $env:ECL_VERSION" --notes-file $notes --target $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { throw "Failed to publish stable release $tag" }
+            exit 0
+          }
+
+          # One mutable Release per prerelease channel: no per-commit Release spam.
+          $tag = $env:ECL_CHANNEL
+          gh release view $tag 2>$null
+          $releaseExists = ($LASTEXITCODE -eq 0)
+          if ($releaseExists) {
             gh release upload $tag @assets --clobber
-            gh release edit $tag --title "$env:ECL_RELEASE_TITLE" --notes-file $notes
+            if ($LASTEXITCODE -ne 0) { throw "Failed to upload rolling assets for $tag" }
+            gh release edit $tag --title "$env:ECL_RELEASE_TITLE" --notes-file $notes --prerelease
+            if ($LASTEXITCODE -ne 0) { throw "Failed to update rolling release metadata for $tag" }
           }
           else {
-            $args = @("release", "create", $tag, "--title", "$env:ECL_RELEASE_TITLE", "--notes-file", $notes, "--target", $env:GITHUB_SHA)
-            if ($env:ECL_CHANNEL -ne "main") { $args += "--prerelease" }
-            gh @args @assets
+            gh release create $tag @assets --title "$env:ECL_RELEASE_TITLE" --notes-file $notes --prerelease --target $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create rolling release $tag" }
           }
-          if ($LASTEXITCODE -ne 0) { throw "Failed to publish release $tag" }
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ECL-${{ env.ECL_VERSION }}-${{ env.ECL_CHANNEL }}
-          path: artifacts/release/${{ env.ECL_VERSION }}/
-          if-no-files-found: error
+          # gh release upload does not move an existing tag. Move it only after all
+          # assets are uploaded so the channel tag always identifies the published build.
+          gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$env:GITHUB_SHA" -F force=true
+          if ($LASTEXITCODE -ne 0) { throw "Failed to move rolling channel tag $tag to $env:GITHUB_SHA" }
 
       - name: Remove signing key
         if: always()
