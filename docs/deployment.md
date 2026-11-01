@@ -54,7 +54,7 @@ Manifest schema v1，严格拒绝未知字段，避免旧客户端静默忽略�
 校验规则：
 
 - `product` 必须为 `ECL`，`schemaVersion` 必须为当前支持值；
-- `channel` 只接受 `stable` / `beta` / `dev`；
+- `channel` 使用内部通道标识：`main`（正式版）、`dev`（测试版）、`nightly`（夜间版）；旧值 `stable` / `beta` 仅作为兼容输入。
 - 版本号采用 semver 子集 `major.minor.patch[-prerelease]`，并用于版本目录名；
 - 平台固定 `windows`，架构只接受 `x64` / `arm64`；
 - 包大小与 SHA-256 必填；
@@ -159,30 +159,47 @@ artifacts/release/1.0.1/
 
 `-Unsigned` 只用于本地检查；未签名清单不会通过客户端验证。
 
-### GitHub Actions / Release
+### GitHub Actions：版本发布与滚动构建
 
-[release.yml](../.github/workflows/release.yml) 在 tag `v*` 或手动触发时：
+[release.yml](../.github/workflows/release.yml) 统一负责签名构建，但将“构建记录”“更新源”和“正式版本发布”分开处理：
 
-1. 校验版本与通道；
-2. 从 Actions Secret `ECL_UPDATE_SIGNING_KEY`（推荐）或私有 Core 的 `ECL_CORE_READ_TOKEN` 读取私钥；
-3. 校验私钥导出的公钥与 `build/update-trust.json` 完全一致；
-4. 构建完整包、生成逐文件清单并用 RSA-PSS 签名；
-5. 创建 `v<version>` 与通道 tag（`stable` / `beta` / `dev`）的 GitHub Release，上传 zip、Manifest、签名、信任库与 Bootstrapper 包；
-6. 在 `always()` 步骤删除 runner 上的临时私钥。
+| 触发来源 | 产物归档 | GitHub Release | 更新源 Tag |
+|---|---|---|---|
+| 推送 `nightly` | Actions Artifact，保留 14 天 | 更新唯一的滚动 Nightly Release | `nightly` |
+| 推送 `dev` | Actions Artifact，保留 14 天 | 更新唯一的滚动 Dev Release | `dev` |
+| 推送 `vMAJOR.MINOR.PATCH` | Actions Artifact，保留 14 天 | 创建不可变的版本 Release，并更新唯一的正式版滚动 Release | `main` |
+| 手动运行 | Actions Artifact，保留 14 天 | 根据所选分支更新对应滚动 Release | 对应通道 |
 
-客户端更新源基址形如：
+- Nightly 每次成功构建都会产生独立的 Actions Artifact，便于高级用户下载特定构建；Artifact 保留 14 天，过期后不保证可取回。
+- Nightly 不再为每次提交创建新的 GitHub Release。公开 Release 列表中只保留一个 `nightly` 滚动入口，资产以 `--clobber` 更新。
+- `nightly`、`dev`、`main` 是可移动的通道 Tag。工作流在所有资产上传成功后才移动 Tag，避免 Tag 指向尚未完整发布的构建。
+- 正式版本仍通过 `vX.Y.Z` 保留不可变 Release；额外维护 `main` 滚动 Release，因为客户端更新协议读取的是 `/<channel>/update-manifest.json`。
+- 新推送会取消同一分支上尚未完成的旧构建，避免高频提交堆积；已经发布的滚动版本不会被未完成构建覆盖。
+- 手动运行 workflow 时选择 `dev` 或 `nightly` 分支；正式版只能通过版本 Tag 发布。
+
+构建流程仍然执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 和滚动 Release 都包含完整包、Bootstrapper 包、Manifest、签名与信任库。
+
+客户端更新源基址仍为：
 
 ```text
 https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/<channel>/
 ```
 
-对应文件：`<base>/update-manifest.json`、`<base>/update-manifest.sig`、`<base>/<package.file>`。
+其中 `<channel>` 为 `main`、`dev` 或 `nightly`。对应文件为 `update-manifest.json`、`update-manifest.sig` 与 Manifest 指定的完整包。
 
-> `release` Environment 建议配置 Required reviewers；workflow 只授予 `contents: write`，checkout 不保留凭据。
-> 私钥不得写入日志、Release 附件、artifact 或 public 仓库。CI 的 PR 流程永远不会签名。
->
-> 当前 `release.yml` 位于 `nightly` 分支；GitHub 的 `workflow_dispatch` 按钮只在 workflow 进入默认分支后显示。
-> 在合并到默认分支前，可通过推送 `v*` tag 触发同一 workflow（已验证）。
+> GitHub Actions Artifact 用于构建追溯和人工下载，不作为客户端自动更新源：Artifact 有保留期限，下载也可能要求 GitHub 权限。客户端始终使用公开滚动 Release 的固定 URL，并继续验证 Manifest 签名与包哈希。
+
+本地构建指定提交：
+
+```powershell
+git checkout <commit-or-tag>
+./build/pack-release.ps1 -Version 0.8.0-local.1 -Channel nightly `
+  -SigningKeyPath "D:\\Core\\signing\\update-signing.key" `
+  -KeyId "ecl-release-2026-11" `
+  -TrustStorePath "build/update-trust.json"
+```
+
+本地构建如不具备签名私钥，可使用 `-Unsigned` 仅验证打包过程；未签名产物不能作为正式更新源，也不能通过客户端签名校验。
 
 ## 8. 验证记录
 
