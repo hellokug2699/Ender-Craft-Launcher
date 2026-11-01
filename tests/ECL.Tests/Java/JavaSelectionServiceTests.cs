@@ -32,6 +32,7 @@ public sealed class JavaSelectionServiceTests
         Assert.Equal(17, automatic.Runtime?.Version?.Major);
         Assert.True(automatic.Compatibility?.IsCompatible);
         Assert.True(automatic.CompatibilityCheckEnabled);
+        Assert.False(automatic.IsExplicitOverride);
 
         Assert.True(settings.TrySetRaw(
             "instance.java.executablePath",
@@ -43,6 +44,7 @@ public sealed class JavaSelectionServiceTests
         Assert.Equal(8, explicitSelection.Runtime?.Version?.Major);
         Assert.Equal(JavaCompatibilityStatus.TooOld, explicitSelection.Compatibility?.Status);
         Assert.True(explicitSelection.CompatibilityCheckEnabled);
+        Assert.True(explicitSelection.IsExplicitOverride);
     }
 
     [Fact]
@@ -72,6 +74,7 @@ public sealed class JavaSelectionServiceTests
         // Java 8 是第一优先级，但不兼容 Java 17+ 的实例，因此跳过；Java 21 才是首个兼容项。
         Assert.Equal(21, selection.Runtime?.Version?.Major);
         Assert.True(selection.Compatibility?.IsCompatible);
+        Assert.False(selection.IsExplicitOverride);
     }
 
     [Fact]
@@ -98,6 +101,7 @@ public sealed class JavaSelectionServiceTests
 
         Assert.Equal(17, selection.Runtime?.Version?.Major);
         Assert.NotEmpty(selection.Warnings);
+        Assert.False(selection.IsExplicitOverride);
     }
 
     [Fact]
@@ -128,6 +132,7 @@ public sealed class JavaSelectionServiceTests
 
         Assert.Equal(8, selection.Runtime?.Version?.Major);
         Assert.True(selection.Compatibility?.IsCompatible);
+        Assert.False(selection.IsExplicitOverride);
     }
 
     [Fact]
