@@ -1,7 +1,8 @@
 # ADR 0012：整合包归档提取安全边界
 
-- 状态：Accepted
-- 日期：2026-10-31
+- Status: In Progress
+- Date: 2026-10-31
+- Scope: ECL 架构与实现
 
 ## 背景
 
