@@ -1,7 +1,8 @@
 # ADR 0003：public 与 private 仓库分离
 
-- 状态：已采纳
-- 日期：2026-10-26
+- Status: Completed
+- Date: 2026-10-26
+- Scope: ECL 架构与实现
 
 ## 背景
 
