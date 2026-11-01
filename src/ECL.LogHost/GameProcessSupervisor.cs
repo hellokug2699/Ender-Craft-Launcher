@@ -185,10 +185,18 @@ internal sealed class GameProcessSupervisor
                 _sessions.SetCaptureFault(session.SessionId, $"采集队列饱和，丢弃 {DroppedBytes} 字节。");
             }
 
+            var writeFault = _stdout.Fault ?? _stderr.Fault;
+            if (writeFault is not null)
+            {
+                _sessions.SetCaptureFault(session.SessionId, $"日志写入失败：{writeFault}");
+            }
+
             _artifacts.CollectAfterExit(session);
             _sessions.MarkState(
                 session.SessionId,
-                DroppedBytes > 0 ? GameSessionState.CaptureIncomplete : GameSessionState.CaptureCompleted);
+                DroppedBytes > 0 || writeFault is not null
+                    ? GameSessionState.CaptureIncomplete
+                    : GameSessionState.CaptureCompleted);
 
             _logger.LogInformation(
                 "会话 {SessionId} 的游戏进程已退出，退出码 {ExitCode}。",

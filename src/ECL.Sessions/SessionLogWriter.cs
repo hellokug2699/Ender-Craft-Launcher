@@ -7,22 +7,24 @@ namespace Ecl.Sessions;
 
 /// <summary>
 /// 有界日志写入器：管道读取与磁盘写入解耦，队列满时丢弃并记录缺口，
-/// 绝不让内存无界增长，也不阻塞游戏写入端。
+/// 绝不让内存无界增长，也不阻塞游戏写入端。写盘失败会被记录为可观测故障。
 /// </summary>
 public sealed class SessionLogWriter : IAsyncDisposable
 {
     private readonly Channel<byte[]> _channel;
-    private readonly FileStream _stream;
+    private readonly Stream _stream;
+    private readonly bool _ownsStream;
     private readonly Task _pump;
     private long _droppedBytes;
     private long _writtenBytes;
     private int _completed;
     private int _disposed;
+    private string? _fault;
 
-    private SessionLogWriter(string path, int capacity)
+    internal SessionLogWriter(Stream stream, int capacity, bool ownsStream)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        _stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete, 64 * 1024, FileOptions.SequentialScan);
+        _stream = stream;
+        _ownsStream = ownsStream;
         _channel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(capacity)
         {
             // Wait 模式下 TryWrite 在队列满时返回 false，而不是“接受后丢弃”：
@@ -38,7 +40,21 @@ public sealed class SessionLogWriter : IAsyncDisposable
 
     public long DroppedBytes => Interlocked.Read(ref _droppedBytes);
 
-    public static SessionLogWriter Open(string path, int capacity = 1024) => new(path, capacity);
+    /// <summary>写入失败（磁盘满、只读、卷离线等）的原因；null 表示未观察到故障。</summary>
+    public string? Fault => Volatile.Read(ref _fault);
+
+    public static SessionLogWriter Open(string path, int capacity = 1024)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var stream = new FileStream(
+            path,
+            FileMode.Append,
+            FileAccess.Write,
+            FileShare.ReadWrite | FileShare.Delete,
+            64 * 1024,
+            FileOptions.SequentialScan);
+        return new SessionLogWriter(stream, capacity, ownsStream: true);
+    }
 
     /// <summary>复制一份字节并投递；队列饱和时立即返回并计入丢弃量。</summary>
     public void Write(ReadOnlySpan<byte> data)
@@ -67,9 +83,9 @@ public sealed class SessionLogWriter : IAsyncDisposable
         {
             await _stream.FlushAsync().ConfigureAwait(false);
         }
-        catch (ObjectDisposedException)
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException or NotSupportedException)
         {
-            // 已关闭。
+            Interlocked.CompareExchange(ref _fault, exception.Message, null);
         }
     }
 
@@ -83,16 +99,30 @@ public sealed class SessionLogWriter : IAsyncDisposable
         _channel.Writer.TryComplete();
         await _pump.ConfigureAwait(false);
 
-        if (DroppedBytes > 0)
+        if (Fault is not null)
         {
-            var marker = System.Text.Encoding.UTF8.GetBytes(
-                $"\n[ecl] 采集队列饱和，丢弃 {DroppedBytes} 字节；日志不完整。\n");
-            await _stream.WriteAsync(marker).ConfigureAwait(false);
-            Interlocked.Exchange(ref _writtenBytes, _writtenBytes + marker.Length);
+            await DisposeStreamAsync().ConfigureAwait(false);
+            return;
         }
 
-        await _stream.FlushAsync().ConfigureAwait(false);
-        _stream.Flush(flushToDisk: true);
+        try
+        {
+            if (DroppedBytes > 0)
+            {
+                var marker = System.Text.Encoding.UTF8.GetBytes(
+                    $"\n[ecl] 采集队列饱和，丢弃 {DroppedBytes} 字节；日志不完整。\n");
+                await _stream.WriteAsync(marker).ConfigureAwait(false);
+                Interlocked.Add(ref _writtenBytes, marker.Length);
+            }
+
+            await _stream.FlushAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException or NotSupportedException)
+        {
+            Interlocked.CompareExchange(ref _fault, exception.Message, null);
+        }
+
+        await DisposeStreamAsync().ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
@@ -103,7 +133,6 @@ public sealed class SessionLogWriter : IAsyncDisposable
         }
 
         await CompleteAsync().ConfigureAwait(false);
-        await _stream.DisposeAsync().ConfigureAwait(false);
     }
 
     private async Task PumpAsync()
@@ -112,17 +141,61 @@ public sealed class SessionLogWriter : IAsyncDisposable
         {
             await foreach (var chunk in _channel.Reader.ReadAllAsync().ConfigureAwait(false))
             {
-                await _stream.WriteAsync(chunk).ConfigureAwait(false);
-                Interlocked.Add(ref _writtenBytes, chunk.Length);
-                if (_stream.Position >= 256 * 1024)
+                if (Fault is not null)
                 {
-                    await _stream.FlushAsync().ConfigureAwait(false);
+                    // 写入已失败：继续消费队列但计为丢弃，避免内存增长。
+                    Interlocked.Add(ref _droppedBytes, chunk.Length);
+                    continue;
+                }
+
+                try
+                {
+                    await _stream.WriteAsync(chunk).ConfigureAwait(false);
+                    Interlocked.Add(ref _writtenBytes, chunk.Length);
+                    if (CanFlushPeriodically())
+                    {
+                        await _stream.FlushAsync().ConfigureAwait(false);
+                    }
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ObjectDisposedException or NotSupportedException)
+                {
+                    Interlocked.CompareExchange(ref _fault, exception.Message, null);
+                    Interlocked.Add(ref _droppedBytes, chunk.Length);
                 }
             }
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ObjectDisposedException)
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException)
         {
-            // 写盘失败由会话捕获状态记录；读循环仍在继续，避免阻塞游戏。
+            Interlocked.CompareExchange(ref _fault, exception.Message, null);
+        }
+    }
+
+    private bool CanFlushPeriodically()
+    {
+        try
+        {
+            return _stream.CanSeek && _stream.Position >= 256 * 1024;
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
+    }
+
+    private async Task DisposeStreamAsync()
+    {
+        if (!_ownsStream)
+        {
+            return;
+        }
+
+        try
+        {
+            await _stream.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+        {
+            Interlocked.CompareExchange(ref _fault, exception.Message, null);
         }
     }
 }

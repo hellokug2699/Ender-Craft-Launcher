@@ -1,6 +1,6 @@
 # ADR 0019：内存压力下的进程保活与诊断连续性
 
-- Status: In Progress
+- Status: Completed
 - Date: 2026-11-01
 - Scope: 游戏进程监督、日志采集进程、ECL 主 UI、内存压力与异常恢复
 

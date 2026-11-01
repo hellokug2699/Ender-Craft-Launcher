@@ -102,6 +102,7 @@ ecl session prune --older-than-days <N> [--apply] [--json]
 
 - 断电/强杀覆盖：会话目录缺 manifest、manifest 停在 Starting、PID 检查点前中断、退出后排空未完成、journal 尾部半条记录、孤儿目录；均有自动化故障注入测试。
 - 保留策略尚未接入 UI 设置与自动提示。
+- 写入失败（磁盘满/只读）通过 `SessionLogWriter.Fault` 上报并转为 `CaptureFault`；真实文件系统场景以注入流覆盖。
 
 ## 10. 实机验证（2026-11-02）
 

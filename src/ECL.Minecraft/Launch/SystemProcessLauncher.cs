@@ -163,9 +163,15 @@ internal sealed class SystemProcessLauncher(
                         File.Exists(isolated) ? null : "session.log_isolation_unverified");
                 }
 
+                var writeFault = stdout?.Fault ?? stderr?.Fault;
+                if (writeFault is not null)
+                {
+                    sessions.SetCaptureFault(session.SessionId, $"日志写入失败：{writeFault}");
+                }
+
                 artifacts.CollectAfterExit(session);
 
-                var finalState = dropped > 0
+                var finalState = dropped > 0 || writeFault is not null
                     ? GameSessionState.CaptureIncomplete
                     : GameSessionState.CaptureCompleted;
                 sessions.MarkState(session.SessionId, finalState);

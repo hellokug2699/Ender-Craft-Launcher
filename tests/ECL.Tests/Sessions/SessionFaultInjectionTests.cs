@@ -144,6 +144,84 @@ public sealed class SessionFaultInjectionTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task WriteFailureIsReportedAsFaultInsteadOfThrowing()
+    {
+        var writer = new SessionLogWriter(new ThrowingStream(), capacity: 8, ownsStream: false);
+        try
+        {
+            writer.Write(Encoding.UTF8.GetBytes("payload"));
+            await writer.CompleteAsync();
+
+            Assert.NotNull(writer.Fault);
+            Assert.Contains("disk full", writer.Fault, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            await writer.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task SlowSinkNeverBlocksTheProducer()
+    {
+        var sink = new SlowStream(TimeSpan.FromMilliseconds(5));
+        var writer = new SessionLogWriter(sink, capacity: 4, ownsStream: false);
+        try
+        {
+            var chunk = Encoding.UTF8.GetBytes(new string('y', 4096));
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            for (var index = 0; index < 200; index++)
+            {
+                writer.Write(chunk);
+            }
+
+            watch.Stop();
+            await writer.CompleteAsync();
+
+            Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), $"生产端被阻塞：{watch.Elapsed}");
+            Assert.True(writer.DroppedBytes > 0, "慢盘时应发生可观测丢弃");
+            Assert.Null(writer.Fault);
+        }
+        finally
+        {
+            await writer.DisposeAsync();
+        }
+    }
+
+    private sealed class ThrowingStream : Stream
+    {
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => 0;
+        public override long Position { get => 0; set { } }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) =>
+            throw new IOException("disk full");
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+            ValueTask.FromException(new IOException("disk full"));
+    }
+
+    private sealed class SlowStream(TimeSpan delay) : Stream
+    {
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => 0;
+        public override long Position { get => 0; set { } }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => Thread.Sleep(delay);
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) =>
+            await Task.Delay(delay, cancellationToken);
+    }
+
     public void Dispose()
     {
         try
