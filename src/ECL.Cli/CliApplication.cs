@@ -23,6 +23,7 @@ using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.Versions;
 using Ecl.Operations;
+using Ecl.Sessions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Ecl.Cli;
@@ -48,6 +49,7 @@ internal sealed class CliApplication
         {
             "version" => PrintVersion(),
             "workspace" => await WorkspaceCommandAsync(rest).ConfigureAwait(false),
+            "session" => await SessionCommandAsync(rest).ConfigureAwait(false),
             "instance" => await InstanceCommandAsync(rest).ConfigureAwait(false),
             "install" => await InstallCommandAsync(rest).ConfigureAwait(false),
             "launch" => await LaunchCommandAsync(rest).ConfigureAwait(false),
@@ -2461,6 +2463,163 @@ internal sealed class CliApplication
 
         Console.WriteLine("迁移未完成。可运行 workspace migrate --resume 或 --discard。");
         return 1;
+    }
+
+    /// <summary>
+    /// 会话命令：查看、导出与恢复。会话按进程启动划分，不等同于实例或 latest.log。
+    /// </summary>
+    private async Task<int> SessionCommandAsync(string[] args)
+    {
+        var sessions = _provider.GetRequiredService<IGameSessionService>();
+        var exporter = _provider.GetRequiredService<ISessionExportService>();
+        var json = _commandLine.HasFlag("json");
+        var subCommand = args.Length == 0 ? "list" : args[0].ToLowerInvariant();
+
+        switch (subCommand)
+        {
+            case "list":
+                {
+                    var list = sessions.List();
+                    if (json)
+                    {
+                        WriteJson(list.Select(session => new
+                        {
+                            sessionId = session.SessionId,
+                            state = session.Manifest.State.ToString(),
+                            instanceId = session.Manifest.InstanceId,
+                            instanceName = session.Manifest.InstanceName,
+                            createdAtUtc = session.Manifest.CreatedAtUtc,
+                            processId = session.Manifest.ProcessId,
+                            logIsolation = session.Manifest.LogIsolation,
+                        }));
+                        return 0;
+                    }
+
+                    if (list.Count == 0)
+                    {
+                        Console.WriteLine("没有游戏日志会话。");
+                        return 0;
+                    }
+
+                    foreach (var session in list)
+                    {
+                        Console.WriteLine(
+                            $"{session.SessionId}  {session.Manifest.State,-20} {session.Manifest.InstanceName ?? "-"}  " +
+                            $"{session.Manifest.CreatedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
+                    }
+
+                    return 0;
+                }
+
+            case "show":
+                {
+                    var sessionId = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(sessionId))
+                    {
+                        return UsageError("session show 需要会话 ID。");
+                    }
+
+                    var session = sessions.Get(sessionId);
+                    if (session is null)
+                    {
+                        return WriteError(new EclError("session.not_found", $"会话不存在：{sessionId}"));
+                    }
+
+                    var events = SessionJournal.ReadAll(session.JournalPath, out var torn);
+                    if (json)
+                    {
+                        WriteJson(new { session = session.Manifest, events, torn });
+                        return 0;
+                    }
+
+                    Console.WriteLine($"会话      : {session.SessionId}");
+                    Console.WriteLine($"实例      : {session.Manifest.InstanceName ?? "-"} ({session.Manifest.InstanceId ?? "-"})");
+                    Console.WriteLine($"状态      : {session.Manifest.State}");
+                    Console.WriteLine($"创建      : {session.Manifest.CreatedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
+                    Console.WriteLine($"进程      : {session.Manifest.ProcessId?.ToString() ?? "未知"}");
+                    Console.WriteLine($"日志隔离  : {session.Manifest.LogIsolation}");
+                    Console.WriteLine($"证据      : {session.Manifest.Artifacts.Count} 项");
+                    foreach (var artifact in session.Manifest.Artifacts)
+                    {
+                        Console.WriteLine($"  - {artifact.Kind} [{artifact.Ownership}] {artifact.Warning}");
+                    }
+
+                    foreach (var warning in session.Manifest.Warnings)
+                    {
+                        Console.WriteLine($"警告      : {warning}");
+                    }
+
+                    if (torn)
+                    {
+                        Console.WriteLine("注意      : journal 最后一条记录不完整，已忽略。");
+                    }
+
+                    if (events.Count > 0)
+                    {
+                        Console.WriteLine($"事件      : {events.Count} 条，最后 {events[^1].Type}");
+                    }
+
+                    return 0;
+                }
+
+            case "export":
+                {
+                    var sessionId = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(sessionId))
+                    {
+                        return UsageError("session export 需要会话 ID。");
+                    }
+
+                    using var operations = TrackOperations();
+                    var result = await exporter
+                        .ExportAsync(sessionId, _commandLine.GetValue("output"))
+                        .ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    var report = result.Value!;
+                    if (json)
+                    {
+                        WriteJson(report);
+                        return 0;
+                    }
+
+                    Console.WriteLine($"已导出会话 {sessionId}：{report.OutputPath}（{report.Bytes} 字节）");
+                    if (report.Missing.Count > 0)
+                    {
+                        Console.WriteLine("缺失或无法关联：");
+                        foreach (var missing in report.Missing)
+                        {
+                            Console.WriteLine($"  - {missing}");
+                        }
+                    }
+
+                    return 0;
+                }
+
+            case "recover":
+                {
+                    var report = sessions.Recover();
+                    if (json)
+                    {
+                        WriteJson(report);
+                        return 0;
+                    }
+
+                    Console.WriteLine($"扫描 {report.Scanned}，中断 {report.Interrupted}，重连 {report.Reattached}，未知 {report.Unknown}。");
+                    foreach (var warning in report.Warnings)
+                    {
+                        Console.WriteLine($"  ! {warning}");
+                    }
+
+                    return 0;
+                }
+
+            default:
+                return UsageError("session 支持 list、show、export、recover。");
+        }
     }
 
     /// <summary>会写入工作区的命令必须先通过该检查；未配置时给出可执行的第一步。</summary>

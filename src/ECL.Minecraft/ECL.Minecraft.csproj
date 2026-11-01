@@ -13,6 +13,7 @@
     <ProjectReference Include="..\ECL.Configuration\ECL.Configuration.csproj" />
     <ProjectReference Include="..\ECL.Auth\ECL.Auth.csproj" />
     <ProjectReference Include="..\ECL.Java\ECL.Java.csproj" />
+    <ProjectReference Include="..\ECL.Sessions\ECL.Sessions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

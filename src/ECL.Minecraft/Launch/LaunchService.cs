@@ -206,7 +206,8 @@ public sealed class LaunchService : ILaunchService
             context.ProcessId,
             results,
             total.Elapsed,
-            context.JavaPlan);
+            context.JavaPlan,
+            context.SessionId);
         PersistJavaPlan(instance.Id, dryRun, success, context.JavaPlan);
         return report;
     }

@@ -128,6 +128,11 @@ internal static class Program
                                           导入资源包/光影包
           pack delete <实例ID> <文件> [--type resource|shader]
                                           删除资源包/光影包
+          session list [--json]           列出游戏日志会话
+          session show <会话ID> [--json]   查看会话状态、证据与警告
+          session export <会话ID> [--output <路径>] [--json]
+                                          按单次启动导出诊断包
+          session recover [--json]        恢复中断会话（幂等）
           crash <实例ID> [--json]         分析最近一次崩溃与可疑 Mod
           diagnostics export <实例ID> [--output <路径>] [--json]
                                           导出脱敏诊断包

@@ -26,4 +26,5 @@ public sealed record LaunchReport(
     int? ProcessId,
     IReadOnlyList<LaunchStepResult> Steps,
     TimeSpan Duration,
-    JavaLaunchPlan? JavaPlan = null);
+    JavaLaunchPlan? JavaPlan = null,
+    string? SessionId = null);

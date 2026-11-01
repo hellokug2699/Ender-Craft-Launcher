@@ -3,7 +3,6 @@
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Java;
@@ -221,31 +220,5 @@ public sealed partial class DiagnosticPackageService(
         }
     }
 
-    public static string Redact(string text)
-    {
-        if (string.IsNullOrEmpty(text))
-        {
-            return text;
-        }
-
-        var result = BearerPattern().Replace(text, "Bearer ***");
-        result = TokenPattern().Replace(result, "$1***");
-        result = SecretRedaction.CommandLine(result);
-        // 第三方（Yggdrasil）token 不是 JWT：客户端连接 Realms 失败时会把它原样写进日志。
-        result = SignedJwtPattern().Replace(result, "$1***");
-        return UrlCredentialsPattern().Replace(result, "$1***@");
-    }
-
-    [GeneratedRegex(
-        "(?i)(\"?(?:access[_-]?token|refresh[_-]?token|client[_-]?secret|authorization|token)\"?\\s*[:=]\\s*\"?)[^\"\\s,}]+")]
-    private static partial Regex TokenPattern();
-
-    [GeneratedRegex("(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+")]
-    private static partial Regex BearerPattern();
-
-    [GeneratedRegex(@"(?i)(SignedJWT:\s*)[A-Za-z0-9._~+/=-]{16,}")]
-    private static partial Regex SignedJwtPattern();
-
-    [GeneratedRegex("(://)[^/@\\s]+@")]
-    private static partial Regex UrlCredentialsPattern();
+    public static string Redact(string text) => SecretRedaction.Text(text);
 }

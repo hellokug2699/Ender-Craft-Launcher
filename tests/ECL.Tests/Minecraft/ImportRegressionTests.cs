@@ -535,7 +535,7 @@ public sealed class ImportRegressionTests
     {
         public List<LaunchCall> Calls { get; } = [];
 
-        public int Start(LaunchCommand command, string workingDirectory, bool showConsole, string instanceId)
+        public int Start(LaunchCommand command, string workingDirectory, bool showConsole, string instanceId, string? sessionId = null)
         {
             Calls.Add(new LaunchCall(command, workingDirectory));
             return 4242;

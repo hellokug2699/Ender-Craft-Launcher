@@ -46,6 +46,9 @@ public sealed class LaunchContext
 
     public int? ProcessId { get; set; }
 
+    /// <summary>本次启动的日志会话 ID；为空表示会话创建失败或 Dry Run。</summary>
+    public string? SessionId { get; set; }
+
     public string InstanceDirectory => Paths.GetInstanceDirectory(Instance.Id);
 
     public string GameDirectory => InstancePaths.GetGameDirectory(Paths, Instance);

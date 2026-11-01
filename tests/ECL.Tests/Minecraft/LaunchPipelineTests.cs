@@ -481,7 +481,7 @@ public sealed class LaunchPipelineTests
     {
         public int Calls { get; private set; }
 
-        public int Start(LaunchCommand command, string workingDirectory, bool showConsole, string instanceId)
+        public int Start(LaunchCommand command, string workingDirectory, bool showConsole, string instanceId, string? sessionId = null)
         {
             Calls++;
             Assert.NotEmpty(command.Arguments);

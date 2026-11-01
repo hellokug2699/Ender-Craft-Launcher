@@ -16,6 +16,7 @@ using Ecl.Minecraft.Modrinth;
 using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.News;
 using Ecl.Minecraft.Versions;
+using Ecl.Sessions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Ecl.Minecraft;
@@ -24,6 +25,7 @@ public static class MinecraftServiceCollectionExtensions
 {
     public static IServiceCollection AddEclMinecraft(this IServiceCollection services)
     {
+        services.AddEclSessions();
         services.AddSingleton<IOptionProvider, MinecraftOptionsProvider>();
         services.AddSingleton<IJavaSearchRootProvider, SettingsJavaSearchRootProvider>();
         services.AddSingleton<IInstanceStore, FileSystemInstanceStore>();
