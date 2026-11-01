@@ -43,7 +43,7 @@ public sealed class JavaSelectionService(
     IJavaLocator locator,
     ILocalizer localizer) : IJavaSelectionService
 {
-    private static readonly string JavaExecutableName = OperatingSystem.IsWindows() ? "java.exe" : "java";
+    private const string JavaCompatibilityAcknowledgementKey = "launcher.java.incompatiblePromptAcknowledged";
 
     public async Task<JavaSelectionResult> ResolveAsync(
         GameInstance instance,
@@ -90,15 +90,21 @@ public sealed class JavaSelectionService(
             ? null
             : JavaCompatibility.Evaluate(requirement, runtime);
 
-        var acknowledgement = requirement is not null && runtime is not null && isExplicitOverride
-            ? settings.Get<string?>("instance.java.incompatibleRuntimeAcknowledged", instance.Id)
+        var acknowledgement = settings.Get<string?>(JavaCompatibilityAcknowledgementKey);
+        var warningMessage = compatibility is { IsCompatible: false } &&
+                              requirement is not null &&
+                              runtime is not null
+            ? localizer.Get(
+                "instances.java.incompatiblePrompt",
+                runtime.Version?.Raw ?? runtime.DisplayName,
+                requirement.Describe())
             : null;
         var isCompatibilityWarningAcknowledged = compatibility is { IsCompatible: false } &&
-                                                  requirement is not null &&
-                                                  runtime is not null &&
+                                                  isExplicitOverride &&
+                                                  warningMessage is not null &&
                                                   string.Equals(
                                                       acknowledgement,
-                                                      JavaCompatibilityAcknowledgement.Create(runtime, requirement),
+                                                      warningMessage,
                                                       StringComparison.Ordinal);
 
         var instanceMemory = settings.Get<int?>("instance.java.memoryMb", instance.Id);
