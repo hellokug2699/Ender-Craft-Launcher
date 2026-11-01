@@ -3,6 +3,7 @@
 - Status: Completed
 - Date: 2026-11-01
 - Scope: Java 发现、验证、兼容性评估、启动计划、WPF 与 CLI
+- Supersedes: [ADR 0006](0006-java-management.md)（仅取代 Java 选择顺序、兼容性豁免与实例覆盖规则）
 
 ## 背景
 
