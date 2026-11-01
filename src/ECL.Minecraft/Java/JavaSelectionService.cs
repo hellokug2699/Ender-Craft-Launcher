@@ -16,8 +16,19 @@ public sealed record JavaSelectionResult(
     bool HasAnyDetectedJava,
     string? ExplicitPath,
     bool IsExplicitOverride,
+    bool IsCompatibilityWarningAcknowledged,
     IReadOnlyList<string> Warnings,
     int MemoryMb);
+
+public static class JavaCompatibilityAcknowledgement
+{
+    public static string Create(JavaRuntime runtime, JavaRequirement requirement)
+    {
+        var actual = runtime.Version?.Raw ?? runtime.DisplayName;
+        var component = requirement.Component ?? string.Empty;
+        return $"{runtime.ExecutablePath}|{actual}|{requirement.MinimumMajor}|{component}";
+    }
+}
 
 public interface IJavaSelectionService
 {
@@ -51,7 +62,7 @@ public sealed class JavaSelectionService(
         string? explicitPath = null;
         var isExplicitOverride = false;
 
-        // 实例级路径是显式 pin：用户明确选择后，即使版本不是推荐版本也保留选择，启动前给出警告。
+        // 实例级路径是显式 pin：用户明确选择后，即使版本不是推荐版本也保留选择，启动前给出一次风险确认。
         if (!string.IsNullOrWhiteSpace(instancePath))
         {
             var path = instancePath.Trim().Trim('"');
@@ -79,6 +90,17 @@ public sealed class JavaSelectionService(
             ? null
             : JavaCompatibility.Evaluate(requirement, runtime);
 
+        var acknowledgement = requirement is not null && runtime is not null && isExplicitOverride
+            ? settings.Get<string?>("instance.java.incompatibleRuntimeAcknowledged", instance.Id)
+            : null;
+        var isCompatibilityWarningAcknowledged = compatibility is { IsCompatible: false } &&
+                                                  requirement is not null &&
+                                                  runtime is not null &&
+                                                  string.Equals(
+                                                      acknowledgement,
+                                                      JavaCompatibilityAcknowledgement.Create(runtime, requirement),
+                                                      StringComparison.Ordinal);
+
         var instanceMemory = settings.Get<int?>("instance.java.memoryMb", instance.Id);
         var globalMemory = settings.Get<int>("java.defaultMemoryMb");
         var memoryMb = Math.Clamp(instanceMemory ?? globalMemory, 1024, 65536);
@@ -105,6 +127,7 @@ public sealed class JavaSelectionService(
             discovered.Count > 0,
             explicitPath,
             isExplicitOverride,
+            isCompatibilityWarningAcknowledged,
             warnings,
             memoryMb);
     }
