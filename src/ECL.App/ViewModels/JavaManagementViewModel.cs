@@ -218,12 +218,25 @@ public sealed partial class JavaManagementViewModel(
         return result;
     }
 
-    private static bool Matches(JavaRuntime runtime, string path) =>
-        SamePath(runtime.ExecutablePath, path) ||
-        SamePath(runtime.HomePath, path) ||
-        runtime.ExecutablePath.StartsWith(
-            Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)) + Path.DirectorySeparatorChar,
-            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+    private static bool Matches(JavaRuntime runtime, string path)
+    {
+        if (SamePath(runtime.ExecutablePath, path) || SamePath(runtime.HomePath, path))
+        {
+            return true;
+        }
+
+        try
+        {
+            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)) + Path.DirectorySeparatorChar;
+            return runtime.ExecutablePath.StartsWith(
+                root,
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
 
     private static bool SamePath(string left, string right)
     {
