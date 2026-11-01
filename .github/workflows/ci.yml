@@ -71,6 +71,45 @@ jobs:
           }
           finally { $zip.Dispose() }
 
+      # 用一次性测试密钥完成真实签名、静默安装与篡改拒绝，验证安装器端到端契约。
+      - name: Verify silent install and tampered media rejection
+        shell: pwsh
+        run: |
+          $keyPath = Join-Path $env:RUNNER_TEMP "ci-signing.key"
+          $pubPath = Join-Path $env:RUNNER_TEMP "ci-signing.pub"
+          $rsa = [System.Security.Cryptography.RSA]::Create(3072)
+          try {
+            [System.IO.File]::WriteAllText($keyPath, $rsa.ExportPkcs8PrivateKeyPem())
+            [System.IO.File]::WriteAllText($pubPath, $rsa.ExportSubjectPublicKeyInfoPem())
+          }
+          finally { $rsa.Dispose() }
+
+          pwsh -NoProfile -File build/pack-release.ps1 `
+            -Version 1.0.0-ci -Channel nightly -OutputRoot artifacts/ci-signed `
+            -SigningKeyPath $keyPath -KeyId "ci" -PublicKeyPath $pubPath
+          if ($LASTEXITCODE -ne 0) { throw "signed pack-release failed" }
+
+          $media = "artifacts/ci-signed/1.0.0-ci/installer"
+          $target = Join-Path $env:RUNNER_TEMP "ecl-ci-install"
+          $installer = Join-Path $media "ECL.Installer.exe"
+          $process = Start-Process -FilePath $installer `
+            -ArgumentList @("--silent", "--install-root", $target) -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "静默安装失败：$($process.ExitCode)" }
+          if (-not (Test-Path (Join-Path $target "current.json"))) { throw "安装后缺少 current.json" }
+          $versionDir = Join-Path $target "versions/1.0.0-ci"
+          if (-not (Test-Path (Join-Path $versionDir "ECL.exe"))) { throw "安装后缺少版本可执行文件" }
+
+          # 篡改 Manifest 后必须 fail-closed，且不能生成 current 指针。
+          $bad = Join-Path $env:RUNNER_TEMP "ecl-ci-bad-media"
+          Copy-Item $media $bad -Recurse
+          $manifest = Join-Path $bad "update-manifest.json"
+          (Get-Content $manifest -Raw).Replace('1.0.0-ci', '9.9.9-tampered') | Set-Content $manifest -Encoding utf8NoBOM
+          $badTarget = Join-Path $env:RUNNER_TEMP "ecl-ci-install-bad"
+          $badProcess = Start-Process -FilePath (Join-Path $bad "ECL.Installer.exe") `
+            -ArgumentList @("--silent", "--install-root", $badTarget) -PassThru -Wait
+          if ($badProcess.ExitCode -eq 0) { throw "篡改介质被错误接受" }
+          if (Test-Path (Join-Path $badTarget "current.json")) { throw "篡改介质不应生成 current 指针" }
+
   linux:
     name: Test (Linux, Core + CLI)
     runs-on: ubuntu-latest

@@ -1,6 +1,6 @@
 # ADR 0017：图形化首次安装程序
 
-- Status: In Progress
+- Status: Completed
 - Date: 2026-11-01
 - Scope: Windows 首次安装、安装体验、安装介质与 Bootstrapper 集成
 

@@ -112,6 +112,13 @@ internal sealed class GameProcessSupervisor
         return supervisor;
     }
 
+    public async Task<long> FlushAsync()
+    {
+        await _stdout.FlushAsync().ConfigureAwait(false);
+        await _stderr.FlushAsync().ConfigureAwait(false);
+        return WrittenBytes;
+    }
+
     /// <summary>宿主关闭时尽力冲刷已采集内容，并诚实标记会话为中断。</summary>
     public async Task StopCaptureAsync(string reason)
     {

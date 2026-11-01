@@ -216,6 +216,106 @@ public sealed class LogHostTests : IDisposable
         try { await serverTask; } catch (OperationCanceledException) { }
     }
 
+    [Fact]
+    public async Task FlushForcesCapturedOutputToDiskBeforeExit()
+    {
+        var pipeName = "ecl-test-" + Guid.NewGuid().ToString("N")[..10];
+        var artifacts = new SessionArtifactCollector(_sessions, NullLogger<SessionArtifactCollector>.Instance);
+        var server = new LogHostServer(_sessions, artifacts, NullLogger<LogHostServer>.Instance, pipeName);
+        using var cancellation = new CancellationTokenSource();
+        var serverTask = server.RunAsync(cancellation.Token);
+
+        var session = _sessions.Create(new SessionCreateRequest
+        {
+            InstanceId = "demo-abc123",
+            InstanceName = "Demo",
+            GameDirectory = Path.Combine(_root, "games"),
+            LogIsolation = "direct",
+        });
+        Directory.CreateDirectory(Path.Combine(_root, "games"));
+
+        var (executable, arguments) = OperatingSystem.IsWindows()
+            ? ("cmd.exe", (IReadOnlyList<string>)["/c", "echo flush-me & ping -n 5 127.0.0.1 >nul"])
+            : ("/bin/sh", (IReadOnlyList<string>)["-c", "echo flush-me; sleep 4"]);
+
+        await using var client = new NamedPipeLogHostClient(pipeName);
+        await client.ConnectAsync();
+        var started = await client.StartProcessAsync(new LogHostStartRequest(
+            session.SessionId,
+            "demo-abc123",
+            executable,
+            Path.Combine(_root, "games"),
+            arguments));
+        Assert.True(started.Success, started.Error);
+
+        await Task.Delay(800);
+        await client.FlushAsync(session.SessionId);
+
+        Assert.True(File.Exists(session.StdoutPath));
+        using var stream = new FileStream(session.StdoutPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        var content = await reader.ReadToEndAsync();
+        Assert.Contains("flush-me", content);
+
+        if (started.ProcessId is { } pid)
+        {
+            try { System.Diagnostics.Process.GetProcessById(pid).Kill(entireProcessTree: true); }
+            catch (ArgumentException) { }
+        }
+
+        cancellation.Cancel();
+        try { await serverTask; } catch (OperationCanceledException) { }
+    }
+
+    [Fact]
+    public async Task TwoControlClientsObserveTheSameSession()
+    {
+        var pipeName = "ecl-test-" + Guid.NewGuid().ToString("N")[..10];
+        var artifacts = new SessionArtifactCollector(_sessions, NullLogger<SessionArtifactCollector>.Instance);
+        var server = new LogHostServer(_sessions, artifacts, NullLogger<LogHostServer>.Instance, pipeName);
+        using var cancellation = new CancellationTokenSource();
+        var serverTask = server.RunAsync(cancellation.Token);
+
+        var session = _sessions.Create(new SessionCreateRequest
+        {
+            InstanceId = "demo-abc123",
+            InstanceName = "Demo",
+            GameDirectory = Path.Combine(_root, "games"),
+            LogIsolation = "direct",
+        });
+        Directory.CreateDirectory(Path.Combine(_root, "games"));
+
+        var (executable, arguments) = OperatingSystem.IsWindows()
+            ? ("cmd.exe", (IReadOnlyList<string>)["/c", "ping -n 5 127.0.0.1 >nul"])
+            : ("/bin/sh", (IReadOnlyList<string>)["-c", "sleep 4"]);
+
+        await using var first = new NamedPipeLogHostClient(pipeName);
+        await first.ConnectAsync();
+        var started = await first.StartProcessAsync(new LogHostStartRequest(
+            session.SessionId, "demo-abc123", executable, Path.Combine(_root, "games"), arguments));
+        Assert.True(started.Success, started.Error);
+
+        await using var second = new NamedPipeLogHostClient(pipeName);
+        await second.ConnectAsync();
+        var fromFirst = await first.GetStateAsync(session.SessionId);
+        var fromSecond = await second.GetStateAsync(session.SessionId);
+
+        Assert.NotNull(fromFirst);
+        Assert.NotNull(fromSecond);
+        Assert.Equal(started.ProcessId, fromFirst!.ProcessId);
+        Assert.Equal(fromFirst.ProcessId, fromSecond!.ProcessId);
+        Assert.Equal("Running", fromFirst.State);
+
+        if (started.ProcessId is { } pid)
+        {
+            try { System.Diagnostics.Process.GetProcessById(pid).Kill(entireProcessTree: true); }
+            catch (ArgumentException) { }
+        }
+
+        cancellation.Cancel();
+        try { await serverTask; } catch (OperationCanceledException) { }
+    }
+
     private async Task<bool> WaitForStateAsync(string sessionId, GameSessionState state, TimeSpan timeout)
     {
         var deadline = DateTimeOffset.UtcNow + timeout;

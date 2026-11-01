@@ -135,12 +135,12 @@ internal sealed class LogHostServer
                 return GetState(message);
 
             case LogHostMessageTypes.Flush:
-                return message.Reply(LogHostMessageTypes.Flushed) with
                 {
-                    WrittenBytes = message.SessionId is not null && _active.TryGetValue(message.SessionId, out var supervisor)
-                        ? supervisor.WrittenBytes
-                        : 0,
-                };
+                    var flushed = message.SessionId is not null && _active.TryGetValue(message.SessionId, out var supervisor)
+                        ? supervisor.FlushAsync().GetAwaiter().GetResult()
+                        : 0;
+                    return message.Reply(LogHostMessageTypes.Flushed) with { WrittenBytes = flushed };
+                }
 
             case LogHostMessageTypes.Shutdown:
                 if (ActiveSessions > 0)

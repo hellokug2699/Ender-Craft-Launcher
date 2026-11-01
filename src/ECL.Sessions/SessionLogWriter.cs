@@ -22,7 +22,7 @@ public sealed class SessionLogWriter : IAsyncDisposable
     private SessionLogWriter(string path, int capacity)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        _stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read, 64 * 1024, FileOptions.SequentialScan);
+        _stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete, 64 * 1024, FileOptions.SequentialScan);
         _channel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(capacity)
         {
             // Wait 模式下 TryWrite 在队列满时返回 false，而不是“接受后丢弃”：
@@ -52,6 +52,24 @@ public sealed class SessionLogWriter : IAsyncDisposable
         if (!_channel.Writer.TryWrite(copy))
         {
             Interlocked.Add(ref _droppedBytes, copy.Length);
+        }
+    }
+
+    /// <summary>把已写入的缓冲刷新到磁盘；不结束采集。</summary>
+    public async Task FlushAsync()
+    {
+        if (Volatile.Read(ref _disposed) == 1)
+        {
+            return;
+        }
+
+        try
+        {
+            await _stream.FlushAsync().ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // 已关闭。
         }
     }
 

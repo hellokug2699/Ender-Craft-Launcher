@@ -70,6 +70,10 @@ artifacts/release/<version>/
 
 Release workflow 将 `installer/` 打包为 `ECL.Installer-<version>-win-x64.zip` 并随版本资产发布。未签名构建不能作为正式安装介质。
 
+## CI 集成验证（2026-11-02）
+
+Windows CI 使用一次性测试密钥完成：签名打包 → 静默安装（退出码 0、生成 `current.json` 与版本可执行文件）→ 篡改 Manifest 后拒绝安装（Bootstrapper 3，安装器非 0，无 `current.json`）。GUI 启动为人工冒烟验证；交互层自动化仍属后续改进。
+
 ## 尚未完成
 
 - 安装包 Authenticode 签名、卸载器与自动下载安装介质。
