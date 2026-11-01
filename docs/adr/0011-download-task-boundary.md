@@ -1,6 +1,9 @@
 # ADR 0011：全局下载任务与页面解耦
 
 - Status: Superseded
+- Date: Unknown
+- Scope: 下载任务生命周期、应用层任务协调与 WPF 下载页面
+- Superseded by: `ECL.Operations` 统一任务模型（实现说明见 [operations.md](../operations.md)）
 
 ## 背景
 
