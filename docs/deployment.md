@@ -174,7 +174,7 @@ artifacts/release/1.0.1/
 - Nightly 不再为每次提交创建新的 GitHub Release。公开 Release 列表中只保留一个 `nightly` 滚动入口，资产以 `--clobber` 更新。
 - `nightly`、`dev`、`main` 是可移动的通道 Tag。工作流在所有资产上传成功后才移动 Tag，避免 Tag 指向尚未完整发布的构建。
 - 正式版本仍通过 `vX.Y.Z` 保留不可变 Release；额外维护 `main` 滚动 Release，因为客户端更新协议读取的是 `/<channel>/update-manifest.json`。
-- 新推送会取消同一分支上尚未完成的旧构建，避免高频提交堆积；已经发布的滚动版本不会被未完成构建覆盖。
+- 同一分支的构建按队列执行，避免在上传资产或移动通道 Tag 时被强制取消；旧提交仍可作为短期 Actions Artifact 追溯，但只有检查时仍是分支最新 HEAD 的构建才能更新滚动源。
 - 手动运行 workflow 时选择 `dev` 或 `nightly` 分支；正式版只能通过版本 Tag 发布。
 
 构建流程仍然执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 和滚动 Release 都包含完整包、Bootstrapper 包、Manifest、签名与信任库。
