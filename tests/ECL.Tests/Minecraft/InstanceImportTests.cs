@@ -250,7 +250,7 @@ public sealed class InstanceImportTests
         Directory.CreateDirectory(fakeJavaBin);
         var fakeJava = Path.Combine(fakeJavaBin, OperatingSystem.IsWindows() ? "java.exe" : "java");
         File.WriteAllText(fakeJava, string.Empty);
-        File.WriteAllText(Path.Combine(fakeJavaHome, "release"), "JAVA_VERSION=\\"21.0.1\\"\\nIMPLEMENTOR=\\"ECL Test Runtime\\"\\nOS_ARCH=\\"x86_64\\"\\n");
+        File.WriteAllText(Path.Combine(fakeJavaHome, "release"), "JAVA_VERSION=\"21.0.1\"\nIMPLEMENTOR=\"ECL Test Runtime\"\nOS_ARCH=\"x86_64\"\n");
 
         var settings = provider.GetRequiredService<Ecl.Configuration.Settings.ISettingsService>();
         Assert.True(settings.TrySetRaw("java.defaultPath", fakeJava, null, out var error), error);
