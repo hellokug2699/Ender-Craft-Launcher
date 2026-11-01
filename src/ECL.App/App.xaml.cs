@@ -60,6 +60,7 @@ public partial class App : Application
             services.AddSingleton<HomeViewModel>();
             services.AddSingleton<DownloadViewModel>();
             services.AddSingleton<SettingsViewModel>();
+            services.AddSingleton<JavaManagementViewModel>();
             services.AddSingleton<AboutViewModel>();
             services.AddSingleton<OperationCenterViewModel>();
             services.AddSingleton<MainViewModel>();
