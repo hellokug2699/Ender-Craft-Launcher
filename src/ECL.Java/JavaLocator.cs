@@ -15,6 +15,9 @@ public sealed class JavaLocator : IJavaLocator
     private readonly IAppPaths _paths;
     private readonly ILogger<JavaLocator> _logger;
     private readonly IReadOnlyList<IJavaSearchRootProvider> _searchRootProviders;
+    private readonly SemaphoreSlim _scanGate = new(1, 1);
+    private IReadOnlyList<JavaRuntime>? _cachedRuntimes;
+    private DateTimeOffset _cacheExpiresAt;
 
     public JavaLocator(
         IAppPaths paths,
@@ -26,7 +29,51 @@ public sealed class JavaLocator : IJavaLocator
         _searchRootProviders = searchRootProviders?.ToArray() ?? [];
     }
 
-    public Task<IReadOnlyList<JavaRuntime>> FindAllAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<JavaRuntime>> FindAllAsync(CancellationToken cancellationToken = default)
+    {
+        if (_cachedRuntimes is { } cached && DateTimeOffset.UtcNow < _cacheExpiresAt)
+        {
+            return cached;
+        }
+
+        await _scanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_cachedRuntimes is { } current && DateTimeOffset.UtcNow < _cacheExpiresAt)
+            {
+                return current;
+            }
+
+            var discovered = await Task.Run(() => FindAllCore(cancellationToken), cancellationToken)
+                .ConfigureAwait(false);
+            _cachedRuntimes = discovered;
+            _cacheExpiresAt = DateTimeOffset.UtcNow.AddMinutes(2);
+            return discovered;
+        }
+        finally
+        {
+            _scanGate.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<JavaRuntime>> RefreshAsync(CancellationToken cancellationToken = default)
+    {
+        await _scanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var discovered = await Task.Run(() => FindAllCore(cancellationToken), cancellationToken)
+                .ConfigureAwait(false);
+            _cachedRuntimes = discovered;
+            _cacheExpiresAt = DateTimeOffset.UtcNow.AddMinutes(2);
+            return discovered;
+        }
+        finally
+        {
+            _scanGate.Release();
+        }
+    }
+
+    private IReadOnlyList<JavaRuntime> FindAllCore(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -76,7 +123,7 @@ public sealed class JavaLocator : IJavaLocator
             .ToArray();
 
         _logger.LogInformation("共发现 {Count} 个 Java 运行时。", runtimes.Length);
-        return Task.FromResult<IReadOnlyList<JavaRuntime>>(runtimes);
+        return runtimes;
     }
 
     public JavaRuntime? FromPath(string path)
