@@ -1,7 +1,8 @@
 # ADR 0004：分阶段启动流水线与 Dry Run
 
-- 状态：已采纳
-- 日期：2026-10-26
+- Status: Completed
+- Date: 2026-10-26
+- Scope: ECL 架构与实现
 
 ## 背景
 
