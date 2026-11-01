@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Ecl.Installer</RootNamespace>
+    <AssemblyName>ECL.Installer</AssemblyName>
+    <ApplicationIcon>../ECL.App/ECL.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="../ECL.App/ECL.ico" Link="ECL.ico" />
+    <Resource Include="../ECL.App/Fonts/HarmonyOS_Sans_SC_Regular.ttf" Link="Fonts/HarmonyOS_Sans_SC_Regular.ttf" />
+    <Resource Include="../ECL.App/Fonts/HarmonyOS_Sans_SC_Medium.ttf" Link="Fonts/HarmonyOS_Sans_SC_Medium.ttf" />
+    <Resource Include="../ECL.App/Fonts/HarmonyOS_Sans_SC_Bold.ttf" Link="Fonts/HarmonyOS_Sans_SC_Bold.ttf" />
+    <Content Include="../ECL.App/Fonts/HarmonyOS_Sans_LICENSE.txt" Link="Fonts/HarmonyOS_Sans_LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../build/update-trust.json" Link="update-trust.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+</Project>
