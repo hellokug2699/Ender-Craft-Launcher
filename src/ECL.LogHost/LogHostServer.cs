@@ -74,6 +74,16 @@ internal sealed class LogHostServer
         _logger.LogInformation("LogHost 停止接受新连接。");
     }
 
+    /// <summary>宿主停止前冲刷活动会话并标记中断；绝不谎报采集完成。</summary>
+    public async Task StopAsync()
+    {
+        foreach (var (sessionId, supervisor) in _active.ToArray())
+        {
+            await supervisor.StopCaptureAsync("loghost.shutdown").ConfigureAwait(false);
+            _active.TryRemove(sessionId, out _);
+        }
+    }
+
     private async Task HandleConnectionAsync(NamedPipeServerStream pipe, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _clients);

@@ -167,6 +167,55 @@ public sealed class LogHostTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task ShutdownFlushesAndMarksActiveSessionInterrupted()
+    {
+        var pipeName = "ecl-test-" + Guid.NewGuid().ToString("N")[..10];
+        var artifacts = new SessionArtifactCollector(_sessions, NullLogger<SessionArtifactCollector>.Instance);
+        var server = new LogHostServer(_sessions, artifacts, NullLogger<LogHostServer>.Instance, pipeName);
+        using var cancellation = new CancellationTokenSource();
+        var serverTask = server.RunAsync(cancellation.Token);
+
+        var session = _sessions.Create(new SessionCreateRequest
+        {
+            InstanceId = "demo-abc123",
+            InstanceName = "Demo",
+            GameDirectory = Path.Combine(_root, "games"),
+            LogIsolation = "direct",
+        });
+        Directory.CreateDirectory(Path.Combine(_root, "games"));
+
+        var (executable, arguments) = OperatingSystem.IsWindows()
+            ? ("cmd.exe", (IReadOnlyList<string>)["/c", "ping -n 8 127.0.0.1 >nul"])
+            : ("/bin/sh", (IReadOnlyList<string>)["-c", "sleep 6"]);
+
+        await using var client = new NamedPipeLogHostClient(pipeName);
+        await client.ConnectAsync();
+        var started = await client.StartProcessAsync(new LogHostStartRequest(
+            session.SessionId,
+            "demo-abc123",
+            executable,
+            Path.Combine(_root, "games"),
+            arguments));
+        Assert.True(started.Success, started.Error);
+
+        await Task.Delay(600);
+        await server.StopAsync();
+
+        var manifest = _sessions.Get(session.SessionId)!.Manifest;
+        Assert.Equal(GameSessionState.Interrupted, manifest.State);
+        Assert.Contains("loghost.shutdown", manifest.CaptureFault);
+
+        if (started.ProcessId is { } pid)
+        {
+            try { System.Diagnostics.Process.GetProcessById(pid).Kill(entireProcessTree: true); }
+            catch (ArgumentException) { }
+        }
+
+        cancellation.Cancel();
+        try { await serverTask; } catch (OperationCanceledException) { }
+    }
+
     private async Task<bool> WaitForStateAsync(string sessionId, GameSessionState state, TimeSpan timeout)
     {
         var deadline = DateTimeOffset.UtcNow + timeout;

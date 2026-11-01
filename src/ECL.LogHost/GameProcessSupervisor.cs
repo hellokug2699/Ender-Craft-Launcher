@@ -112,6 +112,34 @@ internal sealed class GameProcessSupervisor
         return supervisor;
     }
 
+    /// <summary>宿主关闭时尽力冲刷已采集内容，并诚实标记会话为中断。</summary>
+    public async Task StopCaptureAsync(string reason)
+    {
+        try
+        {
+            await _stdout.CompleteAsync().ConfigureAwait(false);
+            await _stderr.CompleteAsync().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+        {
+            _logger.LogWarning(exception, "关闭时刷新会话 {SessionId} 失败。", _sessionId);
+        }
+
+        var current = _sessions.Get(_sessionId);
+        if (current is null)
+        {
+            return;
+        }
+
+        if (current.Manifest.State is GameSessionState.Running
+            or GameSessionState.Starting
+            or GameSessionState.GameExitedDraining)
+        {
+            _sessions.SetCaptureFault(_sessionId, reason);
+            _sessions.MarkState(_sessionId, GameSessionState.Interrupted, reason);
+        }
+    }
+
     private static async Task VerifyIsolationAsync(IGameSessionService sessions, GameLogSession session)
     {
         var logPath = Path.Combine(session.DirectoryPath, "game.log");

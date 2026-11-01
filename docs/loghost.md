@@ -58,11 +58,12 @@ ECL.UI (WPF)  ──Named Pipe──▶  ECL.LogHost  ──stdout/stderr──�
 - 主程序检测到宿主退出时，把仍在运行的会话标记为 `CaptureIncomplete` 并记录 `CaptureFault`，不终止游戏。
 - ECL 重启恢复时，如果 `captureHost=loghost` 且记录的宿主 PID 已不存在：保留 `Running`、写入 `session.recovered.hostUnverified`，并把会话独立 `game.log` 登记为 `Direct` 证据；stdout 管道不可恢复。
 - 若游戏进程身份无法确认，仍按 `Interrupted` / `ProcessStateUnknown` 处理，不伪造正常退出。
+- 宿主收到关闭信号时先冲刷活动会话的已采集内容，再以 `LogHost 关闭` 原因标记 `Interrupted`；不会谎报 `CaptureCompleted`。
 
 ## 8. 尚未完成
 
 - 多 UI 客户端并发订阅与增量状态推送。
-- 系统关机/注销时的最终 flush 与中断标记。
+
 - 压力测试：高频日志 + 慢盘 + 队列上限的基准数值。
 
 ## 9. 实机验证（2026-11-02）

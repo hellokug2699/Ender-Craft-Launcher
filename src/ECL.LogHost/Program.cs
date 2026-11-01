@@ -107,6 +107,9 @@ catch (OperationCanceledException)
     // 正常退出路径。
 }
 
+// 关闭前冲刷活动会话，避免把未完成采集当作正常结束。
+await server.StopAsync().ConfigureAwait(false);
+
 try
 {
     await idleTask.ConfigureAwait(false);

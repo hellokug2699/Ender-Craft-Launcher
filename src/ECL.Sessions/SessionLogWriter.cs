@@ -17,6 +17,7 @@ public sealed class SessionLogWriter : IAsyncDisposable
     private long _droppedBytes;
     private long _writtenBytes;
     private int _completed;
+    private int _disposed;
 
     private SessionLogWriter(string path, int capacity)
     {
@@ -78,6 +79,11 @@ public sealed class SessionLogWriter : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1)
+        {
+            return;
+        }
+
         await CompleteAsync().ConfigureAwait(false);
         await _stream.DisposeAsync().ConfigureAwait(false);
     }
