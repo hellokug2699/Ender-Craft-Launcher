@@ -13,7 +13,7 @@ permissions:
 # Stable tags are unique refs, so they are not cancelled by other releases.
 concurrency:
   group: ecl-build-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -143,7 +143,33 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # Never interrupt a publication halfway through. Older branch builds are
+      # retained as Actions artifacts, but only the current branch head updates the feed.
+      - name: Check whether this is the latest channel commit
+        id: freshness
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ECL_REF_TYPE: ${{ github.ref_type }}
+          ECL_CHANNEL: ${{ env.ECL_CHANNEL }}
+        run: |
+          if ($env:ECL_REF_TYPE -eq "tag") {
+            "publish=true" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          $head = gh api "repos/$env:GITHUB_REPOSITORY/branches/$env:ECL_CHANNEL" --jq '.commit.sha'
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($head)) {
+            throw "Failed to resolve current branch head for $env:ECL_CHANNEL"
+          }
+          $shouldPublish = ($head.Trim() -eq $env:GITHUB_SHA)
+          "publish=$($shouldPublish.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          if (-not $shouldPublish) {
+            Write-Host "Skipping stale channel publication for $env:GITHUB_SHA; current head is $head."
+          }
+
       - name: Publish stable release or update rolling channel feed
+        if: steps.freshness.outputs.publish == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
