@@ -41,7 +41,7 @@
                                 <TextBlock Text="{Binding Architecture}" FontSize="11"/>
                                 <TextBlock Text="{Binding Vendor}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10"/>
                             </StackPanel>
-                            <Button Grid.Column="3" Content="↑" Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Style="{StaticResource GhostButton}" Margin="2"/>
+                            <Button Grid.Column="3" Content="↑" Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Style="{StaticResource GhostButton}" Margin="2"/>
                             <Button Grid.Column="4" Content="↓" Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Style="{StaticResource GhostButton}" Margin="2"/>
                             <Button Grid.Column="5" Content="{loc:Loc Key=java.manager.openFolder}" Command="{Binding DataContext.OpenFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Style="{StaticResource GhostButton}" Margin="2"/>
                         </Grid>
