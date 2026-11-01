@@ -146,6 +146,8 @@ public sealed class InstanceImportTests
         var imported = await instances.ImportAsync("Shared");
         Assert.True(imported.IsSuccess);
 
+        ConfigureFakeJavaAndEula(environment, provider);
+
         // 版本 JSON 引用了不存在的客户端 jar；导入的实例不应因此阻塞启动。
         var report = await provider.GetRequiredService<ILaunchService>()
             .LaunchAsync(imported.Value!.Id, dryRun: false);
@@ -239,6 +241,20 @@ public sealed class InstanceImportTests
         // 已经修正后再次读取不应重复改写。
         var second = await instances.GetInstancesAsync();
         Assert.Equal("1.21.1", Assert.Single(second, item => item.Id == imported.Value.Id).GameVersion);
+    }
+
+    private static void ConfigureFakeJavaAndEula(TestEnvironment environment, IServiceProvider provider)
+    {
+        var fakeJavaHome = Path.Combine(environment.Root, "fakejava");
+        var fakeJavaBin = Path.Combine(fakeJavaHome, "bin");
+        Directory.CreateDirectory(fakeJavaBin);
+        var fakeJava = Path.Combine(fakeJavaBin, OperatingSystem.IsWindows() ? "java.exe" : "java");
+        File.WriteAllText(fakeJava, string.Empty);
+        File.WriteAllText(Path.Combine(fakeJavaHome, "release"), "JAVA_VERSION=\\\"21.0.1\\\"\\nIMPLEMENTOR=\\\"ECL Test Runtime\\\"\\nOS_ARCH=\\\"x86_64\\\"\\n");
+
+        var settings = provider.GetRequiredService<Ecl.Configuration.Settings.ISettingsService>();
+        Assert.True(settings.TrySetRaw("java.defaultPath", fakeJava, null, out var error), error);
+        Assert.True(provider.GetRequiredService<Ecl.Minecraft.Eula.IEulaService>().Accept().IsSuccess);
     }
 
     private static void CreateProfile(string versionsDirectory, string versionId, string json)
