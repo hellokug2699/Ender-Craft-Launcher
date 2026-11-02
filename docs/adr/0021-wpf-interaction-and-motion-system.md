@@ -1,6 +1,9 @@
 # ADR 0021：WPF 交互反馈与轻量动效系统
 
-- Status: Proposed
+> 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；尚未开始实施的提案保持原有阶段。
+
+- Decision: Proposed
+- Implementation: Not Started
 - Date: 2026-11-02
 - Scope: ECL.App 的 WPF 控件、主题资源、页面导航、弹窗与交互状态表现
 
