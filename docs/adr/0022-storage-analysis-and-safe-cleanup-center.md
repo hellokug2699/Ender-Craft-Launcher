@@ -1,6 +1,9 @@
 # ADR 0022：存储空间分析与安全清理中心
 
-- Status: Proposed
+> 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；尚未开始实施的提案保持原有阶段。
+
+- Decision: Proposed
+- Implementation: Not Started
 - Date: 2026-11-02
 - Scope: ECL 存储空间统计、下载缓存、运行缓存、实例数据清理与实例删除交互
 
