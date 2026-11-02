@@ -1,10 +1,15 @@
 # ADR 0035: Offline Minecraft Knowledge Library as an Optional Addition
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Superseded
+- Implementation: N/A
 - Date: 2026-11-02
 - Scope: ECL 内置知识中心、Minecraft Wiki 类内容、模组资料索引与离线知识包
 - Related: [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033：本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md)
+- Superseded by: [ADR 0036：内置浏览器与 Minecraft 知识访问](0036-embedded-browser-for-minecraft-knowledge.md)
+
+## 状态说明
+
+本 ADR 的原始方向是以可选离线知识包作为 Minecraft 与模组资料的主要交付方式。该方向现由 ADR 0036 的内置浏览器访问方式取代，因此本 ADR 标记为 Superseded。被取代的是“以大规模离线知识包作为主要知识入口”的整体方案，不代表禁止所有离线知识数据。明确授权、范围较小且具有独立价值的离线资料仍可作为补充，并继续遵循本文关于来源、许可、版本和数据质量的约束。
 
 ## 背景
 
@@ -204,3 +209,4 @@ Knowledge Pack 应具有独立版本、内容清单、兼容性声明和完整�
 ## 修订记录
 
 - 2026-11-02：首次提出 ECL 可选离线知识中心架构，明确模组知识是核心范围，并记录内容授权、全量采集、包体积、数据质量和持续维护等主要可行性风险。
+- 2026-11-02：由 ADR 0036 取代以大规模离线知识包作为主要知识访问方式的方向；保留小型、明确授权的离线资料作为补充方案。
