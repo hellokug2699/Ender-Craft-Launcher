@@ -296,11 +296,11 @@ public sealed class ModService(
 
         var enabled = withMetadata.Where(entry => entry.Enabled).ToArray();
         var enabledIds = enabled
-            .Select(entry => entry.Metadata!.ModId)
+            .SelectMany(entry => entry.Metadata!.ProvidedIds.Prepend(entry.Metadata.ModId))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var disabledIds = withMetadata
             .Where(entry => !entry.Enabled)
-            .Select(entry => entry.Metadata!.ModId)
+            .SelectMany(entry => entry.Metadata!.ProvidedIds.Prepend(entry.Metadata.ModId))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         foreach (var entry in enabled)

@@ -23,7 +23,8 @@ public sealed class ModMetadataTests
                 "minecraft": "1.21.1",
                 "missinglib": "*"
               },
-              "breaks": ["badmod", "worsemod"]
+              "breaks": ["badmod", "worsemod"],
+              "provides": ["fabric-rendering-fluids-v1", "fabric-rendering-data-attachment-v1"]
             }
             """, "fabric.mod.json");
 
@@ -38,6 +39,7 @@ public sealed class ModMetadataTests
             Assert.Equal(ModPlatform.Fabric, metadata.Platform);
             Assert.Contains(metadata.Dependencies, item => item.ModId == "missinglib" && item.Mandatory);
             Assert.Equal(["badmod", "worsemod"], metadata.Breaks);
+            Assert.Contains("fabric-rendering-fluids-v1", metadata.ProvidedIds);
         }
         finally
         {
@@ -86,6 +88,40 @@ public sealed class ModMetadataTests
             Assert.Contains(metadata.Dependencies, item => item.ModId == "requiredlib" && item.Mandatory);
             Assert.Contains(metadata.Dependencies, item => item.ModId == "forge" && item.Mandatory);
             Assert.Contains(metadata.Dependencies, item => item.ModId == "optionallib" && !item.Mandatory);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void ReadsNestedFabricModuleProvides()
+    {
+        var nested = new MemoryStream();
+        using (var nestedArchive = new ZipArchive(nested, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            WriteEntry(nestedArchive, "fabric.mod.json", """{"id":"fabric-rendering-fluids-v1","version":"1.0"}""");
+        }
+
+        var path = Path.Combine(Path.GetTempPath(), $"ecl-mod-{Guid.NewGuid():N}.jar");
+        try
+        {
+            using (var archive = ZipFile.Open(path, ZipArchiveMode.Create))
+            {
+                WriteEntry(
+                    archive,
+                    "fabric.mod.json",
+                    """{"id":"fabric-api","version":"1.0","jars":[{"file":"META-INF/jars/fabric-rendering-fluids-v1.jar"}],"provides":["fabric"]}""");
+                var entry = archive.CreateEntry("META-INF/jars/fabric-rendering-fluids-v1.jar");
+                using var stream = entry.Open();
+                nested.Position = 0;
+                nested.CopyTo(stream);
+            }
+
+            var result = ModMetadataReader.Read(path);
+            Assert.True(result.IsSuccess, result.Error);
+            Assert.Contains("fabric-rendering-fluids-v1", result.Metadata!.ProvidedIds);
         }
         finally
         {

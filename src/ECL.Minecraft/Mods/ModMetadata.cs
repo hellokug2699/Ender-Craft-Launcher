@@ -23,7 +23,15 @@ public sealed record ModMetadata(
     string? Description,
     ModPlatform Platform,
     IReadOnlyList<ModDependency> Dependencies,
-    IReadOnlyList<string> Breaks);
+    IReadOnlyList<string> Breaks,
+    IReadOnlyList<string>? Provides = null)
+{
+    /// <summary>
+    /// 该 Mod 额外提供的虚拟 Mod ID。Fabric API 等聚合 Mod 会通过 provides 提供
+    /// fabric-rendering-fluids-v1 等模块，依赖检查不能把这些模块判为缺失。
+    /// </summary>
+    public IReadOnlyList<string> ProvidedIds => Provides ?? [];
+}
 
 public sealed record ModMetadataReadResult(ModMetadata? Metadata, string? Error)
 {
