@@ -1,6 +1,9 @@
 # ADR 0009：CurseForge API 集成与凭据注入
 
-- Status: Superseded
+> 生命周期迁移说明：本文件原有状态已拆分为决策状态与实施状态；既有实机验证和已完成实现予以保留，不因本次状态格式迁移而回退。
+
+- Decision: Superseded
+- Implementation: N/A
 - Date: 2026-10-29
 - Scope: ECL 架构与实现
 
