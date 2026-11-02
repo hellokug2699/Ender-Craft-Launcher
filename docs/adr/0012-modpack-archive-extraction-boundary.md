@@ -1,6 +1,9 @@
 # ADR 0012：整合包归档提取安全边界
 
-- Status: In Progress
+> 生命周期迁移说明：保留原决策及实施历史；本次仅将原状态拆分为独立字段，不改变既有技术决策或已完成验证。
+
+- Decision: Accepted
+- Implementation: In Progress
 - Date: 2026-10-31
 - Scope: ECL 架构与实现
 
