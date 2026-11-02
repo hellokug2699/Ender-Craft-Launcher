@@ -175,3 +175,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0036 Embedded Browser for Minecraft Knowledge Access](0036-embedded-browser-for-minecraft-knowledge.md) | Proposed | Not Started | 受限知识浏览器与站点白名单 |
 | [0037 Account Appearance and Local Wardrobe Architecture](0037-account-appearance-and-local-wardrobe.md) | Proposed | Not Started | 皮肤、披风与账户外观管理 |
 | [0038 Authlib-Injector Texture Upload Protocol Support](0038-authlib-injector-texture-upload-protocol.md) | Proposed | Not Started | 第三方账户皮肤与披风协议上传 |
+| [0039 Application Runtime Lifecycle and Graceful Shutdown](0039-application-runtime-lifecycle-and-graceful-shutdown.md) | Proposed | Not Started | 应用运行时生命周期与优雅关闭 |
