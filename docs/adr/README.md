@@ -118,52 +118,53 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 
 ## 旧状态迁移参考
 
-| 旧写法 | 迁移建议 | 注意事项 |
-|---|---|---|
-| `Proposed` | `Decision: Proposed` + `Implementation: Not Started` | 保持提案状态。 |
-| `Accepted` | `Decision: Accepted` + `Implementation: Not Started` | 除非有证据表明已开始实施。 |
-| `Accepted (implementation pending)` | `Accepted + Not Started` | 不能解释为已投入使用。 |
-| `In Progress` | 通常为 `Accepted + In Progress` | 需确认此前确实已批准。 |
-| `Completed` | 通常为 `Accepted + Implemented` | 只有找到验收证据才能升级为 Verified。 |
-| `Superseded` | `Decision: Superseded` + `Implementation: N/A` | 必须确认取代范围及后继链接。 |
-| `Rejected` / `Deprecated` | 保留对应决策状态 + `N/A` | 记录原因及后续方向。 |
+旧状态映射必须尊重项目维护者确认的实际进展，不得为了满足新字段而回退已经完成的实现或验证。
 
-以上是迁移起点，不是机械替换规则。每份旧 ADR 都需要结合正文、代码和测试证据审查。
+| 旧写法 | 本次迁移规则 |
+|---|---|
+| `Proposed` | `Decision: Proposed` + `Implementation: Not Started` |
+| `Accepted` | `Decision: Accepted` + 按实际进度填写 Implementation |
+| `Accepted (implementation pending)` | `Accepted + Not Started` |
+| `In Progress` | `Accepted + In Progress` |
+| `Completed` | 本项目既有 Completed 工作已由维护者确认经过实机检测，迁移为 `Accepted + Verified` |
+| `Superseded` | `Decision: Superseded` + `Implementation: N/A` |
+
+本次迁移中，原 `Completed` 状态保留为 `Verified`，没有要求重复进行实机检测；这次格式调整不改变技术决策、不撤销已完成工作，也不代表重新启动验收。今后新增或变更状态时，仍需按验收标准记录可复核证据。
 
 ## 当前 ADR 索引
 
-状态迁移期间，各文件原有 `Status` 仍是当前记录；完成迁移后，本索引应展示 Decision 与 Implementation 两个状态。不要将下表中的历史状态解释为已验证。
+以下状态来自各 ADR 当前文件头。Implementation 的 `Verified` 表示既有工作已按项目实际验证状态确认；它不等同于 stable 发布状态。
 
-| ADR | 当前记录状态 | 范围 |
-|---|---|---|
-| [0001 WPF + .NET 10 + 模块化单体](0001-wpf-dotnet10-modular-monolith.md) | Completed（待证据复核） | 应用基础架构 |
-| [0002 元数据驱动的配置系统](0002-metadata-driven-configuration.md) | Completed（待证据复核） | 配置模型 |
-| [0003 public 与 private 仓库分离](0003-public-private-repository-split.md) | Completed（待证据复核） | 仓库边界 |
-| [0004 分阶段启动流水线与 Dry Run](0004-staged-launch-pipeline.md) | Completed（待证据复核） | 游戏启动流程 |
-| [0005 四档下载源策略](0005-download-source-strategy.md) | Completed（待证据复核） | 下载源策略 |
-| [0006 Java 选择、兼容性检查与自动下载](0006-java-management.md) | Completed（被部分取代） | Java 管理历史决策 |
-| [0007 加载器安装与组件分发](0007-loaders-and-components.md) | Completed（待证据复核） | 加载器与组件 |
-| [0008 Forge 与 NeoForge 安装器 processors](0008-forge-neoforge-installers.md) | Completed（待证据复核） | 加载器安装 |
-| [0009 CurseForge API 集成与凭据注入](0009-curseforge-integration.md) | Superseded | CurseForge 客户端集成 |
-| [0010 CurseForge 改由私有代理转发](0010-curseforge-private-proxy.md) | Completed（待证据复核） | 私有代理边界 |
-| [0011 全局下载任务与页面解耦](0011-download-task-boundary.md) | Superseded | 下载任务模型 |
-| [0012 整合包归档提取安全边界](0012-modpack-archive-extraction-boundary.md) | In Progress | 归档安全 |
-| [0013 分支驱动的版本与发布频道](0013-branch-based-versioning-and-release-channels.md) | In Progress | 版本与发布 |
-| [0014 Java 运行时优先级与兼容性策略](0014-java-runtime-priority-and-compatibility-policy.md) | Completed（部分取代 0006） | Java 选择与兼容性 |
-| [0015 按进程隔离的游戏日志会话与诊断证据](0015-process-scoped-game-log-sessions-and-diagnostics.md) | Completed（待证据复核） | 日志与诊断 |
-| [0016 独立 Bootstrapper 与安全部署边界](0016-independent-bootstrapper-and-safe-deployment-boundaries.md) | Completed（待证据复核） | 更新与部署 |
-| [0017 图形化首次安装程序](0017-graphical-first-run-installer.md) | Completed（待证据复核） | 安装器 |
-| [0018 Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md) | Completed（待证据复核） | 工作区与实例存储 |
-| [0019 内存压力下的进程保活与诊断连续性](0019-memory-pressure-process-survival-and-diagnostic-continuity.md) | Completed（待证据复核） | 进程生存与诊断 |
-| [0020 下载临时产物生命周期与失败清理](0020-download-artifact-lifecycle-and-cleanup.md) | Accepted | 下载临时文件 |
-| [0021 WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md) | Proposed | WPF 交互 |
-| [0022 存储空间分析与安全清理中心](0022-storage-analysis-and-safe-cleanup-center.md) | Proposed | 存储分析与清理 |
-| [0023 多实例来源目录登记与统一扫描](0023-multi-root-instance-discovery.md) | Proposed | 多实例发现 |
-| [0024 用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md) | Accepted（implementation pending） | 代码签名信任 |
-| [0025 Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md) | Accepted（implementation pending） | 安装前完整性确认 |
-| [0026 实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md) | Accepted（implementation pending） | 实例工作台 |
-| [0027 原生 C# 世界分析与编辑引擎](0027-native-world-engine.md) | Accepted（implementation pending） | 世界引擎 |
-| [0028 世界种子与生成规则分析功能提议](0028-world-generation-analysis.md) | Proposed | 世界生成分析提案 |
-| [0029 Installer、Bootstrapper 与 Uninstaller 的生命周期边界](0029-installer-bootstrapper-uninstaller-lifecycle.md) | Accepted（implementation pending） | 安装与卸载 |
-| [0030 世界诊断与区块异常定位联动](0030-world-diagnostics-and-chunk-fault-workflow.md) | Accepted（implementation pending） | 世界诊断 |
-| [0031 多维度世界架构与存储解析](0031-multi-dimension-world-architecture.md) | Accepted（implementation pending） | 多维度架构 |
+| ADR | Decision | Implementation | 范围 |
+|---|---|---|---|
+| [0001 WPF + .NET 10 + 模块化单体](0001-wpf-dotnet10-modular-monolith.md) | Accepted | Verified | 应用基础架构 |
+| [0002 元数据驱动的配置系统](0002-metadata-driven-configuration.md) | Accepted | Verified | 配置模型 |
+| [0003 public 与 private 仓库分离](0003-public-private-repository-split.md) | Accepted | Verified | 仓库边界 |
+| [0004 分阶段启动流水线与 Dry Run](0004-staged-launch-pipeline.md) | Accepted | Verified | 游戏启动流程 |
+| [0005 四档下载源策略](0005-download-source-strategy.md) | Accepted | Verified | 下载源策略 |
+| [0006 Java 选择、兼容性检查与自动下载](0006-java-management.md) | Accepted | Verified | Java 管理（部分规则由 0014 取代） |
+| [0007 加载器安装与组件分发](0007-loaders-and-components.md) | Accepted | Verified | 加载器与组件 |
+| [0008 Forge 与 NeoForge 安装器 processors](0008-forge-neoforge-installers.md) | Accepted | Verified | 加载器安装 |
+| [0009 CurseForge API 集成与凭据注入](0009-curseforge-integration.md) | Superseded | N/A | CurseForge 客户端集成 |
+| [0010 CurseForge 改由私有代理转发](0010-curseforge-private-proxy.md) | Accepted | Verified | 私有代理边界 |
+| [0011 全局下载任务与页面解耦](0011-download-task-boundary.md) | Superseded | N/A | 下载任务模型 |
+| [0012 整合包归档提取安全边界](0012-modpack-archive-extraction-boundary.md) | Accepted | In Progress | 归档安全 |
+| [0013 分支驱动的版本与发布频道](0013-branch-based-versioning-and-release-channels.md) | Accepted | In Progress | 版本与发布 |
+| [0014 Java 运行时优先级与兼容性策略](0014-java-runtime-priority-and-compatibility-policy.md) | Accepted | Verified | Java 选择与兼容性 |
+| [0015 按进程隔离的游戏日志会话与诊断证据](0015-process-scoped-game-log-sessions-and-diagnostics.md) | Accepted | Verified | 日志与诊断 |
+| [0016 独立 Bootstrapper 与安全部署边界](0016-independent-bootstrapper-and-safe-deployment-boundaries.md) | Accepted | Verified | 更新与部署 |
+| [0017 图形化首次安装程序](0017-graphical-first-run-installer.md) | Accepted | Verified | 安装器 |
+| [0018 Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md) | Accepted | Verified | 工作区与实例存储 |
+| [0019 内存压力下的进程保活与诊断连续性](0019-memory-pressure-process-survival-and-diagnostic-continuity.md) | Accepted | Verified | 进程生存与诊断 |
+| [0020 下载临时产物生命周期与失败清理](0020-download-artifact-lifecycle-and-cleanup.md) | Accepted | Not Started | 下载临时文件 |
+| [0021 WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md) | Proposed | Not Started | WPF 交互 |
+| [0022 存储空间分析与安全清理中心](0022-storage-analysis-and-safe-cleanup-center.md) | Proposed | Not Started | 存储分析与清理 |
+| [0023 多实例来源目录登记与统一扫描](0023-multi-root-instance-discovery.md) | Proposed | Not Started | 多实例发现 |
+| [0024 用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md) | Accepted | Not Started | 代码签名信任 |
+| [0025 Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md) | Accepted | Not Started | 安装前完整性确认 |
+| [0026 实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md) | Accepted | Not Started | 实例工作台 |
+| [0027 原生 C# 世界分析与编辑引擎](0027-native-world-engine.md) | Accepted | Not Started | 世界引擎 |
+| [0028 世界种子与生成规则分析功能提议](0028-world-generation-analysis.md) | Proposed | Not Started | 世界生成分析提案 |
+| [0029 Installer、Bootstrapper 与 Uninstaller 的生命周期边界](0029-installer-bootstrapper-uninstaller-lifecycle.md) | Accepted | Not Started | 安装与卸载 |
+| [0030 世界诊断与区块异常定位联动](0030-world-diagnostics-and-chunk-fault-workflow.md) | Accepted | Not Started | 世界诊断 |
+| [0031 多维度世界架构与存储解析](0031-multi-dimension-world-architecture.md) | Accepted | Not Started | 多维度架构 |
