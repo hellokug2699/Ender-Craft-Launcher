@@ -3,7 +3,7 @@
 - Status: Accepted (implementation pending)
 - Date: 2026-11-02
 - Scope: Minecraft 世界存档解析、区块分析、地图渲染与编辑
-- Related: ADR 0026（实例工作台的存档、多人游戏与最近访问）、ADR 0030（世界诊断与区块异常定位联动）
+- Related: ADR 0026（实例工作台的存档、多人游戏与最近访问）、ADR 0030（世界诊断与区块异常定位联动）、ADR 0031（多维度世界架构与存储解析）
 
 ## 背景
 
@@ -140,6 +140,15 @@ Biomes O' Plenty 不得被视为普通的“未知 ID”边缘案例。它应进
 Native World Engine 作为独立核心能力，由实例工作台调用。存档发现、基本元数据、打开目录、备份和删除仍遵循 ADR 0026 的职责与安全要求；地图分析和区块编辑由 World Engine 提供。
 
 主页只展示必要的最近访问摘要，不承载地图解析和编辑逻辑。世界引擎故障、未知模组内容或不支持的世界版本不得阻止用户启动 Minecraft 或使用实例工作台中的其他功能。
+
+## 多维度世界模型与存储解析
+
+World Engine 必须采用 **World → Dimension → Region → Chunk** 的基础对象层级。维度身份、发现规则、存储映射和跨维度隔离统一遵循 [ADR 0031：多维度世界架构与存储解析](0031-multi-dimension-world-architecture.md)。
+
+引擎应实现独立的 Dimension Discovery & Storage Resolver，按版本和存档实际结构发现维度，并分别解析 Region、Entities、POI 等存储类别。不得将目录名直接当作 Dimension ID，也不得在解析失败时回退到主世界。
+
+世界编辑器应提供维度选择器；地图、Chunk/Region、Biome、Heightmap、实体、诊断叠加层、缓存键和异步任务均必须绑定当前维度。相同坐标在不同维度中属于不同对象。自定义维度按可解析程度提供基础读取或明确降级，不执行模组代码，也不将未知语义伪装成原版结果。
+
 
 ## 后果
 
