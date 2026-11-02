@@ -171,4 +171,5 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0032 原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md) | Proposed | Not Started | 功能扩展与数据分发 |
 | [0033 本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md) | Proposed | Not Started | 本地诊断与知识库 |
 | [0034 ECL 自身完整性与可恢复安装架构](0034-ecl-self-integrity-and-recovery.md) | Proposed | Not Started | 启动器完整性与自修复 |
-| [0035 Offline Minecraft Knowledge Library as an Optional Addition](0035-offline-minecraft-knowledge-library.md) | Proposed | Not Started | 内置离线知识库与模组资料 |
+| [0035 Offline Minecraft Knowledge Library as an Optional Addition](0035-offline-minecraft-knowledge-library.md) | Superseded | N/A | 离线知识库方向（由 0036 取代主要交付方式） |
+| [0036 Embedded Browser for Minecraft Knowledge Access](0036-embedded-browser-for-minecraft-knowledge.md) | Proposed | Not Started | 内置浏览器与知识访问 |
