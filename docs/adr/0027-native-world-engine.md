@@ -279,3 +279,5 @@ World Engine 必须采用 **World → Dimension → Region → Chunk** 的基础
 - [ADR 0026：实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md)
 
 - 2026-11-02：实施状态更新为 In Progress：新增原生 NBT/Region/Chunk/维度/地图/NBT 语义与编辑会话核心；NBT Explorer 图形工作流与 Biomes O' Plenty 真实样本尚未完成。
+
+- 2026-11-03：用真实 Minecraft 1.20.1 服务端世界验证：49/49 区块可解析、0 损坏，表面方块/高度/生物群系可读；修复 NBT 字符串 2 字节长度与 TAG_Byte 有符号 Section Y 兼容性，并加入回归测试。

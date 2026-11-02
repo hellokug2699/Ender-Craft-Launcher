@@ -320,8 +320,9 @@ internal sealed class NbtBinaryReader(Stream stream, NbtReadOptions options)
 
     public string ReadString()
     {
-        var length = ReadInt32();
-        if (length < 0 || length > options.MaxStringLength)
+        // NBT 字符串长度是 2 字节无符号短整型；数组长度才是 4 字节 int。
+        var length = ReadUInt16();
+        if (length > options.MaxStringLength)
         {
             throw new NbtFormatException($"NBT 字符串长度无效：{length}。");
         }
@@ -334,6 +335,12 @@ internal sealed class NbtBinaryReader(Stream stream, NbtReadOptions options)
         var bytes = new byte[length];
         ReadExactly(bytes);
         return Encoding.UTF8.GetString(bytes);
+    }
+
+    public ushort ReadUInt16()
+    {
+        ReadExactly(2);
+        return BinaryPrimitives.ReadUInt16BigEndian(_buffer);
     }
 
     public NbtTag ReadPayload(NbtTagType type, string name, int depth, NbtReadOptions readOptions)
@@ -397,11 +404,19 @@ internal sealed class NbtBinaryReader(Stream stream, NbtReadOptions options)
 
                         if (childType > NbtTagType.LongArray)
                         {
-                            throw new NbtFormatException($"未知 NBT 标签类型：{(byte)childType}。");
+                            throw new NbtFormatException(
+                                $"未知 NBT 标签类型：{(byte)childType}（偏移 {stream.Position}，复合标签 '{name}'，已有 {compound.Children.Count} 项）。");
                         }
 
                         var childName = ReadString();
-                        compound.Add(ReadPayload(childType, childName, depth + 1, readOptions));
+                        try
+                        {
+                            compound.Add(ReadPayload(childType, childName, depth + 1, readOptions));
+                        }
+                        catch (NbtFormatException exception)
+                        {
+                            throw new NbtFormatException($"{name}/{childName}: {exception.Message}", exception);
+                        }
                     }
 
                     return compound;
@@ -431,7 +446,7 @@ internal sealed class NbtBinaryReader(Stream stream, NbtReadOptions options)
             case NbtTagType.End:
                 throw new NbtFormatException("不能在负载位置读取 End 标签。");
             default:
-                throw new NbtFormatException($"未知 NBT 标签类型：{(byte)type}。");
+                throw new NbtFormatException($"未知 NBT 标签类型：{(byte)type}（偏移 {stream.Position}）。");
         }
     }
 
@@ -505,8 +520,19 @@ internal sealed class NbtBinaryWriter(Stream stream)
     public void WriteString(string value)
     {
         var bytes = Encoding.UTF8.GetBytes(value);
-        WriteInt32(bytes.Length);
+        if (bytes.Length > ushort.MaxValue)
+        {
+            throw new NbtFormatException($"NBT 字符串超过 65535 字节：{bytes.Length}。");
+        }
+
+        WriteUInt16((ushort)bytes.Length);
         stream.Write(bytes);
+    }
+
+    public void WriteUInt16(ushort value)
+    {
+        BinaryPrimitives.WriteUInt16BigEndian(_buffer, value);
+        stream.Write(_buffer, 0, 2);
     }
 
     public void WritePayload(NbtTag tag)

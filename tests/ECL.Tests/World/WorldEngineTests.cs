@@ -55,6 +55,59 @@ public sealed class WorldEngineTests
     }
 
     [Fact]
+    public void NbtReadsStandardTwoByteStringLengths()
+    {
+        // 真实 Minecraft NBT 的字符串长度是 2 字节；不能因为读写器同源而只测试自定义 4 字节实现。
+        byte[] data =
+        [
+            0x0A, 0x00, 0x00,
+            0x0A, 0x00, 0x04, (byte)'D', (byte)'a', (byte)'t', (byte)'a',
+            0x08, 0x00, 0x09, (byte)'L', (byte)'e', (byte)'v', (byte)'e', (byte)'l', (byte)'N', (byte)'a', (byte)'m', (byte)'e',
+            0x00, 0x04, (byte)'T', (byte)'e', (byte)'s', (byte)'t',
+            0x00,
+            0x00,
+        ];
+        var root = NbtFile.Read(new MemoryStream(data));
+        Assert.Equal("Test", root.Find("Data/LevelName")?.GetString());
+    }
+
+    [Fact]
+    public void NbtByteIsSignedForNegativeSectionY()
+    {
+        byte[] data = [0x0A, 0x00, 0x00, 0x01, 0x00, 0x01, (byte)'Y', 0xFC, 0x00];
+        var root = NbtFile.Read(new MemoryStream(data));
+        Assert.Equal(-4, root.Child("Y")!.GetInt());
+    }
+
+    [Fact]
+    public void ChunkParsesNegativeSectionYFromSignedNbtByte()
+    {
+        var section = NbtTag.Compound()
+            .Add("Y", NbtTagType.Byte, unchecked((byte)-4));
+        var blockStates = NbtTag.Compound("block_states");
+        var palette = NbtTag.List("palette", NbtTagType.Compound);
+        palette.AddTo(NbtTag.Compound().Add("Name", NbtTagType.String, "minecraft:air"));
+        palette.AddTo(NbtTag.Compound().Add("Name", NbtTagType.String, "minecraft:stone"));
+        blockStates.Add(palette);
+        blockStates.Add("data", NbtTagType.LongArray, new long[] { 1 });
+        section.Add(blockStates);
+        var sections = NbtTag.List("sections", NbtTagType.Compound);
+        sections.AddTo(section);
+
+        var parsed = ChunkData.Parse(
+            NbtTag.Compound()
+                .Add("DataVersion", NbtTagType.Int, 3955)
+                .Add("xPos", NbtTagType.Int, 0)
+                .Add("zPos", NbtTagType.Int, 0)
+                .Add("Status", NbtTagType.String, "full")
+                .Add(sections));
+
+        Assert.True(parsed.Success);
+        Assert.Equal(-64, parsed.Chunk!.SurfaceHeights[0]);
+        Assert.Equal("minecraft:stone", parsed.Chunk.SurfaceBlocks[0]);
+    }
+
+    [Fact]
     public void RegionReadsChunkAndIsolatesMissingAndCorruptEntries()
     {
         var directory = CreateTempDirectory();

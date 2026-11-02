@@ -174,7 +174,8 @@ public sealed class NbtTag
     {
         int value => value,
         short value => value,
-        byte value => value,
+        // NBT TAG_Byte 是有符号字节；Section Y 等字段允许负数。
+        byte value => unchecked((sbyte)value),
         _ => fallback,
     };
 
@@ -183,7 +184,7 @@ public sealed class NbtTag
         long value => value,
         int value => value,
         short value => value,
-        byte value => value,
+        byte value => unchecked((sbyte)value),
         _ => fallback,
     };
 

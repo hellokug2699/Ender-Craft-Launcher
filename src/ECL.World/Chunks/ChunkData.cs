@@ -261,8 +261,29 @@ public sealed class ChunkData
             for (var x = 0; x < 16; x++)
             {
                 var index = z * 16 + x;
-                var surfaceY = SurfaceHeights[index];
-                if (surfaceY is null)
+                var hintedY = SurfaceHeights[index];
+                var surfaceY = hintedY;
+                if (surfaceY is { } hinted)
+                {
+                    // Heightmap 记录的是“表面以上的第一个位置”还是表面本身随版本/类型而异；
+                    // 以实际方块为准，必要时向下回退一格，不能把 air 当作表面方块。
+                    var block = GetBlock(x, hinted, z);
+                    if (block is null || IsAir(block.Name))
+                    {
+                        block = GetBlock(x, hinted - 1, z);
+                        if (block is not null && !IsAir(block.Name))
+                        {
+                            surfaceY = hinted - 1;
+                            SurfaceHeights[index] = surfaceY;
+                        }
+                        else
+                        {
+                            surfaceY = FindSurface(x, z);
+                            SurfaceHeights[index] = surfaceY;
+                        }
+                    }
+                }
+                else
                 {
                     surfaceY = FindSurface(x, z);
                     SurfaceHeights[index] = surfaceY;
@@ -271,10 +292,17 @@ public sealed class ChunkData
                 if (surfaceY is not null)
                 {
                     var block = GetBlock(x, surfaceY.Value, z);
+                    if (block is null || IsAir(block.Name))
+                    {
+                        block = GetBlock(x, surfaceY.Value - 1, z);
+                    }
+
                     SurfaceBlocks[index] = block?.DisplayName;
                 }
 
-                BiomeIds[index] = ResolveBiome(x, z, surfaceY ?? 63, legacyBiomes, dataVersion);
+                // 生物群系采样保留 Heightmap 提示；表面方块可能因测试样本/未生成区块为空，
+                // 不能因此把 Biome 查询位置退到固定 63 或丢弃全部群系。
+                BiomeIds[index] = ResolveBiome(x, z, hintedY ?? surfaceY ?? 63, legacyBiomes, dataVersion);
             }
         }
     }
