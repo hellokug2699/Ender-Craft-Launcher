@@ -47,14 +47,14 @@
 - `ECL.Additions`：`AdditionId`、类型、版本、依赖、Core API 范围、平台、撤回标记、数据 schema。
 - 官方目录：`additions/catalog.json` + detached RSA-PSS 签名 `catalog.json.sig`；公钥在 `build/additions-trust.json`，私钥只在私有 Core 仓库。
 - 目录服务：远程获取失败/离线时回退最近一次通过签名校验的缓存并明确标记“可能不是最新”；缓存本身仍验证签名。
-- 规划器：下载前解析依赖闭包，拒绝循环、缺失、版本不满足、Core API 不兼容、平台不匹配与冲突；可选依赖不静默安装；已安装且满足范围的依赖不强制升级。
+- 规划器：下载前解析依赖闭包，拒绝循环、缺失、版本不满足、Core API 不兼容、平台不匹配与冲突；可选依赖不静默安装；已安装且满足范围的依赖不强制升级；安装/更新共享依赖优先顺序，避免先更新依赖方。
 - 安装器：包大小+SHA-256 → 安全解包 → `addition.json` 逐文件校验 → staging 原子移动到版本目录 → 状态原子写入；更新保留上一版本；失败删除新版本并保留原可用版本；卸载检查依赖并把包目录移入隔离区后再删状态，保留 `additions/data/<id>` 用户数据。
 - 状态：`Available/Downloading/Installing/Installed/Enabled/UpdateAvailable/Incompatible/Broken` 与运行时 `Loaded` 分开；安装不等于启用或加载。
 - 按需加载：`IAdditionModule` + 可回收 `AssemblyLoadContext`；只传递最小 `AdditionHostContext`（ID、版本、Core API、数据目录），不暴露启动器对象/UI。
 
 验证：
 
-- `tests/ECL.Tests/Additions/AdditionTests.cs`（13 项）：目录校验、依赖顺序、循环/缺失/不兼容/平台、已安装依赖复用、安装、篡改包拒绝、更新/回滚、依赖卸载保护与用户数据保留、按需加载、禁用/不兼容拒绝、签名目录与离线缓存、官方目录签名校验。
+- `tests/ECL.Tests/Additions/AdditionTests.cs`（14 项）：目录校验、依赖顺序、循环/缺失/不兼容/平台、已安装依赖复用、安装、篡改包拒绝、更新/回滚、依赖卸载保护与用户数据保留、按需加载、禁用/不兼容拒绝、签名目录与离线缓存、官方目录签名校验。
 - `tests/ECL.TestAddition` 是测试用最小扩展，验证真实程序集加载与数据目录隔离。
 
 已知缺口：

@@ -119,6 +119,30 @@ public sealed class AdditionTests
     }
 
     [Fact]
+    public void PlannerOrdersUpdatesDependenciesFirst()
+    {
+        var catalog = AdditionsTestData.CreateCatalog(
+            AdditionsTestData.CreateEntry("ecl.feature", version: "2.0.0", dependencies: [Dep("ecl.data", "2.0.0")]),
+            AdditionsTestData.CreateEntry("ecl.data", type: AdditionType.Data, version: "2.0.0", dataSchemaVersion: 1));
+        var installed = new[]
+        {
+            AdditionsTestData.CreateInstalled("ecl.data", "1.0.0", AdditionType.Data),
+            AdditionsTestData.CreateInstalled("ecl.feature", "1.0.0", AdditionType.Feature),
+        };
+
+        var plan = new AdditionPlanner().Plan(
+            catalog,
+            installed,
+            [AdditionId.Parse("ecl.feature")],
+            ReleaseVersion.Parse("1.0.0"),
+            "windows");
+
+        Assert.True(plan.IsSuccess, plan.Error?.ToString());
+        Assert.Equal(["ecl.data", "ecl.feature"], plan.Value!.Ordered.Select(item => item.Entry.Id.Value));
+        Assert.Equal(["ecl.data", "ecl.feature"], plan.Value.All.Select(item => item.Entry.Id.Value));
+    }
+
+    [Fact]
     public async Task PackageIsVerifiedAndInstalledTransactionally()
     {
         using var fixture = new AdditionFixture();

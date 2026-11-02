@@ -56,12 +56,15 @@ public sealed class AdditionPlanner
 
         var install = new List<PlannedAddition>();
         var update = new List<PlannedAddition>();
+        var planned = new List<PlannedAddition>();
         foreach (var entry in ordered)
         {
             var reason = reasons.GetValueOrDefault(entry.Id, "依赖");
             if (!installedById.TryGetValue(entry.Id, out var current))
             {
-                install.Add(new PlannedAddition(entry, reason));
+                var item = new PlannedAddition(entry, reason);
+                install.Add(item);
+                planned.Add(item);
             }
             else if (current.Version.CompareTo(entry.Version) != 0)
             {
@@ -70,11 +73,14 @@ public sealed class AdditionPlanner
                     warnings.Add($"{entry.Id.Value} 已安装但处于禁用状态；本次更新不会自动启用。");
                 }
 
-                update.Add(new PlannedAddition(entry, reason));
+                var item = new PlannedAddition(entry, reason);
+                update.Add(item);
+                planned.Add(item);
             }
         }
 
-        return Result<AdditionInstallPlan>.Ok(new AdditionInstallPlan(install, update, [], warnings));
+        return Result<AdditionInstallPlan>.Ok(
+            new AdditionInstallPlan(install, update, [], warnings) { Ordered = planned });
 
         Result Visit(AdditionEntry entry, string reason, bool required)
         {

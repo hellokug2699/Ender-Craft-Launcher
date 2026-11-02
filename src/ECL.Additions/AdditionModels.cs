@@ -171,7 +171,12 @@ public sealed record AdditionInstallPlan(
     IReadOnlyList<AdditionId> Remove,
     IReadOnlyList<string> Warnings)
 {
-    public IReadOnlyList<PlannedAddition> All => Install.Concat(Update).ToArray();
+    /// <summary>按依赖优先顺序排列的安装/更新项；执行时必须使用此顺序，不能把 Install 与 Update 简单拼接。</summary>
+    public IReadOnlyList<PlannedAddition> Ordered { get; init; } = [];
+
+    public IReadOnlyList<PlannedAddition> All => Ordered.Count > 0
+        ? Ordered
+        : Install.Concat(Update).ToArray();
 
     public bool IsEmpty => Install.Count == 0 && Update.Count == 0 && Remove.Count == 0;
 }
