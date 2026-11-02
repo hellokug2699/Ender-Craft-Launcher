@@ -244,7 +244,7 @@ internal static class Program
 
     private static int RepairIntegrity(UpdateLayout layout, BootstrapperLog log)
     {
-        var result = new SelfRepairService().RepairAsync(layout.InstallRoot).GetAwaiter().GetResult();
+        var result = CreateRepairService(layout, log).RepairAsync(layout.InstallRoot).GetAwaiter().GetResult();
         if (!result.IsSuccess)
         {
             return Fail(result.Error!, log);
@@ -282,6 +282,48 @@ internal static class Program
     }
 
     /// <summary>
+    /// 构造 Repair Mode 服务。本地恢复缓存始终可用；当环境变量 <c>ECL_UPDATE_FEED</c> 指向
+    /// HTTPS 更新源且安装根存在 update-trust.json 时，允许从该源获取当前版本完整包做联网修复。
+    /// 远程修复仍要求清单签名、包哈希与逐文件哈希全部通过。
+    /// </summary>
+    private static SelfRepairService CreateRepairService(UpdateLayout layout, BootstrapperLog log)
+    {
+        var cache = new RecoveryCache(Path.Combine(layout.InstallRoot, "recovery"));
+        IRepairPackageSource? remote = null;
+        var feedValue = Environment.GetEnvironmentVariable("ECL_UPDATE_FEED");
+        if (!string.IsNullOrWhiteSpace(feedValue))
+        {
+            if (!Uri.TryCreate(feedValue, UriKind.Absolute, out var feed) ||
+                !string.Equals(feed.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                log.Write("忽略远程修复源：ECL_UPDATE_FEED 必须是 HTTPS 绝对地址。");
+            }
+            else
+            {
+                var trust = UpdateTrustStore.FromFileAsync(layout.TrustFile).GetAwaiter().GetResult();
+                if (!trust.IsSuccess)
+                {
+                    log.Write($"远程修复不可用：{trust.Error!.Message}");
+                }
+                else
+                {
+                    var client = new UpdateClient(
+                        new HttpClient { Timeout = TimeSpan.FromSeconds(60) },
+                        new UpdateSignatureVerifier(trust.Value!));
+                    remote = new UpdateFeedRepairSource(
+                        client,
+                        feed,
+                        UpdateChannel.Stable,
+                        Path.Combine(Path.GetTempPath(), "ecl-repair"));
+                    log.Write("已配置远程修复源。");
+                }
+            }
+        }
+
+        return new SelfRepairService(cache: cache, remoteSource: remote);
+    }
+
+    /// <summary>
     /// 正常启动前的轻量检查（ADR 0034 §8）：只核对当前版本与文件是否存在/大小一致；
     /// 仅在内容受损时进入 Repair Mode，避免每次启动都做全量哈希扫描。
     /// </summary>
@@ -309,7 +351,7 @@ internal static class Program
             Console.WriteLine(report.Describe());
             Console.WriteLine("检测到 ECL 安装文件损坏，进入 Repair Mode。");
             log.Write("检测到安装文件损坏，进入 Repair Mode。");
-            var repair = new SelfRepairService().RepairAsync(layout.InstallRoot).GetAwaiter().GetResult();
+            var repair = CreateRepairService(layout, log).RepairAsync(layout.InstallRoot).GetAwaiter().GetResult();
             if (!repair.IsSuccess)
             {
                 return Fail(repair.Error!, log);
@@ -466,6 +508,8 @@ internal static class Program
         不会覆盖正在运行的 ECL。--cleanup 只清理未完成的 staging，不触碰 current 版本。
         --verify 全量核对签名清单与文件哈希；--repair 只使用本地恢复材料恢复 ECL 自有文件，
         不会删除或重置实例、存档、配置等用户数据。正常启动只做轻量检查，发现内容损坏时进入 Repair Mode。
+        设置 ECL_UPDATE_FEED 为 HTTPS 更新源时，本地恢复材料不足可尝试从该源获取当前版本完整包修复；
+        远程修复同样必须通过签名、包哈希与逐文件哈希验证。
         """;
 
     private sealed class BootstrapperLog : IDisposable

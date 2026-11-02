@@ -170,4 +170,4 @@ Bootstrapper 应维护最小的部署状态，例如当前版本、候选版本�
 ## 修订记录
 
 - 2026-11-02：首次形成该架构决策，记录 ECL 自身完整性校验、事务式更新、回滚和可恢复安装边界。
-- 2026-11-03：决策状态更新为 Accepted，实施状态更新为 In Progress。已实现基于签名更新清单的逐文件校验、轻量启动检查、Repair Mode、有界本地 Recovery Cache 与 Bootstrapper `--verify`/`--repair`；联网修复路径与 `install-manifest.json` 独立签名仍未完成。依据见 [ADR 0031–0040 实施记录](../adr-0031-0040-implementation.md)。
+- 2026-11-03：决策状态更新为 Accepted，实施状态更新为 In Progress。已实现基于签名更新清单的逐文件校验、轻量启动检查、Repair Mode、有界本地 Recovery Cache、从受信任更新源（`ECL_UPDATE_FEED`）获取当前版本完整包的联网修复，以及 Bootstrapper `--verify`/`--repair`；`install-manifest.json` 独立签名与自动发现修复源仍未完成。依据见 [ADR 0031–0040 实施记录](../adr-0031-0040-implementation.md)。

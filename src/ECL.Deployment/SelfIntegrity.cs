@@ -653,11 +653,16 @@ public sealed class SelfRepairService
 {
     private readonly SelfIntegrityVerifier _verifier;
     private readonly RecoveryCache? _cache;
+    private readonly IRepairPackageSource? _remoteSource;
 
-    public SelfRepairService(SelfIntegrityVerifier? verifier = null, RecoveryCache? cache = null)
+    public SelfRepairService(
+        SelfIntegrityVerifier? verifier = null,
+        RecoveryCache? cache = null,
+        IRepairPackageSource? remoteSource = null)
     {
         _verifier = verifier ?? new SelfIntegrityVerifier();
         _cache = cache;
+        _remoteSource = remoteSource;
     }
 
     public async Task<Result<RepairOutcome>> RepairAsync(
@@ -700,28 +705,55 @@ public sealed class SelfRepairService
                 before.Damaged.Select(file => file.Path).ToArray(),
                 cancellationToken)
             .ConfigureAwait(false);
-        if (!restore.IsSuccess)
+
+        var restored = new List<string>();
+        var residual = new List<string>();
+        if (restore.IsSuccess)
+        {
+            restored.AddRange(restore.Value!.Restored);
+            residual.AddRange(restore.Value.MissingFromCache.Select(path => $"本地恢复材料缺失：{path}"));
+        }
+        else if (_remoteSource is null)
         {
             return Result<RepairOutcome>.Fail(
                 "integrity.repair_unavailable",
                 "本地恢复材料不足，无法在离线状态下完成修复。",
                 restore.Error!.Message);
         }
+        else
+        {
+            residual.Add($"本地恢复材料不可用：{restore.Error!.Message}");
+        }
 
         var afterVerification = await _verifier.VerifyAsync(layout.InstallRoot, verifyHashes: true, cancellationToken)
             .ConfigureAwait(false);
         var after = afterVerification.IsSuccess ? afterVerification.Value : null;
-        var residual = new List<string>(restore.Value!.MissingFromCache.Count);
-        if (restore.Value.MissingFromCache.Count > 0)
-        {
-            residual.Add($"本地恢复材料缺失：{string.Join("、", restore.Value.MissingFromCache)}");
-        }
-
         if (after is not null && !after.ContentIntact)
         {
             residual.AddRange(after.Damaged.Select(file => $"{file.Path}：{SelfIntegrityVerifier.StatusText(file.Status)}"));
         }
 
-        return Result<RepairOutcome>.Ok(new RepairOutcome(before, after, restore.Value.Restored, residual));
+        // 本地材料不足或恢复后仍不完整时，才尝试受信任的远程修复源。
+        if ((after is null || !after.ContentIntact) && _remoteSource is not null)
+        {
+            var remote = await new RemoteRepairService(_remoteSource, _verifier)
+                .RepairAsync(
+                    layout.InstallRoot,
+                    before.Damaged.Select(file => file.Path).ToArray(),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (remote.IsSuccess)
+            {
+                var outcome = remote.Value!;
+                var merged = restored.Concat(outcome.RestoredFiles)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                return Result<RepairOutcome>.Ok(new RepairOutcome(before, outcome.After, merged, outcome.ResidualIssues));
+            }
+
+            residual.Add($"联网修复失败：{remote.Error!.Message}");
+        }
+
+        return Result<RepairOutcome>.Ok(new RepairOutcome(before, after, restored, residual));
     }
 }

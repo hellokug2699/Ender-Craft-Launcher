@@ -92,16 +92,18 @@
 - 轻量启动检查：正常启动只检查存在/大小；仅在内容受损时进入 Repair Mode，避免每次全量哈希；清单缺失的旧版安装明确跳过并提示。
 - Repair Mode：`ECL.Bootstrapper.exe --verify` / `--repair`；只恢复清单拥有的 ECL 文件，绝不删除实例、世界、配置或日志；无本地材料或来源不可信时明确失败（退出码 6）。
 - Recovery Cache：按版本保存已验证副本（签名清单 + 文件），按创建时间保留最近 N 个版本；缓存使用前重新验签与哈希，不因位于本地就被信任。
+- 联网修复：当本地材料不足且 `ECL_UPDATE_FEED` 指向 HTTPS 更新源时，从该源获取与当前版本精确一致的签名完整包，验证清单、包哈希与逐文件哈希后只覆盖损坏文件；版本不一致或任何校验失败都拒绝替换。
 - 部署来源：Installer/更新部署把已签名更新清单保存到安装根/版本目录，作为后续校验依据。
 
 验证：
 
 - `tests/ECL.Tests/Deployment/SelfIntegrityTests.cs`（9 项）：签名安装验证、缺失/哈希区分、轻量只查大小、从缓存修复、无缓存显式失败、坏签名拒绝修复、未信任来源拒绝缓存、修复不触碰用户数据、缓存数量上限。
+- `tests/ECL.Tests/Deployment/RemoteRepairTests.cs`（3 项）：远程恢复损坏文件且不触碰用户数据、版本不一致/篡改包拒绝、未信任安装拒绝联网修复。
 - `tests/ECL.Tests/Deployment/BootstrapperCommandLineTests.cs`、`BootstrapperExitCodesTests.cs`：`--verify`/`--repair` 解析、互斥与退出码 6。
 
 已知缺口：
 
-- 远程修复未实现：本地材料不足时只报告 `integrity.repair_unavailable`，尚未从受信任发布源重新获取并校验完整包。
+- 远程修复需要显式配置 `ECL_UPDATE_FEED`；尚无基于设置页/更新源的自动发现与用户确认流程。
 - `install-manifest.json` 仍只服务卸载，尚未独立签名；当前来源信任基于更新清单副本。
 - Bootstrapper 自身损坏/缺失的恢复链未覆盖（仍需要独立安装介质或重新安装）。
 
