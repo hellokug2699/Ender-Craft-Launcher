@@ -69,3 +69,5 @@
 | [0019 内存压力下的进程保活与诊断连续性](0019-memory-pressure-process-survival-and-diagnostic-continuity.md) | Completed | 游戏、LogHost 与主 UI 的资源压力生存边界 |
 | [0020 下载临时产物生命周期与失败清理](0020-download-artifact-lifecycle-and-cleanup.md) | Accepted | 下载缓存、断点续传与临时文件生命周期 |
 | [0021 WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md) | Proposed | WPF 控件状态、页面转场、动效与可访问性 |
+| [0022 存储空间分析与安全清理中心](0022-storage-analysis-and-safe-cleanup-center.md) | Proposed | ECL/Minecraft 空间统计、白名单清理与实例删除安全边界 |
+| [0023 多实例来源目录登记与统一扫描](0023-multi-root-instance-discovery.md) | Proposed | 多来源目录登记、扫描、分组展示与实例身份 |
