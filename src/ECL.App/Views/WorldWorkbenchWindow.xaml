@@ -84,6 +84,7 @@
                                 <WrapPanel Margin="0,10,0,0">
                                     <Button Content="备份存档" Command="{Binding BackupSelectedWorldCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,8" />
                                     <Button Content="打开目录" Command="{Binding OpenWorldFolderCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                                    <Button Content="查看 level.dat" Command="{Binding OpenLevelDatCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
                                     <Button Content="删除存档" Command="{Binding DeleteSelectedWorldCommand}" Style="{StaticResource DangerButton}" Margin="0,0,8,8" />
                                 </WrapPanel>
 

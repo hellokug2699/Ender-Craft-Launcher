@@ -7,6 +7,7 @@ using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Services;
+using Ecl.App.Views;
 using Ecl.Minecraft.World;
 using Ecl.World.Diagnostics;
 using Ecl.World.Recent;
@@ -231,6 +232,20 @@ public sealed partial class WorldWorkbenchViewModel : ObservableObject
         {
             await LoadWorldsAsync();
         }
+    }
+
+    [RelayCommand]
+    private void OpenLevelDat()
+    {
+        if (SelectedWorld is null)
+        {
+            return;
+        }
+
+        new NbtExplorerWindow(SelectedWorld.World.LevelDatPath)
+        {
+            Owner = System.Windows.Application.Current.MainWindow,
+        }.ShowDialog();
     }
 
     [RelayCommand]
