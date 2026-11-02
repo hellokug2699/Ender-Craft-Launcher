@@ -1,6 +1,9 @@
 # ADR 0014：Java 运行时优先级与兼容性策略
 
-- Status: Completed
+> 生命周期迁移说明：原有实现及实机验证状态予以保留；本次仅拆分决策与实施状态，不构成技术回退。
+
+- Decision: Accepted
+- Implementation: Verified
 - Date: 2026-11-01
 - Scope: Java 发现、验证、兼容性评估、启动计划、WPF 与 CLI
 - Supersedes: [ADR 0006](0006-java-management.md)（仅取代 Java 选择顺序、兼容性豁免与实例覆盖规则）
