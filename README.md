@@ -71,6 +71,8 @@ dotnet run --project src/ECL.Cli -- launch <实例ID> --dry-run
 - [CurseForge 集成](docs/curseforge.md)
 - [Modrinth 集成](docs/modrinth.md)
 - [崩溃分析与诊断包](docs/diagnostics.md)
+- [游戏日志会话与诊断导出](docs/sessions.md)
+- [数据处理说明](docs/data-handling.md)
 - [启动流水线](docs/launch-pipeline.md)
 - [仓库与保密策略](docs/repository-policy.md)
 - [开发路线图](docs/roadmap.md)
