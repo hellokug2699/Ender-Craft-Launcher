@@ -3,7 +3,7 @@
 - Status: Accepted (implementation pending)
 - Date: 2026-11-02
 - Scope: Minecraft 世界存档解析、区块分析、地图渲染与编辑
-- Related: ADR 0026（实例工作台的存档、多人游戏与最近访问）
+- Related: ADR 0026（实例工作台的存档、多人游戏与最近访问）、ADR 0030（世界诊断与区块异常定位联动）
 
 ## 背景
 
