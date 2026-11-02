@@ -1,6 +1,9 @@
 # ADR 0013：分支驱动的版本与发布频道
 
-- Status: In Progress
+> 生命周期迁移说明：原有实现及实机验证状态予以保留；本次仅拆分决策与实施状态，不构成技术回退。
+
+- Decision: Accepted
+- Implementation: In Progress
 - Date: 2026-11-01
 - Scope: ECL 架构与实现
 
