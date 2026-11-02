@@ -1,6 +1,9 @@
 # ADR 0030：世界诊断与区块异常定位联动
 
-- Status: Accepted (implementation pending)
+> 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；原状态中的 implementation pending 明确映射为尚未开始实施。
+
+- Decision: Accepted
+- Implementation: Not Started
 - Date: 2026-11-02
 - Scope: 游戏日志诊断、区块异常关联、实例工作台告警、世界编辑器定位与修复工作流
 - Related: ADR 0015（按进程隔离的游戏日志会话与诊断）、ADR 0026（实例工作台的存档、多人游戏与最近访问）、ADR 0027（原生 C# 世界分析与编辑引擎）、ADR 0031（多维度世界架构与存储解析）
