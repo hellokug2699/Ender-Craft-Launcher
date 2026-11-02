@@ -173,3 +173,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0034 ECL 自身完整性与可恢复安装架构](0034-ecl-self-integrity-and-recovery.md) | Proposed | Not Started | 启动器完整性与自修复 |
 | [0035 Offline Minecraft Knowledge Library as an Optional Addition](0035-offline-minecraft-knowledge-library.md) | Superseded | N/A | 离线知识库方向（由 0036 取代主要交付方式） |
 | [0036 Embedded Browser for Minecraft Knowledge Access](0036-embedded-browser-for-minecraft-knowledge.md) | Proposed | Not Started | 内置浏览器与知识访问 |
+| [0037 Account Appearance and Local Wardrobe Architecture](0037-account-appearance-and-local-wardrobe.md) | Proposed | Not Started | 皮肤、披风与账户外观管理 |
