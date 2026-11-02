@@ -1,6 +1,9 @@
 # ADR 0018：Minecraft 工作区与实例存储位置
 
-- Status: Completed
+> 生命周期迁移说明：原有实现及实机验证状态予以保留；本次仅拆分决策与实施状态，不构成技术回退。
+
+- Decision: Accepted
+- Implementation: Verified
 - Date: 2026-11-01
 - Scope: Minecraft 实例根目录、工作区初始化、外部实例导入、存储迁移与数据保护
 
