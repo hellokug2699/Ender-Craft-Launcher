@@ -2,7 +2,8 @@
 
 - Status: Accepted (implementation pending)
 - Date: 2026-11-02
-- Scope: 实例工作台、本地世界存档、多人游戏服务器列表、主页最近访问
+- Scope: 实例工作台、本地世界存档、多人游戏服务器列表、主页最近访问、世界诊断告警
+- Related: ADR 0030（世界诊断与区块异常定位联动）
 
 ## 背景
 
