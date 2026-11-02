@@ -22,7 +22,7 @@ ECL 已有独立的更新签名机制：发布流程使用 RSA-PSS-SHA256 对 `u
 6. **保留两套相互独立的验证机制。**
    - Windows Authenticode：用于验证被签署的 Windows 可执行文件及其签名者证书。
    - ECL 更新 Manifest（RSA-PSS-SHA256）：由 ECL Bootstrapper 按 `update-trust.json` 验证更新清单，并由 Manifest 中的 SHA-256 校验发布包及文件。
-   两套机制互补，不互相替代。AuthentiCode 签名不能取代 Manifest 验签；Manifest 验签也不会让 Windows 自动信任代码签名者。
+   两套机制互补，不互相替代。Authenticode 签名不能取代 Manifest 验签；Manifest 验签也不会让 Windows 自动信任代码签名者。
 7. **签署发布链中的可执行文件。** 在实现阶段明确签名覆盖范围，至少评估 Installer、ECL.Bootstrapper、ECL 主程序及随包发布的辅助 EXE。签名必须在最终构建产物确定后执行；签名后的文件不得再被修改。
 8. **私钥严格留在 private Core / 受保护的发布环境。** 自签名证书及私钥不得进入 public 仓库、客户端、安装包或普通构建产物。public 仓库只保存公开证书/指纹及验证所需的公开信息。私钥应限制访问并备份；泄漏时立即停止使用并执行证书轮换。
 9. **提供可撤销和可轮换的信任。** ECL 应允许用户查看当前证书指纹、有效期和信任状态，并提供撤销本机信任的操作。证书轮换时，旧版客户端不得自动信任未知的新证书；必须通过已建立的信任链、更新 Manifest 或再次取得用户明确授权完成迁移。
