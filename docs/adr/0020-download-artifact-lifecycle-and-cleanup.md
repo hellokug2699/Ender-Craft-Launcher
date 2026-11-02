@@ -1,6 +1,9 @@
 # ADR 0020：下载临时产物生命周期与失败清理
 
-- Status: Accepted
+> 生命周期迁移说明：原有实现及实机验证状态予以保留；本次仅拆分决策与实施状态，不构成技术回退。
+
+- Decision: Accepted
+- Implementation: Not Started
 - Date: 2026-11-02
 - Scope: ECL 下载服务、下载缓存、断点续传与临时文件生命周期
 
