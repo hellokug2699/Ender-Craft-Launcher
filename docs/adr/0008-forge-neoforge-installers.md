@@ -1,6 +1,9 @@
 # ADR 0008：Forge 与 NeoForge 安装器 processors
 
-- Status: Completed
+> 生命周期迁移说明：本文件原有状态已拆分为决策状态与实施状态；既有实机验证和已完成实现予以保留，不因本次状态格式迁移而回退。
+
+- Decision: Accepted
+- Implementation: Verified
 - Date: 2026-10-27
 - Scope: ECL 架构与实现
 - 相关版本：v0.5（加载器支持扩展）
