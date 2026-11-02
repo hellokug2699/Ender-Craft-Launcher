@@ -163,7 +163,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0024 用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md) | Accepted | Not Started | 代码签名信任 |
 | [0025 Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md) | Accepted | Not Started | 安装前完整性确认 |
 | [0026 实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md) | Accepted | Not Started | 实例工作台 |
-| [0027 原生 C# 世界分析与编辑引擎](0027-native-world-engine.md) | Accepted | Not Started | 世界引擎 |
+| [0027 原生 C# 世界分析与编辑引擎](0027-native-world-engine.md) | Accepted | Not Started | 世界引擎、NBT 编辑器与语义本地化 |
 | [0028 世界种子与生成规则分析功能提议](0028-world-generation-analysis.md) | Proposed | Not Started | 世界生成分析提案 |
 | [0029 Installer、Bootstrapper 与 Uninstaller 的生命周期边界](0029-installer-bootstrapper-uninstaller-lifecycle.md) | Accepted | Not Started | 安装与卸载 |
 | [0030 世界诊断与区块异常定位联动](0030-world-diagnostics-and-chunk-fault-workflow.md) | Accepted | Not Started | 世界诊断 |
