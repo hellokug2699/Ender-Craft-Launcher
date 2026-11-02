@@ -1,6 +1,9 @@
 # ADR 0029：Installer、Bootstrapper 与 Uninstaller 的生命周期边界
 
-- Status: Accepted (implementation pending)
+> 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；原状态中的 implementation pending 明确映射为尚未开始实施。
+
+- Decision: Accepted
+- Implementation: Not Started
 - Date: 2026-11-02
 - Scope: ECL 在 Windows 上的安装、启动更新与卸载生命周期
 - Related: ADR 0024（用户授权的自签名代码证书信任）、ADR 0025（Installer 首次启动完整性确认向导）
