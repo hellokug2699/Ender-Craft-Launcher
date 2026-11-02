@@ -3,7 +3,7 @@
 > 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；尚未开始实施的提案保持原有阶段。
 
 - Decision: Accepted
-- Implementation: Not Started
+- Implementation: Implemented
 - Date: 2026-11-02
 - Scope: Windows Installer 首次启动、安装前完整性验证与用户知情授权
 
@@ -120,3 +120,5 @@ ECL-ZeroTrust 是 ECL 项目内部的有限安全模型，不是对 GitHub、Win
 - [ADR 0024：用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md)
 - [deployment.md](../deployment.md)
 - [repository-policy.md](../repository-policy.md)
+
+- 2026-11-02：实施状态更新为 Implemented：安装器加入 SHA-256 核对向导、官方摘要 sidecar、静默安装显式风险参数；尚未用正式 Release 资产完成人工核对验收。

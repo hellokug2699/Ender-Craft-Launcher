@@ -1,0 +1,7 @@
+{
+  "certificate": "ecl-code-signing.cer",
+  "subject": "CN=Ender Craft Launcher Self-Signed Code Signing, O=Ender Craft Launcher Contributors",
+  "sha256Fingerprint": "af0da1ee9e9393a1e6787832b842e25f5fb17180b50f1c6afbf732efe525a651",
+  "thumbprint": "058230CF7951B20D1E58C314C5591E0D600406DE",
+  "notAfter": "2031-11-02T15:54:03.0000000Z"
+}

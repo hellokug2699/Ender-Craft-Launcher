@@ -288,6 +288,7 @@
 
         <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                       behaviors:WheelScroll.IsEnabled="True">
+            <StackPanel>
             <ItemsControl ItemsSource="{Binding Categories}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
@@ -311,6 +312,43 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="代码签名信任" Style="{StaticResource SectionText}" />
+                    <TextBlock Text="ECL 使用自签名 Authenticode 证书。导入仅信任该叶证书到 TrustedPeople，不是公开 CA 认证，也不会静默执行。"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="10"
+                               Margin="0,5,0,8"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding CodeSigningStatus}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding CodeSigningFingerprint}"
+                               FontFamily="Consolas"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               Margin="0,5,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="信任此证书（需要管理员权限）"
+                                Command="{Binding TrustCodeSigningCommand}"
+                                Style="{StaticResource PrimaryButton}"
+                                IsEnabled="{Binding CanTrustCodeSigning}" />
+                        <Button Content="撤销本机信任"
+                                Command="{Binding RevokeCodeSigningCommand}"
+                                Style="{StaticResource GhostButton}"
+                                IsEnabled="{Binding IsCodeSigningTrusted}"
+                                Margin="8,0,0,0" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding CodeSigningActionStatus}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               Margin="0,6,0,0"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+            </StackPanel>
         </ScrollViewer>
     </Grid>
 </UserControl>

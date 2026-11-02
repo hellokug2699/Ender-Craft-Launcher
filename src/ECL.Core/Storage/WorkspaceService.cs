@@ -31,6 +31,12 @@ public interface IWorkspaceService
     /// <summary>用户选择“稍后配置”。允许浏览，但在首次创建/下载/启动前仍会要求确认。</summary>
     Task SkipOnboardingAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>更新已登记来源的扫描状态/显示名称；只修改登记，不触碰来源文件。</summary>
+    Task UpdateRootAsync(WorkspaceRoot root, CancellationToken cancellationToken = default);
+
+    /// <summary>移除来源登记，默认只解除登记，不删除来源目录中的任何文件。</summary>
+    Task<Result<bool>> RemoveRootAsync(string id, CancellationToken cancellationToken = default);
+
     /// <summary>检测旧版布局中仍位于启动器数据目录下的实例/版本数据。</summary>
     WorkspaceLegacyInfo DetectLegacy();
 
@@ -192,6 +198,45 @@ public sealed class WorkspaceService : IWorkspaceService
             cancellationToken)
             .ConfigureAwait(false);
     }
+
+    public Task UpdateRootAsync(WorkspaceRoot root, CancellationToken cancellationToken = default) =>
+        Task.Run(
+            () =>
+            {
+                if (!_state.Roots.Any(existing => string.Equals(existing.Id, root.Id, StringComparison.Ordinal)))
+                {
+                    return;
+                }
+
+                Save(state => state with { Roots = Replace(state.Roots, root) });
+            },
+            cancellationToken);
+
+    public Task<Result<bool>> RemoveRootAsync(string id, CancellationToken cancellationToken = default) =>
+        Task.Run(
+            () =>
+            {
+                var root = _state.Roots.FirstOrDefault(existing => string.Equals(existing.Id, id, StringComparison.Ordinal));
+                if (root is null)
+                {
+                    return Result<bool>.Fail("workspace.root_missing", "未找到该实例来源。");
+                }
+
+                if (string.Equals(_state.PrimaryId, id, StringComparison.Ordinal))
+                {
+                    return Result<bool>.Fail("workspace.primary_remove", "主工作区不能直接移除，请先切换到其它工作区。");
+                }
+
+                // 只解除登记；不删除来源目录、实例或用户数据。
+                Save(state => state with
+                {
+                    Roots = state.Roots.Where(existing => !string.Equals(existing.Id, id, StringComparison.Ordinal)).ToArray(),
+                });
+                _logger.LogInformation("已解除实例来源登记（未删除文件）：{Path}", root.Path);
+                cancellationToken.ThrowIfCancellationRequested();
+                return Result<bool>.Ok(true);
+            },
+            cancellationToken);
 
     public Task SkipOnboardingAsync(CancellationToken cancellationToken = default) =>
         Task.Run(

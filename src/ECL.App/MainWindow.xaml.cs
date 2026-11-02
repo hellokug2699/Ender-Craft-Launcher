@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using Ecl.App.Services;
 using Ecl.App.ViewModels;
 
 namespace Ecl.App;
@@ -13,6 +17,28 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = viewModel;
         PreviewKeyDown += OnPreviewKeyDown;
+    }
+
+    private void OnPageTargetUpdated(object? sender, DataTransferEventArgs e)
+    {
+        if (PageHost.Content is null || !MotionSettings.TryBeginPageTransition(PageHost))
+        {
+            PageHost.Opacity = 1;
+            PageHost.RenderTransform = Transform.Identity;
+            return;
+        }
+
+        // 只做表现层转场：内容与 ViewModel 已由导航逻辑切换，动画不参与生命周期。
+        PageHost.Opacity = 0;
+        var translate = new TranslateTransform(0, 6);
+        PageHost.RenderTransform = translate;
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        PageHost.BeginAnimation(
+            OpacityProperty,
+            new DoubleAnimation(0, 1, new Duration(MotionSettings.Normal)) { EasingFunction = easing });
+        translate.BeginAnimation(
+            TranslateTransform.YProperty,
+            new DoubleAnimation(6, 0, new Duration(MotionSettings.Normal)) { EasingFunction = easing });
     }
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)

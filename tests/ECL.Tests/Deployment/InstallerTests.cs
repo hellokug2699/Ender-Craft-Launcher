@@ -27,6 +27,7 @@ public sealed class InstallerTests : IDisposable
                      "update-manifest.json",
                      "update-manifest.sig",
                      InstallMedia.DefaultPackageName,
+                     "ECL.Uninstaller.exe",
                  })
         {
             if (!omit.Contains(file))
@@ -57,6 +58,7 @@ public sealed class InstallerTests : IDisposable
     [InlineData("update-manifest.json")]
     [InlineData("update-manifest.sig")]
     [InlineData(InstallMedia.DefaultPackageName)]
+    [InlineData("ECL.Uninstaller.exe")]
     public void MissingMediaFileIsRejected(string omitted)
     {
         var directory = CreateMedia(omitted);

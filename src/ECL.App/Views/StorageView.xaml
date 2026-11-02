@@ -1,0 +1,185 @@
+<UserControl x:Class="Ecl.App.Views.StorageView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="38,32,38,32">
+            <Grid Margin="0,0,0,18">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="存储与清理" Style="{StaticResource TitleText}" />
+                    <TextBlock Text="统计 ECL、下载缓存、Java Runtime、工作区与外部实例来源；清理仅限白名单中的可重建缓存与历史日志。"
+                               Style="{StaticResource SubtitleText}"
+                               Margin="0,6,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="登记实例来源" Command="{Binding AddSourceCommand}" Style="{StaticResource GhostButton}" />
+                    <Button Content="扫描" Command="{Binding ScanCommand}" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" />
+                </StackPanel>
+            </Grid>
+
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="{Binding Summary}" Style="{StaticResource SectionText}" />
+                    <TextBlock Text="{Binding Status}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               Margin="0,6,0,0" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="实例来源分组" Style="{StaticResource SectionText}" />
+                    <TextBlock Text="来源目录只登记并读取；折叠、扫描失败或移除登记都不会删除其中的实例或用户数据。"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="10"
+                               Margin="0,5,0,10"
+                               TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding SourceGroups}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource SurfaceAltBrush}"
+                                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="12,9"
+                                        Margin="0,0,0,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource EmphasisText}" />
+                                            <TextBlock Text="{Binding InstancesText}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="10"
+                                                       Margin="0,3,0,0"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding Path}"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       FontSize="9"
+                                                       Margin="0,3,0,0"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Status}"
+                                                   Foreground="{DynamicResource TextMutedBrush}"
+                                                   FontSize="9"
+                                                   VerticalAlignment="Center"
+                                                   Margin="12,0,0,0" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="没有已登记来源。可在工作区设置或上方按钮登记 HMCL、PCL 等目录。"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="10"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="空间占用" Style="{StaticResource SectionText}" />
+                    <ItemsControl ItemsSource="{Binding Usages}" Margin="0,10,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="80" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}" FontSize="11" Style="{StaticResource EmphasisText}" />
+                                        <TextBlock Text="{Binding Detail}"
+                                                   Foreground="{DynamicResource TextMutedBrush}"
+                                                   FontSize="9"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding SizeText}"
+                                               FontSize="11"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding StatusText}"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               FontSize="9"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="安全清理" Style="{StaticResource SectionText}" />
+                            <TextBlock Text="{Binding PreviewSummary}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       Margin="0,5,0,0"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Content="生成预览"
+                                Command="{Binding PreviewCleanupCommand}"
+                                Style="{StaticResource GhostButton}"
+                                VerticalAlignment="Center" />
+                        <Button Grid.Column="2"
+                                Content="执行清理"
+                                Command="{Binding ExecuteCleanupCommand}"
+                                Style="{StaticResource DangerButton}"
+                                IsEnabled="{Binding HasPreview}"
+                                Margin="8,0,0,0"
+                                VerticalAlignment="Center" />
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding PreviewItems}" Margin="0,10,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="130" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="80" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Title}" FontSize="10" Style="{StaticResource EmphasisText}" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding PathText}"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               FontSize="9"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding SizeText}"
+                                               FontSize="10"
+                                               HorizontalAlignment="Right" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="白名单之外的内容一律不清理：世界存档、模组、配置、资源包、光影包、截图、用户文件与未知目录。"
+                               Foreground="{DynamicResource WarningBrush}"
+                               FontSize="9"
+                               Margin="0,10,0,0"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

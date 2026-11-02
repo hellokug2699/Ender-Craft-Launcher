@@ -38,7 +38,12 @@ public sealed record WorkspaceRoot(
     string Path,
     WorkspaceKind Kind,
     WorkspaceStatus Status = WorkspaceStatus.Unknown,
-    DateTimeOffset? LastValidatedAtUtc = null);
+    DateTimeOffset? LastValidatedAtUtc = null,
+    string? Structure = null,
+    DateTimeOffset? LastScannedAtUtc = null,
+    string? LastScanError = null,
+    bool Enabled = true,
+    bool AutoScan = true);
 
 /// <summary>
 /// <c>config/workspace.json</c> 的持久化模型。单一主工作区 + 已登记根目录列表；

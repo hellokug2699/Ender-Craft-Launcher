@@ -3,7 +3,7 @@
 > 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；尚未开始实施的提案保持原有阶段。
 
 - Decision: Accepted
-- Implementation: Not Started
+- Implementation: In Progress
 - Date: 2026-11-02
 - Scope: Minecraft 世界存档解析、NBT 数据浏览与编辑、区块分析、地图渲染及语义定义查询
 - Related: ADR 0026（实例工作台的存档、多人游戏与最近访问）、ADR 0030（世界诊断与区块异常定位联动）、ADR 0031（多维度世界架构与存储解析）
@@ -277,3 +277,5 @@ World Engine 必须采用 **World → Dimension → Region → Chunk** 的基础
 ## 相关
 
 - [ADR 0026：实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md)
+
+- 2026-11-02：实施状态更新为 In Progress：新增原生 NBT/Region/Chunk/维度/地图/NBT 语义与编辑会话核心；NBT Explorer 图形工作流与 Biomes O' Plenty 真实样本尚未完成。

@@ -15,6 +15,7 @@
     <ProjectReference Include="..\ECL.Java\ECL.Java.csproj" />
     <ProjectReference Include="..\ECL.Sessions\ECL.Sessions.csproj" />
     <ProjectReference Include="..\ECL.LogHost.Contracts\ECL.LogHost.Contracts.csproj" />
+    <ProjectReference Include="..\ECL.World\ECL.World.csproj" />
   </ItemGroup>
 
   <ItemGroup>

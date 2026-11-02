@@ -3,7 +3,7 @@
 > 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；尚未开始实施的提案保持原有阶段。
 
 - Decision: Proposed
-- Implementation: Not Started
+- Implementation: In Progress
 - Date: 2026-11-02
 - Scope: ECL.App 的 WPF 控件、主题资源、页面导航、弹窗与交互状态表现
 
@@ -150,3 +150,5 @@ WPF 已提供 ControlTemplate、VisualState/Trigger、Storyboard、动画时钟�
 ## 修订记录
 
 - 2026-11-02：首次提出 WPF 交互反馈与轻量动效系统。
+
+- 2026-11-02：实施状态更新为 In Progress：加入动效令牌、按钮按下反馈、主按钮焦点边框修复、页面淡入与减少动画策略；页面、弹窗与 Expander 尚未全量迁移。

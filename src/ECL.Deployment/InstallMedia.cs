@@ -14,7 +14,8 @@ public sealed record InstallMedia(
     string TrustPath,
     string ManifestPath,
     string SignaturePath,
-    string PackagePath)
+    string PackagePath,
+    string UninstallerPath)
 {
     public const string DefaultPackageName = "ECL-package.zip";
 
@@ -47,6 +48,7 @@ public sealed record InstallMedia(
         var package = string.IsNullOrWhiteSpace(packagePath)
             ? Path.Combine(fullDirectory, DefaultPackageName)
             : Path.GetFullPath(packagePath);
+        var uninstaller = Path.Combine(fullDirectory, InstallManifest.UninstallerFileName);
 
         foreach (var (path, code, name) in new[]
                  {
@@ -55,6 +57,7 @@ public sealed record InstallMedia(
                      (manifest, "installer.media.manifest", "update-manifest.json"),
                      (signature, "installer.media.signature", "update-manifest.sig"),
                      (package, "installer.media.package", Path.GetFileName(package)),
+                     (uninstaller, "installer.media.uninstaller", InstallManifest.UninstallerFileName),
                  })
         {
             if (!File.Exists(path))
@@ -69,7 +72,8 @@ public sealed record InstallMedia(
             trust,
             manifest,
             signature,
-            package));
+            package,
+            uninstaller));
     }
 }
 

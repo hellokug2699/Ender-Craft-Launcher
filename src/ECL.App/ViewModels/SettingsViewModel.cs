@@ -3,9 +3,11 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Ecl.App.Services;
 using Ecl.Configuration;
 using Ecl.Configuration.Settings;
 using Ecl.Core.Localization;
+using Ecl.Deployment;
 using Ecl.Minecraft.Instances;
 
 namespace Ecl.App.ViewModels;
@@ -15,6 +17,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ISettingsService _settings;
     private readonly IInstanceService _instances;
     private readonly ILocalizer _localizer;
+    private readonly CodeSigningTrustService _codeSigning;
+    private readonly IDialogService _dialogs;
     private readonly List<OptionEditorViewModel> _editors = [];
     private bool _ready;
 
@@ -39,11 +43,35 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasInstances;
 
-    public SettingsViewModel(ISettingsService settings, IInstanceService instances, ILocalizer localizer)
+    [ObservableProperty]
+    private string _codeSigningStatus = "正在读取代码签名证书…";
+
+    [ObservableProperty]
+    private string _codeSigningFingerprint = string.Empty;
+
+    [ObservableProperty]
+    private bool _isCodeSigningTrusted;
+
+    [ObservableProperty]
+    private bool _canTrustCodeSigning;
+
+    [ObservableProperty]
+    private string _codeSigningActionStatus = string.Empty;
+
+    private string _codeSigningExpectedFingerprint = string.Empty;
+
+    public SettingsViewModel(
+        ISettingsService settings,
+        IInstanceService instances,
+        ILocalizer localizer,
+        CodeSigningTrustService codeSigning,
+        IDialogService dialogs)
     {
         _settings = settings;
         _instances = instances;
         _localizer = localizer;
+        _codeSigning = codeSigning;
+        _dialogs = dialogs;
 
         Scopes =
         [
@@ -57,8 +85,74 @@ public sealed partial class SettingsViewModel : ObservableObject
     public async Task InitializeAsync()
     {
         await RefreshInstancesAsync().ConfigureAwait(true);
+        RefreshCodeSigning();
         _ready = true;
         Rebuild();
+    }
+
+    [RelayCommand]
+    private void TrustCodeSigning()
+    {
+        if (!CanTrustCodeSigning)
+        {
+            return;
+        }
+
+        var accepted = _dialogs.Confirm(
+            "信任 ECL 代码签名证书",
+            "这是 ECL 自行生成的自签名证书，不是公开 CA 对开发者现实身份的背书。\n\n" +
+            $"SHA-256 指纹：\n{_codeSigningExpectedFingerprint}\n\n" +
+            "导入后 Windows 将在 TrustedPeople 中信任该证书签署的代码。此操作需要管理员权限，且仅用于本次信任导入；" +
+            "ECL 的常规启动、更新和游戏启动不会请求管理员权限。\n\n" +
+            "你可以拒绝，ECL 仍可运行并使用更新 Manifest 验签。是否继续？",
+            "code-signing.trust.v1");
+        if (!accepted)
+        {
+            return;
+        }
+
+        var result = _codeSigning.Trust(_codeSigningExpectedFingerprint);
+        CodeSigningActionStatus = result.IsSuccess ? "证书信任已导入。" : result.Error!.Message;
+        RefreshCodeSigning();
+    }
+
+    [RelayCommand]
+    private void RevokeCodeSigning()
+    {
+        var accepted = _dialogs.Confirm(
+            "撤销 ECL 代码签名信任",
+            "将从本机 TrustedPeople 中移除 ECL 的自签名代码证书。更新 Manifest 验签不受影响。是否继续？",
+            "code-signing.revoke.v1");
+        if (!accepted)
+        {
+            return;
+        }
+
+        var result = _codeSigning.Revoke(_codeSigningExpectedFingerprint);
+        CodeSigningActionStatus = result.IsSuccess ? "已撤销本机信任。" : result.Error!.Message;
+        RefreshCodeSigning();
+    }
+
+    private void RefreshCodeSigning()
+    {
+        var inspected = _codeSigning.Inspect();
+        if (!inspected.IsSuccess)
+        {
+            CodeSigningStatus = inspected.Error!.Message;
+            CodeSigningFingerprint = string.Empty;
+            IsCodeSigningTrusted = false;
+            CanTrustCodeSigning = false;
+            return;
+        }
+
+        var info = inspected.Value!;
+        CodeSigningStatus = info.IsTrusted
+            ? "本机已信任该 ECL 代码签名证书。"
+            : "本机尚未信任该证书；不影响 ECL 运行与更新 Manifest 验签。";
+        CodeSigningFingerprint = info.Sha256Fingerprint;
+        _codeSigningExpectedFingerprint = info.Sha256Fingerprint;
+        IsCodeSigningTrusted = info.IsTrusted;
+        CanTrustCodeSigning = !info.IsTrusted;
     }
 
     [RelayCommand]

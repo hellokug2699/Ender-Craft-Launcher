@@ -3,7 +3,7 @@
 > 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；尚未开始实施的提案保持原有阶段。
 
 - Decision: Accepted
-- Implementation: Not Started
+- Implementation: In Progress
 - Date: 2026-11-02
 - Scope: Windows 安装、代码签名与更新信任
 
@@ -89,3 +89,5 @@ ECL 已有独立的更新签名机制：发布流程使用 RSA-PSS-SHA256 对 `u
 - [repository-policy.md](../repository-policy.md)
 - [architecture.md](../architecture.md)
 - [ADR 0010](0010-curseforge-private-proxy.md)
+
+- 2026-11-02：实施状态更新为 In Progress：生成自签名代码证书、固定指纹、信任服务与设置入口、发布签名脚本；尚未完成干净 Windows 实机与系统 UI 全路径验证。

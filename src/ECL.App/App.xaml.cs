@@ -60,7 +60,9 @@ public partial class App : Application
             services.AddEclMinecraft();
 
             services.AddSingleton<IDialogService, DialogService>();
+            services.AddSingleton(new Ecl.Deployment.CodeSigningTrustService());
             services.AddSingleton<InstancesViewModel>();
+            services.AddSingleton<StorageViewModel>();
             services.AddSingleton<ModsViewModel>();
             services.AddSingleton<HomeViewModel>();
             services.AddSingleton<DownloadViewModel>();
@@ -92,6 +94,8 @@ public partial class App : Application
 
             _services.GetRequiredService<IMemoryPressureMonitor>().Start();
 
+            // ADR 0020：启动时回收超过保留期且没有活动租约的 .part；清理失败不影响启动。
+            _ = CleanupDownloadArtifactsAsync(_services, paths);
             await _services.GetRequiredService<MainViewModel>().InitializeAsync();
         }
         catch (Exception exception)
@@ -104,6 +108,29 @@ public partial class App : Application
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
             Shutdown(-1);
+        }
+    }
+
+    private async Task CleanupDownloadArtifactsAsync(IServiceProvider services, AppPaths paths)
+    {
+        try
+        {
+            var artifacts = services.GetRequiredService<DownloadArtifactLifecycle>();
+            var report = await artifacts.CleanupAsync(
+                [paths.DownloadsDirectory, paths.CacheDirectory, paths.GameRoot],
+                CancellationToken.None);
+            _logger?.LogInformation(
+                "下载临时产物清理：扫描 {Scanned}，删除 {Deleted}，释放 {Freed} 字节，活动保护 {Active}，保留 {Retained}，错误 {Errors}。",
+                report.Scanned,
+                report.Deleted,
+                report.BytesFreed,
+                report.ActiveSkipped,
+                report.Retained,
+                report.Errors.Count);
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "下载临时产物清理失败；不影响启动与已完成下载。");
         }
     }
 

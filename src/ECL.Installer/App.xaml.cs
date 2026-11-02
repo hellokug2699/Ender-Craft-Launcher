@@ -33,6 +33,14 @@ public partial class App : Application
             return 2;
         }
 
+        // ADR 0025：静默安装不得把“未验证”伪装成已确认。自动化必须显式承担风险。
+        if (!args.Any(argument => string.Equals(argument, "--accept-unverified", StringComparison.OrdinalIgnoreCase)))
+        {
+            Console.Error.WriteLine(
+                "静默安装未执行首次完整性核对。若确认已通过官方 Release 核对，请显式传入 --accept-unverified。");
+            return 2;
+        }
+
         var media = InstallMedia.Inspect(mediaDirectory, package);
         if (!media.IsSuccess)
         {

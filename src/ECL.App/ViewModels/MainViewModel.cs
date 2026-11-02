@@ -16,6 +16,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly JavaManagementViewModel _javaManagement;
     private readonly LogSessionsViewModel _logSessions;
     private readonly InstancesViewModel _instances;
+    private readonly StorageViewModel _storage;
     private readonly InstanceDetailPageViewModel _instanceDetailPage;
     private bool _showingInstanceDetails;
 
@@ -41,6 +42,7 @@ public sealed partial class MainViewModel : ObservableObject
         HomeViewModel home,
         DownloadViewModel download,
         InstancesViewModel instances,
+        StorageViewModel storage,
         ModsViewModel mods,
         SettingsViewModel settings,
         JavaManagementViewModel javaManagement,
@@ -57,6 +59,7 @@ public sealed partial class MainViewModel : ObservableObject
         _javaManagement = javaManagement;
         _logSessions = logSessions;
         _instances = instances;
+        _storage = storage;
         _instanceDetailPage = new InstanceDetailPageViewModel(instances, mods);
         OperationCenter = operationCenter;
 
@@ -65,6 +68,7 @@ public sealed partial class MainViewModel : ObservableObject
             new NavItemViewModel("home", localizer.Get("nav.home"), home),
             new NavItemViewModel("download", localizer.Get("nav.download"), download),
             new NavItemViewModel("instances", localizer.Get("nav.instances"), instances),
+            new NavItemViewModel("storage", "存储与清理", storage),
             new NavItemViewModel("settings", localizer.Get("nav.settings"), settings),
             new NavItemViewModel("java", localizer.Get("nav.java"), javaManagement),
             new NavItemViewModel("logs", localizer.Get("nav.logs"), logSessions),
@@ -136,6 +140,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     public async Task InitializeAsync()
     {
+        await _home.InitializeAsync().ConfigureAwait(true);
         await _home.Launcher.InitializeAsync().ConfigureAwait(true);
         await _download.InitializeAsync().ConfigureAwait(true);
         await _mods.InitializeAsync().ConfigureAwait(true);
@@ -157,6 +162,9 @@ public sealed partial class MainViewModel : ObservableObject
                 break;
             case LogSessionsViewModel logSessions:
                 logSessions.Activate();
+                break;
+            case StorageViewModel storage:
+                _ = storage.ActivateAsync();
                 break;
         }
     }

@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\src\ECL.LogHost\ECL.LogHost.csproj" />
     <ProjectReference Include="..\..\src\ECL.Cli\ECL.Cli.csproj" />
     <ProjectReference Include="..\..\src\ECL.Operations\ECL.Operations.csproj" />
+    <ProjectReference Include="..\..\src\ECL.World\ECL.World.csproj" />
   </ItemGroup>
 
   <ItemGroup>

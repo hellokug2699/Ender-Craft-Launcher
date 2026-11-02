@@ -207,6 +207,32 @@
                 </StackPanel>
             </Border>
 
+            <Border Style="{StaticResource Card}" Margin="0,0,0,18"
+                    Visibility="{Binding HasRecent, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <TextBlock Text="最近访问" Style="{StaticResource SectionText}" />
+                    <TextBlock Text="{Binding RecentSummary}"
+                               Foreground="{DynamicResource TextMutedBrush}" FontSize="10"
+                               Margin="0,5,0,10" TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding Recent}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="54" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Kind}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11" Style="{StaticResource EmphasisText}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Detail}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
             <TextBlock Text="ECL 专注于实例、安装与内容管理。主页展示本地运行状态和可执行入口，不混入 Minecraft 版本发布公告。"
                        Foreground="{DynamicResource TextMutedBrush}" FontSize="9"
                        Margin="0,4,0,0" TextWrapping="Wrap" />

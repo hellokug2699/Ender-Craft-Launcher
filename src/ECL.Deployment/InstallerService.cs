@@ -141,6 +141,45 @@ public sealed class InstallerService
         var outcome = new InstallOutcome(process.ExitCode, File.Exists(logPath) ? logPath : null);
         if (outcome.Success)
         {
+            progress?.Report(new InstallProgress("finalizing", "正在写入安装清单与卸载入口。"));
+            try
+            {
+                File.Copy(
+                    options.Media.UninstallerPath,
+                    Path.Combine(target, InstallManifest.UninstallerFileName),
+                    overwrite: true);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                return Result<InstallOutcome>.Fail(
+                    "installer.uninstaller_copy_failed",
+                    $"安装已完成，但部署独立卸载器失败：{exception.Message}");
+            }
+
+            var layout = new UpdateLayout(target);
+            var current = await layout.ReadCurrentAsync(cancellationToken).ConfigureAwait(false);
+            if (!current.IsSuccess)
+            {
+                return Result<InstallOutcome>.Fail(
+                    "installer.current_unreadable",
+                    $"安装已完成，但无法读取当前版本以生成安装清单：{current.Error!.Message}");
+            }
+
+            var manifest = InstallManifestStore.Create(target, current.Value!.Version);
+            var written = await InstallManifestStore.WriteAsync(target, manifest, cancellationToken).ConfigureAwait(false);
+            if (!written.IsSuccess)
+            {
+                return Result<InstallOutcome>.Fail(written.Error!.Code, written.Error.Message);
+            }
+
+            var uninstallRegistration = new UninstallRegistration().Register(target, current.Value.Version);
+            if (!uninstallRegistration.IsSuccess)
+            {
+                return Result<InstallOutcome>.Fail(
+                    uninstallRegistration.Error!.Code,
+                    uninstallRegistration.Error.Message);
+            }
+
             progress?.Report(new InstallProgress("completed", target, 100));
             return Result<InstallOutcome>.Ok(outcome);
         }

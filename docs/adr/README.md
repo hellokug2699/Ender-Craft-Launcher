@@ -156,17 +156,17 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0017 图形化首次安装程序](0017-graphical-first-run-installer.md) | Accepted | Verified | 安装器 |
 | [0018 Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md) | Accepted | Verified | 工作区与实例存储 |
 | [0019 内存压力下的进程保活与诊断连续性](0019-memory-pressure-process-survival-and-diagnostic-continuity.md) | Accepted | Verified | 进程生存与诊断 |
-| [0020 下载临时产物生命周期与失败清理](0020-download-artifact-lifecycle-and-cleanup.md) | Accepted | Not Started | 下载临时文件 |
-| [0021 WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md) | Proposed | Not Started | WPF 交互 |
-| [0022 存储空间分析与安全清理中心](0022-storage-analysis-and-safe-cleanup-center.md) | Proposed | Not Started | 存储分析与清理 |
-| [0023 多实例来源目录登记与统一扫描](0023-multi-root-instance-discovery.md) | Proposed | Not Started | 多实例发现 |
-| [0024 用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md) | Accepted | Not Started | 代码签名信任 |
-| [0025 Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md) | Accepted | Not Started | 安装前完整性确认 |
-| [0026 实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md) | Accepted | Not Started | 实例工作台 |
-| [0027 原生 C# 世界分析与编辑引擎](0027-native-world-engine.md) | Accepted | Not Started | 世界引擎、NBT 编辑器、语义本地化与编辑校验 |
+| [0020 下载临时产物生命周期与失败清理](0020-download-artifact-lifecycle-and-cleanup.md) | Accepted | Implemented | 下载临时文件 |
+| [0021 WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md) | Proposed | In Progress | WPF 交互 |
+| [0022 存储空间分析与安全清理中心](0022-storage-analysis-and-safe-cleanup-center.md) | Proposed | In Progress | 存储分析与清理 |
+| [0023 多实例来源目录登记与统一扫描](0023-multi-root-instance-discovery.md) | Proposed | In Progress | 多实例发现 |
+| [0024 用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md) | Accepted | In Progress | 代码签名信任 |
+| [0025 Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md) | Accepted | Implemented | 安装前完整性确认 |
+| [0026 实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md) | Accepted | Implemented | 实例工作台 |
+| [0027 原生 C# 世界分析与编辑引擎](0027-native-world-engine.md) | Accepted | In Progress | 世界引擎、NBT 编辑器、语义本地化与编辑校验 |
 | [0028 世界种子与生成规则分析功能提议](0028-world-generation-analysis.md) | Proposed | Not Started | 世界生成分析提案 |
-| [0029 Installer、Bootstrapper 与 Uninstaller 的生命周期边界](0029-installer-bootstrapper-uninstaller-lifecycle.md) | Accepted | Not Started | 安装与卸载 |
-| [0030 世界诊断与区块异常定位联动](0030-world-diagnostics-and-chunk-fault-workflow.md) | Accepted | Not Started | 世界诊断 |
+| [0029 Installer、Bootstrapper 与 Uninstaller 的生命周期边界](0029-installer-bootstrapper-uninstaller-lifecycle.md) | Accepted | Implemented | 安装与卸载 |
+| [0030 世界诊断与区块异常定位联动](0030-world-diagnostics-and-chunk-fault-workflow.md) | Accepted | In Progress | 世界诊断 |
 | [0031 多维度世界架构与存储解析](0031-multi-dimension-world-architecture.md) | Accepted | Not Started | 多维度架构 |
 | [0032 原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md) | Proposed | Not Started | 功能扩展与数据分发 |
 | [0033 本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md) | Proposed | Not Started | 本地诊断与知识库 |

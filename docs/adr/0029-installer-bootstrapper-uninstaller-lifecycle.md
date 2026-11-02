@@ -3,7 +3,7 @@
 > 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；原状态中的 implementation pending 明确映射为尚未开始实施。
 
 - Decision: Accepted
-- Implementation: Not Started
+- Implementation: Implemented
 - Date: 2026-11-02
 - Scope: ECL 在 Windows 上的安装、启动更新与卸载生命周期
 - Related: ADR 0024（用户授权的自签名代码证书信任）、ADR 0025（Installer 首次启动完整性确认向导）
@@ -201,3 +201,5 @@ Installer 通常作为独立安装包分发，不要求常驻安装目录。安�
 
 - [ADR 0024：用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md)
 - [ADR 0025：Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md)
+
+- 2026-11-02：实施状态更新为 Implemented：新增安装清单、独立 Uninstaller、HKCU 卸载入口与安全删除测试；尚未完成全部分支的实机 UAC 与文件占用验收。

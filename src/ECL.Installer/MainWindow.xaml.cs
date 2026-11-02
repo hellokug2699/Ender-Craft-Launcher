@@ -27,7 +27,18 @@ public partial class MainWindow : Window
 
         _logTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
         _logTimer.Tick += (_, _) => RefreshLog();
-        Loaded += (_, _) => InspectMedia();
+        Loaded += async (_, _) =>
+        {
+            var integrity = await InstallerIntegrity.InspectAsync(AppContext.BaseDirectory);
+            var dialog = new IntegrityWindow(integrity);
+            if (dialog.ShowDialog() != true)
+            {
+                Close();
+                return;
+            }
+
+            InspectMedia();
+        };
     }
 
     private void InspectMedia()

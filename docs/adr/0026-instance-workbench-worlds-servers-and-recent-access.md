@@ -3,7 +3,7 @@
 > 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；尚未开始实施的提案保持原有阶段。
 
 - Decision: Accepted
-- Implementation: Not Started
+- Implementation: Implemented
 - Date: 2026-11-02
 - Scope: 实例工作台、本地世界存档、多人游戏服务器列表、主页最近访问、世界诊断告警
 - Related: ADR 0030（世界诊断与区块异常定位联动）、ADR 0031（多维度世界架构与存储解析）
@@ -211,3 +211,5 @@ ECL 可以在用户主动进入多人游戏管理页面、手动刷新或明确�
 - [游戏日志会话与诊断导出](../sessions.md)
 - [崩溃分析与诊断包](../diagnostics.md)
 - [Java 管理](../java.md)
+
+- 2026-11-02：实施状态更新为 Implemented：实例工作台加入存档、服务器、最近访问与诊断入口；地图、服务器与备份链路已有自动化测试，但未用真实 Minecraft 世界完成全量实机验收。

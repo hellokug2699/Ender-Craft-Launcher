@@ -49,6 +49,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IDownloadController _downloads;
     private readonly ICrashReportService _crashReports;
     private readonly IDiagnosticPackageService _diagnostics;
+    private readonly Ecl.Minecraft.World.WorldWorkbenchService _worldWorkbench;
     private bool _initialized;
     private bool _suppressAccountSelection;
     private bool _suppressJavaSelection;
@@ -293,7 +294,8 @@ public sealed partial class InstancesViewModel : ObservableObject
         ILoaderCatalog loaderCatalog,
         IDownloadController downloads,
         ICrashReportService crashReports,
-        IDiagnosticPackageService diagnostics)
+        IDiagnosticPackageService diagnostics,
+        Ecl.Minecraft.World.WorldWorkbenchService worldWorkbench)
     {
         _instances = instances;
         _accounts = accounts;
@@ -315,6 +317,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         _downloads = downloads;
         _crashReports = crashReports;
         _diagnostics = diagnostics;
+        _worldWorkbench = worldWorkbench;
 
         DownloadPauseButtonText = _localizer.Get("instances.download.pause");
 
@@ -1620,6 +1623,25 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     [RelayCommand]
     private void BackToInstances() => NavigateBackFromDetails?.Invoke();
+
+    [RelayCommand]
+    private void OpenWorldWorkbench()
+    {
+        if (SelectedInstance is null)
+        {
+            return;
+        }
+
+        var window = new WorldWorkbenchWindow(
+            _worldWorkbench,
+            _dialogs,
+            SelectedInstance.Model.Id,
+            SelectedInstance.Name)
+        {
+            Owner = Application.Current.MainWindow,
+        };
+        window.ShowDialog();
+    }
 
     [RelayCommand]
     private void OpenInstanceFolder() => OpenSelectedDirectory(

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.Configuration;
+using Ecl.Core;
 using Ecl.Java;
 using Ecl.Minecraft.Content;
 using Ecl.Minecraft.CurseForge;
@@ -15,8 +16,13 @@ using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Modrinth;
 using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.News;
+using Ecl.Minecraft.Storage;
 using Ecl.Minecraft.Versions;
+using Ecl.Minecraft.World;
 using Ecl.Sessions;
+using Ecl.World.Diagnostics;
+using Ecl.World.Recent;
+using Ecl.World.Servers;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Ecl.Minecraft;
@@ -54,6 +60,15 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IVersionNewsService, MojangVersionNewsService>();
         services.AddSingleton<ICrashReportService, CrashReportService>();
         services.AddSingleton<IDiagnosticPackageService, DiagnosticPackageService>();
+        services.AddSingleton<StorageAnalysisService>();
+        services.AddSingleton<StorageCleanupService>();
+        services.AddSingleton<ServerPingService>();
+        services.AddSingleton<WorldDiagnosticsParser>();
+        services.AddSingleton(provider => new RecentAccessStore(
+            Path.Combine(provider.GetRequiredService<IAppPaths>().ConfigDirectory, "recent-access.json")));
+        services.AddSingleton(provider => new DiagnosticReportStore(
+            Path.Combine(provider.GetRequiredService<IAppPaths>().ConfigDirectory, "diagnostics")));
+        services.AddSingleton<WorldWorkbenchService>();
 
         services.AddSingleton<ILaunchStep, ValidateInstanceStep>();
         services.AddSingleton<ILaunchStep, ResolveJavaStep>();
