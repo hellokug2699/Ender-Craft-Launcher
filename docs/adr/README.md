@@ -67,3 +67,4 @@
 | [0017 图形化首次安装程序](0017-graphical-first-run-installer.md) | Completed | 首次安装 GUI 与 Bootstrapper 部署边界 |
 | [0018 Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md) | Completed | 工作区选择、外部实例与迁移数据保护 |
 | [0019 内存压力下的进程保活与诊断连续性](0019-memory-pressure-process-survival-and-diagnostic-continuity.md) | Completed | 游戏、LogHost 与主 UI 的资源压力生存边界 |
+| [0020 下载临时产物生命周期与失败清理](0020-download-artifact-lifecycle-and-cleanup.md) | Accepted | 下载缓存、断点续传与临时文件生命周期 |
