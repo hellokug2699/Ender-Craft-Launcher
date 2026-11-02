@@ -1,6 +1,9 @@
 # ADR 0023：多实例来源目录登记与统一扫描
 
-- Status: Proposed
+> 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；尚未开始实施的提案保持原有阶段。
+
+- Decision: Proposed
+- Implementation: Not Started
 - Date: 2026-11-02
 - Scope: Minecraft 工作区、外部实例来源目录登记、实例扫描、实例展示与来源分组
 
