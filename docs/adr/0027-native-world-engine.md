@@ -1,6 +1,9 @@
 # ADR 0027：原生 C# 世界分析与编辑引擎
 
-- Status: Accepted (implementation pending)
+> 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；尚未开始实施的提案保持原有阶段。
+
+- Decision: Accepted
+- Implementation: Not Started
 - Date: 2026-11-02
 - Scope: Minecraft 世界存档解析、区块分析、地图渲染与编辑
 - Related: ADR 0026（实例工作台的存档、多人游戏与最近访问）、ADR 0030（世界诊断与区块异常定位联动）、ADR 0031（多维度世界架构与存储解析）
