@@ -4,7 +4,9 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Services;
+using Ecl.Core;
 using Ecl.Core.Storage;
+using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Storage;
 using Microsoft.Win32;
 
@@ -58,6 +60,13 @@ public sealed record SourceGroupViewModel(
         : $"{InstanceCount} 个实例：{string.Join("、", InstanceNames.Take(4))}{(InstanceCount > 4 ? "…" : string.Empty)}";
 }
 
+public sealed record StorageInstanceItemViewModel(GameInstance Model, string Path)
+{
+    public string Name => Model.Name;
+
+    public string Meta => $"{Model.GameVersion} · {Model.Loader} · {Path}";
+}
+
 public sealed record CleanupItemViewModel(CleanupPreviewItem Item)
 {
     public string Title => Item.Kind switch
@@ -84,6 +93,8 @@ public sealed partial class StorageViewModel : ObservableObject
     private readonly StorageCleanupService _cleanup;
     private readonly InstanceSourceService _sources;
     private readonly IWorkspaceService _workspace;
+    private readonly IInstanceService _instances;
+    private readonly IAppPaths _paths;
     private readonly IDialogService _dialogs;
     private CleanupPreview? _preview;
     private bool _activated;
@@ -93,12 +104,16 @@ public sealed partial class StorageViewModel : ObservableObject
         StorageCleanupService cleanup,
         InstanceSourceService sources,
         IWorkspaceService workspace,
+        IInstanceService instances,
+        IAppPaths paths,
         IDialogService dialogs)
     {
         _analysis = analysis;
         _cleanup = cleanup;
         _sources = sources;
         _workspace = workspace;
+        _instances = instances;
+        _paths = paths;
         _dialogs = dialogs;
     }
 
@@ -107,6 +122,19 @@ public sealed partial class StorageViewModel : ObservableObject
     public ObservableCollection<SourceGroupViewModel> SourceGroups { get; } = [];
 
     public ObservableCollection<CleanupItemViewModel> PreviewItems { get; } = [];
+
+    public ObservableCollection<StorageInstanceItemViewModel> Instances { get; } = [];
+
+    [ObservableProperty]
+    private StorageInstanceItemViewModel? _selectedInstance;
+
+    [ObservableProperty]
+    private string _instanceDeletionStatus = "实例删除使用与实例库相同的删除计划与保护规则。";
+
+    public bool HasSelectedInstance => SelectedInstance is not null;
+
+    partial void OnSelectedInstanceChanged(StorageInstanceItemViewModel? value) =>
+        OnPropertyChanged(nameof(HasSelectedInstance));
 
     [ObservableProperty]
     private string _status = "点击“扫描”统计 ECL、下载缓存、Java Runtime、工作区与已登记实例来源。";
@@ -169,11 +197,70 @@ public sealed partial class StorageViewModel : ObservableObject
                     group.Instances.Count,
                     group.Instances.Select(instance => instance.Name).ToArray()));
             }
+
+            await LoadInstancesAsync();
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    [RelayCommand]
+    private async Task DeleteSelectedInstanceAsync()
+    {
+        if (SelectedInstance is null)
+        {
+            return;
+        }
+
+        var planResult = await _instances.GetDeletionPlanAsync(SelectedInstance.Model.Id);
+        if (!planResult.IsSuccess)
+        {
+            _dialogs.ShowError("无法生成删除计划", planResult.Error!.Message);
+            return;
+        }
+
+        var plan = planResult.Value!;
+        var choice = _dialogs.ChooseInstanceDeletion(
+            "删除实例",
+            $"实例：{plan.InstanceName}\n路径：{plan.GameDirectory}\n\n" +
+            "删除实例会移除 ECL 的实例记录；选择同时删除托管数据时还会移除 instances/<id>/minecraft 中的世界、模组与配置。" +
+            "该操作不可撤销。\n\n" +
+            (plan.HasExternalGameData
+                ? "该实例引用外部游戏目录；ECL 只会移除记录，不会删除外部目录中的任何文件。"
+                : "请确认已不再需要该实例，或先备份存档。"),
+            plan.HasManagedGameData);
+        if (choice == InstanceDeletionChoice.Cancel)
+        {
+            return;
+        }
+
+        var options = choice == InstanceDeletionChoice.DeleteManagedData
+            ? InstanceDeleteOptions.DeleteManagedData
+            : InstanceDeleteOptions.RemoveRecordOnly;
+        var result = await _instances.DeleteAsync(SelectedInstance.Model.Id, options);
+        if (!result.IsSuccess)
+        {
+            InstanceDeletionStatus = result.Error!.Message;
+            return;
+        }
+
+        InstanceDeletionStatus = $"已删除实例 {plan.InstanceName}。";
+        await ScanAsync();
+    }
+
+    private async Task LoadInstancesAsync()
+    {
+        var selectedId = SelectedInstance?.Model.Id;
+        var instances = await _instances.GetInstancesAsync();
+        Instances.Clear();
+        foreach (var instance in instances)
+        {
+            Instances.Add(new StorageInstanceItemViewModel(instance, InstancePaths.GetGameDirectory(_paths, instance)));
+        }
+
+        SelectedInstance = Instances.FirstOrDefault(item => item.Model.Id == selectedId) ?? Instances.FirstOrDefault();
     }
 
     [RelayCommand]

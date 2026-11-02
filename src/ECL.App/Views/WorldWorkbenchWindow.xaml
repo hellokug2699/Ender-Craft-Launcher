@@ -94,7 +94,6 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <ComboBox ItemsSource="{Binding Dimensions}"
                                               SelectedItem="{Binding SelectedDimension}"
@@ -105,18 +104,24 @@
                                               DisplayMemberPath="Name"
                                               Width="130"
                                               Margin="8,0,0,0" />
-                                    <TextBlock Grid.Column="2"
-                                               Text="{Binding MapRadius, StringFormat='半径 {0}'}"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               FontSize="10"
-                                               VerticalAlignment="Center"
-                                               Margin="10,0,0,0" />
-                                    <Button Grid.Column="3"
+                                    <Button Grid.Column="2"
                                             Content="重新渲染"
                                             Command="{Binding RenderMapCommand}"
                                             Style="{StaticResource GhostButton}"
                                             Margin="8,0,0,0" />
                                 </Grid>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <TextBlock Text="中心 Chunk X" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" VerticalAlignment="Center" />
+                                    <TextBox Text="{Binding MapCenterChunkX, UpdateSourceTrigger=PropertyChanged}"
+                                             Width="72" Margin="6,0,12,0" />
+                                    <TextBlock Text="Z" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" VerticalAlignment="Center" />
+                                    <TextBox Text="{Binding MapCenterChunkZ, UpdateSourceTrigger=PropertyChanged}"
+                                             Width="72" Margin="6,0,12,0" />
+                                    <TextBlock Text="缩放" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" VerticalAlignment="Center" />
+                                    <Slider x:Name="MapZoomSlider" Minimum="1" Maximum="4" Value="1" Width="110"
+                                            VerticalAlignment="Center" Margin="6,0,0,0"
+                                            ValueChanged="OnMapZoomChanged" />
+                                </StackPanel>
                                 <TextBlock Text="{Binding MapSummary}"
                                            Foreground="{DynamicResource TextSecondaryBrush}"
                                            FontSize="9"
@@ -128,7 +133,18 @@
                                         CornerRadius="8"
                                         Padding="6"
                                         MinHeight="260">
-                                    <Image Source="{Binding MapImage}" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" />
+                                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MaxHeight="420">
+                                        <Image x:Name="MapImageElement"
+                                               Source="{Binding MapImage}"
+                                               Stretch="None"
+                                               HorizontalAlignment="Left"
+                                               VerticalAlignment="Top"
+                                               RenderOptions.BitmapScalingMode="NearestNeighbor">
+                                            <Image.LayoutTransform>
+                                                <ScaleTransform ScaleX="1" ScaleY="1" />
+                                            </Image.LayoutTransform>
+                                        </Image>
+                                    </ScrollViewer>
                                 </Border>
                                 <TextBlock Text="地图来自磁盘上实际保存的区块。未知生物群系/方块使用独立颜色，不会冒充原版内容；诊断标记以红框叠加。"
                                            Foreground="{DynamicResource TextMutedBrush}"

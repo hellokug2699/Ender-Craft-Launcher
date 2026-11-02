@@ -50,6 +50,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly ICrashReportService _crashReports;
     private readonly IDiagnosticPackageService _diagnostics;
     private readonly Ecl.Minecraft.World.WorldWorkbenchService _worldWorkbench;
+    private readonly Ecl.Core.Storage.InstanceSourceService _instanceSources;
     private bool _initialized;
     private bool _suppressAccountSelection;
     private bool _suppressJavaSelection;
@@ -65,6 +66,10 @@ public sealed partial class InstancesViewModel : ObservableObject
     public Func<string, Task<string>>? GetModHealthSummary { get; set; }
 
     public ObservableCollection<InstanceItemViewModel> Instances { get; } = [];
+
+    public ObservableCollection<InstanceSourceGroupViewModel> SourceGroups { get; } = [];
+
+    public bool HasSourceGroups => SourceGroups.Count > 0;
 
     public ObservableCollection<AccountItemViewModel> Accounts { get; } = [];
 
@@ -295,7 +300,8 @@ public sealed partial class InstancesViewModel : ObservableObject
         IDownloadController downloads,
         ICrashReportService crashReports,
         IDiagnosticPackageService diagnostics,
-        Ecl.Minecraft.World.WorldWorkbenchService worldWorkbench)
+        Ecl.Minecraft.World.WorldWorkbenchService worldWorkbench,
+        Ecl.Core.Storage.InstanceSourceService instanceSources)
     {
         _instances = instances;
         _accounts = accounts;
@@ -318,6 +324,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         _crashReports = crashReports;
         _diagnostics = diagnostics;
         _worldWorkbench = worldWorkbench;
+        _instanceSources = instanceSources;
 
         DownloadPauseButtonText = _localizer.Get("instances.download.pause");
 
@@ -481,6 +488,34 @@ public sealed partial class InstancesViewModel : ObservableObject
         await RefreshAccountsAsync().ConfigureAwait(true);
         await RefreshInstancesAsync().ConfigureAwait(true);
         await RefreshJavaAsync().ConfigureAwait(true);
+        await RefreshSourceGroupsAsync().ConfigureAwait(true);
+    }
+
+    private async Task RefreshSourceGroupsAsync()
+    {
+        try
+        {
+            var catalog = await _instanceSources.ScanAllAsync();
+            SourceGroups.Clear();
+            foreach (var group in catalog.Groups)
+            {
+                SourceGroups.Add(new InstanceSourceGroupViewModel(
+                    group.Source.Name,
+                    group.Source.Path,
+                    group.IsAccessible ? group.Structure.ToString() : "不可访问",
+                    group.Instances.Select(instance => new InstanceSourceItemViewModel(
+                        instance.Name,
+                        instance.GameVersion ?? "版本未知",
+                        instance.Loader,
+                        instance.CanLaunch)).ToArray()));
+            }
+
+            OnPropertyChanged(nameof(HasSourceGroups));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            StatusMessage = $"实例来源扫描失败：{exception.Message}";
+        }
     }
 
     [RelayCommand]
@@ -2185,6 +2220,22 @@ public sealed partial class InstancesViewModel : ObservableObject
             StatusMessage = _localizer.Get("instances.launchException", exception.Message);
         }
     }
+}
+
+public sealed record InstanceSourceItemViewModel(string Name, string GameVersion, string Loader, bool CanLaunch)
+{
+    public string Meta => $"{GameVersion} · {Loader}";
+
+    public string Availability => CanLaunch ? "ECL 托管" : "外部只读";
+}
+
+public sealed record InstanceSourceGroupViewModel(
+    string Name,
+    string Path,
+    string Status,
+    IReadOnlyList<InstanceSourceItemViewModel> Instances)
+{
+    public string CountText => $"{Instances.Count} 个实例";
 }
 
 public sealed class InstanceItemViewModel

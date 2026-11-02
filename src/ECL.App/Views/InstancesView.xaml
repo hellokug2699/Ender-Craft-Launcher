@@ -97,6 +97,59 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
+            <Border Style="{StaticResource Card}" Margin="0,0,0,18"
+                    Visibility="{Binding HasSourceGroups, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <TextBlock Text="已登记实例来源" Style="{StaticResource SectionText}" />
+                    <TextBlock Text="外部来源只登记与扫描，不复制、不移动、不清理；可在存储页查看占用。"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="10"
+                               Margin="0,5,0,10"
+                               TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding SourceGroups}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource SurfaceAltBrush}"
+                                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="12,8"
+                                        Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource EmphasisText}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Status}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
+                                        </Grid>
+                                        <TextBlock Text="{Binding Path}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" TextTrimming="CharacterEllipsis" />
+                                        <ItemsControl ItemsSource="{Binding Instances}" Margin="0,6,0,0">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,2">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="{Binding Name}" FontSize="10" />
+                                                            <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="8,0,0,0" />
+                                                        </StackPanel>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Availability}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
             <TextBlock Text="{loc:Loc Key=instances.createMovedHint}" Style="{StaticResource SubtitleText}" Margin="0,0,0,14" />
         </StackPanel>
     </ScrollViewer>

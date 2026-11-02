@@ -172,6 +172,12 @@ public sealed partial class WorldWorkbenchViewModel : ObservableObject
     private int _mapRadius = 4;
 
     [ObservableProperty]
+    private string _mapCenterChunkX = "0";
+
+    [ObservableProperty]
+    private string _mapCenterChunkZ = "0";
+
+    [ObservableProperty]
     private string _status = "正在读取实例工作台…";
 
     [ObservableProperty]
@@ -300,12 +306,14 @@ public sealed partial class WorldWorkbenchViewModel : ObservableObject
         IsBusy = true;
         try
         {
+            var centerX = int.TryParse(MapCenterChunkX, out var parsedX) ? parsedX : 0;
+            var centerZ = int.TryParse(MapCenterChunkZ, out var parsedZ) ? parsedZ : 0;
             var view = await _service.RenderMapAsync(
                 _instanceId,
                 SelectedWorld.Folder,
                 SelectedDimension.Id,
-                centerChunkX: 0,
-                centerChunkZ: 0,
+                centerChunkX: centerX,
+                centerChunkZ: centerZ,
                 MapRadius,
                 SelectedLayer.Layer);
             if (view is null || view.IsEmpty)

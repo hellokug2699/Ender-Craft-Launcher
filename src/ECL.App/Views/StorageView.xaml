@@ -86,6 +86,46 @@
 
             <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                 <StackPanel>
+                    <TextBlock Text="实例删除" Style="{StaticResource SectionText}" />
+                    <TextBlock Text="与实例库使用同一个删除计划与保护规则。默认不选中任何实例；外部实例只移除记录，不删除外部目录。"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="10"
+                               Margin="0,5,0,8"
+                               TextWrapping="Wrap" />
+                    <ListBox ItemsSource="{Binding Instances}"
+                             SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
+                             Height="150"
+                             Background="{DynamicResource SurfaceAltBrush}"
+                             BorderBrush="{DynamicResource BorderSoftBrush}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="4,3">
+                                    <TextBlock Text="{Binding Name}" Style="{StaticResource EmphasisText}" />
+                                    <TextBlock Text="{Binding Meta}"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               FontSize="9"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="删除选中实例…"
+                                Command="{Binding DeleteSelectedInstanceCommand}"
+                                Style="{StaticResource DangerButton}"
+                                IsEnabled="{Binding HasSelectedInstance}" />
+                        <TextBlock Text="{Binding InstanceDeletionStatus}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Margin="12,0,0,0"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <StackPanel>
                     <TextBlock Text="空间占用" Style="{StaticResource SectionText}" />
                     <ItemsControl ItemsSource="{Binding Usages}" Margin="0,10,0,0">
                         <ItemsControl.ItemTemplate>
