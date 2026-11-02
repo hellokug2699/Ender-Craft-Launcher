@@ -88,8 +88,14 @@ flowchart TD
 | `ECL.Auth` | 账户模型、离线 UUID、账户文件 | `Account`, `IAccountService`, `OfflineUuid` |
 | `ECL.Java` | Java 版本解析、运行时探测、有效要求/证据合并、优先级选择、风险身份、32-64 位与内存校验、JVM 预设、Mojang/Adoptium/Zulu/Liberica 下载与解压（下载登记 `Java` 任务） | `JavaVersion`, `IJavaLocator`, `JavaRequirement`, `EffectiveJavaRequirements`, `JavaSelectionPlanner`, `JavaRiskIdentity`, `JvmPresets`, `IJavaInstallService` |
 | `ECL.Minecraft` | 实例存储、版本 JSON/继承、版本清单分类、原版/加载器安装、加载器目录、Java 要求聚合与选择、启动计划、启动上下文与步骤、进程启动、Mod/整合包/资源包管理、缺失依赖解析、CurseForge/Modrinth API、统一搜索与下载、版本情报；安装、整合包导入、内容安装与依赖下载登记 Operation | `GameInstance`, `VanillaInstallService`, `IVersionCatalog`, `ILoaderCatalog`, `IJavaSelectionService`, `IJavaRequirementProvider`, `IModService`, `IModDependencyInstaller`, `IModpackService`, `ICurseForgeClient`, `ICurseForgeService`, `IModrinthClient`, `IContentSearchService`, `IContentInstallService`, `IVersionNewsService`, `ILaunchStep` |
-| `ECL.Deployment` | 更新 Manifest schema/校验、RSA-PSS 签名验证、HTTPS 更新客户端、安全解包、staging、版本指针、切换与回滚 | `UpdateManifest`, `UpdateManifestParser`, `UpdateTrustStore`, `UpdateSignatureVerifier`, `SafeZipExtractor`, `UpdateLayout`, `UpdateInstaller`, `UpdateClient` |
-| `ECL.Bootstrapper` | 读取当前版本指针、启动已安装版本、应用签名更新与回滚；不覆盖运行中的主程序 | `ECL.Bootstrapper.exe` |
+| `ECL.Deployment` | 更新 Manifest schema/校验、RSA-PSS 签名验证、HTTPS 更新客户端、安全解包、staging、版本指针、切换与回滚；ADR 0034 自身完整性、Repair Mode 与本地恢复缓存 | `UpdateManifest`, `UpdateManifestParser`, `UpdateTrustStore`, `UpdateSignatureVerifier`, `SafeZipExtractor`, `UpdateLayout`, `UpdateInstaller`, `UpdateClient`, `SelfIntegrityVerifier`, `RecoveryCache`, `SelfRepairService` |
+| `ECL.World` | 维度发现与存储解析、Region/Chunk/NBT、只读地图渲染、世界诊断与服务列表 | `DimensionDiscoveryService`, `DimensionId`, `WorldDimensionKey`, `WorldChunkReader`, `WorldDiagnosticsParser` |
+| `ECL.Additions` | 官方扩展目录/签名、依赖规划、安装事务、按需能力加载 | `AdditionCatalogParser`, `AdditionPlanner`, `AdditionInstaller`, `AdditionRuntime` |
+| `ECL.Knowledge` | 受限知识浏览器站点白名单、逐跳重定向、子资源策略与本地错误页 | `KnowledgeSitePolicy`, `KnowledgeErrorPage`, `KnowledgeAddressBarState` |
+| `ECL.Wardrobe` | 本地衣柜、PNG 校验、账户外观 Provider 与 Authlib 材质上传协议 | `WardrobeStore`, `PngValidator`, `AuthlibTextureUploadClient` |
+| `ECL.Diagnostics` | 本地日志/崩溃解析、知识库规则、证据链与诊断历史 | `DiagnosticEngine`, `KnowledgeBaseLoader`, `DiagnosticHistoryStore` |
+| `ECL.VanillaToolkit` | 原版数据包校验、版本选择与 Registry 查询（官方 Addition 项目，位于 `additions/`） | `VanillaDataPackLoader`, `RegistryQueryService`, `InstalledVersionResources` |
+| `ECL.Bootstrapper` | 读取当前版本指针、启动已安装版本、应用签名更新与回滚；ADR 0034 `--verify`/`--repair`；不覆盖运行中的主程序 | `ECL.Bootstrapper.exe` |
 | `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框、任务中心 | `MainViewModel`, `HomeViewModel`, `DownloadViewModel`, `InstancesViewModel`, `ModsViewModel`, `SettingsViewModel`, `OperationCenterViewModel` |
 | `ECL.Cli` | 无 GUI 管理、调试启动链路、长任务进度输出 | `CliApplication`, `ParsedCommandLine`, `CliOperationReporter` |
 | `ECL.Tests` | 单元测试与临时数据目录 | `TestEnvironment`, `FakeProcessLauncher` |
@@ -111,6 +117,8 @@ services.AddEclMinecraft();
 - 配置注册表在首次解析时聚合所有 `IOptionProvider`，因此新模块可以在自己的 `Add...` 中追加选项。
 - 启动步骤通过 `IEnumerable<ILaunchStep>` 注入并按 `Order` 排序，新增步骤不需要改启动器。
 - App 启动顺序：创建 `AppPaths` → 读取语言与实例下载位置 → 建立本地化器 → 构建容器 → 显示主窗口 → 异步加载实例、设置与版本情报。
+- ADR 0039：`AddEclCore` 注册应用级生命周期协调器；`BeginStart`/`MarkRunning` 表达启动阶段，WPF `Closing` 与 CLI 退出都会等待受管理后台工作、停止步骤和登记资源完成。游戏进程与日志会话仍遵循 ADR 0015/0019 的独立生命周期。
+- ADR 0032/0033/0036/0037/0040 的可选能力模块（Additions、Knowledge、Wardrobe、Diagnostics、Vanilla Toolkit）不进入普通启动链；目录、扩展与知识库只在用户进入对应功能时按需读取或加载。
 - 语言切换标记为“需要重启”，XAML 中的静态文本由 `LocExtension` 在加载时解析。
 - 页面根 `ScrollViewer` 启用 `behaviors:WheelScroll.IsEnabled`：指针位于嵌套 `ListBox`/内层滚动区时，先滚动最内层可滚动区域；到边界或不可滚动后把滚轮转交页面根滚动区，避免列表吞掉滚轮导致整页无法滚动。
 
