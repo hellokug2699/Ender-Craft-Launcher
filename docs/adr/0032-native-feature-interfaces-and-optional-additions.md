@@ -1,7 +1,7 @@
 # ADR 0032：原生功能入口与按需 Additions 扩展体系
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Accepted
+- Implementation: In Progress
 - Date: 2026-11-02
 - Scope: ECL 原生功能页面、官方扩展包、数据扩展包、扩展目录与分发、扩展生命周期及 Core API 边界
 - Related: [ADR 0024：用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md)、[ADR 0027：原生 C# 世界分析与编辑引擎](0027-native-world-engine.md)、[ADR 0030：世界诊断与区块异常定位联动](0030-world-diagnostics-and-chunk-fault-workflow.md)、[ADR 0031：多维度世界架构与存储解析](0031-multi-dimension-world-architecture.md)
@@ -172,3 +172,4 @@ ECL 可以在功能页面中展示可选能力和安装提示，但不得在首�
 ## 修订记录
 
 - 2026-11-02：首次提出原生功能入口与按需 Additions 的架构方案，明确不新增仓库、不建设必需的自有服务端，并区分功能扩展与数据扩展。
+- 2026-11-03：决策状态更新为 Accepted，实施状态更新为 In Progress。已落地签名目录、依赖/兼容性规划、暂存安装事务、状态机、按需程序集加载与卸载保留用户数据；官方目录暂为空，原生管理页面与功能入口尚未接入。依据见 [ADR 0031–0040 实施记录](../adr-0031-0040-implementation.md)。

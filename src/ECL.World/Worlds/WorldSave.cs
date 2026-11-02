@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using Ecl.World.Dimensions;
 using Ecl.World.Nbt;
 
 namespace Ecl.World.Worlds;
@@ -13,6 +14,10 @@ public enum DimensionKind
     Unknown,
 }
 
+/// <summary>
+/// 维度在工作台中的兼容投影。逻辑身份、存储路径与解析状态分开保存：
+/// <see cref="Id"/> 是 Dimension ID，目录字段只是某一存储类别的映射结果（ADR 0031 §2）。
+/// </summary>
 public sealed record DimensionInfo(
     string Id,
     string DisplayName,
@@ -25,6 +30,63 @@ public sealed record DimensionInfo(
     public bool IsCustom => Kind is DimensionKind.Custom or DimensionKind.Unknown;
 
     public bool HasStorage => RegionDirectory is not null || EntitiesDirectory is not null || PoiDirectory is not null;
+
+    /// <summary>身份与存储映射的解析状态；只有 Resolved 才视为已确认。</summary>
+    public DimensionResolutionStatus Resolution { get; init; } = DimensionResolutionStatus.Resolved;
+
+    public bool IsConfirmed => Resolution == DimensionResolutionStatus.Resolved;
+
+    /// <summary>Region/Entities/POI 各自的映射状态与依据。</summary>
+    public IReadOnlyList<DimensionStorageMapping> StorageMappings { get; init; } = [];
+
+    public string? SupportNote { get; init; }
+
+    public bool DeclaredByLevelDat { get; init; }
+
+    /// <summary>可直接显示在维度选择器中的解析状态摘要。</summary>
+    public string StorageStatus => BuildStorageStatus();
+
+    public bool CanRead => IsConfirmed && HasStorage;
+
+    private string BuildStorageStatus()
+    {
+        if (Resolution == DimensionResolutionStatus.Conflicted)
+        {
+            return "存储位置冲突";
+        }
+
+        if (!HasStorage)
+        {
+            return IsConfirmed ? "尚无存储数据" : "未确认";
+        }
+
+        var parts = new List<string>();
+        foreach (var mapping in StorageMappings)
+        {
+            if (mapping.Category is not (DimensionStorageCategory.Region
+                or DimensionStorageCategory.Entities
+                or DimensionStorageCategory.Poi
+                or DimensionStorageCategory.Data))
+            {
+                continue;
+            }
+
+            parts.Add($"{mapping.Category} {StatusText(mapping.Status)}");
+        }
+
+        var prefix = Resolution == DimensionResolutionStatus.Unconfirmed ? "未确认" : "已确认";
+        return parts.Count == 0 ? prefix : $"{prefix} · {string.Join(" · ", parts)}";
+    }
+
+    private static string StatusText(DimensionStorageStatus status) => status switch
+    {
+        DimensionStorageStatus.Available => "可用",
+        DimensionStorageStatus.Unconfirmed => "未确认",
+        DimensionStorageStatus.Missing => "缺失",
+        DimensionStorageStatus.Conflicted => "冲突",
+        DimensionStorageStatus.Unreadable => "不可读",
+        _ => status.ToString(),
+    };
 }
 
 public sealed record WorldLevelInfo
@@ -64,8 +126,17 @@ public sealed record WorldSave(
 {
     public string FolderName => Path.GetFileName(DirectoryPath);
 
+    /// <summary>维度发现与存储解析的完整结果，包含候选、警告与解析依据。</summary>
+    public DimensionDiscoveryResult? Discovery { get; init; }
+
     public DimensionInfo? FindDimension(string id) =>
-        Dimensions.FirstOrDefault(dimension => string.Equals(dimension.Id, id, StringComparison.Ordinal));
+        DimensionId.TryParse(id, out var dimensionId)
+            ? Dimensions.FirstOrDefault(dimension => string.Equals(dimension.Id, dimensionId.Value, StringComparison.OrdinalIgnoreCase))
+            : null;
+
+    /// <summary>只返回身份已确认且存在可读存储的维度；不会回退到其他维度。</summary>
+    public DimensionInfo? FindReadableDimension(string id) =>
+        FindDimension(id) is { CanRead: true } dimension ? dimension : null;
 }
 
 /// <summary>
@@ -109,77 +180,16 @@ public static class WorldLevelReader
         }
     }
 
-    public static IReadOnlyList<DimensionInfo> DiscoverDimensions(string worldDirectory)
-    {
-        var result = new List<DimensionInfo>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-
-        void Add(string id, string displayName, DimensionKind kind, string root)
-        {
-            if (!seen.Add(id))
-            {
-                return;
-            }
-
-            var region = Path.Combine(root, "region");
-            var entities = Path.Combine(root, "entities");
-            var poi = Path.Combine(root, "poi");
-            if (!Directory.Exists(region) && !Directory.Exists(entities) && !Directory.Exists(poi))
-            {
-                return;
-            }
-
-            result.Add(new DimensionInfo(
-                id,
-                displayName,
-                kind,
-                root,
-                Directory.Exists(region) ? region : null,
-                Directory.Exists(entities) ? entities : null,
-                Directory.Exists(poi) ? poi : null));
-        }
-
-        Add("minecraft:overworld", "主世界", DimensionKind.Overworld, worldDirectory);
-        Add("minecraft:the_nether", "下界", DimensionKind.Nether, Path.Combine(worldDirectory, "DIM-1"));
-        Add("minecraft:the_end", "末地", DimensionKind.End, Path.Combine(worldDirectory, "DIM1"));
-
-        var dimensionsRoot = Path.Combine(worldDirectory, "dimensions");
-        if (Directory.Exists(dimensionsRoot))
-        {
-            foreach (var namespaceDirectory in SafeEnumerateDirectories(dimensionsRoot))
-            {
-                var namespaceName = Path.GetFileName(namespaceDirectory);
-                foreach (var dimensionDirectory in SafeEnumerateDirectories(namespaceDirectory))
-                {
-                    var id = $"{namespaceName}:{Path.GetFileName(dimensionDirectory)}";
-                    Add(id, id, DimensionKind.Custom, dimensionDirectory);
-                }
-            }
-        }
-
-        return result
-            .OrderBy(dimension => dimension.Kind switch
-            {
-                DimensionKind.Overworld => 0,
-                DimensionKind.Nether => 1,
-                DimensionKind.End => 2,
-                _ => 3,
-            })
-            .ThenBy(dimension => dimension.Id, StringComparer.Ordinal)
+    /// <summary>
+    /// 兼容入口：返回维度投影。实际解析由 <see cref="DimensionDiscoveryService"/> 完成，
+    /// 逻辑 ID 与磁盘路径、Region/Entities/POI 映射状态均独立表达。
+    /// </summary>
+    public static IReadOnlyList<DimensionInfo> DiscoverDimensions(string worldDirectory) =>
+        new DimensionDiscoveryService()
+            .Discover(worldDirectory)
+            .Dimensions
+            .Select(DimensionProjection.ToDimensionInfo)
             .ToArray();
-    }
-
-    private static IEnumerable<string> SafeEnumerateDirectories(string path)
-    {
-        try
-        {
-            return Directory.EnumerateDirectories(path).Take(256).ToArray();
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            return [];
-        }
-    }
 }
 
 public sealed record WorldSizeResult(long? Bytes, string? Error)

@@ -38,6 +38,16 @@ internal static class Program
 
         try
         {
+            if (command.Action == BootstrapperAction.Verify)
+            {
+                return VerifyIntegrity(layout, log, verifyHashes: true);
+            }
+
+            if (command.Action == BootstrapperAction.Repair)
+            {
+                return RepairIntegrity(layout, log);
+            }
+
             if (command.Deploy is not null)
             {
                 return ApplyAsync(layout, installer, command.Deploy, log);
@@ -170,13 +180,173 @@ internal static class Program
             return Fail(apply.Error!, log);
         }
 
+        CopyProvenance(
+            layout,
+            apply.Value!.ParsedVersion ?? ReleaseVersion.Parse(apply.Value.Version),
+            deploy.ManifestPath,
+            deploy.SignaturePath,
+            log);
         Console.WriteLine($"已部署 ECL {apply.Value!.Version}，当前版本指针已切换。");
         log.Write($"部署完成：{apply.Value.Version}（上一版本：{apply.Value.PreviousVersion ?? "无"}）");
         return 0;
     }
 
+    /// <summary>
+    /// 把已签名的更新清单与签名保存到版本目录，供 ADR 0034 的自身完整性校验和离线恢复使用。
+    /// 清单来自已经通过签名验证的部署输入，不额外信任安装介质中的任意文件。
+    /// </summary>
+    private static void CopyProvenance(
+        UpdateLayout layout,
+        ReleaseVersion version,
+        string manifestPath,
+        string signaturePath,
+        BootstrapperLog log)
+    {
+        try
+        {
+            var versionDirectory = layout.GetVersionDirectory(version);
+            File.Copy(
+                manifestPath,
+                Path.Combine(versionDirectory, SelfIntegrityVerifier.ManifestFileName),
+                overwrite: true);
+            File.Copy(
+                signaturePath,
+                Path.Combine(versionDirectory, SelfIntegrityVerifier.SignatureFileName),
+                overwrite: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            log.Write($"警告：无法在版本目录保存安装清单副本：{exception.Message}");
+        }
+    }
+
+    private static int VerifyIntegrity(UpdateLayout layout, BootstrapperLog log, bool verifyHashes)
+    {
+        var result = new SelfIntegrityVerifier()
+            .VerifyAsync(layout.InstallRoot, verifyHashes)
+            .GetAwaiter()
+            .GetResult();
+        if (!result.IsSuccess)
+        {
+            return Fail(result.Error!, log);
+        }
+
+        var report = result.Value!;
+        Console.WriteLine(report.Describe());
+        foreach (var issue in report.Issues)
+        {
+            Console.WriteLine($"  - {issue}");
+        }
+
+        log.Write($"完整性校验：{report.Describe()}；{string.Join("；", report.Issues)}");
+        return report.IsHealthy ? 0 : BootstrapperExitCodes.IntegrityError;
+    }
+
+    private static int RepairIntegrity(UpdateLayout layout, BootstrapperLog log)
+    {
+        var result = new SelfRepairService().RepairAsync(layout.InstallRoot).GetAwaiter().GetResult();
+        if (!result.IsSuccess)
+        {
+            return Fail(result.Error!, log);
+        }
+
+        var outcome = result.Value!;
+        Console.WriteLine(outcome.Before.Describe());
+        if (outcome.RestoredFiles.Count > 0)
+        {
+            Console.WriteLine($"已从本地恢复材料修复 {outcome.RestoredFiles.Count} 个文件：");
+            foreach (var file in outcome.RestoredFiles)
+            {
+                Console.WriteLine($"  - {file}");
+            }
+        }
+
+        if (outcome.ResidualIssues.Count > 0)
+        {
+            Console.WriteLine("仍存在的问题：");
+            foreach (var issue in outcome.ResidualIssues)
+            {
+                Console.WriteLine($"  - {issue}");
+            }
+        }
+
+        log.Write($"Repair Mode：恢复 {outcome.RestoredFiles.Count} 个文件，成功={outcome.Success}；{string.Join("；", outcome.ResidualIssues)}");
+        if (outcome.Success)
+        {
+            Console.WriteLine("ECL 安装完整性已恢复。");
+            return 0;
+        }
+
+        Console.WriteLine("无法完成离线修复：本地恢复材料不足或来源未验证。请从官方发布源重新安装对应版本。");
+        return BootstrapperExitCodes.IntegrityError;
+    }
+
+    /// <summary>
+    /// 正常启动前的轻量检查（ADR 0034 §8）：只核对当前版本与文件是否存在/大小一致；
+    /// 仅在内容受损时进入 Repair Mode，避免每次启动都做全量哈希扫描。
+    /// </summary>
+    private static int EnsureIntegrityBeforeLaunch(UpdateLayout layout, BootstrapperLog log)
+    {
+        var result = new SelfIntegrityVerifier()
+            .VerifyAsync(layout.InstallRoot, verifyHashes: false)
+            .GetAwaiter()
+            .GetResult();
+        if (!result.IsSuccess)
+        {
+            if (result.Error!.Code is "integrity.manifest_missing" or "integrity.current_missing")
+            {
+                Console.WriteLine("未找到完整性清单（旧版安装或开发构建）；跳过自身完整性校验。");
+                log.Write($"跳过自身完整性校验：{result.Error.Code}");
+                return 0;
+            }
+
+            return Fail(result.Error!, log);
+        }
+
+        var report = result.Value!;
+        if (!report.ContentIntact)
+        {
+            Console.WriteLine(report.Describe());
+            Console.WriteLine("检测到 ECL 安装文件损坏，进入 Repair Mode。");
+            log.Write("检测到安装文件损坏，进入 Repair Mode。");
+            var repair = new SelfRepairService().RepairAsync(layout.InstallRoot).GetAwaiter().GetResult();
+            if (!repair.IsSuccess)
+            {
+                return Fail(repair.Error!, log);
+            }
+
+            if (!repair.Value!.Success)
+            {
+                if (repair.Value.ResidualIssues.Count > 0)
+                {
+                    Console.WriteLine(string.Join(Environment.NewLine, repair.Value.ResidualIssues.Select(issue => $"  - {issue}")));
+                }
+
+                Console.WriteLine("无法完成离线修复：本地恢复材料不足或来源未验证。请从官方发布源重新安装对应版本。");
+                log.Write("Repair Mode 未能修复安装，拒绝启动。");
+                return BootstrapperExitCodes.IntegrityError;
+            }
+
+            Console.WriteLine("ECL 安装文件已从本地恢复材料修复。");
+            log.Write("Repair Mode 完成本地修复。");
+        }
+        else if (report.Trust != SelfIntegrityTrustStatus.Verified)
+        {
+            Console.WriteLine("提示：无法验证安装清单来源签名；文件内容检查通过。");
+            log.Write($"来源签名不可用：{report.Trust}");
+        }
+
+        return 0;
+    }
+
     private static int Launch(UpdateLayout layout, IReadOnlyList<string> arguments, BootstrapperLog log)
     {
+        var integrity = EnsureIntegrityBeforeLaunch(layout, log);
+        if (integrity != 0)
+        {
+            return integrity;
+        }
+
         var currentResult = layout.ReadCurrentAsync().GetAwaiter().GetResult();
         if (!currentResult.IsSuccess)
         {
@@ -218,7 +388,37 @@ internal static class Program
 
         process.WaitForExit();
         log.Write($"ECL {current.Version} 退出，退出码 {process.ExitCode}。");
+        if (process.ExitCode == 0)
+        {
+            TryCaptureRecoveryCache(layout, current, log);
+        }
+
         return process.ExitCode;
+    }
+
+    /// <summary>
+    /// 一次成功启动后保存本地恢复材料（每个版本最多一次），供后续离线修复使用。
+    /// 捕获失败只记录日志，不影响正常启动。
+    /// </summary>
+    private static void TryCaptureRecoveryCache(UpdateLayout layout, CurrentVersion current, BootstrapperLog log)
+    {
+        var cache = new RecoveryCache(Path.Combine(layout.InstallRoot, "recovery"));
+        if (Directory.Exists(Path.Combine(cache.VersionsDirectory, current.Version)))
+        {
+            return;
+        }
+
+        try
+        {
+            var captured = cache.CaptureAsync(layout.InstallRoot, current).GetAwaiter().GetResult();
+            log.Write(captured.IsSuccess
+                ? $"已保存恢复缓存：{current.Version}（{captured.Value!.FileCount} 个文件）"
+                : $"未保存恢复缓存：{captured.Error}");
+        }
+        catch (Exception exception)
+        {
+            log.Write($"保存恢复缓存异常：{exception.Message}");
+        }
     }
 
     private static int Fail(EclError error, BootstrapperLog log)
@@ -259,9 +459,13 @@ internal static class Program
               [--trust <update-trust.json>] [--deploy-only]
           ECL.Bootstrapper.exe [--install-root <目录>] --rollback [--deploy-only]
           ECL.Bootstrapper.exe [--install-root <目录>] --cleanup
+          ECL.Bootstrapper.exe [--install-root <目录>] --verify
+          ECL.Bootstrapper.exe [--install-root <目录>] --repair
 
         默认读取 <install-root>/current.json 并启动其中的版本。更新部署在独立进程中完成，
         不会覆盖正在运行的 ECL。--cleanup 只清理未完成的 staging，不触碰 current 版本。
+        --verify 全量核对签名清单与文件哈希；--repair 只使用本地恢复材料恢复 ECL 自有文件，
+        不会删除或重置实例、存档、配置等用户数据。正常启动只做轻量检查，发现内容损坏时进入 Repair Mode。
         """;
 
     private sealed class BootstrapperLog : IDisposable

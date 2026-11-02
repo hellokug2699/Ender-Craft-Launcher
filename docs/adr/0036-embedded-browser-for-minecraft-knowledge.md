@@ -1,7 +1,7 @@
 # ADR 0036: Embedded Browser for Minecraft Knowledge Access
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Accepted
+- Implementation: In Progress
 - Date: 2026-11-02
 - Scope: ECL 内置 Minecraft 知识浏览器、允许访问的站点范围、导航控制与浏览器安全边界
 - Related: [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033：本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md)、[ADR 0035：可选离线 Minecraft 知识库](0035-offline-minecraft-knowledge-library.md)
@@ -203,3 +203,4 @@ ECL 不得将第三方页面包装成 ECL 官方撰写或审核的内容。页�
 
 - 2026-11-02：首次提出以内嵌浏览器作为 Minecraft 知识访问入口，降低全量离线知识库的体积、授权和持续维护负担；明确第三方内容责任及 WebView 安全边界。
 - 2026-11-02：将产品定位收紧为受限知识浏览器；仅允许 zh.minecraft.wiki、mcmod.cn 及其子域名，地址栏改为只读复制，明确站内导航、外部导航拦截、逐跳重定向检查、3xx 错误展示和子资源白名单策略。
+- 2026-11-03：决策状态更新为 Accepted，实施状态更新为 In Progress。已实现域名树/HTTPS 校验、逐跳重定向决策与 3xx 保留、子资源策略、本地错误页和只读地址栏契约；WebView2 宿主尚未实现，ADR 要求的“跟随重定向前拦截与原始状态码可见性”仍是实现阻塞项。依据见 [ADR 0031–0040 实施记录](../adr-0031-0040-implementation.md)。

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "packId": "ecl.vanilla-toolkit.data",
+  "dataVersion": "1.0.0",
+  "minecraftVersions": ["1.20.1"],
+  "domains": [
+    {
+      "name": "registry",
+      "schemaVersion": 1,
+      "file": "samples/1.20.1/registry.json",
+      "size": 1611,
+      "sha256": "09e42cad53f10a183ba079e9e441d4e7a7e99d792df771172d1e0c298840add1"
+    }
+  ],
+  "sources": [
+    {
+      "id": "official-registry",
+      "name": "Minecraft 原版注册表（维护者从目标版本游戏文件核对）",
+      "url": null,
+      "license": "仅保存事实性标识符，不包含游戏资产",
+      "retrievedAtUtc": "2026-11-02"
+    }
+  ],
+  "maintainer": "ECL maintainers",
+  "updatedAtUtc": "2026-11-02T00:00:00Z",
+  "quality": "verified",
+  "license": "事实性数据；示例条目仅用于格式演示",
+  "description": "Vanilla Toolkit 数据包模板最小样例；实际发布数据必须重新生成哈希并记录可追溯来源。"
+}

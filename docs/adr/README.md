@@ -167,13 +167,13 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0028 世界种子与生成规则分析功能提议](0028-world-generation-analysis.md) | Proposed | Not Started | 世界生成分析提案 |
 | [0029 Installer、Bootstrapper 与 Uninstaller 的生命周期边界](0029-installer-bootstrapper-uninstaller-lifecycle.md) | Accepted | Implemented | 安装与卸载 |
 | [0030 世界诊断与区块异常定位联动](0030-world-diagnostics-and-chunk-fault-workflow.md) | Accepted | In Progress | 世界诊断 |
-| [0031 多维度世界架构与存储解析](0031-multi-dimension-world-architecture.md) | Accepted | Not Started | 多维度架构 |
-| [0032 原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md) | Proposed | Not Started | 功能扩展与数据分发 |
-| [0033 本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md) | Proposed | Not Started | 本地诊断与知识库 |
-| [0034 ECL 自身完整性与可恢复安装架构](0034-ecl-self-integrity-and-recovery.md) | Proposed | Not Started | 启动器完整性与自修复 |
+| [0031 多维度世界架构与存储解析](0031-multi-dimension-world-architecture.md) | Accepted | Implemented | 多维度架构 |
+| [0032 原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md) | Accepted | In Progress | 功能扩展与数据分发 |
+| [0033 本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md) | Accepted | In Progress | 本地诊断与知识库 |
+| [0034 ECL 自身完整性与可恢复安装架构](0034-ecl-self-integrity-and-recovery.md) | Accepted | In Progress | 启动器完整性与自修复 |
 | [0035 Offline Minecraft Knowledge Library as an Optional Addition](0035-offline-minecraft-knowledge-library.md) | Superseded | N/A | 离线知识库方向（由 0036 取代主要交付方式） |
-| [0036 Embedded Browser for Minecraft Knowledge Access](0036-embedded-browser-for-minecraft-knowledge.md) | Proposed | Not Started | 受限知识浏览器与站点白名单 |
-| [0037 Account Appearance and Local Wardrobe Architecture](0037-account-appearance-and-local-wardrobe.md) | Proposed | Not Started | 皮肤、披风与账户外观管理 |
-| [0038 Authlib-Injector Texture Upload Protocol Support](0038-authlib-injector-texture-upload-protocol.md) | Proposed | Not Started | 第三方账户皮肤与披风协议上传 |
-| [0039 Application Runtime Lifecycle and Graceful Shutdown](0039-application-runtime-lifecycle-and-graceful-shutdown.md) | Proposed | Not Started | 应用运行时生命周期与优雅关闭 |
-| [0040 原版工具集作为独立官方 Addition](0040-vanilla-toolkit-addition.md) | Proposed | Not Started | 原版查询、模拟、计算与本地资源解析 |
+| [0036 Embedded Browser for Minecraft Knowledge Access](0036-embedded-browser-for-minecraft-knowledge.md) | Accepted | In Progress | 受限知识浏览器与站点白名单 |
+| [0037 Account Appearance and Local Wardrobe Architecture](0037-account-appearance-and-local-wardrobe.md) | Accepted | In Progress | 皮肤、披风与账户外观管理 |
+| [0038 Authlib-Injector Texture Upload Protocol Support](0038-authlib-injector-texture-upload-protocol.md) | Accepted | In Progress | 第三方账户皮肤与披风协议上传 |
+| [0039 Application Runtime Lifecycle and Graceful Shutdown](0039-application-runtime-lifecycle-and-graceful-shutdown.md) | Accepted | Implemented | 应用运行时生命周期与优雅关闭 |
+| [0040 原版工具集作为独立官方 Addition](0040-vanilla-toolkit-addition.md) | Accepted | In Progress | 原版查询、模拟、计算与本地资源解析 |

@@ -8,8 +8,22 @@ from urllib.parse import unquote, urlsplit
 ROOT = Path(__file__).resolve().parents[1]
 ADR_DIR = ROOT / "docs" / "adr"
 LINK_RE = re.compile(r"(?<!!)\[[^\]]*\]\((<[^>]+>|[^)]+)\)")
-STATUS_RE = re.compile(
-    r"^- (?:Status: (?:Proposed|Accepted|In Progress|Completed|Superseded|Rejected|Deprecated)|状态：(?:提案中|已批准未开始|正在进行|已完成|已被取代|已拒绝|已废弃))$",
+
+# ADR 文件头使用双状态模型（Decision + Implementation），见 docs/adr/README.md。
+ADR_FILENAME_RE = re.compile(r"^(?P<number>\d{4})-[a-z0-9-]+\.md$")
+DECISION_RE = re.compile(
+    r"^- Decision: (?P<value>Proposed|Accepted|Rejected|Superseded|Deprecated)$",
+    re.MULTILINE,
+)
+IMPLEMENTATION_RE = re.compile(
+    r"^- Implementation: (?P<value>Not Started|In Progress|Implemented|Verified|N/A)$",
+    re.MULTILINE,
+)
+DATE_RE = re.compile(r"^- Date: (?P<value>\d{4}-\d{2}-\d{2}|Unknown)$", re.MULTILINE)
+SCOPE_RE = re.compile(r"^- Scope: \S", re.MULTILINE)
+README_ROW_RE = re.compile(
+    r"^\|\s*\[(?P<number>\d{4})[^\]]*\]\((?P<target>[^)]+)\)\s*"
+    r"\|\s*(?P<decision>[^|]+?)\s*\|\s*(?P<implementation>[^|]+?)\s*\|",
     re.MULTILINE,
 )
 errors = []
@@ -63,10 +77,70 @@ for markdown in sorted(path for path in ROOT.rglob("*.md") if ".git" not in path
         if not target.exists():
             errors.append(f"{markdown.relative_to(ROOT)}: broken link: {destination}")
 
+adr_headers = {}
 for adr in sorted(ADR_DIR.glob("*.md")):
+    if adr.name == "README.md":
+        continue
+
+    relative = adr.relative_to(ROOT)
+    filename = ADR_FILENAME_RE.match(adr.name)
+    if not filename:
+        errors.append(f"{relative}: ADR 文件名必须是 NNNN-kebab-case.md")
+        continue
+
     text = adr.read_text(encoding="utf-8")
-    if not STATUS_RE.search(text):
-        errors.append(f"{adr.relative_to(ROOT)}: missing or invalid Status metadata")
+    decision = DECISION_RE.search(text)
+    implementation = IMPLEMENTATION_RE.search(text)
+    if not decision:
+        errors.append(f"{relative}: missing or invalid '- Decision:' metadata")
+    if not implementation:
+        errors.append(f"{relative}: missing or invalid '- Implementation:' metadata")
+    if not DATE_RE.search(text):
+        errors.append(f"{relative}: missing or invalid '- Date: YYYY-MM-DD' metadata")
+    if not SCOPE_RE.search(text):
+        errors.append(f"{relative}: missing '- Scope:' metadata")
+    if decision and implementation:
+        adr_headers[filename.group("number")] = (
+            adr.name,
+            decision.group("value"),
+            implementation.group("value"),
+        )
+
+index_path = ADR_DIR / "README.md"
+index_text = index_path.read_text(encoding="utf-8")
+index_rows = {}
+for match in README_ROW_RE.finditer(index_text):
+    number = match.group("number")
+    if number in index_rows:
+        errors.append(f"{index_path.relative_to(ROOT)}: ADR {number} 在索引中重复")
+        continue
+    index_rows[number] = (
+        match.group("target").strip(),
+        match.group("decision").strip(),
+        match.group("implementation").strip(),
+    )
+
+for number, (filename, decision, implementation) in sorted(adr_headers.items()):
+    row = index_rows.get(number)
+    if row is None:
+        errors.append(f"{index_path.relative_to(ROOT)}: 缺少 ADR {number} 的索引行")
+        continue
+    target, row_decision, row_implementation = row
+    if target != filename:
+        errors.append(
+            f"{index_path.relative_to(ROOT)}: ADR {number} 索引链接指向 {target}，实际文件为 {filename}"
+        )
+    if row_decision != decision:
+        errors.append(
+            f"{index_path.relative_to(ROOT)}: ADR {number} 索引 Decision 为 {row_decision}，文件头为 {decision}"
+        )
+    if row_implementation != implementation:
+        errors.append(
+            f"{index_path.relative_to(ROOT)}: ADR {number} 索引 Implementation 为 {row_implementation}，文件头为 {implementation}"
+        )
+
+for number in sorted(set(index_rows) - set(adr_headers)):
+    errors.append(f"{index_path.relative_to(ROOT)}: 索引中的 ADR {number} 不存在对应文件")
 
 if errors:
     print("Documentation checks failed:")

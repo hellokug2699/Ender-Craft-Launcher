@@ -110,6 +110,9 @@ try {
     # 公开证书与固定指纹随程序部署，供设置页展示与用户显式信任。
     Copy-Item (Join-Path $root "build/code-signing/*") $publish -Force
 
+    # ADR 0032：Additions 目录公钥随客户端部署，用于验证官方扩展目录签名。
+    Copy-Item (Join-Path $root "build/additions-trust.json") $publish -Force
+
     dotnet publish src/ECL.Bootstrapper/ECL.Bootstrapper.csproj `
         -c Release `
         -r $Runtime `

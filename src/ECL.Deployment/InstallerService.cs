@@ -165,6 +165,10 @@ public sealed class InstallerService
                     $"安装已完成，但无法读取当前版本以生成安装清单：{current.Error!.Message}");
             }
 
+            // ADR 0034：保留已签名的更新清单与签名，作为 ECL 自身完整性与离线恢复的来源依据。
+            TryCopyProvenance(options.Media.ManifestPath, Path.Combine(target, SelfIntegrityVerifier.ManifestFileName));
+            TryCopyProvenance(options.Media.SignaturePath, Path.Combine(target, SelfIntegrityVerifier.SignatureFileName));
+
             var manifest = InstallManifestStore.Create(target, current.Value!.Version);
             var written = await InstallManifestStore.WriteAsync(target, manifest, cancellationToken).ConfigureAwait(false);
             if (!written.IsSuccess)
@@ -190,6 +194,18 @@ public sealed class InstallerService
             "installer.deploy.failed",
             $"{outcome.DescribeFailure()}（退出码 {process.ExitCode}）",
             string.IsNullOrWhiteSpace(detail) ? logPath : detail);
+    }
+
+    private static void TryCopyProvenance(string source, string destination)
+    {
+        try
+        {
+            File.Copy(source, destination, overwrite: true);
+        }
+        catch (Exception)
+        {
+            // 来源材料缺失不应让已经完成的安装失败；自身完整性会如实报告“签名不可用”。
+        }
     }
 
     private static void TryKill(Process process)

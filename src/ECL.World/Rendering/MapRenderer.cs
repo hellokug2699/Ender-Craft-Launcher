@@ -40,6 +40,8 @@ public sealed record MapImage(
     int UnknownBiomePixels,
     IReadOnlyList<MapLegendEntry> Legend)
 {
+    public static MapImage Empty { get; } = new(0, 0, [], 0, 0, 0, 0, 1, 0, 0, []);
+
     public bool IsEmpty => Width == 0 || Height == 0;
 }
 

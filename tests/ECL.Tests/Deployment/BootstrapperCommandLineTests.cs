@@ -89,6 +89,23 @@ public sealed class BootstrapperCommandLineTests
     }
 
     [Fact]
+    public void VerifyAndRepairSelectIntegrityActions()
+    {
+        Assert.Equal(BootstrapperAction.Verify, BootstrapperCommandLine.Parse(["--verify"]).Value!.Action);
+        Assert.Equal(BootstrapperAction.Repair, BootstrapperCommandLine.Parse(["--repair"]).Value!.Action);
+    }
+
+    [Fact]
+    public void IntegrityActionsAreMutuallyExclusiveWithMaintenanceActions()
+    {
+        Assert.False(BootstrapperCommandLine.Parse(["--verify", "--repair"]).IsSuccess);
+        Assert.False(BootstrapperCommandLine.Parse(["--verify", "--cleanup"]).IsSuccess);
+        Assert.False(
+            BootstrapperCommandLine.Parse(
+                ["--apply", "--manifest", "m", "--signature", "s", "--package", "p", "--repair"]).IsSuccess);
+    }
+
+    [Fact]
     public void MissingValueIsRejected()
     {
         var result = BootstrapperCommandLine.Parse(["--manifest"]);

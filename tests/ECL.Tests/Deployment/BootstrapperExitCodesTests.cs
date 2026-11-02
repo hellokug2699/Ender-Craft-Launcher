@@ -19,6 +19,9 @@ public sealed class BootstrapperExitCodesTests
     [InlineData("update.package_hash_mismatch", 4)]
     [InlineData("update.file_hash_mismatch", 4)]
     [InlineData("update.path_traversal", 4)]
+    [InlineData("integrity.manifest_missing", 6)]
+    [InlineData("integrity.repair_unavailable", 6)]
+    [InlineData("integrity.repair_untrusted", 6)]
     [InlineData("anything.else", 4)]
     public void MapsErrorCodesToStableExitCodes(string code, int expected)
     {
@@ -41,5 +44,6 @@ public sealed class BootstrapperExitCodesTests
         Assert.Equal(3, BootstrapperExitCodes.TrustError);
         Assert.Equal(4, BootstrapperExitCodes.DeployError);
         Assert.Equal(5, BootstrapperExitCodes.LaunchError);
+        Assert.Equal(6, BootstrapperExitCodes.IntegrityError);
     }
 }

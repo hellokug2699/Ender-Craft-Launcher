@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using Ecl.World.Dimensions;
+
 namespace Ecl.World.Worlds;
 
 public sealed record WorldScanResult(
@@ -61,15 +63,23 @@ public sealed class WorldSaveService(string gameDirectory)
                             warnings.Add($"{Path.GetFileName(directory)}：{level.Error}");
                         }
 
-                        var dimensions = WorldLevelReader.DiscoverDimensions(directory);
+                        var dimensions = new DimensionDiscoveryService().Discover(directory);
+                        foreach (var warning in dimensions.Warnings)
+                        {
+                            warnings.Add($"{Path.GetFileName(directory)}：{warning}");
+                        }
+
                         var icon = Path.Combine(directory, "icon.png");
                         worlds.Add(new WorldSave(
                             string.IsNullOrWhiteSpace(level.LevelName) ? Path.GetFileName(directory) : level.LevelName,
                             Path.GetFullPath(directory),
                             levelDat,
                             level,
-                            dimensions,
-                            File.Exists(icon) ? icon : null));
+                            dimensions.Dimensions.Select(DimensionProjection.ToDimensionInfo).ToArray(),
+                            File.Exists(icon) ? icon : null)
+                        {
+                            Discovery = dimensions,
+                        });
                     }
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)

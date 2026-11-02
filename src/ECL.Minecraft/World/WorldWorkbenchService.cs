@@ -13,14 +13,18 @@ namespace Ecl.Minecraft.World;
 public sealed record MapView(
     string WorldName,
     string DimensionId,
+    string DimensionStatus,
     MapImage Image,
     IReadOnlyList<DimensionInfo> Dimensions,
     int CenterChunkX,
     int CenterChunkZ,
     int CorruptChunks,
-    int MissingChunks)
+    int MissingChunks,
+    string? Error = null)
 {
     public bool IsEmpty => Image.IsEmpty;
+
+    public bool Failed => Error is not null;
 }
 
 public sealed record WorldBackupView(WorldBackup Backup, string Message);
@@ -77,11 +81,28 @@ public sealed class WorldWorkbenchService(
             return null;
         }
 
-        var dimension = world.FindDimension(dimensionId)
-                        ?? world.Dimensions.FirstOrDefault(dimension => dimension.HasStorage);
+        var dimension = world.FindReadableDimension(dimensionId);
         if (dimension is null)
         {
-            return null;
+            var requested = world.FindDimension(dimensionId);
+            var error = requested is null
+                ? $"世界中没有维度 {dimensionId} 的解析结果。"
+                : requested.Resolution == Ecl.World.Dimensions.DimensionResolutionStatus.Conflicted
+                    ? $"维度 {requested.Id} 的存储位置存在冲突，拒绝读取。"
+                    : !requested.IsConfirmed
+                        ? $"维度 {requested.Id} 的身份尚未确认，只允许查看元数据。"
+                        : $"维度 {requested.Id} 没有可读的存储数据。";
+            return new MapView(
+                world.Name,
+                dimensionId,
+                requested?.StorageStatus ?? "未知维度",
+                MapImage.Empty,
+                world.Dimensions,
+                0,
+                0,
+                0,
+                0,
+                error);
         }
 
         radius = Math.Clamp(radius, 0, 16);
@@ -91,10 +112,15 @@ public sealed class WorldWorkbenchService(
                 cancellationToken)
             .ConfigureAwait(false);
         var events = await diagnostics.LoadAsync(instanceId, cancellationToken).ConfigureAwait(false);
+
+        // ADR 0031 §7：只有明确、非推断且与当前维度一致的诊断事件才能生成地图标记；
+        // 缺少维度身份的事件保持未定位，不默认归入当前维度或主世界。
         var highlights = events
             .Where(item =>
                 item.Location.HasChunk &&
-                string.Equals(item.Location.DimensionId ?? dimension.Id, dimension.Id, StringComparison.Ordinal))
+                !item.Location.DimensionInferred &&
+                item.Location.DimensionId is not null &&
+                string.Equals(item.Location.DimensionId, dimension.Id, StringComparison.OrdinalIgnoreCase))
             .Select(item => new MapHighlight(item.Location.ChunkX!.Value, item.Location.ChunkZ!.Value, MapHighlightKind.Diagnostic))
             .Take(128)
             .ToArray();
@@ -102,6 +128,7 @@ public sealed class WorldWorkbenchService(
         return new MapView(
             world.Name,
             dimension.Id,
+            dimension.StorageStatus,
             image,
             world.Dimensions,
             centerChunkX,

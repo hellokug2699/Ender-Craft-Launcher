@@ -3,7 +3,7 @@
 > 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；原状态中的 implementation pending 明确映射为尚未开始实施。
 
 - Decision: Accepted
-- Implementation: Not Started
+- Implementation: Implemented
 - Date: 2026-11-02
 - Scope: Minecraft 世界维度身份、维度发现、维度存储映射、跨维度数据隔离
 - Related: ADR 0026（实例工作台的存档、多人游戏与最近访问）、ADR 0027（原生 C# 世界分析与编辑引擎）、ADR 0030（世界诊断与区块异常定位联动）
@@ -151,3 +151,8 @@ ADR 0030 的诊断目标必须包含世界身份、Dimension ID、定位粒度�
 - [ADR 0026：实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md)
 - [ADR 0027：原生 C# 世界分析与编辑引擎](0027-native-world-engine.md)
 - [ADR 0030：世界诊断与区块异常定位联动](0030-world-diagnostics-and-chunk-fault-workflow.md)
+
+## 修订记录
+
+- 2026-11-02：首次形成多维度世界架构决策。
+- 2026-11-03：实施状态更新为 Implemented。已实现版本化维度身份与存储解析、Region/Entities/POI/Data 独立映射、World+Dimension 对象身份、维度切换取消旧渲染与维度状态展示；单元测试与真实存档只读验证通过。完整验收仍缺编辑器写入路径与工作台手工验收，依据见 [ADR 0031–0040 实施记录](../adr-0031-0040-implementation.md)。

@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ECL Vanilla Toolkit data pack manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "packId",
+    "dataVersion",
+    "minecraftVersions",
+    "domains",
+    "maintainer",
+    "updatedAtUtc",
+    "quality"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "packId": { "type": "string", "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$" },
+    "dataVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "minecraftVersions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "domains": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "schemaVersion", "file", "size", "sha256"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "schemaVersion": { "type": "integer", "minimum": 1 },
+          "file": { "type": "string", "minLength": 1 },
+          "size": { "type": "integer", "minimum": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "url": { "type": ["string", "null"] },
+          "license": { "type": ["string", "null"] },
+          "retrievedAtUtc": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "maintainer": { "type": "string", "minLength": 1 },
+    "updatedAtUtc": { "type": "string", "format": "date-time" },
+    "quality": { "enum": ["verified", "derived", "community", "unverified"] },
+    "license": { "type": ["string", "null"] },
+    "description": { "type": ["string", "null"] }
+  }
+}

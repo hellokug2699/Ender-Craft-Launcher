@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ECL.Knowledge</RootNamespace>
+    <AssemblyName>ECL.Knowledge</AssemblyName>
+    <Description>Restricted knowledge browser policy and local error pages.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ECL.Core\ECL.Core.csproj" />
+  </ItemGroup>
+
+</Project>

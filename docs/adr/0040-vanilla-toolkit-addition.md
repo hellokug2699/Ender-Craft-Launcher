@@ -1,7 +1,7 @@
 # ADR 0040：原版工具集作为独立官方 Addition
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Accepted
+- Implementation: In Progress
 - Date: 2026-11-02
 - Scope: 面向 Minecraft 原版规则的轻量查询、计算、模拟与辅助工具，以及其官方 Addition 交付、版本化数据接口和数据模板
 - Related: [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033：本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md)、[ADR 0035：离线 Minecraft 知识库](0035-offline-minecraft-knowledge-library.md)、[ADR 0036：内置浏览器与 Minecraft 知识访问](0036-embedded-browser-for-minecraft-knowledge.md)
@@ -254,3 +254,4 @@ Addition 与数据包均按需加载。未安装、禁用、损坏或版本不�
 
 - 2026-11-02：首次提出将面向 Minecraft 原版的轻量查询、计算与模拟工具作为独立官方 Addition；明确其与离线 Wiki、受限知识浏览器的职责区别，并规定版本化本地数据与维护者数据模板方向。
 - 2026-11-02：补充本地游戏资源解析决策：仅从用户已安装且版本匹配的实例读取资源，尊重实例资源包配置；无匹配实例时提示“没有可用的版本实例”，官方 Addition 不捆绑未经确认授权的游戏资产。
+- 2026-11-03：决策状态更新为 Accepted，实施状态更新为 In Progress。已落地 `additions/vanilla-toolkit/data-template/`（Manifest/Schema/最小样例）、版本化数据包加载与哈希校验、Registry 查询、精确版本选择与本地实例纹理读取；尚未发布首个扩展包与官方目录条目，工具页面与更多数据域未实现。依据见 [ADR 0031–0040 实施记录](../adr-0031-0040-implementation.md)。

@@ -10,6 +10,8 @@ public enum BootstrapperAction
     Apply,
     Rollback,
     Cleanup,
+    Verify,
+    Repair,
 }
 
 public sealed record BootstrapperDeploy(
@@ -41,6 +43,8 @@ public static class BootstrapperCommandLine
         var apply = false;
         var rollback = false;
         var cleanup = false;
+        var verify = false;
+        var repair = false;
         var deployOnly = false;
         var help = false;
         var application = new List<string>();
@@ -101,6 +105,14 @@ public static class BootstrapperCommandLine
                     cleanup = true;
                     break;
 
+                case "--verify":
+                    verify = true;
+                    break;
+
+                case "--repair":
+                    repair = true;
+                    break;
+
                 case "--deploy-only":
                     deployOnly = true;
                     break;
@@ -144,13 +156,32 @@ public static class BootstrapperCommandLine
                 "--rollback 不能与 --cleanup 同时使用。");
         }
 
+        var maintenanceActions = new[] { rollback, cleanup, verify, repair }.Count(selected => selected);
+        if (maintenanceActions > 1)
+        {
+            return Result<BootstrapperCommand>.Fail(
+                ErrorCode,
+                "--rollback、--cleanup、--verify 与 --repair 只能选择一个。");
+        }
+
+        if (apply && maintenanceActions > 0)
+        {
+            return Result<BootstrapperCommand>.Fail(
+                ErrorCode,
+                "--apply 不能与维护操作同时使用。");
+        }
+
         var action = apply || hasDeployInputs
             ? BootstrapperAction.Apply
             : rollback
                 ? BootstrapperAction.Rollback
                 : cleanup
                     ? BootstrapperAction.Cleanup
-                    : BootstrapperAction.Launch;
+                    : verify
+                        ? BootstrapperAction.Verify
+                        : repair
+                            ? BootstrapperAction.Repair
+                            : BootstrapperAction.Launch;
 
         var deploy = action == BootstrapperAction.Apply
             ? new BootstrapperDeploy(manifest!, signature!, package!, trust)

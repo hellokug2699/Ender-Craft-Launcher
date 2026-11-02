@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.World.Chunks;
+using Ecl.World.Dimensions;
 using Ecl.World.Region;
 
 namespace Ecl.World.Worlds;
@@ -32,13 +33,26 @@ public sealed class WorldChunkReader : IDisposable
 
     public WorldChunkReader(WorldSave world, DimensionInfo dimension)
     {
+        if (!DimensionId.TryParse(dimension.Id, out var dimensionId))
+        {
+            throw new ArgumentException($"维度 ID 无效：{dimension.Id}", nameof(dimension));
+        }
+
         _world = world;
         _dimension = dimension;
+        Key = new WorldDimensionKey(world.DirectoryPath, dimensionId);
     }
 
     public WorldSave World => _world;
 
     public DimensionInfo Dimension => _dimension;
+
+    /// <summary>World + Dimension 的稳定身份；所有 Chunk/Region 结果都归属于它。</summary>
+    public WorldDimensionKey Key { get; }
+
+    public ChunkIdentity GetChunkIdentity(int chunkX, int chunkZ) => new(Key, chunkX, chunkZ);
+
+    public RegionIdentity GetRegionIdentity(int regionX, int regionZ) => new(Key, regionX, regionZ);
 
     public ChunkLoadResult ReadChunk(int chunkX, int chunkZ)
     {

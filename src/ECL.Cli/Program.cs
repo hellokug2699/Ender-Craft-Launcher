@@ -50,8 +50,23 @@ internal static class Program
         services.AddEclMinecraft();
 
         await using var provider = services.BuildServiceProvider();
+        var lifecycle = provider.GetRequiredService<Ecl.Core.Runtime.IApplicationLifecycle>();
+        lifecycle.BeginStart();
         var application = new CliApplication(provider, commandLine);
-        return await application.RunAsync().ConfigureAwait(false);
+        lifecycle.MarkRunning();
+        try
+        {
+            return await application.RunAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            // ADR 0039：CLI 也是应用运行时，退出前等待受管理后台工作收尾。
+            var report = await lifecycle.ShutdownAsync().ConfigureAwait(false);
+            if (!report.IsClean)
+            {
+                Console.Error.WriteLine($"关闭时存在未完成或失败的工作：{string.Join("；", report.Issues)}");
+            }
+        }
     }
 
     internal const string HelpText = """

@@ -73,6 +73,9 @@ public sealed record DiagnosticEvent
 
     public string? SessionId { get; init; }
 
+    /// <summary>世界目录名（不含本机路径）；缺失时不推断为某一世界。</summary>
+    public string? WorldFolder { get; init; }
+
     public DiagnosticCategory Category { get; init; }
 
     public DiagnosticSeverity Severity { get; init; }
@@ -97,16 +100,18 @@ public sealed record DiagnosticEvent
 
     public DateTimeOffset LastSeenUtc { get; init; } = DateTimeOffset.UtcNow;
 
-    public string AggregateKey => AggregateKeyOf(Category, Location, ExceptionType, Summary);
+    public string AggregateKey => AggregateKeyOf(Category, Location, ExceptionType, Summary, WorldFolder);
 
     public static string AggregateKeyOf(
         DiagnosticCategory category,
         DiagnosticLocation location,
         string? exceptionType,
-        string summary) =>
+        string summary,
+        string? worldFolder = null) =>
         string.Join(
             '|',
             category,
+            worldFolder ?? "?",
             location.DimensionId ?? "?",
             location.ChunkX?.ToString(CultureInfo.InvariantCulture) ?? "-",
             location.ChunkZ?.ToString(CultureInfo.InvariantCulture) ?? "-",
@@ -135,7 +140,8 @@ public sealed partial class WorldDiagnosticsParser
         string instanceId,
         string? sessionId,
         IEnumerable<string> files,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? worldFolder = null)
     {
         var events = new Dictionary<string, DiagnosticEvent>(StringComparer.Ordinal);
         var linesScanned = 0;
@@ -144,7 +150,7 @@ public sealed partial class WorldDiagnosticsParser
         {
             foreach (var file in files.Where(File.Exists))
             {
-                var read = await ReadFileAsync(file, instanceId, sessionId, events, cancellationToken).ConfigureAwait(false);
+                var read = await ReadFileAsync(file, instanceId, sessionId, worldFolder, events, cancellationToken).ConfigureAwait(false);
                 linesScanned += read.Lines;
                 truncated |= read.Truncated;
             }
@@ -165,6 +171,7 @@ public sealed partial class WorldDiagnosticsParser
         string file,
         string instanceId,
         string? sessionId,
+        string? worldFolder,
         Dictionary<string, DiagnosticEvent> events,
         CancellationToken cancellationToken)
     {
@@ -188,7 +195,7 @@ public sealed partial class WorldDiagnosticsParser
                 line = line[..MaxLineLength];
             }
 
-            var parsed = ParseLine(line, file, lines, instanceId, sessionId);
+            var parsed = ParseLine(line, file, lines, instanceId, sessionId, worldFolder);
             if (parsed is null)
             {
                 continue;
@@ -222,7 +229,8 @@ public sealed partial class WorldDiagnosticsParser
         string file,
         int lineNumber,
         string instanceId,
-        string? sessionId)
+        string? sessionId,
+        string? worldFolder = null)
     {
         var category = Classify(line);
         if (category is null)
@@ -230,22 +238,17 @@ public sealed partial class WorldDiagnosticsParser
             return null;
         }
 
-        var location = ExtractLocation(line, category.Value);
-        if (location is null && category is null)
-        {
-            return null;
-        }
-
-        location ??= DiagnosticLocation.Unknown;
+        var location = ExtractLocation(line, category.Value) ?? DiagnosticLocation.Unknown;
         var exceptionType = ExtractExceptionType(line);
         var severity = SeverityOf(category.Value, line);
         var summary = BuildSummary(category.Value, exceptionType, line);
-        var key = DiagnosticEvent.AggregateKeyOf(category.Value, location, exceptionType, summary);
+        var key = DiagnosticEvent.AggregateKeyOf(category.Value, location, exceptionType, summary, worldFolder);
         return new DiagnosticEvent
         {
             Id = key.GetHashCode().ToString("x8", CultureInfo.InvariantCulture),
             InstanceId = instanceId,
             SessionId = sessionId,
+            WorldFolder = worldFolder,
             Category = category.Value,
             Severity = severity,
             Summary = summary,
@@ -319,15 +322,19 @@ public sealed partial class WorldDiagnosticsParser
         }
         else if (line.Contains("the_nether", StringComparison.OrdinalIgnoreCase))
         {
+            // 只有名称线索，没有显式 dimension 字段：标记为推断，不得据此生成确定地图标记。
             dimension = "minecraft:the_nether";
+            dimensionInferred = true;
         }
         else if (line.Contains("the_end", StringComparison.OrdinalIgnoreCase))
         {
             dimension = "minecraft:the_end";
+            dimensionInferred = true;
         }
         else if (line.Contains("overworld", StringComparison.OrdinalIgnoreCase))
         {
             dimension = "minecraft:overworld";
+            dimensionInferred = true;
         }
 
         var chunkMatch = ChunkCoordinateRegex().Match(line);
@@ -469,7 +476,7 @@ public sealed partial class WorldDiagnosticsParser
         var actions = new List<string> { "查看原始日志/崩溃报告与堆栈。" };
         if (location.HasChunk)
         {
-            actions.Add($"在只读模式下检查 {location.DimensionId ?? "当前维度"} 的 Chunk ({location.ChunkX}, {location.ChunkZ})。");
+            actions.Add($"在只读模式下检查 {location.DimensionId ?? "未知维度"} 的 Chunk ({location.ChunkX}, {location.ChunkZ})。");
         }
 
         if (category is DiagnosticCategory.ChunkLoad or DiagnosticCategory.ChunkDecode or DiagnosticCategory.NbtDecode)

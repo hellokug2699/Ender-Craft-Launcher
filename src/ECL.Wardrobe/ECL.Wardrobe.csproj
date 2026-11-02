@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ECL.Wardrobe</RootNamespace>
+    <AssemblyName>ECL.Wardrobe</AssemblyName>
+    <Description>Local wardrobe, skin validation and appearance providers.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ECL.Core\ECL.Core.csproj" />
+    <ProjectReference Include="..\ECL.Auth\ECL.Auth.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Ecl.TestAddition</RootNamespace>
+    <AssemblyName>Ecl.TestAddition</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ECL.Additions\ECL.Additions.csproj" />
+  </ItemGroup>
+
+</Project>

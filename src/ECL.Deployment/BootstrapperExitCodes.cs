@@ -16,6 +16,9 @@ public static class BootstrapperExitCodes
     public const int DeployError = 4;
     public const int LaunchError = 5;
 
+    /// <summary>ADR 0034：自身完整性失败且无法完成修复。</summary>
+    public const int IntegrityError = 6;
+
     /// <summary>把结构化错误映射到退出码。未识别的部署错误一律按部署失败处理。</summary>
     public static int FromError(EclError? error)
     {
@@ -36,6 +39,21 @@ public static class BootstrapperExitCodes
                 or "update.launch_failed" => LaunchError,
 
             "bootstrapper.arguments" => ArgumentError,
+
+            "integrity.current_missing"
+                or "integrity.manifest_missing"
+                or "integrity.manifest_invalid"
+                or "integrity.manifest_unreadable"
+                or "integrity.repair_untrusted"
+                or "integrity.repair_unavailable"
+                or "integrity.cache_source_damaged"
+                or "integrity.cache_source_untrusted"
+                or "integrity.cache_source_incomplete"
+                or "integrity.cache_copy_mismatch"
+                or "integrity.cache_capture_failed"
+                or "integrity.cache_missing"
+                or "integrity.cache_incomplete"
+                or "integrity.repair_version_mismatch" => IntegrityError,
 
             _ => DeployError,
         };

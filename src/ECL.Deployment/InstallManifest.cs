@@ -229,6 +229,8 @@ public static class InstallManifestStore
         {
             "current.json",
             "update-trust.json",
+            "update-manifest.json",
+            "update-manifest.sig",
             "ECL.Bootstrapper.exe",
             InstallManifest.UninstallerFileName,
         };

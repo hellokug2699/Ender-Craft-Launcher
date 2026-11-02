@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "ecl.vanilla-toolkit",
+  "version": "0.1.0",
+  "entryAssembly": "ECL.VanillaToolkit.dll",
+  "files": [
+    { "path": "Ecl.VanillaToolkit.dll", "size": 0, "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
+  ],
+  "dataSchemaVersion": 1
+}

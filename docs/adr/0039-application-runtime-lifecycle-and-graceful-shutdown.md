@@ -1,7 +1,7 @@
 # ADR 0039：应用运行时生命周期与优雅关闭
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Accepted
+- Implementation: Implemented
 - Date: 2026-11-02
 - Scope: ECL 桌面应用进程内的服务初始化、后台工作协调、关闭流程与资源释放
 - Related: [ADR 0015](0015-process-scoped-game-log-sessions-and-diagnostics.md)、[ADR 0019](0019-memory-pressure-process-survival-and-diagnostic-continuity.md)、[ADR 0020](0020-download-artifact-lifecycle-and-cleanup.md)、[ADR 0029](0029-installer-bootstrapper-uninstaller-lifecycle.md)、[ADR 0032](0032-native-feature-interfaces-and-optional-additions.md)
@@ -140,3 +140,4 @@ WPF 关闭事件本身不能被当作异步任务等待机制。实现时应在�
 ## 修订记录
 
 - 2026-11-02：初始提案。基于现有架构文档、ADR 0015/0019/0020/0029/0032 及公开仓库可见实现，提出应用级生命周期协调契约；具体实现状态仍需在实施前逐模块核对。
+- 2026-11-03：决策状态更新为 Accepted，实施状态更新为 Implemented。已实现状态机、受管理后台工作登记与异常观察、单项/总预算超时、逆序停止步骤与资源释放、WPF 可等待关闭与防重入、CLI 收尾及 9 项自动化测试；WPF 手工退出与游戏进程独立性仍待实机验收。依据见 [ADR 0031–0040 实施记录](../adr-0031-0040-implementation.md)。

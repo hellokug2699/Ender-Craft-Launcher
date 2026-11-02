@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ECL Vanilla Toolkit registry domain",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "entries"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "names", "quality"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$",
+            "description": "带命名空间的资源位置，例如 minecraft:stone"
+          },
+          "kind": {
+            "type": "string",
+            "description": "block / item / entity / biome / dimension / enchantment / effect 等"
+          },
+          "names": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": { "type": "string", "minLength": 1 }
+          },
+          "aliases": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "introduced": { "type": ["string", "null"] },
+          "removed": { "type": ["string", "null"] },
+          "versions": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "无法可靠比较版本时使用的显式版本集合"
+          },
+          "quality": { "enum": ["verified", "derived", "community", "unverified"] },
+          "sourceId": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

@@ -22,6 +22,12 @@
     <ProjectReference Include="..\..\src\ECL.Cli\ECL.Cli.csproj" />
     <ProjectReference Include="..\..\src\ECL.Operations\ECL.Operations.csproj" />
     <ProjectReference Include="..\..\src\ECL.World\ECL.World.csproj" />
+    <ProjectReference Include="..\..\src\ECL.Additions\ECL.Additions.csproj" />
+    <ProjectReference Include="..\..\src\ECL.Knowledge\ECL.Knowledge.csproj" />
+    <ProjectReference Include="..\..\src\ECL.Wardrobe\ECL.Wardrobe.csproj" />
+    <ProjectReference Include="..\..\src\ECL.Diagnostics\ECL.Diagnostics.csproj" />
+    <ProjectReference Include="..\..\additions\vanilla-toolkit\src\ECL.VanillaToolkit\ECL.VanillaToolkit.csproj" />
+    <ProjectReference Include="..\ECL.TestAddition\ECL.TestAddition.csproj" />
   </ItemGroup>
 
   <ItemGroup>

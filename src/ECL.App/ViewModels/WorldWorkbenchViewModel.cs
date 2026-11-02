@@ -187,6 +187,9 @@ public sealed partial class WorldWorkbenchViewModel : ObservableObject
     [ObservableProperty]
     private bool _isBusy;
 
+    private CancellationTokenSource? _renderCancellation;
+    private int _renderGeneration;
+
     public async Task InitializeAsync()
     {
         await LoadAllAsync();
@@ -318,6 +321,14 @@ public sealed partial class WorldWorkbenchViewModel : ObservableObject
             return;
         }
 
+        // ADR 0031 §5：切换维度/世界会取消上一次渲染，并用代号丢弃迟到的旧结果，
+        // 避免旧维度的地图或诊断标记覆盖当前视图。
+        _renderCancellation?.Cancel();
+        _renderCancellation?.Dispose();
+        _renderCancellation = new CancellationTokenSource();
+        var cancellation = _renderCancellation;
+        var generation = ++_renderGeneration;
+
         IsBusy = true;
         try
         {
@@ -330,8 +341,29 @@ public sealed partial class WorldWorkbenchViewModel : ObservableObject
                 centerChunkX: centerX,
                 centerChunkZ: centerZ,
                 MapRadius,
-                SelectedLayer.Layer);
-            if (view is null || view.IsEmpty)
+                SelectedLayer.Layer,
+                cancellation.Token);
+            if (generation != _renderGeneration || cancellation.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (view is null)
+            {
+                MapImage = null;
+                MapSummary = "找不到存档。";
+                return;
+            }
+
+            if (view.Failed)
+            {
+                MapImage = null;
+                MapSummary = view.Error ?? "该维度无法读取。";
+                Status = view.DimensionStatus;
+                return;
+            }
+
+            if (view.IsEmpty)
             {
                 MapImage = null;
                 MapSummary = "没有可渲染的区块数据。";
@@ -339,17 +371,26 @@ public sealed partial class WorldWorkbenchViewModel : ObservableObject
             }
 
             MapImage = ToBitmap(view.Image);
-            MapSummary = $"{view.WorldName} · {view.DimensionId} · 缺失 {view.MissingChunks} · 损坏 {view.CorruptChunks} · 未知群系像素 {view.Image.UnknownBiomePixels}";
+            MapSummary = $"{view.WorldName} · {view.DimensionId} · {view.DimensionStatus} · 缺失 {view.MissingChunks} · 损坏 {view.CorruptChunks} · 未知群系像素 {view.Image.UnknownBiomePixels}";
             Status = "地图只读，不会修改世界数据。";
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // 切换维度导致的取消是预期行为。
         }
         finally
         {
-            IsBusy = false;
+            if (generation == _renderGeneration)
+            {
+                IsBusy = false;
+            }
         }
     }
 
     partial void OnSelectedWorldChanged(WorldItemViewModel? value)
     {
+        _renderCancellation?.Cancel();
+        _renderGeneration++;
         Dimensions.Clear();
         if (value is null)
         {
@@ -358,10 +399,11 @@ public sealed partial class WorldWorkbenchViewModel : ObservableObject
 
         foreach (var dimension in value.World.Dimensions)
         {
-            Dimensions.Add(new DimensionChoice(dimension.Id, dimension.DisplayName));
+            Dimensions.Add(new DimensionChoice(dimension.Id, dimension.DisplayName, dimension.StorageStatus, dimension.CanRead));
         }
 
-        SelectedDimension = Dimensions.FirstOrDefault();
+        // 优先选中可读维度；仍然保留全部维度（含缺失/未确认/冲突），由状态文字明确表达。
+        SelectedDimension = Dimensions.FirstOrDefault(dimension => dimension.CanRead) ?? Dimensions.FirstOrDefault();
         _ = _service.RecordWorldVisitAsync(_instanceId, value.World);
         _ = RenderMapAsync();
     }
@@ -467,6 +509,10 @@ public sealed partial class WorldWorkbenchViewModel : ObservableObject
     }
 }
 
-public sealed record DimensionChoice(string Id, string Name);
+public sealed record DimensionChoice(string Id, string Name, string Status, bool CanRead)
+{
+    /// <summary>下拉框显示：可读性用状态文字表达，不隐藏未确认或缺失维度。</summary>
+    public string DisplayName => $"{Name} · {Status}";
+}
 
 public sealed record MapLayerChoice(MapLayer Layer, string Name);

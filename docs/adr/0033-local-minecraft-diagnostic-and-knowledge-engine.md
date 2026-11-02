@@ -1,7 +1,7 @@
 # ADR 0033：本地 Minecraft 全面诊断与知识引擎
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Accepted
+- Implementation: In Progress
 - Date: 2026-11-02
 - Scope: Minecraft 日志、崩溃报告、运行环境、模组关系、故障模式与本地诊断知识库
 - Related: [ADR 0015：按进程隔离的游戏日志会话与诊断证据](0015-process-scoped-game-log-sessions-and-diagnostics.md)、[ADR 0030：世界诊断与区块异常定位联动](0030-world-diagnostics-and-chunk-fault-workflow.md)、[ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)
@@ -195,3 +195,4 @@ Minecraft 日志可能包含 Windows 用户名、文件路径、服务器地址�
 ## 修订记录
 
 - 2026-11-02：首次提出本地 Minecraft 全面诊断与可持续更新知识引擎，明确不以在线日志转发服务或自有服务器作为前提，并将诊断引擎与知识库纳入 Additions 体系。
+- 2026-11-03：决策状态更新为 Accepted，实施状态更新为 In Progress。已实现日志/崩溃结构化解析、知识库 schema 与规则引擎、证据链和本地报告存储；Additions 数据包下载、诊断中心原生页面与世界诊断联动仍待补齐。依据见 [ADR 0031–0040 实施记录](../adr-0031-0040-implementation.md)。
