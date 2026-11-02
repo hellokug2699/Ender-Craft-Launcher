@@ -1,6 +1,9 @@
 # ADR 0025：Installer 首次启动完整性确认向导
 
-- Status: Accepted (implementation pending)
+> 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；尚未开始实施的提案保持原有阶段。
+
+- Decision: Accepted
+- Implementation: Not Started
 - Date: 2026-11-02
 - Scope: Windows Installer 首次启动、安装前完整性验证与用户知情授权
 
