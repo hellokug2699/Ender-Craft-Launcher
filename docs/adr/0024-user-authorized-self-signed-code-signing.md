@@ -1,6 +1,9 @@
 # ADR 0024：用户授权的自签名代码证书信任
 
-- Status: Accepted (implementation pending)
+> 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；尚未开始实施的提案保持原有阶段。
+
+- Decision: Accepted
+- Implementation: Not Started
 - Date: 2026-11-02
 - Scope: Windows 安装、代码签名与更新信任
 
