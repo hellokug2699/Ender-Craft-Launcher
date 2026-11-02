@@ -1,6 +1,9 @@
 # ADR 0028：世界种子与生成规则分析功能提议
 
-- Status: Proposed
+> 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；尚未开始实施的提案保持原有阶段。
+
+- Decision: Proposed
+- Implementation: Not Started
 - Date: 2026-11-02
 - Scope: Minecraft 世界种子分析、群系定位、结构预测与生成地图
 - Related: ADR 0026（实例工作台的存档、多人游戏与最近访问）、ADR 0027（原生 C# 世界分析与编辑引擎）
