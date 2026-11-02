@@ -1,6 +1,9 @@
 # ADR 0019：内存压力下的进程保活与诊断连续性
 
-- Status: Completed
+> 生命周期迁移说明：原有实现及实机验证状态予以保留；本次仅拆分决策与实施状态，不构成技术回退。
+
+- Decision: Accepted
+- Implementation: Verified
 - Date: 2026-11-01
 - Scope: 游戏进程监督、日志采集进程、ECL 主 UI、内存压力与异常恢复
 
