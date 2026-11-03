@@ -3,22 +3,26 @@
 - Decision: Proposed
 - Implementation: Not Started
 - Date: 2026-11-03
-- Scope: ECL 原生 GitHub 项目中心、GitHub App 用户授权、仓库数据访问、Issue 反馈与仓库边界内导航
-- Related: [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0036：受限 Minecraft 知识浏览器](0036-embedded-browser-for-minecraft-knowledge.md)、[ADR 0021：WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md)
+- Scope: GitHub 项目中心 Feature Addition、ECL 原生页面入口、GitHub App 用户授权、仓库数据访问、Issue 反馈与仓库边界内导航
+- Related: [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0021：WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md)
 
 ## 背景
 
 ECL 希望在启动器内提供项目动态和社区协作入口，使用户无需离开 ECL 即可查看项目更新日志、Release、公开 Issues 和 Discussions，并使用 ECL 原生表单提交 Bug Report、Feature Request 或 Issue 评论。
 
-该功能不是通用网页浏览器，也不是 GitHub 网页的 WebView 包装。页面、导航、表单、Markdown 内容和状态均由 ECL 原生 UI 渲染；GitHub 作为远程数据与协作后端，通过 GitHub API 提供数据和接受用户明确发起的写入操作。
+该功能是一个通过 Additions 分发的 GitHub 项目中心 Feature Addition，不是浏览器，也不是 GitHub 网页的 WebView 包装。ECL 随启动器提供原生功能入口、页面框架、未安装提示和 Addition 管理体验；GitHub 项目中心的具体领域能力由独立版本化的 Feature Addition 提供。页面、导航、表单、Markdown 内容和状态均使用 ECL 原生 UI 呈现，GitHub 作为远程数据与协作后端，通过 GitHub API 提供数据并接受用户明确发起的写入操作。
 
 项目需要用户授权以用户身份提交 Issue 和评论，但不应因此获得用户其他仓库、代码、账户或组织的广泛访问能力。导航也必须限制在当前配置的 ECL 公共仓库内，避免通过 Issue 正文、评论、Release Notes 或其他内容跳转到任意仓库或外部网站。
 
 ## 决策
 
-### 1. GitHub 集成属于 ECL Core 基础设施，页面由 ECL 原生实现
+### 1. GitHub 项目中心作为 Feature Addition 分发，页面由 ECL 原生实现
 
-GitHub Integration Service 属于 ECL Core，不作为 Addition。它提供版本化、受控的领域 API，至少包含：
+GitHub 项目中心的功能实现作为独立 Feature Addition 分发，拥有独立版本、依赖声明、Core API 兼容范围、包校验与生命周期。它不属于 ECL Core 的内置领域功能，也不得成为普通启动链的依赖。
+
+ECL 随启动器提供固定的原生功能入口和页面宿主。未安装 Addition 时，入口仍然存在，并展示功能说明、所需 Addition、安装状态和安装入口；安装后由原生页面通过受控 Core API 调用 Addition 提供的能力。Addition 不得动态注入任意导航项、页面或 WPF 控件。
+
+GitHub Addition 提供版本化、受控的领域能力接口，至少包含：
 
 - Release Provider：读取 Release、预发布版本和更新说明；
 - Issue Provider：读取 Issue、评论和状态，并按允许的操作创建 Issue、发表评论；
@@ -28,7 +32,7 @@ GitHub Integration Service 属于 ECL Core，不作为 Addition。它提供版�
 - Authentication Manager：管理 GitHub App 用户授权及令牌生命周期；
 - Cache / Rate Limit Manager：处理分页、缓存、ETag、速率限制和错误恢复。
 
-原生 UI 负责页面布局、列表、详情、筛选、表单、确认和错误反馈。UI 不直接拼接任意 GitHub API 请求，也不持有 App 私钥或其他长期应用机密。
+原生 UI 宿主负责页面布局、列表、详情、筛选、Issue Composer、Comment Composer、确认和错误反馈。Addition 提供数据访问、授权流程适配、领域操作和仓库导航策略；UI 不直接拼接任意 GitHub API 请求，也不持有 App 私钥或其他长期应用机密。
 
 ### 2. GitHub App 作为 ECL 的应用身份，使用用户授权令牌执行用户操作
 
@@ -65,15 +69,19 @@ GitHub App 安装范围限制为 ECL 指定的公开仓库，不请求用户的�
 
 Discussions 明确为只读：第一阶段不创建 Discussion、不回复 Discussion、不编辑或删除 Discussion 内容。Issue 评论则在第一阶段开放创建能力。
 
-GitHub App 的权限是平台授予的能力上限，不等于 ECL 必须暴露全部能力。Core API 必须进一步执行操作白名单：
+GitHub App 的权限是平台授予的能力上限，不等于 ECL 必须暴露全部能力。Addition 的领域 API 必须进一步执行操作白名单与对象级权限约束：
 
-- 允许：读取公开 Issue 与评论、创建新 Issue、创建 Issue 评论。
-- 禁止：关闭或重新打开 Issue、编辑或删除 Issue、编辑或删除评论、管理标签、里程碑、指派人、锁定或置顶 Issue。
+- 允许：读取公开 Issue 与评论、创建新 Issue、创建 Issue 评论；Issue 作者可编辑和关闭自己创建的 Issue。
+- 允许：仓库维护者依据其 GitHub 实际角色和 GitHub 服务端授权，执行相应 Issue 编辑、关闭及管理操作。
+- 禁止：普通用户编辑或关闭他人创建的 Issue；普通用户管理标签、里程碑、指派人、锁定或置顶 Issue。
+- 第一阶段不开放评论编辑或删除；不开放 Issue 删除。重新打开 Issue 的普通用户权限不在本 ADR 的初始范围内，必须以 GitHub 服务端实际授权为准。
 - 允许：读取公开 Discussions、分类和回复。
 - 禁止：创建、编辑、删除或回复 Discussion。
 - 不提供任意 REST / GraphQL 请求接口，不把令牌暴露给 UI 或 Addition。
 
-创建 Issue 与发表评论必须绑定固定目标仓库。写操作执行前由 Core 校验仓库身份、操作类型和请求字段；UI 展示完整提交内容并取得用户明确确认。对重复提交应使用客户端请求状态和可识别的提交结果降低重复创建风险。
+所有写操作必须绑定固定目标仓库。执行前由 Addition 校验仓库身份、操作类型、目标 Issue、当前授权身份和请求字段；对于作者编辑/关闭自己的 Issue，应核对当前用户与 Issue 作者身份。维护者操作能力以 GitHub 服务端授权结果为最终依据，不能仅依赖客户端缓存的角色信息或隐藏按钮作为安全边界。UI 展示完整提交内容并取得用户明确确认。对重复提交应使用请求状态和可识别的提交结果降低重复创建风险。
+
+Issue 创建与编辑共用同一个原生 Issue Composer，编辑模式预填现有内容；评论使用独立的 Comment Composer。提交服务统一处理草稿、验证、授权失败、速率限制、重复提交和结果反馈。
 
 ### 4. 仓库范围固定，权限与导航边界相互独立
 
@@ -87,9 +95,9 @@ GitHub App 的权限是平台授予的能力上限，不等于 ECL 必须暴露�
 
 即使令牌在 GitHub 平台上具备更广的公开读取能力，ECL 也不得因此开放其他仓库的浏览入口。仓库身份必须使用规范化后的 owner 与 repository，并在 API 响应中再次核对；不能仅信任页面路径、链接文本或 API 返回的可变显示名称。
 
-### 5. 实现仓库内导航策略，遵循 ADR 0036 的安全原则
+### 5. 实现原生页面的仓库内导航策略
 
-GitHub 内容中的链接由 ECL 解析并交给统一的 Repository Navigation Policy。该策略借鉴 ADR 0036 的 URL 规范化、统一导航入口检查、逐跳重定向校验和默认拒绝原则，但使用仓库身份而不是域名树作为允许范围。
+GitHub 内容中的链接由原生 UI 解析并交给 Addition 提供的统一 Repository Navigation Policy。该策略以固定仓库身份和允许的资源类型作为边界，不依赖 WebView、浏览器域名白名单或网页导航组件。
 
 允许的目标仅限于 **github.com/hellokug2699/Ender-Craft-Launcher** 仓库下受支持的页面和资源，例如：
 
@@ -124,7 +132,7 @@ GitHub 内容中的链接由 ECL 解析并交给统一的 Repository Navigation 
 - API 返回的 html_url、url 等链接字段；
 - 任何未来增加的富文本或预览组件。
 
-所有重定向必须逐跳检查，不能先访问目标再检查最终 URL。若 API 请求返回用于页面导航的重定向或规范链接，Core 必须在打开前校验目标仓库身份。无法可靠验证的链接一律拒绝。
+所有重定向必须逐跳检查，不能先访问目标再检查最终 URL。若 API 请求返回用于页面导航的重定向或规范链接，Addition 必须在交给原生导航宿主前校验目标仓库身份。无法可靠验证的链接一律拒绝。
 
 GitHub API 数据与 GitHub HTML 页面地址必须区分。API 请求只能发往固定的 GitHub API 主机和由 Core 构造的固定仓库 endpoint；不得将页面提供的任意 URL 直接作为 API 请求目标。API 响应中的分页链接也必须验证主机、API 路径和仓库身份，禁止跟随到其他仓库或外部主机。
 
@@ -167,16 +175,16 @@ ECL 不收集或上传遥测、使用统计、设备标识或与本次提交无�
 
 ### 10. 与现有架构的边界
 
-- ADR 0032：GitHub Integration 是 Core 基础设施，原生页面由 ECL 实现，不作为 Addition。
-- ADR 0036：复用受限浏览器的安全原则，但本功能不是 WebView，也不复用其站点白名单。
-- ADR 0021：Issue 提交、评论等写操作使用统一操作确认与结果反馈原则。
+- ADR 0032：GitHub 项目中心作为 Feature Addition 分发；ECL 原生提供固定入口、页面宿主、Composer 和状态呈现，Addition 提供可选领域能力。未安装 Addition 不影响普通启动。
+- Core 只提供扩展加载、受控 API、网络基础设施、安全存储等通用能力；GitHub 仓库规则、Issue 操作和 GitHub API 领域逻辑属于该 Addition，不得把 GitHub 专属业务逻辑塞入 Core。
+- ADR 0021：Issue 创建、编辑、关闭、评论等写操作使用统一操作确认与结果反馈原则。
 - 本 ADR 不定义通用 GitHub 客户端、不支持任意仓库切换、不支持代码编辑、Git 操作、PR 创建/合并、Actions 管理或仓库设置管理。
 
 ## 备选方案
 
-### 方案 A：直接嵌入 GitHub 网页
+### 方案 A：将 GitHub 项目中心作为 Core 内置功能
 
-不采用。无法保证 ECL 原生交互、仓库导航边界和 Markdown 安全策略，也会把 GitHub 网页 UI 与 ECL 的体验和生命周期绑定。
+不采用。该功能属于可选的项目协作能力，应通过 Feature Addition 独立分发和更新，避免扩大 Core 的内置功能与依赖面；ECL 仍提供原生入口和未安装状态。
 
 ### 方案 B：传统 OAuth App
 
@@ -225,7 +233,10 @@ ECL 不收集或上传遥测、使用统计、设备标识或与本次提交无�
 - 用户令牌失效或撤销后，公开读取继续可用，写入功能明确提示重新授权。
 - 能读取目标仓库公开 Release、Issue、Issue 评论和 Discussion 内容。
 - 能创建 Issue 和 Issue 评论；第一阶段不能创建或回复 Discussion。
-- Core API 无法执行关闭/编辑/删除 Issue、编辑/删除评论、管理标签/里程碑/指派人、创建 PR、代码写入或仓库管理等未开放操作。
+- 普通用户可以编辑和关闭自己创建的 Issue，但不能编辑或关闭他人的 Issue；仓库维护者的操作范围由 GitHub 服务端角色权限决定。
+- 普通用户不能管理标签、里程碑、指派人、锁定或置顶 Issue；第一阶段不能删除 Issue 或编辑/删除评论。
+- Issue 创建与编辑共用原生 Issue Composer，评论使用 Comment Composer；Markdown 内容使用统一原生渲染器和统一仓库内导航策略。
+- GitHub 项目中心的领域实现作为独立 Feature Addition 分发；未安装时原生入口仍显示说明和安装提示，安装/更新失败不影响普通启动。
 - Issue 提交前显示完整内容和目标仓库，并要求用户明确确认。
 - 不自动附加日志、存档、实例文件、设备标识或其他本地数据。
 - 导航允许目标仓库内受支持的 Issue、PR、Commit、Branch、Tag、文件、目录、Release 和 Discussion 页面。
@@ -240,4 +251,5 @@ ECL 不收集或上传遥测、使用统计、设备标识或与本次提交无�
 ## 修订记录
 
 - 2026-11-03：首次提出 ECL 原生 GitHub 项目中心；确定页面由 ECL 渲染、GitHub 提供数据；确定 GitHub App 用户授权、最小权限、固定仓库边界、受限导航和本地优先的 Issue 反馈流程。
-- 2026-11-03：根据维护者确认，第一阶段开放公开 Discussions 只读浏览，并开放 Issue 评论创建；不开放 Discussion 写入及 Issue 管理操作。初始权限明确为 Metadata Read-only、Issues Read and write、Discussions Read-only。
+- 2026-11-03：根据维护者讨论修正 Issue 权限模型：作者可编辑和关闭自己的 Issue，普通用户不能操作他人的 Issue，维护者按 GitHub 服务端实际角色授权；评论编辑/删除、Issue 删除及普通用户仓库管理操作仍不开放。
+- 2026-11-03：明确 GitHub 项目中心作为 Feature Addition 独立分发；ECL 原生提供入口、页面宿主与未安装提示，Addition 提供 GitHub 领域能力。移除与受限网页浏览器 ADR 的关联，明确本功能是原生应用功能而非浏览器。
