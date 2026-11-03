@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "lastReviewed": "2026-11-03",
+  "purpose": "Detect whether a Minecraft Java client instance has a known shader-pack provider.",
+  "resultStates": [
+    "supported",
+    "missing",
+    "incomplete",
+    "incompatible",
+    "conflict",
+    "unknown"
+  ],
+  "rules": [
+    {
+      "id": "iris-fabric",
+      "provider": "iris",
+      "loaders": ["fabric"],
+      "minecraft": { "minimum": "1.16.5", "maximum": null, "matching": "exact-artifact-metadata-required" },
+      "status": "supported-when-exact-artifact-matches",
+      "dependencies": [],
+      "notes": ["Iris officially supports Fabric 1.16.5 and higher.", "Iris ships with Sodium; do not require a separate Sodium installation when bundled with the installed Iris artifact."],
+      "sources": ["https://irisshaders.dev/", "https://modrinth.com/mod/iris"]
+    },
+    {
+      "id": "iris-neoforge",
+      "provider": "iris",
+      "loaders": ["neoforge"],
+      "minecraft": { "minimum": "1.21.1", "maximum": null, "matching": "exact-artifact-metadata-required" },
+      "status": "supported-when-exact-artifact-matches",
+      "dependencies": [],
+      "notes": ["Iris officially supports NeoForge 1.21.1 and higher.", "Iris ships with Sodium; do not require a separate Sodium installation when bundled with the installed Iris artifact."],
+      "sources": ["https://irisshaders.dev/", "https://modrinth.com/mod/iris"]
+    },
+    {
+      "id": "iris-forge",
+      "provider": "iris",
+      "loaders": ["forge"],
+      "minecraft": { "minimum": null, "maximum": null, "matching": "never-assume" },
+      "status": "unsupported",
+      "dependencies": [],
+      "notes": ["Iris officially states that Forge is not supported."],
+      "sources": ["https://irisshaders.dev/"]
+    },
+    {
+      "id": "oculus-fml",
+      "provider": "oculus",
+      "loaders": ["forge", "neoforge"],
+      "minecraft": {
+        "versions": ["1.16.5", "1.18.2", "1.19", "1.19.2", "1.19.4", "1.20", "1.20.1"],
+        "matching": "exact-artifact-loader-and-minecraft-metadata-required"
+      },
+      "status": "supported-when-exact-artifact-matches-and-required-dependencies-are-satisfied",
+      "dependencies": [
+        {
+          "id": "renderer-backend",
+          "required": "follow-exact-installed-oculus-artifact-metadata",
+          "acceptedExamples": ["embeddium", "rubidium"],
+          "notes": "Do not universally require either backend unless the exact Oculus artifact declares it as required."
+        }
+      ],
+      "notes": ["Oculus is an unofficial Iris fork for FML-based environments.", "The project-level loader list does not prove that every listed Minecraft version has an artifact for both Forge and NeoForge."],
+      "sources": ["https://modrinth.com/mod/oculus", "https://www.curseforge.com/minecraft/mc-mods/oculus/files/all"]
+    },
+    {
+      "id": "optifine-forge",
+      "provider": "optifine",
+      "loaders": ["forge"],
+      "minecraft": { "matching": "exact-official-build-and-forge-compatibility-required" },
+      "status": "supported-when-exact-build-and-forge-compatibility-match",
+      "dependencies": [],
+      "notes": ["OptiFine includes shader support.", "The official download listing's Forge compatibility value must be checked for the exact build; a displayed N/A is not a compatible Forge declaration.", "Do not generalize a current OptiFine version to all Forge builds for the same Minecraft version."],
+      "sources": ["https://optifine.net/downloads"]
+    },
+    {
+      "id": "optifine-fabric-neoforge",
+      "provider": "optifine",
+      "loaders": ["fabric", "neoforge"],
+      "minecraft": { "matching": "not-supported-by-default" },
+      "status": "unknown-or-incompatible-unless-future-rule-validates-a-specific-bridge",
+      "dependencies": [],
+      "notes": ["Do not count OptiFine as a Fabric or NeoForge provider by default.", "A future bridge must be validated against exact Minecraft, loader, OptiFine and bridge versions before adding a rule."],
+      "sources": ["https://optifine.net/downloads", "https://irisshaders.dev/"]
+    }
+  ],
+  "conflicts": [
+    {
+      "id": "optifine-iris",
+      "components": ["optifine", "iris"],
+      "result": "conflict",
+      "reason": "Iris documents OptiFine as incompatible."
+    }
+  ]
+}
