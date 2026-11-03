@@ -179,3 +179,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0040 原版工具集作为独立官方 Addition](0040-vanilla-toolkit-addition.md) | Accepted | In Progress | 原版查询、模拟、计算与本地资源解析 |
 | [0041 Minecraft 性能监控与性能分析架构](0041-minecraft-performance-monitoring-and-profiling-architecture.md) | Proposed | Not Started | 性能监控、卡死检测、Profiler 与诊断联动 |
 | [0042 Instance File Explorer and Crash Report Workflow](0042-instance-file-explorer-and-crash-report-workflow.md) | Proposed | Not Started | 原生实例文件管理、Instance Inventory、资源扫描、模组图标提取、统一确认与安全删除及崩溃诊断 |
+| [0043 Minecraft 威胁防护与安全分析架构](0043-minecraft-threat-protection-and-security-analysis.md) | Proposed | Not Started | Minecraft 内容扫描、启动前安全检查、风险接受与用户自主决策 |
