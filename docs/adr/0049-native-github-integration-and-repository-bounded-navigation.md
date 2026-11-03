@@ -10,7 +10,7 @@
 
 ECL 希望在启动器内提供项目动态和社区协作入口，使用户无需离开 ECL 即可查看项目更新日志、Release、公开 Issues 和 Discussions，并使用 ECL 原生表单提交 Bug Report、Feature Request 或 Issue 评论。
 
-该功能是一个通过 Additions 分发的 GitHub 项目中心 Feature Addition，不是浏览器，也不是 GitHub 网页的 WebView 包装。ECL 随启动器提供原生功能入口、页面框架、未安装提示和 Addition 管理体验；GitHub 项目中心的具体领域能力由独立版本化的 Feature Addition 提供。页面、导航、表单、Markdown 内容和状态均使用 ECL 原生 UI 呈现，GitHub 作为远程数据与协作后端，通过 GitHub API 提供数据并接受用户明确发起的写入操作。
+该功能是一个通过 Additions 分发的 GitHub 项目中心 Feature Addition。ECL 随启动器提供原生功能入口、页面框架、未安装提示和 Addition 管理体验；GitHub 项目中心的具体领域能力由独立版本化的 Feature Addition 提供。页面、导航、表单、Markdown 内容和状态均使用 ECL 原生 UI 呈现，GitHub 作为远程数据与协作后端，通过 GitHub API 提供数据并接受用户明确发起的写入操作。
 
 项目需要用户授权以用户身份提交 Issue 和评论，但不应因此获得用户其他仓库、代码、账户或组织的广泛访问能力。导航也必须限制在当前配置的 ECL 公共仓库内，避免通过 Issue 正文、评论、Release Notes 或其他内容跳转到任意仓库或外部网站。
 
@@ -97,7 +97,7 @@ Issue 创建与编辑共用同一个原生 Issue Composer，编辑模式预填�
 
 ### 5. 实现原生页面的仓库内导航策略
 
-GitHub 内容中的链接由原生 UI 解析并交给 Addition 提供的统一 Repository Navigation Policy。该策略以固定仓库身份和允许的资源类型作为边界，不依赖 WebView、浏览器域名白名单或网页导航组件。
+GitHub 内容中的链接由原生 UI 解析并交给 Addition 提供的统一 Repository Navigation Policy。该策略以固定仓库身份和允许的资源类型作为边界，由原生应用路由与 API 数据驱动。
 
 允许的目标仅限于 **github.com/hellokug2699/Ender-Craft-Launcher** 仓库下受支持的页面和资源，例如：
 
@@ -108,7 +108,7 @@ GitHub 内容中的链接由原生 UI 解析并交给 Addition 提供的统一 R
 - Releases；
 - Discussions 及其分类和主题。
 
-允许的仓库内链接由 ECL 原生页面打开，不启动 WebView，也不离开 ECL。链接解析必须验证 HTTPS、规范化 hostname、owner、repository、路径结构和允许的资源类型。不得使用字符串包含或前缀匹配来判断仓库归属。
+允许的仓库内链接由 ECL 原生页面打开，不离开 ECL。链接解析必须验证 HTTPS、规范化 hostname、owner、repository、路径结构和允许的资源类型。不得使用字符串包含或前缀匹配来判断仓库归属。
 
 以下目标一律拦截，不执行跳转：
 
@@ -117,7 +117,7 @@ GitHub 内容中的链接由原生 UI 解析并交给 Addition 提供的统一 R
 - GitHub 之外的任何网站；
 - 非 HTTPS、危险协议、自定义协议及无法安全解析的地址。
 
-被拦截时显示 ECL 原生提示弹窗，说明目标不在允许的仓库范围内，并展示经过安全编码和长度限制的目标地址。用户只能关闭提示；不提供继续访问、外部浏览器打开或临时放行操作。
+被拦截时显示 ECL 原生提示弹窗，说明目标不在允许的仓库范围内，并展示经过安全编码和长度限制的目标地址。用户只能关闭提示；不提供继续访问或临时放行操作。
 
 相对链接必须相对于当前仓库页面正确解析。URL 中的用户名信息段、端口、大小写、百分号编码、点段、重复分隔符、尾随点和路径穿越形式均不得绕过校验。路径解析后必须确认 owner/repository 与固定目标完全一致。
 
@@ -240,7 +240,7 @@ ECL 不收集或上传遥测、使用统计、设备标识或与本次提交无�
 - Issue 提交前显示完整内容和目标仓库，并要求用户明确确认。
 - 不自动附加日志、存档、实例文件、设备标识或其他本地数据。
 - 导航允许目标仓库内受支持的 Issue、PR、Commit、Branch、Tag、文件、目录、Release 和 Discussion 页面。
-- 其他仓库、GitHub 非仓库页面、外部网站、非 HTTPS 和危险协议均被拦截，并显示 ECL 原生提示；没有继续访问或外部浏览器打开入口。
+- 其他仓库、GitHub 非仓库页面、外部网站、非 HTTPS 和危险协议均被拦截，并显示 ECL 原生提示；没有继续访问或临时放行入口。
 - URL 规范化、相对链接、编码、点段、用户名信息段、大小写、端口和重定向测试不能绕过仓库边界。
 - 所有 Markdown、评论、Release Notes 和 API 返回链接均经过统一导航策略。
 - API endpoint 和分页链接只允许固定 GitHub API 主机及目标仓库路径。
@@ -252,4 +252,4 @@ ECL 不收集或上传遥测、使用统计、设备标识或与本次提交无�
 
 - 2026-11-03：首次提出 ECL 原生 GitHub 项目中心；确定页面由 ECL 渲染、GitHub 提供数据；确定 GitHub App 用户授权、最小权限、固定仓库边界、受限导航和本地优先的 Issue 反馈流程。
 - 2026-11-03：根据维护者讨论修正 Issue 权限模型：作者可编辑和关闭自己的 Issue，普通用户不能操作他人的 Issue，维护者按 GitHub 服务端实际角色授权；评论编辑/删除、Issue 删除及普通用户仓库管理操作仍不开放。
-- 2026-11-03：明确 GitHub 项目中心作为 Feature Addition 独立分发；ECL 原生提供入口、页面宿主与未安装提示，Addition 提供 GitHub 领域能力。移除与受限网页浏览器 ADR 的关联，明确本功能是原生应用功能而非浏览器。
+- 2026-11-03：明确 GitHub 项目中心作为 Feature Addition 独立分发；ECL 原生提供入口、页面宿主与未安装提示，Addition 提供 GitHub 领域能力。明确本功能由 Feature Addition 分发，使用 ECL 原生页面和仓库内导航策略。
