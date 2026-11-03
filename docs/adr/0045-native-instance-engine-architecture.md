@@ -1,7 +1,7 @@
 # ADR 0045：原生 Instance Engine 架构与能力边界
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Accepted
+- Implementation: In Progress
 - Date: 2026-11-03
 - Scope: Minecraft 实例身份、资源清单、文件访问、依赖分析、变更事务、快照恢复及 Addition 能力扩展
 - Related: [ADR 0018：Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md)、[ADR 0023：多实例来源目录登记与统一扫描](0023-multi-root-instance-discovery.md)、[ADR 0026：实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md)、[ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0042：实例文件浏览器与崩溃报告工作流](0042-instance-file-explorer-and-crash-report-workflow.md)
@@ -145,3 +145,4 @@ Engine 输出的资源状态不应只有单一布尔值。扫描结果应区分�
 ## 修订记录
 
 - 2026-11-03：建立原生 Instance Engine 架构提案，明确 Core 原生职责、Addition 调用边界、数据归属及分阶段优先级。
+- 2026-11-03：维护者指示实施后进入 `Accepted + In Progress`。已落地 Identity、File Access、Inventory、Transaction、Snapshot/Recovery 的独立 API 与共享实现，P0/P1 基础能力可用；依赖/影响分析、健康档案、迁移/克隆 UI 与“所有既有写入路径统一经过 Engine”的迁移仍在推进，故未标记为 `Implemented`。证据见 [ADR 0041–0049 实施记录](../adr-0041-0049-implementation.md)。

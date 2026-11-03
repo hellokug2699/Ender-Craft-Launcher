@@ -1,7 +1,7 @@
 # ADR 0047：实例变更事务与并发控制
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Accepted
+- Implementation: In Progress
 - Date: 2026-11-03
 - Scope: 实例写入协调、并发冲突检测、变更计划、事务阶段、恢复记录及 Addition 写入边界
 - Related: [ADR 0021：WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md)、[ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0042：实例文件浏览器与崩溃报告工作流](0042-instance-file-explorer-and-crash-report-workflow.md)、[ADR 0045：原生 Instance Engine 架构与能力边界](0045-native-instance-engine-architecture.md)
@@ -129,3 +129,4 @@ UI 负责展示计划、风险、影响和结果；Engine 提供事实与证据�
 ## 修订记录
 
 - 2026-11-03：建立实例变更事务与并发控制提案，采用实例级写入串行化作为首期安全基线。
+- 2026-11-03：维护者指示实施后进入 `Accepted + In Progress`。已实现实例级信号量 + 跨进程文件锁、事务阶段持久化、前态指纹、恢复材料、失败回滚、NeedsRecovery、事务 ID 幂等与取消语义，并已用于快照恢复、隔离/恢复及文件删除。既有模组安装、整合包更新等写入路径尚未全部迁移，故未标记为 `Implemented`。证据见 [ADR 0041–0049 实施记录](../adr-0041-0049-implementation.md)。

@@ -102,10 +102,11 @@ internal static class Program
           loader list --version <版本> [--type fabric|forge|neoforge|cleanroom|fabric-api|optifine] [--json]
                                           列出加载器/组件版本与更新时间
           install <实例ID>                下载/补全版本文件、加载器与组件
-          launch <实例ID> [--dry-run] [--accept-eula] [--accept-java-risk] [--json]
+          launch <实例ID> [--dry-run] [--accept-eula] [--accept-java-risk] [--accept-security-risk] [--json]
                                           启动实例；--dry-run 仅生成命令，
                                           --accept-eula 首次启动时同意 EULA，
-                                          --accept-java-risk 显式接受实例固定 Java 的已知风险
+                                          --accept-java-risk 显式接受实例固定 Java 的已知风险，
+                                          --accept-security-risk 明确接受安全中心列出的风险并记录
           settings list [--instance <实例ID>] [--json]
                                           列出配置项
           settings get <键> [--instance <实例ID>]
@@ -154,6 +155,33 @@ internal static class Program
           crash <实例ID> [--json]         分析最近一次崩溃与可疑 Mod
           diagnostics export <实例ID> [--output <路径>] [--json]
                                           导出脱敏诊断包
+          engine inventory <实例ID> [--no-deep] [--no-icons] [--json]
+                                          共享 Instance Inventory 三阶段扫描与资源证据
+          engine snapshot <list|create|verify|restore|delete> <实例ID> [快照ID]
+                           [--scope full|environment|world] [--world <名称>]
+                           [--allow-running] [--keep-extra] [--json]
+                                          用户快照的创建、校验、差异与事务化恢复
+          engine verify <实例ID>          校验实例内标记与本地身份登记
+          engine transactions <实例ID> [--json]
+                                          查看实例事务日志与前态恢复状态
+          engine clone <源实例ID> <新名称>
+                                          克隆为独立实例（新 InstanceId）
+          engine relocate <实例ID> <新游戏目录>
+                                          保留实例身份重新关联路径
+          security scan <实例ID> [--shallow] [--json]
+                                          手动扫描实例内模组/资源包/脚本并保留证据
+          security status <实例ID> [--json]
+                                          查看最近扫描与启动前风险门控结论
+          security quarantine <实例ID> <相对路径>
+                                          把可疑文件移入可恢复隔离区
+          security restore <实例ID> <隔离ID>
+                                          恢复隔离文件
+          security list <实例ID> [--json]
+                                          列出本地隔离记录
+          network diag [目标ID...] [--proxy <URL>] [--json]
+                                          DNS/TCP/TLS/HTTP 分阶段连通性与延迟诊断（不测速）
+          github resolve <引用> [--base <文件路径>] [--json]
+                                          按固定仓库边界解析 GitHub 原生资源引用
           account list [--json]           列出账户
           account add-offline <名称> [--default]
                                           添加离线账户

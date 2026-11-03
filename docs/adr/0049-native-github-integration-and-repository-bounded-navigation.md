@@ -1,7 +1,7 @@
 # ADR 0049: Native GitHub Integration and Repository-Bounded Navigation
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Accepted
+- Implementation: In Progress
 - Date: 2026-11-03
 - Scope: GitHub 项目中心 Feature Addition、ECL 原生页面入口、GitHub App 用户授权、仓库数据访问、Issue 反馈与仓库边界内导航
 - Related: [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0021：WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md)
@@ -253,3 +253,4 @@ ECL 不收集或上传遥测、使用统计、设备标识或与本次提交无�
 - 2026-11-03：首次提出 ECL 原生 GitHub 项目中心；确定所有内容由 ECL 原生渲染、GitHub 仅提供数据；确定 GitHub App 用户授权、最小权限、固定仓库边界、原生资源解析和本地优先的 Issue 反馈流程。
 - 2026-11-03：根据维护者讨论修正 Issue 权限模型：作者可编辑和关闭自己的 Issue，普通用户不能操作他人的 Issue，维护者按 GitHub 服务端实际角色授权；评论编辑/删除、Issue 删除及普通用户仓库管理操作仍不开放。
 - 2026-11-03：明确 GitHub 项目中心作为 Feature Addition 独立分发；ECL 原生提供入口、页面宿主与未安装提示，Addition 提供 GitHub 领域能力。明确不嵌入网页，所有页面与内容均由 ECL 原生组件渲染，GitHub 引用转换为受控的原生资源路由。
+- 2026-11-03：维护者指示实施后进入 `Accepted + In Progress`。已实现固定仓库边界、统一原生资源解析器、Markdown 链接解析、受控 API endpoint、匿名公开读取/写入授权边界、ETag 缓存与速率限制错误分类；GitHub App 用户授权、平台安全令牌存储、Discussions 匿名读取、Additions 打包与原生页面仍未交付，故未标记为 `Implemented`。证据见 [ADR 0041–0049 实施记录](../adr-0041-0049-implementation.md)。

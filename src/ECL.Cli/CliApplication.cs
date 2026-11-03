@@ -14,13 +14,20 @@ using Ecl.Deployment;
 using Ecl.Java;
 using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Diagnostics;
+using Ecl.Minecraft.Engine.Identity;
+using Ecl.Minecraft.Engine.Inventory;
+using Ecl.Minecraft.Engine.Snapshots;
+using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Eula;
+using Ecl.Minecraft.GitHub;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Launch;
 using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Mods;
+using Ecl.Minecraft.Network;
+using Ecl.Minecraft.Security;
 using Ecl.Minecraft.Versions;
 using Ecl.Operations;
 using Ecl.Sessions;
@@ -60,6 +67,10 @@ internal sealed class CliApplication
             "pack" => await PackCommandAsync(rest).ConfigureAwait(false),
             "crash" => await CrashCommandAsync(rest).ConfigureAwait(false),
             "diagnostics" => await DiagnosticsCommandAsync(rest).ConfigureAwait(false),
+            "engine" => await EngineCommandAsync(rest).ConfigureAwait(false),
+            "security" => await SecurityCommandAsync(rest).ConfigureAwait(false),
+            "network" => await NetworkCommandAsync(rest).ConfigureAwait(false),
+            "github" => await GitHubCommandAsync(rest).ConfigureAwait(false),
             "settings" => SettingsCommand(rest),
             "update" => await UpdateCommandAsync(rest).ConfigureAwait(false),
             "java" => await JavaCommandAsync(rest).ConfigureAwait(false),
@@ -590,7 +601,11 @@ internal sealed class CliApplication
 
         var launchService = _provider.GetRequiredService<ILaunchService>();
         var report = await launchService
-            .LaunchAsync(instanceId, dryRun, _commandLine.HasFlag("accept-java-risk"))
+            .LaunchAsync(
+                instanceId,
+                dryRun,
+                _commandLine.HasFlag("accept-java-risk"),
+                _commandLine.HasFlag("accept-security-risk"))
             .ConfigureAwait(false);
 
         if (_commandLine.HasFlag("json"))
@@ -2078,6 +2093,560 @@ internal sealed class CliApplication
         }
 
         return UsageError($"不支持的 pack 子命令：{subCommand}");
+    }
+
+    private async Task<int> EngineCommandAsync(string[] args)
+    {
+        if (args.Length == 0)
+        {
+            return UsageError("engine 支持 inventory、snapshot、verify、transactions、clone、relocate。");
+        }
+
+        var sub = args[0].ToLowerInvariant();
+        switch (sub)
+        {
+            case "inventory":
+                {
+                    var instanceId = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(instanceId))
+                    {
+                        return UsageError("engine inventory <实例ID> [--no-deep] [--no-icons] [--json]");
+                    }
+
+                    var options = new InventoryScanOptions(
+                        IncludeIcons: !_commandLine.HasFlag("no-icons"),
+                        IncludeDeepAnalysis: !_commandLine.HasFlag("no-deep"));
+                    var result = await _provider.GetRequiredService<IInstanceInventoryService>()
+                        .ScanAsync(instanceId, options)
+                        .ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    if (_commandLine.HasFlag("json"))
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(result.Value, EclJson.Indented));
+                        return 0;
+                    }
+
+                    var inventory = result.Value!;
+                    Console.WriteLine($"实例 {inventory.InstanceId} · Minecraft {inventory.MinecraftVersion} · {inventory.Loader}");
+                    Console.WriteLine(
+                        $"文件 {inventory.Totals.Files} · 目录 {inventory.Totals.Directories} · 大小 {FormatBytes(inventory.Totals.TotalBytes)} · 扫描 {inventory.ScannedAt:O}");
+                    Console.WriteLine(
+                        $"模组 {inventory.Totals.Mods}（启用 {inventory.Totals.EnabledMods}） · 资源包 {inventory.Totals.ResourcePacks} · 光影 {inventory.Totals.ShaderPacks} · 世界 {inventory.Totals.Worlds} · 崩溃报告 {inventory.Totals.CrashReports}");
+                    foreach (var resource in inventory.Resources)
+                    {
+                        var icon = string.IsNullOrWhiteSpace(resource.IconCachePath) ? string.Empty : " [icon]";
+                        var deps = resource.Dependencies.Count(item => item.State == DependencyState.Missing);
+                        var depText = deps > 0 ? $" · 缺依赖 {deps}" : string.Empty;
+                        Console.WriteLine(
+                            $"  [{resource.Kind}] {resource.RelativePath}{icon} · {resource.Enablement} · MC {resource.MinecraftCompatibility} / Loader {resource.LoaderCompatibility}{depText}");
+                    }
+
+                    foreach (var warning in inventory.Warnings)
+                    {
+                        Console.WriteLine($"  ! {warning}");
+                    }
+
+                    return 0;
+                }
+
+            case "snapshot":
+                {
+                    var action = args.ElementAtOrDefault(1)?.ToLowerInvariant();
+                    var instanceId = args.ElementAtOrDefault(2);
+                    if (string.IsNullOrWhiteSpace(action) || string.IsNullOrWhiteSpace(instanceId))
+                    {
+                        return UsageError("engine snapshot <list|create|verify|restore|delete> <实例ID> [快照ID] [--scope full|environment|world] [--world <名称>]");
+                    }
+
+                    var snapshots = _provider.GetRequiredService<IInstanceSnapshotService>();
+                    switch (action)
+                    {
+                        case "list":
+                            {
+                                var list = await snapshots.ListAsync(instanceId).ConfigureAwait(false);
+                                if (!list.IsSuccess)
+                                {
+                                    return WriteError(list.Error);
+                                }
+
+                                if (_commandLine.HasFlag("json"))
+                                {
+                                    Console.WriteLine(JsonSerializer.Serialize(list.Value, EclJson.Indented));
+                                    return 0;
+                                }
+
+                                if (list.Value!.Count == 0)
+                                {
+                                    Console.WriteLine("没有用户快照。");
+                                    return 0;
+                                }
+
+                                foreach (var snapshot in list.Value)
+                                {
+                                    Console.WriteLine(
+                                        $"  {snapshot.SnapshotId} · {snapshot.Scope} · {snapshot.Status} · {snapshot.FileCount} 文件 · {FormatBytes(snapshot.TotalBytes)} · {snapshot.CreatedAt:O}");
+                                }
+
+                                return 0;
+                            }
+
+                        case "create":
+                            {
+                                var scope = (_commandLine.GetValue("scope") ?? "full").ToLowerInvariant() switch
+                                {
+                                    "environment" => SnapshotScope.Environment,
+                                    "world" => SnapshotScope.World,
+                                    _ => SnapshotScope.Full,
+                                };
+                                var created = await snapshots.CreateAsync(
+                                        instanceId,
+                                        new SnapshotCreateOptions(
+                                            scope,
+                                            _commandLine.GetValue("world"),
+                                            _commandLine.HasFlag("allow-running")))
+                                    .ConfigureAwait(false);
+                                if (!created.IsSuccess)
+                                {
+                                    return WriteError(created.Error);
+                                }
+
+                                Console.WriteLine(
+                                    $"已创建快照 {created.Value!.SnapshotId}（{created.Value.Status}，{created.Value.FileCount} 文件，{FormatBytes(created.Value.TotalBytes)}）。");
+                                if (created.Value.Status != SnapshotStatus.Complete)
+                                {
+                                    Console.WriteLine("快照不完整，不会被用于恢复。");
+                                }
+
+                                return 0;
+                            }
+
+                        case "verify":
+                            {
+                                var snapshotId = args.ElementAtOrDefault(3);
+                                if (string.IsNullOrWhiteSpace(snapshotId))
+                                {
+                                    return UsageError("engine snapshot verify <实例ID> <快照ID>");
+                                }
+
+                                var verification = await snapshots.VerifyAsync(instanceId, snapshotId).ConfigureAwait(false);
+                                if (!verification.IsSuccess)
+                                {
+                                    return WriteError(verification.Error);
+                                }
+
+                                if (_commandLine.HasFlag("json"))
+                                {
+                                    Console.WriteLine(JsonSerializer.Serialize(verification.Value, EclJson.Indented));
+                                    return 0;
+                                }
+
+                                Console.WriteLine(
+                                    verification.Value!.IsValid
+                                        ? $"快照 {snapshotId} 完整，已验证 {verification.Value.VerifiedObjects} 个对象。"
+                                        : $"快照 {snapshotId} 不可用：缺失 {verification.Value.MissingObjects}，损坏 {verification.Value.CorruptObjects}。");
+                                foreach (var problem in verification.Value.Problems)
+                                {
+                                    Console.WriteLine($"  ! {problem}");
+                                }
+
+                                return verification.Value.IsValid ? 0 : 1;
+                            }
+
+                        case "restore":
+                            {
+                                var snapshotId = args.ElementAtOrDefault(3);
+                                if (string.IsNullOrWhiteSpace(snapshotId))
+                                {
+                                    return UsageError("engine snapshot restore <实例ID> <快照ID> [--keep-extra] [--no-safety]");
+                                }
+
+                                var restored = await snapshots.RestoreAsync(
+                                        instanceId,
+                                        snapshotId,
+                                        new SnapshotRestoreOptions(
+                                            DeleteExtraFiles: !_commandLine.HasFlag("keep-extra"),
+                                            CreateSafetySnapshot: !_commandLine.HasFlag("no-safety")))
+                                    .ConfigureAwait(false);
+                                if (!restored.IsSuccess)
+                                {
+                                    return WriteError(restored.Error);
+                                }
+
+                                Console.WriteLine(
+                                    $"已从快照 {snapshotId} 恢复：写入 {restored.Value!.Written}，删除 {restored.Value.Deleted}；恢复前快照 {restored.Value.SafetySnapshotId ?? "无"}。");
+                                foreach (var warning in restored.Value.Warnings)
+                                {
+                                    Console.WriteLine($"  ! {warning}");
+                                }
+
+                                return 0;
+                            }
+
+                        case "delete":
+                            {
+                                var snapshotId = args.ElementAtOrDefault(3);
+                                if (string.IsNullOrWhiteSpace(snapshotId))
+                                {
+                                    return UsageError("engine snapshot delete <实例ID> <快照ID>");
+                                }
+
+                                var deleted = await snapshots.DeleteAsync(instanceId, snapshotId).ConfigureAwait(false);
+                                if (!deleted.IsSuccess)
+                                {
+                                    return WriteError(deleted.Error);
+                                }
+
+                                Console.WriteLine($"已删除快照 {snapshotId}。");
+                                return 0;
+                            }
+
+                        default:
+                            return UsageError("未知的 snapshot 操作。");
+                    }
+                }
+
+            case "verify":
+                {
+                    var instanceId = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(instanceId))
+                    {
+                        return UsageError("engine verify <实例ID>");
+                    }
+
+                    var result = await _provider.GetRequiredService<InstanceIdentityService>()
+                        .VerifyAsync(instanceId)
+                        .ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    Console.WriteLine(
+                        $"{result.Value!.Status} · {result.Value.Confidence} · {result.Value.Message}");
+                    return result.Value.Status == InstanceRegistrationStatus.Conflict ? 1 : 0;
+                }
+
+            case "transactions":
+                {
+                    var instanceId = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(instanceId))
+                    {
+                        return UsageError("engine transactions <实例ID> [--json]");
+                    }
+
+                    var result = await _provider.GetRequiredService<InstanceTransactionCoordinator>()
+                        .ListAsync(instanceId)
+                        .ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    if (_commandLine.HasFlag("json"))
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(result.Value, EclJson.Indented));
+                        return 0;
+                    }
+
+                    foreach (var record in result.Value!)
+                    {
+                        Console.WriteLine(
+                            $"  {record.TransactionId} · {record.State} · {record.Reason} · {record.UpdatedAt:O}{(record.ErrorMessage is null ? string.Empty : $" · {record.ErrorMessage}")}");
+                    }
+
+                    return 0;
+                }
+
+            case "clone":
+                {
+                    var instanceId = args.ElementAtOrDefault(1);
+                    var name = args.ElementAtOrDefault(2);
+                    if (string.IsNullOrWhiteSpace(instanceId) || string.IsNullOrWhiteSpace(name))
+                    {
+                        return UsageError("engine clone <源实例ID> <新名称>");
+                    }
+
+                    var result = await _provider.GetRequiredService<IInstanceService>()
+                        .CloneAsync(instanceId, name)
+                        .ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    Console.WriteLine($"已克隆为 {result.Value!.Name}（{result.Value.Id}）。");
+                    return 0;
+                }
+
+            case "relocate":
+                {
+                    var instanceId = args.ElementAtOrDefault(1);
+                    var path = args.ElementAtOrDefault(2);
+                    if (string.IsNullOrWhiteSpace(instanceId) || string.IsNullOrWhiteSpace(path))
+                    {
+                        return UsageError("engine relocate <实例ID> <新游戏目录>");
+                    }
+
+                    var result = await _provider.GetRequiredService<IInstanceService>()
+                        .RelocateAsync(instanceId, path)
+                        .ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    Console.WriteLine($"实例 {instanceId} 已重新关联到 {result.Value!.GameDirectory}。");
+                    return 0;
+                }
+
+            default:
+                return UsageError("未知的 engine 子命令。");
+        }
+    }
+
+    private async Task<int> SecurityCommandAsync(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            return UsageError("security 支持 scan、status、quarantine、restore、list <实例ID>。");
+        }
+
+        var action = args[0].ToLowerInvariant();
+        var instanceId = args[1];
+        var security = _provider.GetRequiredService<IThreatProtectionService>();
+        switch (action)
+        {
+            case "scan":
+                {
+                    var result = await security.ScanAsync(
+                            instanceId,
+                            new SecurityScanOptions(
+                                IncludeDeepArchiveAnalysis: !_commandLine.HasFlag("shallow")))
+                        .ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    if (_commandLine.HasFlag("json"))
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(result.Value, EclJson.Indented));
+                        return 0;
+                    }
+
+                    var report = result.Value!;
+                    Console.WriteLine(
+                        $"扫描 {report.FilesScanned} 文件 / {report.ArchivesScanned} 归档 · 结论 {report.OverallLevel} · 完整 {report.IsComplete}");
+                    foreach (var finding in report.Findings)
+                    {
+                        Console.WriteLine($"  {finding.Level} · {finding.RelativePath} · {finding.Recommendation}");
+                        foreach (var evidence in finding.Evidence)
+                        {
+                            Console.WriteLine($"      - [{evidence.RuleId}] {evidence.Summary}");
+                        }
+                    }
+
+                    foreach (var warning in report.Warnings)
+                    {
+                        Console.WriteLine($"  ! {warning}");
+                    }
+
+                    return report.Findings.Count == 0 ? 0 : 2;
+                }
+
+            case "status":
+                {
+                    var latest = await security.GetLatestScanAsync(instanceId).ConfigureAwait(false);
+                    var decision = await security.EvaluateLaunchAsync(instanceId).ConfigureAwait(false);
+                    if (!latest.IsSuccess || !decision.IsSuccess)
+                    {
+                        return WriteError(latest.Error ?? decision.Error);
+                    }
+
+                    if (_commandLine.HasFlag("json"))
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(
+                            new { scan = latest.Value, launch = decision.Value },
+                            EclJson.Indented));
+                        return 0;
+                    }
+
+                    if (latest.Value is null)
+                    {
+                        Console.WriteLine("尚无安全扫描记录；启动不会被阻断，但覆盖范围未知。");
+                        return 0;
+                    }
+
+                    Console.WriteLine(
+                        $"最近扫描 {latest.Value.ScannedAt:O} · 结论 {latest.Value.OverallLevel} · 可直接启动：{decision.Value!.Allowed}");
+                    Console.WriteLine(decision.Value.Message);
+                    return decision.Value.Allowed ? 0 : 1;
+                }
+
+            case "quarantine":
+                {
+                    var relativePath = args.ElementAtOrDefault(2);
+                    if (string.IsNullOrWhiteSpace(relativePath))
+                    {
+                        return UsageError("security quarantine <实例ID> <实例内相对路径>");
+                    }
+
+                    var result = await security.QuarantineAsync(instanceId, relativePath).ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    Console.WriteLine($"已隔离到 {result.Value!.QuarantineId}；可随时恢复。");
+                    return 0;
+                }
+
+            case "restore":
+                {
+                    var quarantineId = args.ElementAtOrDefault(2);
+                    if (string.IsNullOrWhiteSpace(quarantineId))
+                    {
+                        return UsageError("security restore <实例ID> <隔离ID>");
+                    }
+
+                    var result = await security.RestoreQuarantineAsync(instanceId, quarantineId).ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    Console.WriteLine("已恢复隔离文件。");
+                    return 0;
+                }
+
+            case "list":
+                {
+                    var result = await security.ListQuarantineAsync(instanceId).ConfigureAwait(false);
+                    if (!result.IsSuccess)
+                    {
+                        return WriteError(result.Error);
+                    }
+
+                    if (_commandLine.HasFlag("json"))
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(result.Value, EclJson.Indented));
+                        return 0;
+                    }
+
+                    foreach (var record in result.Value!)
+                    {
+                        Console.WriteLine(
+                            $"  {record.QuarantineId} · {record.OriginalRelativePath} · {record.Level} · {FormatBytes(record.Size)}");
+                    }
+
+                    return 0;
+                }
+
+            default:
+                return UsageError("未知的 security 子命令。");
+        }
+    }
+
+    private async Task<int> NetworkCommandAsync(string[] args)
+    {
+        if (args.Length == 0 || !string.Equals(args[0], "diag", StringComparison.OrdinalIgnoreCase))
+        {
+            return UsageError("network diag [目标ID...] [--proxy <URL>] [--json]");
+        }
+
+        var targetIds = args
+            .Skip(1)
+            .Where(item => !item.StartsWith("--", StringComparison.Ordinal))
+            .ToArray();
+        NetworkPath path = NetworkPath.Direct;
+        if (_commandLine.GetValue("proxy") is { Length: > 0 } proxyText)
+        {
+            if (!Uri.TryCreate(proxyText, UriKind.Absolute, out var proxyUri) ||
+                proxyUri.Scheme is not ("http" or "https"))
+            {
+                return UsageError("--proxy 必须是 http/https URL。");
+            }
+
+            path = new NetworkPath("proxy", proxyUri);
+        }
+
+        var result = await _provider.GetRequiredService<INetworkDiagnosticsService>()
+            .RunAsync(targetIds.Length == 0 ? null : targetIds, path)
+            .ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return WriteError(result.Error);
+        }
+
+        if (_commandLine.HasFlag("json"))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(result.Value, EclJson.Indented));
+            return 0;
+        }
+
+        foreach (var target in result.Value!.Results)
+        {
+            Console.WriteLine($"{target.DisplayName} · {target.Path.DisplayName} · {target.Summary}");
+            foreach (var stage in target.Stages)
+            {
+                var time = stage.Milliseconds is null ? string.Empty : $" {stage.Milliseconds:F0}ms";
+                Console.WriteLine($"  {stage.Stage,-4} {stage.Status}{time}{(stage.Detail is null ? string.Empty : $" · {stage.Detail}")}");
+            }
+        }
+
+        return 0;
+    }
+
+    private Task<int> GitHubCommandAsync(string[] args)
+    {
+        if (args.Length == 0)
+        {
+            return Task.FromResult(UsageError("github 支持 resolve <引用> [--base <文件路径>]、releases、issues。"));
+        }
+
+        var sub = args[0].ToLowerInvariant();
+        if (sub == "resolve")
+        {
+            var reference = args.ElementAtOrDefault(1);
+            if (string.IsNullOrWhiteSpace(reference))
+            {
+                return Task.FromResult(UsageError("github resolve <引用> [--base <文件路径>]"));
+            }
+
+            GitHubResourceRef? context = null;
+            if (_commandLine.GetValue("base") is { Length: > 0 } basePath)
+            {
+                context = new GitHubResourceRef(
+                    GitHubResourceKind.File,
+                    GitHubRepositoryPolicy.Target.Owner,
+                    GitHubRepositoryPolicy.Target.Name,
+                    string.Empty,
+                    basePath.Replace('\\', '/').TrimStart('/'));
+            }
+
+            if (!GitHubRepositoryPolicy.TryParse(reference, context, out var resource, out var error))
+            {
+                Console.WriteLine($"拒绝解析：{error}");
+                return Task.FromResult(1);
+            }
+
+            if (_commandLine.HasFlag("json"))
+            {
+                Console.WriteLine(JsonSerializer.Serialize(resource, EclJson.Indented));
+            }
+            else
+            {
+                Console.WriteLine($"{resource.Kind} · {resource.NativeRoute}");
+            }
+
+            return Task.FromResult(0);
+        }
+
+        return Task.FromResult(UsageError("github 支持 resolve、releases、issues。"));
     }
 
     private async Task<int> CrashCommandAsync(string[] args)

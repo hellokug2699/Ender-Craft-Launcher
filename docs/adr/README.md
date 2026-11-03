@@ -177,12 +177,12 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0038 Authlib-Injector Texture Upload Protocol Support](0038-authlib-injector-texture-upload-protocol.md) | Accepted | In Progress | 第三方账户皮肤与披风协议上传 |
 | [0039 Application Runtime Lifecycle and Graceful Shutdown](0039-application-runtime-lifecycle-and-graceful-shutdown.md) | Accepted | Implemented | 应用运行时生命周期与优雅关闭 |
 | [0040 原版工具集作为独立官方 Addition](0040-vanilla-toolkit-addition.md) | Accepted | In Progress | 原版查询、模拟、计算与本地资源解析 |
-| [0041 Minecraft 性能监控与性能分析架构](0041-minecraft-performance-monitoring-and-profiling-architecture.md) | Proposed | Not Started | 性能监控、卡死检测、Profiler 与诊断联动 |
-| [0042 Instance File Explorer and Crash Report Workflow](0042-instance-file-explorer-and-crash-report-workflow.md) | Proposed | Not Started | 原生实例文件管理、Instance Inventory、资源扫描、模组图标提取、统一确认与安全删除及崩溃诊断 |
-| [0043 Minecraft 威胁防护与安全分析架构](0043-minecraft-threat-protection-and-security-analysis.md) | Proposed | Not Started | Minecraft 内容扫描、启动前安全检查、风险接受与用户自主决策 |
-| [0044 本地优先网络诊断 Addition 与数据主权](0044-local-first-network-diagnostics-and-data-sovereignty.md) | Proposed | Not Started | 网络连通性与延迟诊断、Addition 边界及本地数据主权 |
-| [0045 原生 Instance Engine 架构与能力边界](0045-native-instance-engine-architecture.md) | Proposed | Not Started | 原生实例引擎、Core/Addition 边界与实施优先级 |
-| [0046 实例稳定身份与元数据模型](0046-instance-identity-and-metadata.md) | Proposed | Not Started | InstanceId、迁移/克隆身份语义与元数据 |
-| [0047 实例变更事务与并发控制](0047-instance-transactions-and-concurrency-control.md) | Proposed | Not Started | 实例级写入协调、事务、冲突检测与恢复 |
-| [0048 实例快照与恢复架构](0048-instance-snapshots-and-recovery.md) | Proposed | Not Started | 用户快照、事务恢复材料、差异比较与恢复 |
-| [0049：原生 GitHub 项目中心与仓库资源边界](0049-native-github-integration-and-repository-bounded-navigation.md) | Proposed | Not Started | GitHub 项目中心 Addition、ECL 原生渲染、GitHub App 最小权限与仓库内资源解析 |
+| [0041 Minecraft 性能监控与性能分析架构](0041-minecraft-performance-monitoring-and-profiling-architecture.md) | Accepted | In Progress | 性能监控、卡死检测、Profiler 与诊断联动 |
+| [0042 Instance File Explorer and Crash Report Workflow](0042-instance-file-explorer-and-crash-report-workflow.md) | Accepted | In Progress | 原生实例文件管理、Instance Inventory、资源扫描、模组图标提取、统一确认与安全删除及崩溃诊断 |
+| [0043 Minecraft 威胁防护与安全分析架构](0043-minecraft-threat-protection-and-security-analysis.md) | Accepted | In Progress | Minecraft 内容扫描、启动前安全检查、风险接受与用户自主决策 |
+| [0044 本地优先网络诊断 Addition 与数据主权](0044-local-first-network-diagnostics-and-data-sovereignty.md) | Accepted | In Progress | 网络连通性与延迟诊断、Addition 边界及本地数据主权 |
+| [0045 原生 Instance Engine 架构与能力边界](0045-native-instance-engine-architecture.md) | Accepted | In Progress | 原生实例引擎、Core/Addition 边界与实施优先级 |
+| [0046 实例稳定身份与元数据模型](0046-instance-identity-and-metadata.md) | Accepted | Implemented | InstanceId、迁移/克隆身份语义与元数据 |
+| [0047 实例变更事务与并发控制](0047-instance-transactions-and-concurrency-control.md) | Accepted | In Progress | 实例级写入协调、事务、冲突检测与恢复 |
+| [0048 实例快照与恢复架构](0048-instance-snapshots-and-recovery.md) | Accepted | Implemented | 用户快照、事务恢复材料、差异比较与恢复 |
+| [0049：原生 GitHub 项目中心与仓库资源边界](0049-native-github-integration-and-repository-bounded-navigation.md) | Accepted | In Progress | GitHub 项目中心 Addition、ECL 原生渲染、GitHub App 最小权限与仓库内资源解析 |

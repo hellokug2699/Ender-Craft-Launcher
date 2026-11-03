@@ -75,6 +75,7 @@ public partial class App : Application
             services.AddSingleton<AdditionsViewModel>();
             services.AddSingleton<WardrobeViewModel>();
             services.AddSingleton<DiagnosticsViewModel>();
+            services.AddSingleton<EngineToolsViewModel>();
             services.AddSingleton<ToolsViewModel>();
             services.AddSingleton<IMemoryPressureMonitor, MemoryPressureMonitor>();
             services.AddSingleton<AboutViewModel>();

@@ -1,7 +1,7 @@
 # ADR 0042: Instance File Explorer and Crash Report Workflow
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Accepted
+- Implementation: In Progress
 - Date: 2026-11-03
 - Scope: 原生实例文件管理器、实例文件与资源清单、资源识别和依赖分析、受限文件操作、崩溃报告诊断联动及导出
 - Related: [ADR 0015：按进程隔离的游戏日志会话与诊断证据](0015-process-scoped-game-log-sessions-and-diagnostics.md)、[ADR 0022：存储空间分析与安全清理中心](0022-storage-analysis-and-safe-cleanup-center.md)、[ADR 0026：实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md)、[ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033：本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md)
@@ -381,3 +381,4 @@ Instance File Explorer 不单独设计一套与其他页面不同的确认弹窗
 - 2026-11-03：明确 Instance File Explorer 本身属于 ECL 原生功能，基础浏览不依赖 Addition；Addition 仅扩展高级文件处理能力。
 - 2026-11-03：扩展为实例文件管理与资源清单架构，补充元数据统计、目录级排序、分阶段全实例扫描、模组及其他资源状态识别、非提权删除与受保护路径规则，并明确 Explorer 与实例工作台共享 Instance Inventory。
 - 2026-11-03：补充从模组 JAR 元数据声明路径提取嵌入式图标、有限回退规则、安全解码限制、本地缩略图缓存及详情来源展示。\n- 2026-11-03：明确文件、目录及模组删除遵循 ADR 0021 的统一操作确认规范，并由 Instance Inventory 提供依赖与影响证据。
+- 2026-11-03：维护者指示实施后进入 `Accepted + In Progress`。已实现实例范围文件访问与路径边界、共享 Inventory 三阶段扫描、资源识别、模组依赖/兼容性证据、JAR 图标提取与本地缓存；原生 Explorer 页面、崩溃报告自动诊断联动与处理器注册/授权 UI 尚未完成，未标记为 `Implemented`。证据见 [ADR 0041–0049 实施记录](../adr-0041-0049-implementation.md)。

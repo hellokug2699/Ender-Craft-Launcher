@@ -1,7 +1,7 @@
 # ADR 0041：Minecraft 性能监控与性能分析架构
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Accepted
+- Implementation: In Progress
 - Date: 2026-11-02
 - Scope: Minecraft 实例运行期间的性能健康监控、卡死检测、性能分析器集成、性能证据采集及与本地诊断引擎的联动
 - Related: [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033：本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md)、[ADR 0039：应用运行时生命周期与优雅关闭](0039-application-runtime-lifecycle-and-graceful-shutdown.md)
@@ -245,3 +245,4 @@ TPS、MSPT、FPS、Frame Time、CPU、RAM、GC 等指标的具体展示方式、
 ## 修订记录
 
 - 2026-11-02：首次提出本 ADR，定义 ECL Performance Monitor、Performance Profiler 与可替换 profiler backend 的分层架构；当前保持 `Proposed + Not Started`，待进一步验证游戏侧 telemetry、Hang Detection 与第三方 profiler 集成边界。
+- 2026-11-03：维护者指示按 ADR 0041–0049 实施，决策进入 `Accepted`。已实现进程/系统采样、Hang Detection 状态机、可替换 profiler backend 契约与本地样本日志；游戏侧 telemetry 采用可选 JSONL 协议，真实 profiler backend 与端到端实机验证仍未完成，故实施状态为 `In Progress`。证据见 [ADR 0041–0049 实施记录](../adr-0041-0049-implementation.md)。

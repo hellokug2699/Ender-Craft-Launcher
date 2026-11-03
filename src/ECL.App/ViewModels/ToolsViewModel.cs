@@ -24,11 +24,13 @@ public sealed partial class ToolsViewModel : ObservableObject
     public ToolsViewModel(
         AdditionsViewModel additions,
         WardrobeViewModel wardrobe,
-        DiagnosticsViewModel diagnostics)
+        DiagnosticsViewModel diagnostics,
+        EngineToolsViewModel engine)
     {
         Additions = additions;
         Wardrobe = wardrobe;
         Diagnostics = diagnostics;
+        Engine = engine;
     }
 
     public AdditionsViewModel Additions { get; }
@@ -36,6 +38,8 @@ public sealed partial class ToolsViewModel : ObservableObject
     public WardrobeViewModel Wardrobe { get; }
 
     public DiagnosticsViewModel Diagnostics { get; }
+
+    public EngineToolsViewModel Engine { get; }
 
     public string KnowledgeStatus =>
         "受限知识浏览器策略已实现：仅允许 zh.minecraft.wiki、mcmod.cn 及其子域名的 HTTPS 页面。"
@@ -58,6 +62,7 @@ public sealed partial class ToolsViewModel : ObservableObject
         await Additions.ActivateAsync().ConfigureAwait(true);
         await Wardrobe.ActivateAsync().ConfigureAwait(true);
         await Diagnostics.ActivateAsync().ConfigureAwait(true);
+        await Engine.ActivateAsync().ConfigureAwait(true);
     }
 }
 

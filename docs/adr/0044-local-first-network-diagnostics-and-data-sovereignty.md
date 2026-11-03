@@ -1,7 +1,7 @@
 # ADR 0044：本地优先网络诊断 Addition 与数据主权
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Accepted
+- Implementation: In Progress
 - Date: 2026-11-03
 - Scope: ECL 网络诊断能力、可选 Addition、诊断数据生命周期与用户隐私边界
 - Related: [0032 原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[0033 本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md)
@@ -140,3 +140,4 @@ ECL 的数据原则是：**ECL 不收集用户信息，用户数据均保存在�
 ## 修订记录
 
 - 2026-11-03：初版。确定网络诊断作为独立 Addition；仅提供按需连通性与延迟检测，不实现主动测速；确立诊断数据本地保存、禁止自动回传及第三方通信透明边界。
+- 2026-11-03：维护者指示实施后进入 `Accepted + In Progress`。已在 Core 实现可复用的 DNS/TCP/TLS/HTTP 分阶段探测、代理路径标注、并发/超时/重复次数限制与本地历史（可清理）；Addition 打包与原生诊断页面尚未交付，未标记为 `Implemented`。证据见 [ADR 0041–0049 实施记录](../adr-0041-0049-implementation.md)。

@@ -246,6 +246,113 @@
                         </Border>
                     </StackPanel>
                 </TabItem>
+
+                <TabItem Header="实例引擎">
+                    <Grid DataContext="{Binding Engine}" Margin="0,12,0,0">
+                        <StackPanel>
+                            <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <TextBlock Text="共享 Instance Inventory、用户快照与安全体检" Style="{StaticResource SectionText}" />
+                                    <TextBlock Text="扫描与快照均在本地完成；恢复通过实例事务执行，并默认先创建恢复前快照。"
+                                               FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                        <ComboBox ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedInstance}"
+                                                  DisplayMemberPath="DisplayName" Width="300" />
+                                        <Button Content="扫描资源" Command="{Binding ScanInventoryCommand}"
+                                                Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" />
+                                        <Button Content="刷新" Command="{Binding RefreshCommand}"
+                                                Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
+                                        <ProgressBar Width="110" Height="4" Margin="12,0,0,0" IsIndeterminate="True"
+                                                     Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Status}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding IdentityStatus}" FontSize="10" Margin="0,4,0,0"
+                                               TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <TextBlock Text="Inventory" Style="{StaticResource SectionText}" />
+                                    <TextBlock Text="{Binding InventorySummary}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <ListBox ItemsSource="{Binding Resources}" SelectedItem="{Binding SelectedResource}"
+                                             MaxHeight="220" Margin="0,8,0,0">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="2,2">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="70" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Kind}" FontSize="10"
+                                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock Text="{Binding RelativePath}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding CompatibilityText}" FontSize="9"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="2" Text="{Binding EnablementText}" FontSize="10"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <TextBlock Text="用户快照" Style="{StaticResource SectionText}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <ComboBox ItemsSource="{Binding Scopes}" SelectedItem="{Binding SelectedScope}" Width="120" />
+                                        <Button Content="创建快照" Command="{Binding CreateSnapshotCommand}"
+                                                Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" />
+                                        <Button Content="恢复选中" Command="{Binding RestoreSnapshotCommand}"
+                                                Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
+                                        <Button Content="删除选中" Command="{Binding DeleteSnapshotCommand}"
+                                                Style="{StaticResource DangerButton}" Margin="8,0,0,0" />
+                                    </StackPanel>
+                                    <ListBox ItemsSource="{Binding Snapshots}" SelectedItem="{Binding SelectedSnapshot}"
+                                             MaxHeight="150" Margin="0,8,0,0">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Summary}" FontSize="10" />
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource Card}">
+                                <StackPanel>
+                                    <TextBlock Text="安全检查" Style="{StaticResource SectionText}" />
+                                    <TextBlock Text="{Binding SecuritySummary}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <Button Content="执行本地安全扫描" Command="{Binding ScanSecurityCommand}"
+                                            Style="{StaticResource GhostButton}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+                                    <ListBox ItemsSource="{Binding Findings}" MaxHeight="160" Margin="0,8,0,0">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="2,2">
+                                                    <TextBlock FontSize="10">
+                                                        <Run Text="{Binding Level}" Foreground="{DynamicResource WarningBrush}" />
+                                                        <Run Text=" · " />
+                                                        <Run Text="{Binding RelativePath}" />
+                                                    </TextBlock>
+                                                    <TextBlock Text="{Binding Summary}" FontSize="9" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
             </TabControl>
         </StackPanel>
     </ScrollViewer>

@@ -24,6 +24,9 @@ public sealed class LaunchContext
     /// <summary>CLI 显式接受 Java 风险；UI 通过持久化确认记录表达同一语义。</summary>
     public bool AcceptJavaRisk { get; init; }
 
+    /// <summary>用户已明确接受当前实例的已知安全风险并选择继续本次启动。</summary>
+    public bool AcceptSecurityRisk { get; init; }
+
     public JavaRuntime? Java { get; set; }
 
     public JavaLaunchPlan? JavaPlan { get; set; }

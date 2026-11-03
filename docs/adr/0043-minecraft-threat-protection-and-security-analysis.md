@@ -1,7 +1,7 @@
 # ADR 0043：Minecraft 威胁防护与安全分析架构
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Accepted
+- Implementation: In Progress
 - Date: 2026-11-03
 - Scope: ECL 管理的 Minecraft 文件、实例、整合包及由 ECL 启动的 Minecraft/Java 进程的本地安全分析与启动前风险提示
 - Related: [ADR 0012：整合包归档提取安全边界](0012-modpack-archive-extraction-boundary.md)、[ADR 0015：按进程隔离的游戏日志会话与诊断证据](0015-process-scoped-game-log-sessions-and-diagnostics.md)、[ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033：本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md)、[ADR 0034：ECL 自身完整性与可恢复安装架构](0034-ecl-self-integrity-and-recovery.md)、[ADR 0042：实例文件管理器与崩溃报告工作流](0042-instance-file-explorer-and-crash-report-workflow.md)
@@ -243,3 +243,4 @@ Threat Assessment 负责检测、分级和提供证据；Launch Authorization �
 ## 修订记录
 
 - 2026-11-03：首次提出 ECL 内部 Minecraft 威胁防护架构，明确手动扫描优先、必要工作流触发检查、启动前风险提示、用户风险接受记录、风险升级重新确认，以及不扩展为 Windows 通用杀毒软件。
+- 2026-11-03：维护者指示实施后进入 `Accepted + In Progress`。已实现分阶段静态扫描（哈希/归档结构/脚本与字节码特征）、证据分级、可恢复隔离、启动前风险门控、风险接受记录与内容变化后重新提示；安全中心原生 UI、威胁知识库分发与签名/运行时证据仍待完善。证据见 [ADR 0041–0049 实施记录](../adr-0041-0049-implementation.md)。

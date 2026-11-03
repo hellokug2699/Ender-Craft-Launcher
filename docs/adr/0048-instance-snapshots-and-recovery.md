@@ -1,7 +1,7 @@
 # ADR 0048：实例快照与恢复架构
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Accepted
+- Implementation: Implemented
 - Date: 2026-11-03
 - Scope: 用户主动快照、事务前态保护、内容寻址存储、差异识别、恢复与保留策略
 - Related: [ADR 0018：Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md)、[ADR 0027：原生 C# 世界分析与编辑引擎](0027-native-world-engine.md)、[ADR 0045：原生 Instance Engine 架构与能力边界](0045-native-instance-engine-architecture.md)、[ADR 0046：实例稳定身份与元数据模型](0046-instance-identity-and-metadata.md)、[ADR 0047：实例变更事务与并发控制](0047-instance-transactions-and-concurrency-control.md)
@@ -121,3 +121,4 @@ ECL 可以提供数量、时间或空间上限建议，但默认不得静默删�
 ## 修订记录
 
 - 2026-11-03：建立用户快照与事务恢复分离、底层存储复用及事务化恢复提案。
+- 2026-11-03：维护者指示实施后进入 `Accepted + Implemented`。已实现内容寻址对象存储、清单/哈希/范围、创建中断标记、完整性校验、差异比较、事务化恢复（默认先创建恢复前快照）、删除与显式孤立对象清理；世界快照在 `session.lock` 存在时默认拒绝。恢复后身份保留与并行副本克隆仍由实例身份/克隆 API 组合完成，未做独立快照分支 UI。证据见 [ADR 0041–0049 实施记录](../adr-0041-0049-implementation.md)。

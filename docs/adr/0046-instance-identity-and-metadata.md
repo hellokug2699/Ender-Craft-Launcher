@@ -1,7 +1,7 @@
 # ADR 0046：实例稳定身份与元数据模型
 
-- Decision: Proposed
-- Implementation: Not Started
+- Decision: Accepted
+- Implementation: Implemented
 - Date: 2026-11-03
 - Scope: InstanceId、实例元数据、路径变化、迁移、克隆、外部实例关联与身份恢复
 - Related: [ADR 0018：Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md)、[ADR 0023：多实例来源目录登记与统一扫描](0023-multi-root-instance-discovery.md)、[ADR 0045：原生 Instance Engine 架构与能力边界](0045-native-instance-engine-architecture.md)
@@ -126,3 +126,4 @@ ECL 本地数据目录保存实例身份映射、路径历史、来源关系、�
 ## 修订记录
 
 - 2026-11-03：建立稳定实例身份与轻量元数据提案，明确迁移保留身份、克隆生成新身份及冲突处理原则。
+- 2026-11-03：维护者指示实施后进入 `Accepted + Implemented`。已实现 `.ecl/instance.json` 标记、本地注册表、路径变化重新定位、克隆新身份、外部只读实例本地锚点、重复身份/路径冲突检测与写操作暂停；单元测试覆盖移动、克隆、冲突与外部登记。真机接管与跨 ECL 安装迁移仍待实机验证，故未标记为 `Verified`。证据见 [ADR 0041–0049 实施记录](../adr-0041-0049-implementation.md)。

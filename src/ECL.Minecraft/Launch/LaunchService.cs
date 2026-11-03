@@ -19,6 +19,7 @@ public interface ILaunchService
         string instanceId,
         bool dryRun,
         bool acceptJavaRisk,
+        bool acceptSecurityRisk = false,
         CancellationToken cancellationToken = default);
 }
 
@@ -57,12 +58,13 @@ public sealed class LaunchService : ILaunchService
         string instanceId,
         bool dryRun,
         CancellationToken cancellationToken = default) =>
-        LaunchAsync(instanceId, dryRun, acceptJavaRisk: false, cancellationToken);
+        LaunchAsync(instanceId, dryRun, acceptJavaRisk: false, acceptSecurityRisk: false, cancellationToken);
 
     public async Task<LaunchReport> LaunchAsync(
         string instanceId,
         bool dryRun,
         bool acceptJavaRisk,
+        bool acceptSecurityRisk = false,
         CancellationToken cancellationToken = default)
     {
         var total = Stopwatch.StartNew();
@@ -147,6 +149,7 @@ public sealed class LaunchService : ILaunchService
             Settings = _settings,
             DryRun = dryRun,
             AcceptJavaRisk = acceptJavaRisk,
+            AcceptSecurityRisk = acceptSecurityRisk,
         };
 
         var results = new List<LaunchStepResult>();

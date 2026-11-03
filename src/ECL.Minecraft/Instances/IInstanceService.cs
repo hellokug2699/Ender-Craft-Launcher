@@ -57,4 +57,21 @@ public interface IInstanceService
         CancellationToken cancellationToken = default);
 
     Task TouchLastPlayedAsync(string instanceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 把实例重新关联到新目录，保留 InstanceId。目标目录必须存在，且其中的身份标记（若有）必须属于同一实例；
+    /// 不会移动文件或静默接受身份冲突。
+    /// </summary>
+    Task<Result<GameInstance>> RelocateAsync(
+        string instanceId,
+        string newGameDirectory,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 克隆为独立实例：复制游戏内容并生成新的 InstanceId，不继承事务锁、会话或活动状态。
+    /// </summary>
+    Task<Result<GameInstance>> CloneAsync(
+        string sourceInstanceId,
+        string name,
+        CancellationToken cancellationToken = default);
 }

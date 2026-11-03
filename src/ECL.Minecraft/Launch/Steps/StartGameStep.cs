@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.Core.Localization;
+using Ecl.Minecraft.Performance;
 using Ecl.Sessions;
 using Microsoft.Extensions.Logging;
 
@@ -9,6 +10,7 @@ namespace Ecl.Minecraft.Launch.Steps;
 internal sealed class StartGameStep(
     IProcessLauncher processLauncher,
     IGameSessionService sessions,
+    IPerformanceMonitorService performanceMonitor,
     ILocalizer localizer,
     ILogger<StartGameStep> logger) : ILaunchStep
 {
@@ -85,6 +87,16 @@ internal sealed class StartGameStep(
                 context.Instance.Id,
                 sessionId);
             context.ProcessId = processId;
+
+            try
+            {
+                // ADR 0041：进程启动后开始低开销健康监控；监控失败不得影响游戏进程。
+                performanceMonitor.Start(context.Instance.Id, processId, context.GameDirectory);
+            }
+            catch (Exception monitorException) when (monitorException is not OutOfMemoryException)
+            {
+                logger.LogWarning(monitorException, "实例 {InstanceId} 性能监控启动失败；游戏进程继续运行。", context.Instance.Id);
+            }
 
             return Task.FromResult(new LaunchStepResult(
                 Id,
