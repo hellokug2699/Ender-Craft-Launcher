@@ -178,3 +178,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0039 Application Runtime Lifecycle and Graceful Shutdown](0039-application-runtime-lifecycle-and-graceful-shutdown.md) | Accepted | Implemented | 应用运行时生命周期与优雅关闭 |
 | [0040 原版工具集作为独立官方 Addition](0040-vanilla-toolkit-addition.md) | Accepted | In Progress | 原版查询、模拟、计算与本地资源解析 |
 | [0041 Minecraft 性能监控与性能分析架构](0041-minecraft-performance-monitoring-and-profiling-architecture.md) | Proposed | Not Started | 性能监控、卡死检测、Profiler 与诊断联动 |
+| [0042 Instance File Explorer and Crash Report Workflow](0042-instance-file-explorer-and-crash-report-workflow.md) | Proposed | Not Started | 实例文件浏览、崩溃报告自动诊断与文件导出 |
