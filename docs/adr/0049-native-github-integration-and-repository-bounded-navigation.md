@@ -10,9 +10,9 @@
 
 ECL 希望在启动器内提供项目动态和社区协作入口，使用户无需离开 ECL 即可查看项目更新日志、Release、公开 Issues 和 Discussions，并使用 ECL 原生表单提交 Bug Report、Feature Request 或 Issue 评论。
 
-该功能是一个通过 Additions 分发的 GitHub 项目中心 Feature Addition。ECL 随启动器提供原生功能入口、页面框架、未安装提示和 Addition 管理体验；GitHub 项目中心的具体领域能力由独立版本化的 Feature Addition 提供。页面、导航、表单、Markdown 内容和状态均使用 ECL 原生 UI 呈现，GitHub 作为远程数据与协作后端，通过 GitHub API 提供数据并接受用户明确发起的写入操作。
+该功能是一个通过 Additions 分发的 GitHub 项目中心 Feature Addition。ECL 随启动器提供原生功能入口、页面框架、未安装提示和 Addition 管理体验；GitHub 项目中心的具体领域能力由独立版本化的 Feature Addition 提供。所有页面、导航、表单、Markdown 内容和状态均由 ECL 原生 UI 组件渲染，不嵌入或打开 GitHub 网页。GitHub 仅作为远程数据与协作后端，通过 GitHub API 提供数据并接受用户明确发起的写入操作。
 
-项目需要用户授权以用户身份提交 Issue 和评论，但不应因此获得用户其他仓库、代码、账户或组织的广泛访问能力。导航也必须限制在当前配置的 ECL 公共仓库内，避免通过 Issue 正文、评论、Release Notes 或其他内容跳转到任意仓库或外部网站。
+项目需要用户授权以用户身份提交 Issue 和评论，但不应因此获得用户其他仓库、代码、账户或组织的广泛访问能力。内容中的 GitHub 引用应解析为 ECL 内部的原生资源路由，且只能解析到当前配置的 ECL 公共仓库；不提供网页浏览或外部网页跳转能力。
 
 ## 决策
 
@@ -27,12 +27,12 @@ GitHub Addition 提供版本化、受控的领域能力接口，至少包含：
 - Release Provider：读取 Release、预发布版本和更新说明；
 - Issue Provider：读取 Issue、评论和状态，并按允许的操作创建 Issue、发表评论；
 - Discussion Provider：只读读取公开 Discussions、分类和回复；
-- Repository Navigation Policy：解析和校验仓库内导航目标；
-- Markdown Renderer：安全渲染 GitHub 返回的 Markdown；
+- Native Resource Resolver：将 GitHub 引用解析为固定仓库内受支持的原生资源目标；
+- Markdown Renderer：将 GitHub 返回的 Markdown 安全渲染为 ECL 原生内容；
 - Authentication Manager：管理 GitHub App 用户授权及令牌生命周期；
 - Cache / Rate Limit Manager：处理分页、缓存、ETag、速率限制和错误恢复。
 
-原生 UI 宿主负责页面布局、列表、详情、筛选、Issue Composer、Comment Composer、确认和错误反馈。Addition 提供数据访问、授权流程适配、领域操作和仓库导航策略；UI 不直接拼接任意 GitHub API 请求，也不持有 App 私钥或其他长期应用机密。
+原生 UI 宿主负责页面布局、列表、详情、筛选、Issue Composer、Comment Composer、确认和错误反馈。Addition 提供数据访问、授权流程适配、领域操作和原生资源解析能力；UI 不直接拼接任意 GitHub API 请求，也不持有 App 私钥或其他长期应用机密。
 
 ### 2. GitHub App 作为 ECL 的应用身份，使用用户授权令牌执行用户操作
 
@@ -83,7 +83,7 @@ GitHub App 的权限是平台授予的能力上限，不等于 ECL 必须暴露�
 
 Issue 创建与编辑共用同一个原生 Issue Composer，编辑模式预填现有内容；评论使用独立的 Comment Composer。提交服务统一处理草稿、验证、授权失败、速率限制、重复提交和结果反馈。
 
-### 4. 仓库范围固定，权限与导航边界相互独立
+### 4. 仓库范围固定，权限与资源访问边界相互独立
 
 初始集成只面向 ECL 公共仓库 **hellokug2699/Ender-Craft-Launcher**。私有 Core 仓库 **hellokug2699/Ender-Craft-Launcher-Core** 不属于此集成的目标仓库，不得因用户授权而自动纳入。
 
@@ -91,15 +91,15 @@ Issue 创建与编辑共用同一个原生 Issue Composer，编辑模式预填�
 
 - **GitHub 授权边界**：GitHub App 实际获得的 API 权限和用户可访问资源；
 - **ECL 产品边界**：ECL UI 只展示和操作固定目标仓库；
-- **导航边界**：用户只能在固定目标仓库内部跳转。
+- **原生资源边界**：ECL 只解析和展示固定目标仓库内明确支持的资源类型。
 
 即使令牌在 GitHub 平台上具备更广的公开读取能力，ECL 也不得因此开放其他仓库的浏览入口。仓库身份必须使用规范化后的 owner 与 repository，并在 API 响应中再次核对；不能仅信任页面路径、链接文本或 API 返回的可变显示名称。
 
-### 5. 实现原生页面的仓库内导航策略
+### 5. 将 GitHub 引用解析为原生资源路由
 
-GitHub 内容中的链接由原生 UI 解析并交给 Addition 提供的统一 Repository Navigation Policy。该策略以固定仓库身份和允许的资源类型作为边界，由原生应用路由与 API 数据驱动。
+ECL 不加载 GitHub HTML 页面，也不使用 WebView 或浏览器控件。Markdown 中的 GitHub 链接、资源引用和页面内关联项由原生 UI 解析，并交给 Addition 提供的 Native Resource Resolver，转换为 ECL 内部的类型化资源路由，再通过 GitHub API 获取对应数据。
 
-允许的目标仅限于 **github.com/hellokug2699/Ender-Craft-Launcher** 仓库下受支持的页面和资源，例如：
+允许解析的资源仅限于固定仓库 **hellokug2699/Ender-Craft-Launcher** 下已实现原生详情视图的资源类型，例如：
 
 - Issues 及其评论锚点；
 - Pull Requests；
@@ -108,22 +108,22 @@ GitHub 内容中的链接由原生 UI 解析并交给 Addition 提供的统一 R
 - Releases；
 - Discussions 及其分类和主题。
 
-允许的仓库内链接由 ECL 原生页面打开，不离开 ECL。链接解析必须验证 HTTPS、规范化 hostname、owner、repository、路径结构和允许的资源类型。不得使用字符串包含或前缀匹配来判断仓库归属。
+解析结果必须是明确的资源类型和资源标识（例如 Issue 编号、Commit SHA、Release 标识或仓库内文件路径），并在调用 API 前核对固定仓库身份。不得将 Markdown 中的 URL 直接作为网络请求目标，也不得使用字符串包含或前缀匹配判断仓库归属。
 
-以下目标一律拦截，不执行跳转：
+以下引用不映射为可导航的原生资源：
 
 - 其他 GitHub 仓库，包括同一 owner 下的其他仓库；
-- GitHub 组织、用户、搜索、全站页面等不属于目标仓库的页面；
-- GitHub 之外的任何网站；
-- 非 HTTPS、危险协议、自定义协议及无法安全解析的地址。
+- GitHub 组织、用户、搜索等非目标仓库资源；
+- GitHub 之外的网站、非资源链接及无法识别的引用；
+- 不支持的资源类型或无法确认归属的资源。
 
-被拦截时显示 ECL 原生提示弹窗，说明目标不在允许的仓库范围内，并展示经过安全编码和长度限制的目标地址。用户只能关闭提示；不提供继续访问或临时放行操作。
+无法解析的引用以不可点击文本呈现，或显示 ECL 原生的“不支持的仓库资源”提示；不尝试打开网页，也不提供临时放行入口。
 
-相对链接必须相对于当前仓库页面正确解析。URL 中的用户名信息段、端口、大小写、百分号编码、点段、重复分隔符、尾随点和路径穿越形式均不得绕过校验。路径解析后必须确认 owner/repository 与固定目标完全一致。
+相对路径和 Markdown 引用必须结合当前资源上下文解析，并在规范化后确认其仓库归属。路径穿越、编码歧义、重复分隔符或无法唯一解析的引用必须拒绝映射。
 
-### 6. 所有链接入口和重定向都必须执行导航校验
+### 6. 所有原生资源入口必须执行统一解析
 
-导航检查不能只绑定某个页面控件的点击事件。以下来源必须经过同一策略：
+资源解析不能只绑定某个页面控件的点击事件。以下来源必须经过同一解析器：
 
 - Markdown 正文、评论、Release Notes；
 - Issue、PR、Commit、文件和 Discussion 页面中的链接；
@@ -132,16 +132,16 @@ GitHub 内容中的链接由原生 UI 解析并交给 Addition 提供的统一 R
 - API 返回的 html_url、url 等链接字段；
 - 任何未来增加的富文本或预览组件。
 
-所有重定向必须逐跳检查，不能先访问目标再检查最终 URL。若 API 请求返回用于页面导航的重定向或规范链接，Addition 必须在交给原生导航宿主前校验目标仓库身份。无法可靠验证的链接一律拒绝。
+ECL 不跟随 Markdown 或 API 内容提供的任意网页重定向。API 请求目标由 Addition 根据固定仓库身份和受控 endpoint 构造；若 API 响应提供关联资源标识或链接，必须先解析并确认其资源类型与仓库身份，再交给原生路由。
 
-GitHub API 数据与 GitHub HTML 页面地址必须区分。API 请求只能发往固定的 GitHub API 主机和由 Core 构造的固定仓库 endpoint；不得将页面提供的任意 URL 直接作为 API 请求目标。API 响应中的分页链接也必须验证主机、API 路径和仓库身份，禁止跟随到其他仓库或外部主机。
+所有 GitHub API 请求只能发往固定的 GitHub API 主机和由 Addition/Core 受控构造的目标仓库 endpoint；不得将 Markdown 链接、API 返回的任意 URL 或用户输入直接作为请求目标。分页使用受控的 endpoint 与参数构造，禁止跟随到其他仓库或外部主机。
 
 ### 7. GitHub 内容按不可信输入处理
 
 Issue、评论、Discussion、Release Notes、文件内容和 Markdown 均视为不可信远程输入。ECL 使用自己的 Markdown 渲染器和原生控件，不执行远程 HTML 或脚本。
 
 - 禁止脚本、任意 HTML、iframe、对象嵌入和远程 UI 注入。
-- 链接必须交由 Repository Navigation Policy 校验。
+- GitHub 资源引用必须交由 Native Resource Resolver 解析。
 - 默认不加载远程图片，避免第三方图片服务器获得用户连接元数据；如未来支持图片，必须单独设计来源策略和明确的隐私说明。
 - 不自动执行代码块、命令、附件或下载内容。
 - 对异常长文本、嵌套结构、图片尺寸和解析耗时设置资源上限。
@@ -211,7 +211,7 @@ ECL 不收集或上传遥测、使用统计、设备标识或与本次提交无�
 - GitHub App 的细粒度权限比传统 OAuth App 更符合最小权限原则。
 - 公开读取不依赖用户登录；只有写入操作需要授权。
 - 用户授权范围不包含代码、仓库管理、组织或账户管理权限。
-- 通过固定仓库身份和统一导航策略，远程内容无法将用户带到其他仓库或外部网站。
+- 通过固定仓库身份和统一原生资源解析，远程内容无法让 ECL 访问其他仓库或任意网络目标。
 - 本地优先的反馈流程让用户在提交前掌握完整内容。
 
 ### 代价与限制
@@ -220,7 +220,7 @@ ECL 不收集或上传遥测、使用统计、设备标识或与本次提交无�
 - Issues: Write 是资源级权限，不等于仅允许创建 Issue；ECL 必须通过 Core API 操作白名单进一步限制能力。
 - Discussions 读取与 Issue 评论使用不同的 API 能力和权限，需分别验证 REST / GraphQL 端点的实际权限要求。
 - GitHub API 速率限制、分页和服务可用性会影响数据刷新。
-- 严格仓库边界意味着用户无法从 ECL 直接打开外部引用或其他仓库的链接。
+- 严格仓库边界意味着 ECL 不会将外部引用或其他仓库引用转换为可导航资源。
 - GitHub App 权限变更可能要求安装者重新批准；增加权限必须重新评审并说明原因。
 
 ## 验收标准
@@ -239,10 +239,10 @@ ECL 不收集或上传遥测、使用统计、设备标识或与本次提交无�
 - GitHub 项目中心的领域实现作为独立 Feature Addition 分发；未安装时原生入口仍显示说明和安装提示，安装/更新失败不影响普通启动。
 - Issue 提交前显示完整内容和目标仓库，并要求用户明确确认。
 - 不自动附加日志、存档、实例文件、设备标识或其他本地数据。
-- 导航允许目标仓库内受支持的 Issue、PR、Commit、Branch、Tag、文件、目录、Release 和 Discussion 页面。
-- 其他仓库、GitHub 非仓库页面、外部网站、非 HTTPS 和危险协议均被拦截，并显示 ECL 原生提示；没有继续访问或临时放行入口。
-- URL 规范化、相对链接、编码、点段、用户名信息段、大小写、端口和重定向测试不能绕过仓库边界。
-- 所有 Markdown、评论、Release Notes 和 API 返回链接均经过统一导航策略。
+- 原生资源解析仅允许目标仓库内已实现原生视图的 Issue、PR、Commit、Branch、Tag、文件、目录、Release 和 Discussion 资源。
+- 其他仓库、非目标仓库资源、外部网站和不支持的资源引用不会被解析为可导航目标；ECL 不打开网页或跟随内容提供的任意重定向。
+- Markdown 相对引用、路径规范化、编码歧义、路径穿越和资源归属测试不能绕过固定仓库边界。
+- 所有 Markdown、评论、Release Notes 和 API 返回的资源引用均经过统一原生资源解析器。
 - API endpoint 和分页链接只允许固定 GitHub API 主机及目标仓库路径。
 - Markdown 不执行脚本或任意 HTML，默认不加载远程图片。
 - 缓存隔离、分页、速率限制和离线状态均有明确处理。
@@ -250,6 +250,6 @@ ECL 不收集或上传遥测、使用统计、设备标识或与本次提交无�
 
 ## 修订记录
 
-- 2026-11-03：首次提出 ECL 原生 GitHub 项目中心；确定页面由 ECL 渲染、GitHub 提供数据；确定 GitHub App 用户授权、最小权限、固定仓库边界、受限导航和本地优先的 Issue 反馈流程。
+- 2026-11-03：首次提出 ECL 原生 GitHub 项目中心；确定所有内容由 ECL 原生渲染、GitHub 仅提供数据；确定 GitHub App 用户授权、最小权限、固定仓库边界、原生资源解析和本地优先的 Issue 反馈流程。
 - 2026-11-03：根据维护者讨论修正 Issue 权限模型：作者可编辑和关闭自己的 Issue，普通用户不能操作他人的 Issue，维护者按 GitHub 服务端实际角色授权；评论编辑/删除、Issue 删除及普通用户仓库管理操作仍不开放。
-- 2026-11-03：明确 GitHub 项目中心作为 Feature Addition 独立分发；ECL 原生提供入口、页面宿主与未安装提示，Addition 提供 GitHub 领域能力。明确本功能由 Feature Addition 分发，使用 ECL 原生页面和仓库内导航策略。
+- 2026-11-03：明确 GitHub 项目中心作为 Feature Addition 独立分发；ECL 原生提供入口、页面宿主与未安装提示，Addition 提供 GitHub 领域能力。明确不嵌入网页，所有页面与内容均由 ECL 原生组件渲染，GitHub 引用转换为受控的原生资源路由。
