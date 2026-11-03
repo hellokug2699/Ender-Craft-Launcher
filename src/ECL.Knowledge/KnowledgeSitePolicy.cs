@@ -223,6 +223,16 @@ public static class KnowledgeSitePolicy
             return false;
         }
 
+        // 单斜杠开头的站内相对路径不是绝对 URL。部分平台的 Uri 实现会将
+        // /path 解释为 file: URI，随后错误地报告为“不支持的协议”；在 URI
+        // 解析前明确归类为 URL 语法错误。双斜杠协议相对地址仍交由协议校验拒绝。
+        if (url.StartsWith('/', StringComparison.Ordinal) &&
+            !url.StartsWith("//", StringComparison.Ordinal))
+        {
+            error = InvalidUrl("不接受相对 URL；必须提供绝对 HTTPS 地址。", url);
+            return false;
+        }
+
         if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed))
         {
             error = InvalidUrl("地址不是可解析的绝对 URL。", url);
