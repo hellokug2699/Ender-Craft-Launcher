@@ -51,6 +51,7 @@
 - 安装器：包大小+SHA-256 → 安全解包 → `addition.json` 逐文件校验 → staging 原子移动到版本目录 → 状态原子写入；更新保留上一版本；失败删除新版本并保留原可用版本；卸载检查依赖并把包目录移入隔离区后再删状态，保留 `additions/data/<id>` 用户数据。
 - 状态：`Available/Downloading/Installing/Installed/Enabled/UpdateAvailable/Incompatible/Broken` 与运行时 `Loaded` 分开；安装不等于启用或加载。
 - 按需加载：`IAdditionModule` + 可回收 `AssemblyLoadContext`；只传递最小 `AdditionHostContext`（ID、版本、Core API、数据目录），不暴露启动器对象/UI。
+- 原生入口：主窗口新增「工具箱」页；「扩展」标签展示已安装/可安装、启用/禁用、卸载，并在配置 `ECL_ADDITIONS_CATALOG` 时按需读取签名目录、预览依赖计划并安装。未安装时页面仍然存在并明确说明状态。
 
 验证：
 
@@ -72,6 +73,7 @@
 - `DiagnosticEngine`：规则按正则/必需片段/最小次数匹配，产出证据链（文件、行号、摘录）、规则版本、知识库版本、置信度（直接证据/高度疑似/无法确定）、严重度、解释与建议；`disabled` 规则不参与；仅凭“最后一行是某异常”不会自动判定根因。
 - `DiagnosticHistoryStore`：本地 JSON 历史，原子写入、schema 版本、损坏容错，报告保留当时使用的知识库版本与实例环境摘要；不保存不必要的原始日志副本。
 - 全部分析在本地完成，无网络调用、无上传路径。
+- 原生入口：「工具箱 / 诊断」标签选择实例，读取本地 latest.log 与 crash-reports，调用 `DiagnosticEngine` 展示事件/崩溃/结论数量与置信度；知识库未安装时明确说明只做结构化解析、不输出猜测性根因。
 
 验证：
 
@@ -131,6 +133,7 @@
 已落地：
 
 - 本地衣柜 `WardrobeStore`：PNG 导入前校验，按 SHA-256 去重，索引 `index.json` 原子写入；索引损坏时返回空索引与警告并可继续导入；删除前通过引用检查回调拒绝删除仍在使用的资源；账户/实例数据与资源分离，不保存令牌。
+- 原生入口：「工具箱 / 衣柜」标签支持导入 PNG、预览、收藏与删除；删除确认后不会触碰账户或实例配置。
 - 独立 PNG 校验/解码器：签名、CRC、IHDR、文件/尺寸/像素上限、zlib 解码与反滤波；64x64 皮肤按外侧手臂列透明度做 Classic/Slim 启发式，无法确定返回 Unknown 并解释“模型本质是账户元数据”。
 - 能力模型：`AppearanceCapability` 标志与 `AppearanceCapabilityReport`；`AppearanceOperationStatus` 区分 Succeeded/Unsupported/Unauthorized/NetworkFailed/InvalidInput/RedirectRejected/ServerRejected。离线 Provider 只承诺本地能力；Microsoft Provider 不重复 OAuth、不保存第二份令牌，在逐项验证外观接口前所有账户外观操作返回 Unsupported。
 - Authlib 材质协议：解析角色资料 `uploadableTextures` 分别得到 skin/cape 能力；严格 HTTPS、Bearer、`PUT/DELETE /api/user/profile/{uuid}/skin|cape`、multipart、model 仅用于皮肤且仅在明确选择时发送；上传前 PNG 校验；上传后重新读取资料并用 `RequestAccepted / ProfileUpdated / GameVerificationPending` 三阶段表达；错误信息脱敏，令牌不出现在消息/细节中。
@@ -185,6 +188,10 @@
 - 尚未发布首个 Vanilla Toolkit 扩展包与目录条目；工具页面、指令/附魔/矿石等数据域与跨版本比较未实现。
 - 资源解析尊重实例资源包优先级尚未实现；当前读取客户端 jar 原始纹理，UI 必须如实标注来源。
 - 首期仅原版规则；未提供模组规则支持。
+
+## 原生工具箱页面验证
+
+- 2026-11-03 UI 冒烟：设置 `ECL_START_PAGE=tools` 启动 ECL，通过 UI Automation 找到「工具箱」及「扩展 / 衣柜 / 诊断 / 知识浏览 / 原版工具」标签，成功切换到衣柜与诊断标签，进程保持运行且无未处理异常对话框。
 
 ## 验证与环境
 

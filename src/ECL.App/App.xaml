@@ -16,6 +16,11 @@
             <conv:LaunchStatusToBrushConverter x:Key="LaunchStatusBrush" />
             <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibility" />
             <conv:StringToVisibilityConverter x:Key="StringToVisibility" />
+            <conv:NullToVisibilityConverter x:Key="NullToVisibility" />
+
+            <DataTemplate DataType="{x:Type vm:ToolsViewModel}">
+                <views:ToolsView />
+            </DataTemplate>
 
             <DataTemplate DataType="{x:Type vm:HomeViewModel}">
                 <views:HomeView />

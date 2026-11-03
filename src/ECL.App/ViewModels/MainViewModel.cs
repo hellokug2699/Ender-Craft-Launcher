@@ -17,6 +17,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly LogSessionsViewModel _logSessions;
     private readonly InstancesViewModel _instances;
     private readonly StorageViewModel _storage;
+    private readonly ToolsViewModel _tools;
     private readonly InstanceDetailPageViewModel _instanceDetailPage;
     private bool _showingInstanceDetails;
 
@@ -47,6 +48,7 @@ public sealed partial class MainViewModel : ObservableObject
         SettingsViewModel settings,
         JavaManagementViewModel javaManagement,
         LogSessionsViewModel logSessions,
+        ToolsViewModel tools,
         AboutViewModel about,
         OperationCenterViewModel operationCenter,
         IAppPaths paths,
@@ -60,6 +62,7 @@ public sealed partial class MainViewModel : ObservableObject
         _logSessions = logSessions;
         _instances = instances;
         _storage = storage;
+        _tools = tools;
         _instanceDetailPage = new InstanceDetailPageViewModel(instances, mods);
         OperationCenter = operationCenter;
 
@@ -68,6 +71,7 @@ public sealed partial class MainViewModel : ObservableObject
             new NavItemViewModel("home", localizer.Get("nav.home"), home),
             new NavItemViewModel("download", localizer.Get("nav.download"), download),
             new NavItemViewModel("instances", localizer.Get("nav.instances"), instances),
+            new NavItemViewModel("tools", "工具箱", tools),
             new NavItemViewModel("storage", "存储与清理", storage),
             new NavItemViewModel("settings", localizer.Get("nav.settings"), settings),
             new NavItemViewModel("java", localizer.Get("nav.java"), javaManagement),
@@ -75,7 +79,9 @@ public sealed partial class MainViewModel : ObservableObject
             new NavItemViewModel("about", localizer.Get("nav.about"), about),
         ];
 
-        _selectedNavItem = NavItems[0];
+        _selectedNavItem = NavItems.FirstOrDefault(item =>
+                                string.Equals(item.Key, Environment.GetEnvironmentVariable("ECL_START_PAGE"), StringComparison.OrdinalIgnoreCase))
+                            ?? NavItems[0];
         _home.Navigate = NavigateTo;
         _home.OpenInstanceWorkspace = OpenSelectedInstanceWorkspace;
         _instances.GetModHealthSummary = _mods.GetHealthSummaryAsync;
@@ -145,6 +151,10 @@ public sealed partial class MainViewModel : ObservableObject
         await _download.InitializeAsync().ConfigureAwait(true);
         await _mods.InitializeAsync().ConfigureAwait(true);
         await _settings.InitializeAsync().ConfigureAwait(true);
+        if (SelectedNavItem.Page is ToolsViewModel tools)
+        {
+            await tools.ActivateAsync().ConfigureAwait(true);
+        }
     }
 
     partial void OnSelectedNavItemChanged(NavItemViewModel value)
@@ -165,6 +175,9 @@ public sealed partial class MainViewModel : ObservableObject
                 break;
             case StorageViewModel storage:
                 _ = storage.ActivateAsync();
+                break;
+            case ToolsViewModel tools:
+                _ = tools.ActivateAsync();
                 break;
         }
     }

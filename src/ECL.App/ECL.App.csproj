@@ -20,6 +20,9 @@
     <ProjectReference Include="..\ECL.Minecraft\ECL.Minecraft.csproj" />
     <ProjectReference Include="..\ECL.Sessions\ECL.Sessions.csproj" />
     <ProjectReference Include="..\ECL.Operations\ECL.Operations.csproj" />
+    <ProjectReference Include="..\ECL.Additions\ECL.Additions.csproj" />
+    <ProjectReference Include="..\ECL.Wardrobe\ECL.Wardrobe.csproj" />
+    <ProjectReference Include="..\ECL.Diagnostics\ECL.Diagnostics.csproj" />
   </ItemGroup>
 
   <ItemGroup>

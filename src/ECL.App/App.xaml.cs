@@ -72,6 +72,10 @@ public partial class App : Application
             services.AddSingleton<SettingsViewModel>();
             services.AddSingleton<JavaManagementViewModel>();
             services.AddSingleton<LogSessionsViewModel>();
+            services.AddSingleton<AdditionsViewModel>();
+            services.AddSingleton<WardrobeViewModel>();
+            services.AddSingleton<DiagnosticsViewModel>();
+            services.AddSingleton<ToolsViewModel>();
             services.AddSingleton<IMemoryPressureMonitor, MemoryPressureMonitor>();
             services.AddSingleton<AboutViewModel>();
             services.AddSingleton<OperationCenterViewModel>();
