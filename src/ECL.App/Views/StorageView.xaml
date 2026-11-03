@@ -114,6 +114,11 @@
                                 Command="{Binding DeleteSelectedInstanceCommand}"
                                 Style="{StaticResource DangerButton}"
                                 IsEnabled="{Binding HasSelectedInstance}" />
+                        <Button Content="预览选中实例清理…"
+                                Command="{Binding PreviewSelectedInstanceCleanupCommand}"
+                                Style="{StaticResource GhostButton}"
+                                IsEnabled="{Binding CanCleanupSelected}"
+                                Margin="8,0,0,0" />
                         <TextBlock Text="{Binding InstanceDeletionStatus}"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    FontSize="10"
@@ -217,6 +222,11 @@
                                Foreground="{DynamicResource WarningBrush}"
                                FontSize="9"
                                Margin="0,10,0,0"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="请勿在实例目录中存放与 Minecraft 无关的重要个人文件。ECL 只保护界面明确列出的受支持类别；未知文件默认按用户数据处理。"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="9"
+                               Margin="0,6,0,0"
                                TextWrapping="Wrap" />
                 </StackPanel>
             </Border>

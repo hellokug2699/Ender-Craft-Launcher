@@ -204,3 +204,7 @@ Biomes O' Plenty 等模组可以作为群系识别与配置解析的测试对象
 
 - [ADR 0026：实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md)
 - [ADR 0027：原生 C# 世界分析与编辑引擎](0027-native-world-engine.md)
+
+## 修订记录
+
+- 2026-11-03：完成度扫描确认仍为 Proposed + Not Started。主窗口「工具箱 / 世界工具」提供显式占位：不根据 Seed 或版本伪造生成结果；正式实现需先完成 ADR 评审与可复现测试样本。

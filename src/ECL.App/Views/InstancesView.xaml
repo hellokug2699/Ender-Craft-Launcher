@@ -109,41 +109,50 @@
                     <ItemsControl ItemsSource="{Binding SourceGroups}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border Background="{DynamicResource SurfaceAltBrush}"
-                                        BorderBrush="{DynamicResource BorderSoftBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="8"
-                                        Padding="12,8"
-                                        Margin="0,0,0,8">
-                                    <StackPanel>
-                                        <Grid>
+                                <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}"
+                                          Background="{DynamicResource SurfaceAltBrush}"
+                                          BorderBrush="{DynamicResource BorderSoftBrush}"
+                                          BorderThickness="1"
+                                          Margin="0,0,0,8"
+                                          Padding="4">
+                                    <Expander.Header>
+                                        <Grid Margin="4,2">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="{Binding Name}" Style="{StaticResource EmphasisText}" />
-                                            <TextBlock Grid.Column="1" Text="{Binding Status}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Name}" Style="{StaticResource EmphasisText}" />
+                                                <TextBlock Text="{Binding Path}" Foreground="{DynamicResource TextMutedBrush}"
+                                                           FontSize="9" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding CountText}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="9" VerticalAlignment="Center" Margin="10,0,0,0" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Status}"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       FontSize="9" VerticalAlignment="Center" Margin="10,0,8,0" />
                                         </Grid>
-                                        <TextBlock Text="{Binding Path}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" TextTrimming="CharacterEllipsis" />
-                                        <ItemsControl ItemsSource="{Binding Instances}" Margin="0,6,0,0">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Grid Margin="0,2">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="Auto" />
-                                                        </Grid.ColumnDefinitions>
-                                                        <StackPanel Orientation="Horizontal">
-                                                            <TextBlock Text="{Binding Name}" FontSize="10" />
-                                                            <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="8,0,0,0" />
-                                                        </StackPanel>
-                                                        <TextBlock Grid.Column="1" Text="{Binding Availability}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
-                                                    </Grid>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </StackPanel>
-                                </Border>
+                                    </Expander.Header>
+                                    <ItemsControl ItemsSource="{Binding Instances}" Margin="8,4,8,8">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,2">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="{Binding Name}" FontSize="10" />
+                                                        <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="8,0,0,0" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Availability}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Expander>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

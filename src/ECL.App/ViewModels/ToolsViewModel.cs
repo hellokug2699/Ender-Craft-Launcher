@@ -45,6 +45,14 @@ public sealed partial class ToolsViewModel : ObservableObject
         "原版工具集是独立 Addition，数据包尚未安装。数据模板位于 additions/vanilla-toolkit/data-template/；"
         + "安装官方数据包后才能进行 Registry 查询等离线工具操作。";
 
+    public string WorldAnalysisStatus =>
+        "世界种子与生成规则分析（ADR 0028）仍是 Proposed，尚未实现。"
+        + "当前不会根据 Seed 或版本信息伪造生成结果；请使用只读世界地图、NBT 浏览与诊断证据。";
+
+    public string WorldEditingStatus =>
+        "NBT 编辑、区块修复与诊断修复工作流（ADR 0027 / 0030）尚未完成。"
+        + "当前只提供只读 NBT 树、地图与诊断标记；不会自动修改存档，也不提供未经备份的破坏性修复。";
+
     public async Task ActivateAsync()
     {
         await Additions.ActivateAsync().ConfigureAwait(true);

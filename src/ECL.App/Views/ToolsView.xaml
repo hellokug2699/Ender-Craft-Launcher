@@ -227,6 +227,25 @@
                         </StackPanel>
                     </Border>
                 </TabItem>
+
+                <TabItem Header="世界工具">
+                    <StackPanel Margin="0,12,0,0">
+                        <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="世界生成分析（规划中）" Style="{StaticResource SectionText}" />
+                                <TextBlock Text="{Binding WorldAnalysisStatus}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="NBT 编辑与修复（规划中）" Style="{StaticResource SectionText}" />
+                                <TextBlock Text="{Binding WorldEditingStatus}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </TabItem>
             </TabControl>
         </StackPanel>
     </ScrollViewer>

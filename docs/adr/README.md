@@ -148,19 +148,19 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0009 CurseForge API 集成与凭据注入](0009-curseforge-integration.md) | Superseded | N/A | CurseForge 客户端集成 |
 | [0010 CurseForge 改由私有代理转发](0010-curseforge-private-proxy.md) | Accepted | Verified | 私有代理边界 |
 | [0011 全局下载任务与页面解耦](0011-download-task-boundary.md) | Superseded | N/A | 下载任务模型 |
-| [0012 整合包归档提取安全边界](0012-modpack-archive-extraction-boundary.md) | Accepted | In Progress | 归档安全 |
-| [0013 分支驱动的版本与发布频道](0013-branch-based-versioning-and-release-channels.md) | Accepted | In Progress | 版本与发布 |
+| [0012 整合包归档提取安全边界](0012-modpack-archive-extraction-boundary.md) | Accepted | Implemented | 归档安全 |
+| [0013 分支驱动的版本与发布频道](0013-branch-based-versioning-and-release-channels.md) | Accepted | Implemented | 版本与发布 |
 | [0014 Java 运行时优先级与兼容性策略](0014-java-runtime-priority-and-compatibility-policy.md) | Accepted | Verified | Java 选择与兼容性 |
 | [0015 按进程隔离的游戏日志会话与诊断证据](0015-process-scoped-game-log-sessions-and-diagnostics.md) | Accepted | Verified | 日志与诊断 |
 | [0016 独立 Bootstrapper 与安全部署边界](0016-independent-bootstrapper-and-safe-deployment-boundaries.md) | Accepted | Verified | 更新与部署 |
 | [0017 图形化首次安装程序](0017-graphical-first-run-installer.md) | Accepted | Verified | 安装器 |
-| [0018 Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage-location.md) | Accepted | Verified | 工作区与实例存储 |
+| [0018 Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md) | Accepted | Verified | 工作区与实例存储 |
 | [0019 内存压力下的进程保活与诊断连续性](0019-memory-pressure-process-survival-and-diagnostic-continuity.md) | Accepted | Verified | 进程生存与诊断 |
 | [0020 下载临时产物生命周期与失败清理](0020-download-artifact-lifecycle-and-cleanup.md) | Accepted | Implemented | 下载临时文件 |
 | [0021 WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md) | Proposed | In Progress | WPF 交互、统一操作确认与影响说明 |
-| [0022 存储空间分析与安全清理中心](0022-storage-analysis-and-safe-cleanup-center.md) | Proposed | In Progress | 存储分析与清理 |
+| [0022 存储空间分析与安全清理中心](0022-storage-analysis-and-safe-cleanup-center.md) | Accepted | Implemented | 存储分析与清理 |
 | [0023 多实例来源目录登记与统一扫描](0023-multi-root-instance-discovery.md) | Proposed | In Progress | 多实例发现 |
-| [0024 用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md) | Accepted | In Progress | 代码签名信任 |
+| [0024 用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md) | Accepted | Implemented | 代码签名信任 |
 | [0025 Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md) | Accepted | Implemented | 安装前完整性确认 |
 | [0026 实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md) | Accepted | Implemented | 实例工作台 |
 | [0027 原生 C# 世界分析与编辑引擎](0027-native-world-engine.md) | Accepted | In Progress | 世界引擎、NBT 编辑器、语义本地化与编辑校验 |

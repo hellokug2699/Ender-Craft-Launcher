@@ -2229,13 +2229,33 @@ public sealed record InstanceSourceItemViewModel(string Name, string GameVersion
     public string Availability => CanLaunch ? "ECL 托管" : "外部只读";
 }
 
-public sealed record InstanceSourceGroupViewModel(
-    string Name,
-    string Path,
-    string Status,
-    IReadOnlyList<InstanceSourceItemViewModel> Instances)
+public sealed partial class InstanceSourceGroupViewModel : ObservableObject
 {
+    public InstanceSourceGroupViewModel(
+        string name,
+        string path,
+        string status,
+        IReadOnlyList<InstanceSourceItemViewModel> instances)
+    {
+        Name = name;
+        Path = path;
+        Status = status;
+        Instances = instances;
+    }
+
+    public string Name { get; }
+
+    public string Path { get; }
+
+    public string Status { get; }
+
+    public IReadOnlyList<InstanceSourceItemViewModel> Instances { get; }
+
     public string CountText => $"{Instances.Count} 个实例";
+
+    /// <summary>折叠只影响展示，不改变实例选择、扫描状态或清理目标。</summary>
+    [ObservableProperty]
+    private bool _isExpanded = true;
 }
 
 public sealed class InstanceItemViewModel

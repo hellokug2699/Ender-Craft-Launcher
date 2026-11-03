@@ -133,8 +133,13 @@ public sealed partial class StorageViewModel : ObservableObject
 
     public bool HasSelectedInstance => SelectedInstance is not null;
 
-    partial void OnSelectedInstanceChanged(StorageInstanceItemViewModel? value) =>
+    public bool CanCleanupSelected => SelectedInstance is not null;
+
+    partial void OnSelectedInstanceChanged(StorageInstanceItemViewModel? value)
+    {
         OnPropertyChanged(nameof(HasSelectedInstance));
+        OnPropertyChanged(nameof(CanCleanupSelected));
+    }
 
     [ObservableProperty]
     private string _status = "点击“扫描”统计 ECL、下载缓存、Java Runtime、工作区与已登记实例来源。";
@@ -310,6 +315,41 @@ public sealed partial class StorageViewModel : ObservableObject
                 ? $"可释放约 {FormatBytes(_preview.TotalBytes)}，共 {_preview.Items.Count} 项；跳过 {_preview.SkippedCount} 项（活动下载或未到保留期）。"
                 : "没有符合保留期与白名单的清理项。";
             Status = "预览不会删除任何文件。世界存档、模组、配置、资源包与未知文件不在清理范围。";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task PreviewSelectedInstanceCleanupAsync()
+    {
+        if (IsBusy || SelectedInstance is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            _preview = await _cleanup.PreviewAsync(new StorageCleanupRequest
+            {
+                IncludeDownloadParts = false,
+                IncludeRebuildableCache = false,
+                InstanceId = SelectedInstance.Model.Id,
+            });
+            PreviewItems.Clear();
+            foreach (var item in _preview.Items)
+            {
+                PreviewItems.Add(new CleanupItemViewModel(item));
+            }
+
+            HasPreview = _preview.HasItems;
+            PreviewSummary = _preview.HasItems
+                ? $"实例 {SelectedInstance.Name} 可释放约 {FormatBytes(_preview.TotalBytes)}，共 {_preview.Items.Count} 项；跳过 {_preview.SkippedCount} 项。"
+                : $"实例 {SelectedInstance.Name} 没有符合保留期与白名单的历史日志/诊断临时文件。";
+            Status = "实例级预览只包含该实例的历史日志与诊断临时文件，不包含下载缓存或可重建缓存。";
         }
         finally
         {

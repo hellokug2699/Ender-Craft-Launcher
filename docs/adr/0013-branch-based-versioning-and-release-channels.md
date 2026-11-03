@@ -3,7 +3,7 @@
 > 生命周期迁移说明：原有实现及实机验证状态予以保留；本次仅拆分决策与实施状态，不构成技术回退。
 
 - Decision: Accepted
-- Implementation: In Progress
+- Implementation: Implemented
 - Date: 2026-11-01
 - Scope: ECL 架构与实现
 
@@ -79,3 +79,6 @@ ECL 同时维护 `main`、`dev`、`nightly` 三条长期分支。此前版本号
 5. 未配置签名密钥、签名公钥不匹配、缺失资产或频道错误时，发布必须失败关闭。
 6. CI 与 Release 工作流均有可检查的成功结果。
 7. Nightly 每次提交不会增加独立 Release 条目；滚动 Tag、Manifest 与包必须指向同一构建。
+
+## 修订记录
+- 2026-11-03：实施状态更新为 Implemented。版本/频道解析、滚动 Release、签名资产、过期构建跳过与标签移动已由 release workflow 与 pack-release 脚本实现；当前会话未重新运行 CI，因此不标记 Verified。
