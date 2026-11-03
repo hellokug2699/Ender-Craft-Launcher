@@ -154,7 +154,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0015 按进程隔离的游戏日志会话与诊断证据](0015-process-scoped-game-log-sessions-and-diagnostics.md) | Accepted | Verified | 日志与诊断 |
 | [0016 独立 Bootstrapper 与安全部署边界](0016-independent-bootstrapper-and-safe-deployment-boundaries.md) | Accepted | Verified | 更新与部署 |
 | [0017 图形化首次安装程序](0017-graphical-first-run-installer.md) | Accepted | Verified | 安装器 |
-| [0018 Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md) | Accepted | Verified | 工作区与实例存储 |
+| [0018 Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage-location.md) | Accepted | Verified | 工作区与实例存储 |
 | [0019 内存压力下的进程保活与诊断连续性](0019-memory-pressure-process-survival-and-diagnostic-continuity.md) | Accepted | Verified | 进程生存与诊断 |
 | [0020 下载临时产物生命周期与失败清理](0020-download-artifact-lifecycle-and-cleanup.md) | Accepted | Implemented | 下载临时文件 |
 | [0021 WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md) | Proposed | In Progress | WPF 交互 |
@@ -177,3 +177,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0038 Authlib-Injector Texture Upload Protocol Support](0038-authlib-injector-texture-upload-protocol.md) | Accepted | In Progress | 第三方账户皮肤与披风协议上传 |
 | [0039 Application Runtime Lifecycle and Graceful Shutdown](0039-application-runtime-lifecycle-and-graceful-shutdown.md) | Accepted | Implemented | 应用运行时生命周期与优雅关闭 |
 | [0040 原版工具集作为独立官方 Addition](0040-vanilla-toolkit-addition.md) | Accepted | In Progress | 原版查询、模拟、计算与本地资源解析 |
+| [0041 Minecraft 性能监控与性能分析架构](0041-minecraft-performance-monitoring-and-profiling-architecture.md) | Proposed | Not Started | 性能监控、卡死检测、Profiler 与诊断联动 |
