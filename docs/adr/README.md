@@ -157,7 +157,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0018 Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage-location.md) | Accepted | Verified | 工作区与实例存储 |
 | [0019 内存压力下的进程保活与诊断连续性](0019-memory-pressure-process-survival-and-diagnostic-continuity.md) | Accepted | Verified | 进程生存与诊断 |
 | [0020 下载临时产物生命周期与失败清理](0020-download-artifact-lifecycle-and-cleanup.md) | Accepted | Implemented | 下载临时文件 |
-| [0021 WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md) | Proposed | In Progress | WPF 交互 |
+| [0021 WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md) | Proposed | In Progress | WPF 交互、统一操作确认与影响说明 |
 | [0022 存储空间分析与安全清理中心](0022-storage-analysis-and-safe-cleanup-center.md) | Proposed | In Progress | 存储分析与清理 |
 | [0023 多实例来源目录登记与统一扫描](0023-multi-root-instance-discovery.md) | Proposed | In Progress | 多实例发现 |
 | [0024 用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md) | Accepted | In Progress | 代码签名信任 |
@@ -178,4 +178,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0039 Application Runtime Lifecycle and Graceful Shutdown](0039-application-runtime-lifecycle-and-graceful-shutdown.md) | Accepted | Implemented | 应用运行时生命周期与优雅关闭 |
 | [0040 原版工具集作为独立官方 Addition](0040-vanilla-toolkit-addition.md) | Accepted | In Progress | 原版查询、模拟、计算与本地资源解析 |
 | [0041 Minecraft 性能监控与性能分析架构](0041-minecraft-performance-monitoring-and-profiling-architecture.md) | Proposed | Not Started | 性能监控、卡死检测、Profiler 与诊断联动 |
-| [0042 Instance File Explorer and Crash Report Workflow](0042-instance-file-explorer-and-crash-report-workflow.md) | Proposed | Not Started | 原生实例文件管理、Instance Inventory、资源扫描、模组图标提取、排序/安全删除及崩溃诊断 |
+| [0042 Instance File Explorer and Crash Report Workflow](0042-instance-file-explorer-and-crash-report-workflow.md) | Proposed | Not Started | 原生实例文件管理、Instance Inventory、资源扫描、模组图标提取、统一确认与安全删除及崩溃诊断 |
