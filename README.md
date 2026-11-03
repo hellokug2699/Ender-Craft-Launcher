@@ -70,6 +70,7 @@ dotnet run --project src/ECL.Cli -- launch <实例ID> --dry-run
 - [Java 管理](docs/java.md)
 - [加载器与组件](docs/loaders.md)
 - [Mod、整合包与资源包](docs/mods.md)
+- [光影支持规则库](docs/shader-support/README.md)
 - [CurseForge 集成](docs/curseforge.md)
 - [Modrinth 集成](docs/modrinth.md)
 - [崩溃分析与诊断包](docs/diagnostics.md)
