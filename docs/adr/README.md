@@ -131,6 +131,12 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 
 本次迁移中，原 `Completed` 状态保留为 `Verified`，没有要求重复进行实机检测；这次格式调整不改变技术决策、不撤销已完成工作，也不代表重新启动验收。今后新增或变更状态时，仍需按验收标准记录可复核证据。
 
+## 最高优先级 UI 架构约束
+
+[ADR 0050: ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) 是 ECL **所有 UI 相关设计与实施工作的最高优先级架构约束**。当既有 ADR、Feature Spec 或实现与其在视觉系统、Application Shell、导航、功能入口归属、信息层级、排版或 DPI/分辨率适配方面冲突时，以 ADR 0050 为准。
+
+该优先级仅覆盖 UI 领域，不得削弱其他 ADR 对安全、隐私、权限、数据完整性、业务规则、模块边界和兼容性的约束。ADR 0050 不会自动取代其他 ADR；需要正式取代时，仍须按生命周期规则记录范围与关系。
+
 ## 当前 ADR 索引
 
 以下状态来自各 ADR 当前文件头。Implementation 的 `Verified` 表示既有工作已按项目实际验证状态确认；它不等同于 stable 发布状态。
@@ -186,3 +192,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0047 实例变更事务与并发控制](0047-instance-transactions-and-concurrency-control.md) | Accepted | In Progress | 实例级写入协调、事务、冲突检测与恢复 |
 | [0048 实例快照与恢复架构](0048-instance-snapshots-and-recovery.md) | Accepted | Implemented | 用户快照、事务恢复材料、差异比较与恢复 |
 | [0049：原生 GitHub 项目中心与仓库资源边界](0049-native-github-integration-and-repository-bounded-navigation.md) | Accepted | In Progress | GitHub 项目中心 Addition、ECL 原生渲染、GitHub App 最小权限与仓库内资源解析 |
+| [0050 ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) | Accepted | Not Started | UI 设计系统、Application Shell、右侧工具栏、信息架构、排版与 DPI 适配（UI 领域最高优先级） |
