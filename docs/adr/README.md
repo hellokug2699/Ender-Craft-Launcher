@@ -185,4 +185,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0046 实例稳定身份与元数据模型](0046-instance-identity-and-metadata.md) | Proposed | Not Started | InstanceId、迁移/克隆身份语义与元数据 |
 | [0047 实例变更事务与并发控制](0047-instance-transactions-and-concurrency-control.md) | Proposed | Not Started | 实例级写入协调、事务、冲突检测与恢复 |
 | [0048 实例快照与恢复架构](0048-instance-snapshots-and-recovery.md) | Proposed | Not Started | 用户快照、事务恢复材料、差异比较与恢复 |
-| [0049 Native GitHub Integration and Repository-Bounded Navigation](0049-native-github-integration-and-repository-bounded-navigation.md) | Proposed | Not Started | GitHub 项目中心 Addition、原生页面、GitHub App 最小权限与仓库内导航 |
+| [0049：原生 GitHub 项目中心与仓库资源边界](0049-native-github-integration-and-repository-bounded-navigation.md) | Proposed | Not Started | GitHub 项目中心 Addition、ECL 原生渲染、GitHub App 最小权限与仓库内资源解析 |
