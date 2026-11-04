@@ -8,8 +8,8 @@
       "name": "registry",
       "schemaVersion": 1,
       "file": "samples/1.20.1/registry.json",
-      "size": 1611,
-      "sha256": "09e42cad53f10a183ba079e9e441d4e7a7e99d792df771172d1e0c298840add1"
+      "size": 1610,
+      "sha256": "4140a0dd78d115588408d2463aca5596e487faa547f3db4e9619bcd97c6c58ff"
     }
   ],
   "sources": [
