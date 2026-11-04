@@ -6,6 +6,8 @@
 - Scope: 面向 Minecraft 原版规则的轻量查询、计算、模拟与辅助工具，以及其官方 Addition 交付、版本化数据接口和数据模板
 - Related: [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033：本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md)、[ADR 0035：离线 Minecraft 知识库](0035-offline-minecraft-knowledge-library.md)、[ADR 0036：内置浏览器与 Minecraft 知识访问](0036-embedded-browser-for-minecraft-knowledge.md)
 
+> **Addition 登记说明：** 本 ADR 记录领域架构决策，不再作为扩展目录或发布状态的权威来源。相关 Addition 的正式身份、登记状态、版本与发布信息统一以 [ECL Additions Registry](../additions/README.md) 为准；当前登记目录中的对应项目仍属于候选，须完成 ADR 0054 评审与登记流程后才成为正式条目。
+
 ## 背景
 
 玩家在游玩 Minecraft 时，经常需要快速确认某个版本的指令语法、查询注册表 ID、计算附魔结果、查看矿石生成分布、确认配方或理解某项原版机制。现有做法通常要求玩家离开 ECL，使用搜索引擎、Wiki 或外部计算器；这些资料可能混杂不同游戏版本，查询结果也需要玩家自行判断适用范围。
