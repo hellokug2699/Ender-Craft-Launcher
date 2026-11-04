@@ -1,7 +1,5 @@
 # ADR 0016：独立 Bootstrapper 与安全部署边界
 
-> 生命周期迁移说明：原有实现及实机验证状态予以保留；本次仅拆分决策与实施状态，不构成技术回退。
-
 > 状态迁移说明：本 ADR 已由 [ADR 0051：统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md) 完整取代。本文保留原始决策内容与实施历史，仅作为历史记录；后续安装、更新、部署和恢复决策以 ADR 0051 为准。
 
 - Decision: Superseded
