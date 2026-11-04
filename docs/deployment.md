@@ -184,15 +184,28 @@ artifacts/release/1.0.1/
 
 构建流程仍然执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 和滚动 Release 都包含完整包、Bootstrapper 包、Manifest、签名与信任库。
 
-客户端更新源基址仍为：
+### 当前实现与目标架构
+
+当前自动更新/远程修复实现仍使用配置的单一 HTTPS Feed：
 
 ```text
 https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/<channel>/
 ```
 
-其中 `<channel>` 为 `main`、`dev` 或 `nightly`。对应文件为 `update-manifest.json`、`update-manifest.sig` 与 Manifest 指定的完整包。
+其中 `<channel>` 为 `main`、`dev` 或 `nightly`。对应文件为 `update-manifest.json`、`update-manifest.sig` 与 Manifest 指定的完整包。Feed 可通过 CLI 参数或 `ECL_UPDATE_FEED` 指定；当前尚未实现多来源自动发现、代理候选管理或来源健康状态。
 
-> GitHub Actions Artifact 用于构建追溯和人工下载，不作为客户端自动更新源：Artifact 有保留期限，下载也可能要求 GitHub 权限。客户端始终使用公开滚动 Release 的固定 URL，并继续验证 Manifest 签名与包哈希。
+根据 [ADR 0051：统一安装、更新与恢复架构](adr/0051-unified-installation-update-and-recovery-architecture.md)，目标架构将由 Update Source Resolver 按有界策略尝试多个来源：
+
+1. 官方 GitHub Release 直连；
+2. 经允许列表配置的 GitHub 代理 / gh-proxy 类传输来源；
+3. 提供相同签名发布资产的独立镜像；
+4. 本地 Recovery Cache 与用户手动导入的完整离线介质。
+
+上述顺序是目标策略，不代表这些来源当前均已实现或已配置。GitHub Actions Artifact 仍只用于构建追溯和人工下载，不作为客户端自动更新源：Artifact 有保留期限，下载也可能要求 GitHub 权限。
+
+**信任边界不随来源变化：**所有来源均是不可信传输渠道。客户端必须使用预置/既有信任根验证 Manifest 签名，再验证 Manifest 语义、包大小、SHA-256 和逐文件清单。代理不得提供或替换信任公钥，不得接收 GitHub Token、访问令牌或签名私钥。代理及镜像的重定向目标必须逐跳检查；不得把任意 URL 当作可信代理。签名或哈希错误属于安全验证失败，不得通过降低校验级别继续部署。
+
+本地 Recovery Cache 在执行修复时优先于联网下载。当前已实现按版本缓存已验证恢复材料及从显式 `ECL_UPDATE_FEED` 远程修复；Bootstrapper 自身损坏后的独立重建、完整离线恢复包手动导入和多来源 Resolver 仍是 ADR 0051 的后续实施范围。所有网络来源不可用且本地材料不足时，系统必须明确停止自动恢复，并指导用户通过另一台设备获取官方完整安装介质、传输到目标机器后进行离线验证与导入；不得伪称恢复成功。
 
 本地构建指定提交：
 
