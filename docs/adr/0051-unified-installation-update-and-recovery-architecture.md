@@ -3,8 +3,8 @@
 - Decision: Accepted
 - Implementation: In Progress
 - Date: 2026-11-04
-- Scope: Windows 安装介质、Installer、Bootstrapper、ECL 自身完整性、更新源解析、版本部署、Repair Mode 与离线恢复
-- Related: [ADR 0013：分支驱动的版本与发布频道](0013-branch-based-versioning-and-release-channels.md)、[ADR 0024：用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md)、[ADR 0025：Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md)、[ADR 0029：Installer、Bootstrapper 与 Uninstaller 的生命周期边界](0029-installer-bootstrapper-uninstaller-lifecycle.md)
+- Scope: Windows 安装介质、Installer 与 Bootstrapper 独立交互界面、ECL 自身完整性、更新源解析、版本部署、Repair Mode 与离线恢复
+- Related: [ADR 0050：ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md)、[ADR 0013：分支驱动的版本与发布频道](0013-branch-based-versioning-and-release-channels.md)、[ADR 0024：用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md)、[ADR 0025：Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md)、[ADR 0029：Installer、Bootstrapper 与 Uninstaller 的生命周期边界](0029-installer-bootstrapper-uninstaller-lifecycle.md)
 - Supersedes: [ADR 0016：独立 Bootstrapper 与安全部署边界](0016-independent-bootstrapper-and-safe-deployment-boundaries.md)、[ADR 0017：图形化首次安装程序](0017-graphical-first-run-installer.md)、[ADR 0034：ECL 自身完整性与可恢复安装架构](0034-ecl-self-integrity-and-recovery.md)
 
 ## 背景
@@ -12,6 +12,8 @@
 ECL 的首次安装、版本部署、更新、完整性检查和故障恢复原本由 ADR 0016、0017、0034 分别描述。三份决策分别从 Bootstrapper、图形化安装器和自身完整性切入，但它们共同构成同一条生命周期：获取安装介质、建立安装、启动、检查、更新、失败回滚、修复以及在必要时离线重建恢复环境。
 
 分散描述造成了职责交叉和决策缺口。例如，Bootstrapper 的安全部署边界、Installer 携带的安装材料、Repair Mode 的恢复来源分别写在不同 ADR 中；更新源默认指向 GitHub，但中国大陆等网络环境可能无法稳定访问 GitHub。若 GitHub 不可达、本地 Recovery Cache 又缺少材料，当前设计没有完整说明如何切换来源、导入离线介质或恢复 Bootstrapper 自身。
+
+此外，Installer 与 Bootstrapper 不只是后台部署组件：它们都需要面向用户的独立图形界面。首次安装不能依赖尚未安装的 ECL 主程序提供交互；更新与恢复也不能假设主程序始终可运行。因此，两者的 UI 入口、运行边界与主程序 UI 的关系必须纳入统一生命周期架构。
 
 本 ADR 将这条生命周期统一为一个架构，并保留现有已实现能力。它不表示所有新机制已经实现；当前实现状态和待完成事项以部署文档及实施记录为准。
 
@@ -29,6 +31,17 @@ ECL 的首次安装、版本部署、更新、完整性检查和故障恢复原�
 - **Recovery Engine**：优先使用已验证的本地恢复材料；材料不足时尝试受信任网络来源；仍不可用时支持导入完整离线恢复介质并给出人工恢复指引。
 
 组件可以在实现上共享程序集或服务，但不得因此混淆信任边界。Installer 不得绕过 Bootstrapper 部署；Update Source Resolver 不得决定文件是否可信；恢复流程不得绕过正常部署验证。
+
+#### 1.1 Installer 与 Bootstrapper 的独立 UI
+
+Installer 与 Bootstrapper 均提供自己的图形化用户界面，并作为独立于 ECL 主程序的用户交互入口：
+
+- **Installer UI**：承载首次安装所需的用户交互与流程状态。它必须能够在 ECL 尚未安装、主程序尚不存在或无法启动时独立运行；安装前完整性确认继续遵循 ADR 0025。
+- **Bootstrapper UI**：承载启动前检查、版本部署、更新、回滚、Repair Mode 与离线恢复等需要用户参与的操作及其状态反馈。它必须在 ECL 主程序缺失、损坏或无法启动时仍可独立呈现相应恢复入口。
+- 两者拥有各自的窗口/页面与生命周期，不作为 ECL 主窗口内部页面，也不得依赖 ECL 主程序启动后才能显示。
+- 两者在视觉语言、排版、控件反馈和可访问性方面遵循 [ADR 0050](0050-ecl-ui-architecture-and-design-system-overhaul.md) 的全局 UI 设计系统；但不因此要求复用 ECL 主窗口 Shell、主导航或运行时。
+- Installer 与 Bootstrapper 的 UI 只负责呈现状态、收集必要输入并发起受控操作。签名验证、内容校验、部署、回滚和恢复仍由本 ADR 定义的对应引擎执行，UI 不得复制或绕过这些逻辑。
+- 本节只确定独立 UI 的架构边界，不规定具体页面布局、文案、控件排列或完整交互步骤；这些细节由后续独立 UI 页面规划定义。
 
 ### 2. 安装目录、用户数据与版本部署边界
 
@@ -136,7 +149,9 @@ Bootstrapper 本身损坏或缺失是独立故障边界：安装目录内的 Boo
 
 正常启动不得以更新服务器可用为前提。用户关闭自动更新检查时，不得为了启动而访问网络。普通启动只执行必要的轻量完整性检查；需要全量验证时应基于明确风险或用户操作触发。
 
-恢复界面必须区分检查、下载、验证、部署、回滚和结果状态。显示当前安装状态、恢复来源、目标版本、失败类别和下一步操作。恢复操作不得隐瞒将要替换的程序版本或清理范围。
+Installer 与 Bootstrapper 必须分别提供独立的图形化交互界面，不得将其仅视为无 UI 的后台执行器。Bootstrapper 的恢复界面必须在主程序不可用时仍能启动。
+
+恢复界面必须区分检查、下载、验证、部署、回滚和结果状态。显示当前安装状态、恢复来源、目标版本、失败类别和下一步操作。恢复操作不得隐瞒将要替换的程序版本或清理范围。Installer 与 Bootstrapper 的 UI 遵循 ADR 0050 的全局设计系统，但不依赖主程序 Shell；具体页面行为由独立页面规划定义。
 
 ECL 遵循本地优先原则：不上传用户 Minecraft 实例、世界、账户凭据、配置或日志作为更新/恢复的默认步骤。诊断日志保存在本地；用户主动分享时必须明确展示内容和接收方。
 
@@ -177,6 +192,7 @@ ECL 遵循本地优先原则：不上传用户 Minecraft 实例、世界、账�
 - 独立镜像需要额外的发布同步与资产一致性验证，但不能拥有独立签名权。
 - Recovery Cache 和离线介质增加磁盘占用及发布流程复杂度。
 - Bootstrapper 自身更新和外部恢复入口属于高信任路径，需要额外测试与审计。
+- Installer 与 Bootstrapper 需要分别维护独立 UI 的启动、状态呈现、可访问性与回归测试；同时必须控制 UI 对部署核心的依赖，避免削弱恢复入口的独立性。
 - 旧客户端的信任根轮换和新鲜度状态迁移必须谨慎设计，避免合法更新被锁死或降级保护失效。
 
 ## 验收标准
@@ -197,6 +213,8 @@ ECL 遵循本地优先原则：不上传用户 Minecraft 实例、世界、账�
 14. 正常启动不因更新源不可达而失败；关闭更新检查时不访问更新源。
 15. 安装、更新、回滚和修复不会删除或修改用户 Minecraft 实例、世界、账户、配置及用户导入数据。
 16. 恢复日志能够记录阶段、版本、来源类别和失败原因，不包含访问令牌、私钥或不必要的用户数据。
+17. Installer 拥有可独立运行的首次安装图形界面；Bootstrapper 拥有可独立运行的启动/更新/恢复交互界面。两者在 ECL 主程序未安装、缺失或无法启动时，仍能分别提供其职责范围内的 UI 入口。
+18. Installer 与 Bootstrapper 的 UI 遵循 ADR 0050 的全局设计系统，但不依赖 ECL 主窗口 Shell、主导航或主程序运行时；UI 不实现、不绕过签名验证与部署逻辑。
 
 ## 实施阶段
 
@@ -210,3 +228,4 @@ ECL 遵循本地优先原则：不上传用户 Minecraft 实例、世界、账�
 ## 修订记录
 
 - 2026-11-04：统一取代 ADR 0016、0017、0034，将首次安装、独立部署、更新源容灾、发布信任、Repair Mode、Recovery Cache、Bootstrapper 自恢复和离线人工恢复纳入同一生命周期架构。
+- 2026-11-04：明确 Installer 与 Bootstrapper 均拥有独立图形化 UI；其视觉语言遵循 ADR 0050，但不依赖 ECL 主窗口或主程序运行时。具体页面行为留待独立 UI 页面规划。
