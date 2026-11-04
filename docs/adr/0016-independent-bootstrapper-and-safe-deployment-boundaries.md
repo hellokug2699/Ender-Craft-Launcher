@@ -2,10 +2,13 @@
 
 > 生命周期迁移说明：原有实现及实机验证状态予以保留；本次仅拆分决策与实施状态，不构成技术回退。
 
-- Decision: Accepted
-- Implementation: Verified
+> 状态迁移说明：本 ADR 已由 [ADR 0051：统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md) 完整取代。本文保留原始决策内容与实施历史，仅作为历史记录；后续安装、更新、部署和恢复决策以 ADR 0051 为准。
+
+- Decision: Superseded
+- Implementation: N/A
+- Superseded by: [ADR 0051：统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md)
 - Date: 2026-11-01
-- Scope: Windows 部署、版本切换、更新应用、启动与回滚
+- Scope: 独立 Bootstrapper、安全部署、版本切换与回滚
 
 ## 背景
 
