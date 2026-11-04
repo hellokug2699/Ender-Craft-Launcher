@@ -6,6 +6,8 @@
 - Scope: Minecraft 日志、崩溃报告、运行环境、模组关系、故障模式与本地诊断知识库
 - Related: [ADR 0015：按进程隔离的游戏日志会话与诊断证据](0015-process-scoped-game-log-sessions-and-diagnostics.md)、[ADR 0030：世界诊断与区块异常定位联动](0030-world-diagnostics-and-chunk-fault-workflow.md)、[ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)
 
+> **Addition 登记说明：** 本 ADR 记录领域架构决策，不再作为扩展目录或发布状态的权威来源。相关 Addition 的正式身份、登记状态、版本与发布信息统一以 [ECL Additions Registry](../additions/README.md) 为准；当前登记目录中的对应项目仍属于候选，须完成 ADR 0054 评审与登记流程后才成为正式条目。
+
 ## 背景
 
 ECL 已经具备按进程管理游戏日志和诊断证据的基础能力，但传统的 Minecraft 日志查看方式主要解决“看到了什么”，不能稳定回答“为什么发生”和“下一步应该做什么”。现有的 mclo.gs 类服务主要擅长日志格式化、分享和阅读；ECL 更适合在本地结合实例环境、Java、Minecraft、Loader、模组关系和历史诊断记录进行全面分析。
