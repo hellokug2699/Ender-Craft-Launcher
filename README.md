@@ -81,6 +81,7 @@ dotnet run --project src/ECL.Cli -- launch <实例ID> --dry-run
 - [仓库与保密策略](docs/repository-policy.md)
 - [开发路线图](docs/roadmap.md)
 - [架构决策记录（ADR）](docs/adr)
+- [Additions 官方扩展注册目录（提案草案）](docs/additions/README.md)
 - [ADR 0031–0040 实施记录](docs/adr-0031-0040-implementation.md)
 - [ADR 0041–0049 实施记录](docs/adr-0041-0049-implementation.md)
 - [ADR 0001–0040 完成度扫描](docs/adr-0001-0040-completion-audit.md)
