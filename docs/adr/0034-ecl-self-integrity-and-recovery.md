@@ -1,10 +1,12 @@
 # ADR 0034：ECL 自身完整性与可恢复安装架构
 
-- Decision: Accepted
-- Implementation: In Progress
+> 状态迁移说明：本 ADR 已由 [ADR 0051：统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md) 完整取代。本文保留原始决策内容与实施历史，仅作为历史记录；后续安装、更新、部署和恢复决策以 ADR 0051 为准。
+
+- Decision: Superseded
+- Implementation: N/A
+- Superseded by: [ADR 0051：统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md)
 - Date: 2026-11-02
-- Scope: ECL Bootstrapper、启动器自身文件完整性、更新事务、故障恢复与本地恢复材料
-- Related: [ADR 0016：独立 Bootstrapper 与安全部署边界](0016-independent-bootstrapper-and-safe-deployment-boundaries.md)、[ADR 0024：用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md)、[ADR 0025：Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md)、[ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)
+- Scope: ECL 自身完整性、Repair Mode、Recovery Cache 与恢复流程
 
 ## 背景
 
@@ -166,6 +168,10 @@ Bootstrapper 应维护最小的部署状态，例如当前版本、候选版本�
 10. Repair Mode 不会因为 ECL 自身损坏而自动删除或重置 Minecraft 用户环境。
 11. Bootstrapper 的恢复流程与现有 ADR 0016、0024、0025 的部署和信任边界一致，不存在绕过验证的特殊修复入口。
 12. 在文档和日志中明确记录恢复使用的 ECL 版本、manifest 版本以及恢复来源，便于后续诊断。
+
+## 历史修订记录
+
+- 2026-11-04：由 ADR 0051 统一取代；原决策和实施记录保留供追溯。
 
 ## 修订记录
 
