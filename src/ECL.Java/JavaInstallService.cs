@@ -192,7 +192,7 @@ public sealed class JavaInstallService : IJavaInstallService
                 return Result<JavaRuntime>.Fail("java.manifest_invalid", _localizer.Get("java.error.manifestInvalid"));
             }
 
-            var runtimeDirectory = Path.Combine(_paths.JavaDirectory, component);
+            var runtimeDirectory = Path.Combine(_paths.RuntimesDirectory, component);
             Directory.CreateDirectory(runtimeDirectory);
             var root = Path.GetFullPath(runtimeDirectory) + Path.DirectorySeparatorChar;
 
@@ -325,6 +325,7 @@ public sealed class JavaInstallService : IJavaInstallService
         IProgress<JavaInstallProgress>? progress,
         CancellationToken cancellationToken)
     {
+        string? stagingPath = null;
         try
         {
             Report(progress, JavaInstallStage.Provider, "java.stage.provider", 0, 0, 0, 0, provider.DisplayName);
@@ -338,7 +339,14 @@ public sealed class JavaInstallService : IJavaInstallService
             var package = packageResult.Value!;
             var component = SanitizeComponent(package.Component);
             var runtimeId = $"{provider.Id}-{component}";
-            var destination = Path.Combine(_paths.JavaDirectory, runtimeId);
+            var destination = ResolveManagedDestination(runtimeId);
+            var staging = destination + ".staging";
+            stagingPath = staging;
+
+            if (Directory.Exists(staging))
+            {
+                Directory.Delete(staging, recursive: true);
+            }
 
             var cacheDirectory = Path.Combine(_paths.CacheDirectory, "java");
             Directory.CreateDirectory(cacheDirectory);
@@ -398,13 +406,27 @@ public sealed class JavaInstallService : IJavaInstallService
                 0,
                 package.DisplayName);
 
+            // 先解压到 staging 并验证运行时可识别，成功后才提升为正式运行时目录；
+            // 取消或损坏的下载不会留下“已注册”的半成品。
             var extracted = await JavaArchiveInstaller
-                .ExtractAsync(archivePath, package.ArchiveKind, destination, cancellationToken)
+                .ExtractAsync(archivePath, package.ArchiveKind, staging, cancellationToken)
                 .ConfigureAwait(false);
             if (!extracted.IsSuccess)
             {
+                TryDeleteDirectory(staging);
                 return Result<JavaRuntime>.Fail(extracted.Error!);
             }
+
+            var staged = _locator.FromPath(staging);
+            if (staged is null)
+            {
+                TryDeleteDirectory(staging);
+                return Result<JavaRuntime>.Fail(
+                    "java.runtime_invalid",
+                    _localizer.Get("java.error.runtimeInvalid"));
+            }
+
+            Directory.Move(staging, destination);
 
             var runtime = _locator.FromPath(destination);
             if (runtime is null)
@@ -466,6 +488,51 @@ public sealed class JavaInstallService : IJavaInstallService
                 "java.install_failed",
                 _localizer.Get("java.error.installFailed", exception.Message));
         }
+        finally
+        {
+            if (stagingPath is not null)
+            {
+                TryDeleteDirectory(stagingPath);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 解析托管运行时的目标目录：同名目录已存在时追加确定性序号，不覆盖其他运行时。
+    /// </summary>
+    private string ResolveManagedDestination(string runtimeId)
+    {
+        var baseDirectory = Path.Combine(_paths.RuntimesDirectory, runtimeId);
+        if (!Directory.Exists(baseDirectory))
+        {
+            return baseDirectory;
+        }
+
+        for (var index = 2; index <= 10; index++)
+        {
+            var candidate = $"{baseDirectory}-{index}";
+            if (!Directory.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new InvalidOperationException($"运行时目录冲突且无法确定新名称：{runtimeId}");
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // 清理失败不影响结果；残留 staging 会在下次安装时清除。
+        }
     }
 
     private static string SanitizeComponent(string component)
@@ -487,10 +554,17 @@ public sealed class JavaInstallService : IJavaInstallService
             preferred.Count > 0 &&
             preferred[0].Manifest?.Url is not null)
         {
-            return (
-                requirement.Component,
-                preferred[0],
-                JavaVersion.TryParse(preferred[0].Version?.Name));
+            var preferredVersion = JavaVersion.TryParse(preferred[0].Version?.Name);
+
+            // Minecraft 声明的组件可能低于实例的有效要求（例如 Mod 要求 Java 25），
+            // 此时继续按主版本挑选，不能为了“组件名匹配”安装一个不兼容的运行时。
+            if (preferredVersion is null || requirement.IsCompatible(preferredVersion))
+            {
+                return (
+                    requirement.Component,
+                    preferred[0],
+                    preferredVersion);
+            }
         }
 
         var candidates = components

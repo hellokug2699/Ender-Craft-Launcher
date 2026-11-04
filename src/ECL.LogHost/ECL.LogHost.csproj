@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Ecl.LogHost</RootNamespace>
+    <AssemblyName>ECL.LogHost</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ECL.Core\ECL.Core.csproj" />
+    <ProjectReference Include="..\ECL.Sessions\ECL.Sessions.csproj" />
+    <ProjectReference Include="..\ECL.LogHost.Contracts\ECL.LogHost.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+  </ItemGroup>
+
+</Project>

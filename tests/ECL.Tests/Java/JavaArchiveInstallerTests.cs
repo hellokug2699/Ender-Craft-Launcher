@@ -34,7 +34,36 @@ public sealed class JavaArchiveInstallerTests
         var runtime = result.Value!;
         Assert.Equal(21, runtime.Version?.Major);
         Assert.True(File.Exists(runtime.ExecutablePath));
-        Assert.StartsWith(environment.Paths.JavaDirectory, runtime.HomePath, StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith(environment.Paths.RuntimesDirectory, runtime.HomePath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RepeatedInstallOfSameComponentUsesDeterministicSuffixAndKeepsFirst()
+    {
+        using var environment = new TestEnvironment();
+        var downloadService = new ArchiveDownloadService(CreateArchive());
+
+        await using var services = environment.CreateServices(collection =>
+        {
+            collection.AddSingleton<IDownloadService>(downloadService);
+        });
+
+        var settings = services.GetRequiredService<Ecl.Configuration.Settings.ISettingsService>();
+        Assert.True(settings.TrySetRaw("java.runtimeProvider", "adoptium", null, out var error), error);
+        var install = services.GetRequiredService<IJavaInstallService>();
+
+        var first = await install.DownloadAsync(new JavaRequirement(21));
+        Assert.True(first.IsSuccess, first.Error?.ToString());
+
+        var second = await install.DownloadAsync(new JavaRequirement(21));
+        Assert.True(second.IsSuccess, second.Error?.ToString());
+
+        Assert.NotEqual(first.Value!.HomePath, second.Value!.HomePath);
+        Assert.True(Directory.Exists(first.Value.HomePath));
+        Assert.EndsWith("-2", Path.GetFileName(second.Value.HomePath), StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            Directory.EnumerateDirectories(environment.Paths.RuntimesDirectory),
+            path => path.EndsWith(".staging", StringComparison.Ordinal));
     }
 
     [Fact]

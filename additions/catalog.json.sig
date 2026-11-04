@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "keyId": "ecl-additions",
+  "algorithm": "RSA-PSS-SHA256",
+  "signature": "oOU4aO9jbnfsAFftYsvTdoQ4MKyamOLjPVZQT5rzzTKk2CKNrCZsvBhLdeXjKDvKIGbc/r+Oo6wDxCbtdK05geIbsx/tgUiwYyhlm2Xcr8+2UNZjEUIH2o+/L1W6obwH6y2fw8G+NcU2dwKPd1HOToh2VLCFqbTiKGqocSCVVDQbaXVvdLaTHN8zyeUqbUt5Fw+NFgpyM4fvbtpF4k7gMXu4crNyEVtUAg+3A1ReS7X3PO4glhhRyxorJvq64fzUM5soe3GwzPQ55X54DqL/9I2x7BseqcoQNLqs6iRK++RLMWI74T5POb3Vmmh7Rjo6HKNWIacZmYNLdWXQs20BjiP4SZlJ7J0VQGNuruyfjnElnxzIydV6HR3tVy/gja6u/ArZI3pV0yd8vD/zFYTa1q1uDuQg0Sjvvkw2GqVIgSZ5GTmROIrLyqv+PCP749IomYw0yai2rSGfne1b3D0bMMG2A2H3qEKtd3sZaR637fZdyd9Z2x2LzRejiRCqdGnp"
+}

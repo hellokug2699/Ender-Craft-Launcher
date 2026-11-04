@@ -141,6 +141,40 @@ public sealed class UpdateInstallerTests
         return new Package(manifest, archive);
     }
 
+    [Fact]
+    public async Task DeploymentNeverTouchesWorkspaceOrUserDataOutsideInstallRoot()
+    {
+        using var environment = new TempDirectory();
+        var layout = new UpdateLayout(environment.Combine("install"));
+        layout.EnsureCreated();
+        var installer = new UpdateInstaller(layout);
+        var workspace = environment.Combine("workspace");
+        var instance = Path.Combine(workspace, "instances", "demo-abc123", "minecraft");
+        Directory.CreateDirectory(instance);
+        await File.WriteAllTextAsync(Path.Combine(instance, "options.txt"), "keep-me");
+        Directory.CreateDirectory(Path.Combine(instance, "saves", "world"));
+        await File.WriteAllTextAsync(Path.Combine(instance, "saves", "world", "level.dat"), "level");
+        var userData = environment.Combine("userdata");
+        Directory.CreateDirectory(userData);
+        await File.WriteAllTextAsync(Path.Combine(userData, "accounts.json"), "{}");
+
+        var before = Snapshot(workspace) + Snapshot(userData);
+
+        var first = CreatePackage(environment, layout, "1.0.0", "first");
+        var second = CreatePackage(environment, layout, "1.0.1", "second");
+        Assert.True((await installer.ApplyAsync(first.Manifest, first.Archive)).IsSuccess);
+        Assert.True((await installer.ApplyAsync(second.Manifest, second.Archive)).IsSuccess);
+        Assert.True((await installer.RollbackAsync()).IsSuccess);
+
+        Assert.Equal(before, Snapshot(workspace) + Snapshot(userData));
+    }
+
+    private static string Snapshot(string root) => string.Join(
+        "\n",
+        Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .Select(path => $"{Path.GetRelativePath(root, path)}|{new FileInfo(path).Length}|{UpdateHash.ComputeSha256(File.ReadAllBytes(path))}"));
+
     private sealed record Package(UpdateManifest Manifest, string Archive);
 
     private sealed class TempDirectory : IDisposable

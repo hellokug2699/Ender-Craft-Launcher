@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "minecraft:stone",
+      "kind": "block",
+      "names": { "zh-CN": "石头", "en-US": "Stone" },
+      "aliases": ["stone", "石头"],
+      "introduced": "1.0.0",
+      "quality": "verified",
+      "sourceId": "official-registry"
+    },
+    {
+      "id": "minecraft:dirt",
+      "kind": "block",
+      "names": { "zh-CN": "泥土", "en-US": "Dirt" },
+      "aliases": ["dirt", "泥土"],
+      "introduced": "1.0.0",
+      "quality": "verified",
+      "sourceId": "official-registry"
+    },
+    {
+      "id": "minecraft:diamond",
+      "kind": "item",
+      "names": { "zh-CN": "钻石", "en-US": "Diamond" },
+      "aliases": ["diamond", "钻石"],
+      "introduced": "1.0.0",
+      "quality": "verified",
+      "sourceId": "official-registry"
+    },
+    {
+      "id": "minecraft:plains",
+      "kind": "biome",
+      "names": { "zh-CN": "平原", "en-US": "Plains" },
+      "aliases": ["plains", "平原"],
+      "introduced": "1.0.0",
+      "quality": "verified",
+      "sourceId": "official-registry"
+    },
+    {
+      "id": "minecraft:zombie",
+      "kind": "entity",
+      "names": { "zh-CN": "僵尸", "en-US": "Zombie" },
+      "aliases": ["zombie", "僵尸"],
+      "introduced": "1.0.0",
+      "quality": "verified",
+      "sourceId": "official-registry"
+    },
+    {
+      "id": "minecraft:the_nether",
+      "kind": "dimension",
+      "names": { "zh-CN": "下界", "en-US": "The Nether" },
+      "aliases": ["nether", "下界"],
+      "introduced": "1.0.0",
+      "quality": "verified",
+      "sourceId": "official-registry"
+    }
+  ]
+}

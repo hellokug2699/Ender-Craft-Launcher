@@ -21,7 +21,15 @@ public sealed class LaunchContext
 
     public required bool DryRun { get; init; }
 
+    /// <summary>CLI 显式接受 Java 风险；UI 通过持久化确认记录表达同一语义。</summary>
+    public bool AcceptJavaRisk { get; init; }
+
+    /// <summary>用户已明确接受当前实例的已知安全风险并选择继续本次启动。</summary>
+    public bool AcceptSecurityRisk { get; init; }
+
     public JavaRuntime? Java { get; set; }
+
+    public JavaLaunchPlan? JavaPlan { get; set; }
 
     public MinecraftVersion? Version { get; set; }
 
@@ -40,6 +48,9 @@ public sealed class LaunchContext
     public LaunchCommand? Command { get; set; }
 
     public int? ProcessId { get; set; }
+
+    /// <summary>本次启动的日志会话 ID；为空表示会话创建失败或 Dry Run。</summary>
+    public string? SessionId { get; set; }
 
     public string InstanceDirectory => Paths.GetInstanceDirectory(Instance.Id);
 

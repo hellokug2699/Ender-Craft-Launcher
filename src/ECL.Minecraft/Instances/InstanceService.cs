@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Ecl.Core;
+using Ecl.Minecraft.Engine.Identity;
 using Microsoft.Extensions.Logging;
 
 namespace Ecl.Minecraft.Instances;
@@ -33,12 +34,18 @@ public sealed partial class InstanceService : IInstanceService
 
     private readonly IInstanceStore _store;
     private readonly IAppPaths _paths;
+    private readonly InstanceIdentityService _identity;
     private readonly ILogger<InstanceService> _logger;
 
-    public InstanceService(IInstanceStore store, IAppPaths paths, ILogger<InstanceService> logger)
+    public InstanceService(
+        IInstanceStore store,
+        IAppPaths paths,
+        InstanceIdentityService identity,
+        ILogger<InstanceService> logger)
     {
         _store = store;
         _paths = paths;
+        _identity = identity;
         _logger = logger;
     }
 
@@ -168,6 +175,19 @@ public sealed partial class InstanceService : IInstanceService
         };
 
         await _store.SaveAsync(instance, cancellationToken).ConfigureAwait(false);
+        var registered = await _identity.EnsureRegisteredAsync(instance, writeMarker: true, cancellationToken)
+            .ConfigureAwait(false);
+        if (!registered.IsSuccess)
+        {
+            _logger.LogError(
+                "实例 {Id} 创建后无法登记身份：{Error}",
+                instance.Id,
+                registered.Error);
+            var plan = InstanceDeletionPlanner.Create(_paths, instance, await _store.ListAsync(cancellationToken).ConfigureAwait(false));
+            await _store.DeleteAsync(plan, InstanceDeletionMode.RemoveRecordOnly, cancellationToken).ConfigureAwait(false);
+            return Result<GameInstance>.Fail(registered.Error!);
+        }
+
         _logger.LogInformation("已创建实例 {Name}（{Id}，版本 {VersionId}）。", instance.Name, instance.Id, instance.VersionId);
         return Result<GameInstance>.Ok(instance);
     }
@@ -247,6 +267,16 @@ public sealed partial class InstanceService : IInstanceService
         };
 
         await _store.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
+        var registered = await _identity.EnsureRegisteredAsync(updated, writeMarker: true, cancellationToken)
+            .ConfigureAwait(false);
+        if (!registered.IsSuccess)
+        {
+            _logger.LogWarning(
+                "实例 {InstanceId} 配置已保存，但身份登记未更新：{Error}",
+                instanceId,
+                registered.Error);
+        }
+
         _logger.LogInformation(
             "已更新实例 {InstanceId} 配置：Minecraft {GameVersion}，加载器 {Loader} {LoaderVersion}。",
             instanceId, gameVersion, loader, loaderVersion);
@@ -356,6 +386,19 @@ public sealed partial class InstanceService : IInstanceService
         };
 
         await _store.SaveAsync(instance, cancellationToken).ConfigureAwait(false);
+        var registered = await _identity.EnsureRegisteredAsync(instance, writeMarker: false, cancellationToken)
+            .ConfigureAwait(false);
+        if (!registered.IsSuccess)
+        {
+            _logger.LogWarning(
+                "导入实例 {Id} 时身份登记失败：{Error}",
+                instance.Id,
+                registered.Error);
+            var plan = InstanceDeletionPlanner.Create(_paths, instance, await _store.ListAsync(cancellationToken).ConfigureAwait(false));
+            await _store.DeleteAsync(plan, InstanceDeletionMode.RemoveRecordOnly, cancellationToken).ConfigureAwait(false);
+            return Result<GameInstance>.Fail(registered.Error!);
+        }
+
         _logger.LogInformation(
             "已导入既有版本 {VersionId} 为实例 {Name}（{Id}），游戏目录：{Directory}。",
             candidate.VersionId,
@@ -704,6 +747,15 @@ public sealed partial class InstanceService : IInstanceService
             return deleted;
         }
 
+        var unregistered = await _identity.UnregisterAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        if (!unregistered.IsSuccess)
+        {
+            _logger.LogWarning(
+                "实例 {InstanceId} 已删除，但本地身份登记未移除：{Error}",
+                instanceId,
+                unregistered.Error);
+        }
+
         _logger.LogInformation(
             "已删除实例 {Name}（{Id}），模式：{Mode}；外部目录：{External}",
             plan.InstanceName,
@@ -711,6 +763,274 @@ public sealed partial class InstanceService : IInstanceService
             mode,
             plan.HasExternalGameData);
         return Result.Ok();
+    }
+
+    /// <summary>
+    /// 重新关联到新目录并保留 InstanceId。只更新位置关系，不移动文件；
+    /// 目标标记冲突或缺少可验证标记时拒绝。
+    /// </summary>
+    public async Task<Result<GameInstance>> RelocateAsync(
+        string instanceId,
+        string newGameDirectory,
+        CancellationToken cancellationToken = default)
+    {
+        if (!AppPaths.IsValidInstanceId(instanceId))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_id", "实例 ID 不合法。");
+        }
+
+        var instance = await _store.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        if (instance is null)
+        {
+            return Result<GameInstance>.Fail("instance.not_found", "实例不存在。");
+        }
+
+        string normalized;
+        try
+        {
+            normalized = InstancePathIdentity.Normalize(newGameDirectory);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return Result<GameInstance>.Fail("instance.invalid_path", "目标目录路径不合法。", exception.Message);
+        }
+
+        if (!Directory.Exists(normalized))
+        {
+            return Result<GameInstance>.Fail("instance.directory_missing", "目标目录不存在。");
+        }
+
+        var relocated = await _identity.RelocateAsync(instanceId, normalized, cancellationToken)
+            .ConfigureAwait(false);
+        if (!relocated.IsSuccess)
+        {
+            return Result<GameInstance>.Fail(relocated.Error!);
+        }
+
+        var updated = instance with
+        {
+            GameDirectory = InstancePathIdentity.Equals(
+                normalized,
+                _paths.GetInstanceGameDirectory(instanceId))
+                ? null
+                : normalized,
+        };
+        await _store.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
+        _logger.LogInformation("实例 {InstanceId} 已重新定位到 {Directory}。", instanceId, normalized);
+        return Result<GameInstance>.Ok(updated);
+    }
+
+    /// <summary>
+    /// 克隆为独立实例：内容复制到 ECL 托管目录，生成新的 InstanceId 与身份标记；
+    /// 不复制 .ecl 标记、日志、崩溃报告、natives、锁文件或运行会话。
+    /// </summary>
+    public async Task<Result<GameInstance>> CloneAsync(
+        string sourceInstanceId,
+        string name,
+        CancellationToken cancellationToken = default)
+    {
+        if (!AppPaths.IsValidInstanceId(sourceInstanceId))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_id", "实例 ID 不合法。");
+        }
+
+        name = (name ?? string.Empty).Trim();
+        if (name.Length is < 1 or > 48)
+        {
+            return Result<GameInstance>.Fail("instance.invalid_name", "实例名称需为 1-48 个字符。");
+        }
+
+        var source = await _store.GetAsync(sourceInstanceId, cancellationToken).ConfigureAwait(false);
+        if (source is null)
+        {
+            return Result<GameInstance>.Fail("instance.not_found", "源实例不存在。");
+        }
+
+        var existing = await _store.ListAsync(cancellationToken).ConfigureAwait(false);
+        if (existing.Any(instance => string.Equals(instance.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return Result<GameInstance>.Fail("instance.duplicate_name", $"已存在同名实例：{name}");
+        }
+
+        var sourceDirectory = InstancePaths.GetGameDirectory(_paths, source);
+        if (!Directory.Exists(sourceDirectory))
+        {
+            return Result<GameInstance>.Fail("instance.directory_missing", "源实例游戏目录不存在。");
+        }
+
+        var newId = await CreateUniqueIdAsync(name, cancellationToken).ConfigureAwait(false);
+        var recordDirectory = _paths.GetInstanceDirectory(newId);
+        var staging = Path.Combine(recordDirectory, "minecraft.clone-tmp");
+        var target = _paths.GetInstanceGameDirectory(newId);
+        try
+        {
+            Directory.CreateDirectory(staging);
+            await CopyGameDirectoryAsync(sourceDirectory, staging, cancellationToken).ConfigureAwait(false);
+            Directory.Move(staging, target);
+            Directory.CreateDirectory(_paths.GetInstanceLogsDirectory(newId));
+
+            var clone = new GameInstance
+            {
+                Id = newId,
+                Name = name,
+                GameVersion = source.GameVersion,
+                VersionId = source.VersionId,
+                Loader = source.Loader,
+                LoaderVersion = source.LoaderVersion,
+                FabricApiVersion = source.FabricApiVersion,
+                OptiFineVersion = source.OptiFineVersion,
+                VersionIsolation = InstanceIsolation.Enabled,
+                CreatedAt = DateTimeOffset.UtcNow,
+            };
+
+            await _store.SaveAsync(clone, cancellationToken).ConfigureAwait(false);
+            var registered = await _identity.EnsureRegisteredAsync(clone, writeMarker: true, cancellationToken)
+                .ConfigureAwait(false);
+            if (!registered.IsSuccess)
+            {
+                throw new InvalidOperationException(registered.Error?.ToString() ?? "身份登记失败。");
+            }
+
+            var sourceSettings = _paths.GetInstanceSettingsFile(source.Id);
+            if (File.Exists(sourceSettings))
+            {
+                File.Copy(sourceSettings, _paths.GetInstanceSettingsFile(newId), overwrite: true);
+            }
+
+            _logger.LogInformation(
+                "已克隆实例 {SourceId} 为 {Name}（{Id}），未复制会话、锁或身份标记。",
+                source.Id,
+                clone.Name,
+                clone.Id);
+            return Result<GameInstance>.Ok(clone);
+        }
+        catch (OperationCanceledException)
+        {
+            TryDeleteDirectory(recordDirectory);
+            throw;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                                              or InvalidOperationException)
+        {
+            TryDeleteDirectory(recordDirectory);
+            _logger.LogError(exception, "克隆实例 {SourceId} 失败。", sourceInstanceId);
+            return Result<GameInstance>.Fail(
+                "instance.clone_failed",
+                "克隆实例失败；未保留半成品实例。",
+                exception.Message);
+        }
+    }
+
+    private static async Task CopyGameDirectoryAsync(
+        string source,
+        string target,
+        CancellationToken cancellationToken)
+    {
+        var excludedRoots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".ecl",
+            "logs",
+            "crash-reports",
+            "natives",
+        };
+        var pending = new Stack<(string Source, string Target)>();
+        pending.Push((source, target));
+        while (pending.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var (currentSource, currentTarget) = pending.Pop();
+            Directory.CreateDirectory(currentTarget);
+            IEnumerable<string> entries;
+            try
+            {
+                entries = Directory.EnumerateFileSystemEntries(currentSource);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var entry in entries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                FileAttributes attributes;
+                try
+                {
+                    attributes = File.GetAttributes(entry);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    continue;
+                }
+
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    continue;
+                }
+
+                var name = Path.GetFileName(entry);
+                if (string.Equals(currentSource, source, StringComparison.OrdinalIgnoreCase) &&
+                    excludedRoots.Contains(name))
+                {
+                    continue;
+                }
+
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    pending.Push((entry, Path.Combine(currentTarget, name)));
+                    continue;
+                }
+
+                if (name.EndsWith(".lock", StringComparison.OrdinalIgnoreCase) ||
+                    name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var destination = Path.Combine(currentTarget, name);
+                await using (var input = new FileStream(
+                                 entry,
+                                 FileMode.Open,
+                                 FileAccess.Read,
+                                 FileShare.ReadWrite | FileShare.Delete,
+                                 bufferSize: 81920,
+                                 useAsync: true))
+                await using (var output = new FileStream(
+                                 destination,
+                                 FileMode.Create,
+                                 FileAccess.Write,
+                                 FileShare.None,
+                                 bufferSize: 81920,
+                                 useAsync: true))
+                {
+                    await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+                }
+
+                try
+                {
+                    File.SetLastWriteTimeUtc(destination, File.GetLastWriteTimeUtc(entry));
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    // 时间戳保留失败不影响内容。
+                }
+            }
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // 清理失败不应掩盖原始错误。
+        }
     }
 
     public async Task TouchLastPlayedAsync(string instanceId, CancellationToken cancellationToken = default)

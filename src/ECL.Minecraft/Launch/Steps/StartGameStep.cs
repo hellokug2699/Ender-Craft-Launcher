@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.Core.Localization;
+using Ecl.Minecraft.Performance;
+using Ecl.Sessions;
 using Microsoft.Extensions.Logging;
 
 namespace Ecl.Minecraft.Launch.Steps;
 
 internal sealed class StartGameStep(
     IProcessLauncher processLauncher,
+    IGameSessionService sessions,
+    IPerformanceMonitorService performanceMonitor,
     ILocalizer localizer,
     ILogger<StartGameStep> logger) : ILaunchStep
 {
@@ -32,11 +36,67 @@ internal sealed class StartGameStep(
                 localizer.Get("launch.start.noCommand")));
         }
 
+        var showConsole = context.Settings.Get<bool>("game.showConsole");
+        string? sessionId = null;
+
         try
         {
-            var showConsole = context.Settings.Get<bool>("game.showConsole");
-            var processId = processLauncher.Start(context.Command, context.GameDirectory, showConsole, context.Instance.Id);
+            // ADR 0015：进程启动之前先持久化会话，保证异常退出后仍可追溯。
+            var session = sessions.Create(new SessionCreateRequest
+            {
+                InstanceId = context.Instance.Id,
+                InstanceName = context.Instance.Name,
+                GameDirectory = context.GameDirectory,
+                JavaPath = context.JavaPlan?.ExecutablePath ?? context.JavaExecutable,
+                JavaVersion = context.JavaPlan?.Version,
+                MinecraftVersion = context.Instance.GameVersion,
+                Loader = context.Instance.Loader,
+                LogIsolation = showConsole ? "unavailable" : "pending",
+            });
+
+            sessionId = session.SessionId;
+            context.SessionId = sessionId;
+
+            var isolation = Log4jIsolation.Prepare(context.Command!, session.DirectoryPath);
+            if (isolation.IsSuccess)
+            {
+                var plan = isolation.Value!;
+                if (plan.ConfigPath is not null && context.Command is not null)
+                {
+                    context.Command = context.Command with { Arguments = plan.Arguments };
+                }
+
+                sessions.SetLogIsolation(sessionId, plan.Mode, plan.Fingerprint, plan.Warning);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogError(exception, "创建游戏日志会话失败。");
+            return Task.FromResult(new LaunchStepResult(
+                Id,
+                LaunchStepStatus.Failed,
+                $"无法创建日志会话：{exception.Message}"));
+        }
+
+        try
+        {
+            var processId = processLauncher.Start(
+                context.Command!,
+                context.GameDirectory,
+                showConsole,
+                context.Instance.Id,
+                sessionId);
             context.ProcessId = processId;
+
+            try
+            {
+                // ADR 0041：进程启动后开始低开销健康监控；监控失败不得影响游戏进程。
+                performanceMonitor.Start(context.Instance.Id, processId, context.GameDirectory);
+            }
+            catch (Exception monitorException) when (monitorException is not OutOfMemoryException)
+            {
+                logger.LogWarning(monitorException, "实例 {InstanceId} 性能监控启动失败；游戏进程继续运行。", context.Instance.Id);
+            }
 
             return Task.FromResult(new LaunchStepResult(
                 Id,
@@ -46,10 +106,16 @@ internal sealed class StartGameStep(
         catch (Exception exception)
         {
             logger.LogError(exception, "启动实例 {InstanceId} 的进程失败。", context.Instance.Id);
+            if (sessionId is not null)
+            {
+                sessions.MarkState(sessionId, GameSessionState.Interrupted, exception.Message);
+            }
+
             return Task.FromResult(new LaunchStepResult(
                 Id,
                 LaunchStepStatus.Failed,
                 localizer.Get("launch.start.failed", exception.Message)));
         }
     }
+
 }

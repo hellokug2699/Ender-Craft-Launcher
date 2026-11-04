@@ -16,37 +16,67 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
-        BootstrapperOptions options;
-        try
+        var parsed = BootstrapperCommandLine.Parse(args);
+        if (!parsed.IsSuccess)
         {
-            options = BootstrapperOptions.Parse(args);
-        }
-        catch (ArgumentException exception)
-        {
-            Console.Error.WriteLine(exception.Message);
+            Console.Error.WriteLine(parsed.Error!.Message);
             Console.WriteLine(Usage);
-            return 2;
+            return BootstrapperExitCodes.ArgumentError;
         }
 
-        if (options.Help)
+        var command = parsed.Value!;
+
+        if (command.Help)
         {
             Console.WriteLine(Usage);
             return 0;
         }
 
-        var layout = new UpdateLayout(options.InstallRoot ?? AppContext.BaseDirectory);
+        var layout = new UpdateLayout(command.InstallRoot ?? AppContext.BaseDirectory);
         var installer = new UpdateInstaller(layout);
         using var log = BootstrapperLog.Open(layout.InstallRoot);
 
         try
         {
-            if (options.Deploy is not null)
+            if (command.Action == BootstrapperAction.Verify)
             {
-                return ApplyAsync(layout, installer, options.Deploy, log);
+                return VerifyIntegrity(layout, log, verifyHashes: true);
             }
 
-            if (options.Rollback)
+            if (command.Action == BootstrapperAction.Repair)
             {
+                return RepairIntegrity(layout, log);
+            }
+
+            if (command.Deploy is not null)
+            {
+                return ApplyAsync(layout, installer, command.Deploy, log);
+            }
+
+            if (command.Action == BootstrapperAction.Cleanup)
+            {
+                using var cleanupLock = UpdateLock.TryAcquire(layout.InstallRoot);
+                if (cleanupLock is null)
+                {
+                    Console.Error.WriteLine("另一个更新进程正在运行。");
+                    return BootstrapperExitCodes.DeployError;
+                }
+
+                var removed = installer.CleanupStaging();
+                Console.WriteLine($"已清理 {removed} 个未完成的 staging 目录；当前版本未被触碰。");
+                log.Write($"清理 staging：{removed} 个目录");
+                return 0;
+            }
+
+            if (command.Action == BootstrapperAction.Rollback)
+            {
+                using var rollbackLock = UpdateLock.TryAcquire(layout.InstallRoot);
+                if (rollbackLock is null)
+                {
+                    Console.Error.WriteLine("另一个更新进程正在运行。");
+                    return BootstrapperExitCodes.DeployError;
+                }
+
                 var rollback = installer.RollbackAsync().GetAwaiter().GetResult();
                 if (!rollback.IsSuccess)
                 {
@@ -56,32 +86,38 @@ internal static class Program
                 Console.WriteLine($"已回滚到 {rollback.Value!.Version}");
             }
 
-            if (options.DeployOnly)
+            if (command.DeployOnly)
             {
                 return 0;
             }
 
-            return Launch(layout, options.ApplicationArguments, log);
+            return Launch(layout, command.ApplicationArguments, log);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             log.Write($"未处理异常：{exception}");
             Console.Error.WriteLine(exception.Message);
-            return 1;
+            return BootstrapperExitCodes.DeployError;
         }
     }
 
     private static int ApplyAsync(
         UpdateLayout layout,
         UpdateInstaller installer,
-        DeployOptions deploy,
+        BootstrapperDeploy deploy,
         BootstrapperLog log)
     {
-        using var updateLock = AcquireUpdateLock(layout.InstallRoot);
+        using var updateLock = UpdateLock.TryAcquire(layout.InstallRoot);
         if (updateLock is null)
         {
             Console.Error.WriteLine("另一个更新进程正在运行。");
-            return 4;
+            return BootstrapperExitCodes.DeployError;
+        }
+
+        var cleaned = installer.CleanupStaging();
+        if (cleaned > 0)
+        {
+            log.Write($"部署前清理未完成 staging：{cleaned} 个目录");
         }
 
         if (!File.Exists(layout.TrustFile) && deploy.TrustFile is null)
@@ -144,13 +180,215 @@ internal static class Program
             return Fail(apply.Error!, log);
         }
 
+        CopyProvenance(
+            layout,
+            apply.Value!.ParsedVersion ?? ReleaseVersion.Parse(apply.Value.Version),
+            deploy.ManifestPath,
+            deploy.SignaturePath,
+            log);
         Console.WriteLine($"已部署 ECL {apply.Value!.Version}，当前版本指针已切换。");
         log.Write($"部署完成：{apply.Value.Version}（上一版本：{apply.Value.PreviousVersion ?? "无"}）");
         return 0;
     }
 
+    /// <summary>
+    /// 把已签名的更新清单与签名保存到版本目录，供 ADR 0034 的自身完整性校验和离线恢复使用。
+    /// 清单来自已经通过签名验证的部署输入，不额外信任安装介质中的任意文件。
+    /// </summary>
+    private static void CopyProvenance(
+        UpdateLayout layout,
+        ReleaseVersion version,
+        string manifestPath,
+        string signaturePath,
+        BootstrapperLog log)
+    {
+        try
+        {
+            var versionDirectory = layout.GetVersionDirectory(version);
+            File.Copy(
+                manifestPath,
+                Path.Combine(versionDirectory, SelfIntegrityVerifier.ManifestFileName),
+                overwrite: true);
+            File.Copy(
+                signaturePath,
+                Path.Combine(versionDirectory, SelfIntegrityVerifier.SignatureFileName),
+                overwrite: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            log.Write($"警告：无法在版本目录保存安装清单副本：{exception.Message}");
+        }
+    }
+
+    private static int VerifyIntegrity(UpdateLayout layout, BootstrapperLog log, bool verifyHashes)
+    {
+        var result = new SelfIntegrityVerifier()
+            .VerifyAsync(layout.InstallRoot, verifyHashes)
+            .GetAwaiter()
+            .GetResult();
+        if (!result.IsSuccess)
+        {
+            return Fail(result.Error!, log);
+        }
+
+        var report = result.Value!;
+        Console.WriteLine(report.Describe());
+        foreach (var issue in report.Issues)
+        {
+            Console.WriteLine($"  - {issue}");
+        }
+
+        log.Write($"完整性校验：{report.Describe()}；{string.Join("；", report.Issues)}");
+        return report.IsHealthy ? 0 : BootstrapperExitCodes.IntegrityError;
+    }
+
+    private static int RepairIntegrity(UpdateLayout layout, BootstrapperLog log)
+    {
+        var result = CreateRepairService(layout, log).RepairAsync(layout.InstallRoot).GetAwaiter().GetResult();
+        if (!result.IsSuccess)
+        {
+            return Fail(result.Error!, log);
+        }
+
+        var outcome = result.Value!;
+        Console.WriteLine(outcome.Before.Describe());
+        if (outcome.RestoredFiles.Count > 0)
+        {
+            Console.WriteLine($"已从本地恢复材料修复 {outcome.RestoredFiles.Count} 个文件：");
+            foreach (var file in outcome.RestoredFiles)
+            {
+                Console.WriteLine($"  - {file}");
+            }
+        }
+
+        if (outcome.ResidualIssues.Count > 0)
+        {
+            Console.WriteLine("仍存在的问题：");
+            foreach (var issue in outcome.ResidualIssues)
+            {
+                Console.WriteLine($"  - {issue}");
+            }
+        }
+
+        log.Write($"Repair Mode：恢复 {outcome.RestoredFiles.Count} 个文件，成功={outcome.Success}；{string.Join("；", outcome.ResidualIssues)}");
+        if (outcome.Success)
+        {
+            Console.WriteLine("ECL 安装完整性已恢复。");
+            return 0;
+        }
+
+        Console.WriteLine("无法完成离线修复：本地恢复材料不足或来源未验证。请从官方发布源重新安装对应版本。");
+        return BootstrapperExitCodes.IntegrityError;
+    }
+
+    /// <summary>
+    /// 构造 Repair Mode 服务。本地恢复缓存始终可用；当环境变量 <c>ECL_UPDATE_FEED</c> 指向
+    /// HTTPS 更新源且安装根存在 update-trust.json 时，允许从该源获取当前版本完整包做联网修复。
+    /// 远程修复仍要求清单签名、包哈希与逐文件哈希全部通过。
+    /// </summary>
+    private static SelfRepairService CreateRepairService(UpdateLayout layout, BootstrapperLog log)
+    {
+        var cache = new RecoveryCache(Path.Combine(layout.InstallRoot, "recovery"));
+        IRepairPackageSource? remote = null;
+        var feedValue = Environment.GetEnvironmentVariable("ECL_UPDATE_FEED");
+        if (!string.IsNullOrWhiteSpace(feedValue))
+        {
+            if (!Uri.TryCreate(feedValue, UriKind.Absolute, out var feed) ||
+                !string.Equals(feed.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                log.Write("忽略远程修复源：ECL_UPDATE_FEED 必须是 HTTPS 绝对地址。");
+            }
+            else
+            {
+                var trust = UpdateTrustStore.FromFileAsync(layout.TrustFile).GetAwaiter().GetResult();
+                if (!trust.IsSuccess)
+                {
+                    log.Write($"远程修复不可用：{trust.Error!.Message}");
+                }
+                else
+                {
+                    var client = new UpdateClient(
+                        new HttpClient { Timeout = TimeSpan.FromSeconds(60) },
+                        new UpdateSignatureVerifier(trust.Value!));
+                    remote = new UpdateFeedRepairSource(
+                        client,
+                        feed,
+                        UpdateChannel.Stable,
+                        Path.Combine(Path.GetTempPath(), "ecl-repair"));
+                    log.Write("已配置远程修复源。");
+                }
+            }
+        }
+
+        return new SelfRepairService(cache: cache, remoteSource: remote);
+    }
+
+    /// <summary>
+    /// 正常启动前的轻量检查（ADR 0034 §8）：只核对当前版本与文件是否存在/大小一致；
+    /// 仅在内容受损时进入 Repair Mode，避免每次启动都做全量哈希扫描。
+    /// </summary>
+    private static int EnsureIntegrityBeforeLaunch(UpdateLayout layout, BootstrapperLog log)
+    {
+        var result = new SelfIntegrityVerifier()
+            .VerifyAsync(layout.InstallRoot, verifyHashes: false)
+            .GetAwaiter()
+            .GetResult();
+        if (!result.IsSuccess)
+        {
+            if (result.Error!.Code is "integrity.manifest_missing" or "integrity.current_missing")
+            {
+                Console.WriteLine("未找到完整性清单（旧版安装或开发构建）；跳过自身完整性校验。");
+                log.Write($"跳过自身完整性校验：{result.Error.Code}");
+                return 0;
+            }
+
+            return Fail(result.Error!, log);
+        }
+
+        var report = result.Value!;
+        if (!report.ContentIntact)
+        {
+            Console.WriteLine(report.Describe());
+            Console.WriteLine("检测到 ECL 安装文件损坏，进入 Repair Mode。");
+            log.Write("检测到安装文件损坏，进入 Repair Mode。");
+            var repair = CreateRepairService(layout, log).RepairAsync(layout.InstallRoot).GetAwaiter().GetResult();
+            if (!repair.IsSuccess)
+            {
+                return Fail(repair.Error!, log);
+            }
+
+            if (!repair.Value!.Success)
+            {
+                if (repair.Value.ResidualIssues.Count > 0)
+                {
+                    Console.WriteLine(string.Join(Environment.NewLine, repair.Value.ResidualIssues.Select(issue => $"  - {issue}")));
+                }
+
+                Console.WriteLine("无法完成离线修复：本地恢复材料不足或来源未验证。请从官方发布源重新安装对应版本。");
+                log.Write("Repair Mode 未能修复安装，拒绝启动。");
+                return BootstrapperExitCodes.IntegrityError;
+            }
+
+            Console.WriteLine("ECL 安装文件已从本地恢复材料修复。");
+            log.Write("Repair Mode 完成本地修复。");
+        }
+        else if (report.Trust != SelfIntegrityTrustStatus.Verified)
+        {
+            Console.WriteLine("提示：无法验证安装清单来源签名；文件内容检查通过。");
+            log.Write($"来源签名不可用：{report.Trust}");
+        }
+
+        return 0;
+    }
+
     private static int Launch(UpdateLayout layout, IReadOnlyList<string> arguments, BootstrapperLog log)
     {
+        var integrity = EnsureIntegrityBeforeLaunch(layout, log);
+        if (integrity != 0)
+        {
+            return integrity;
+        }
+
         var currentResult = layout.ReadCurrentAsync().GetAwaiter().GetResult();
         if (!currentResult.IsSuccess)
         {
@@ -192,22 +430,36 @@ internal static class Program
 
         process.WaitForExit();
         log.Write($"ECL {current.Version} 退出，退出码 {process.ExitCode}。");
+        if (process.ExitCode == 0)
+        {
+            TryCaptureRecoveryCache(layout, current, log);
+        }
+
         return process.ExitCode;
     }
 
-    private static FileStream? AcquireUpdateLock(string installRoot)
+    /// <summary>
+    /// 一次成功启动后保存本地恢复材料（每个版本最多一次），供后续离线修复使用。
+    /// 捕获失败只记录日志，不影响正常启动。
+    /// </summary>
+    private static void TryCaptureRecoveryCache(UpdateLayout layout, CurrentVersion current, BootstrapperLog log)
     {
+        var cache = new RecoveryCache(Path.Combine(layout.InstallRoot, "recovery"));
+        if (Directory.Exists(Path.Combine(cache.VersionsDirectory, current.Version)))
+        {
+            return;
+        }
+
         try
         {
-            return new FileStream(
-                Path.Combine(installRoot, ".update.lock"),
-                FileMode.OpenOrCreate,
-                FileAccess.ReadWrite,
-                FileShare.None);
+            var captured = cache.CaptureAsync(layout.InstallRoot, current).GetAwaiter().GetResult();
+            log.Write(captured.IsSuccess
+                ? $"已保存恢复缓存：{current.Version}（{captured.Value!.FileCount} 个文件）"
+                : $"未保存恢复缓存：{captured.Error}");
         }
-        catch (IOException)
+        catch (Exception exception)
         {
-            return null;
+            log.Write($"保存恢复缓存异常：{exception.Message}");
         }
     }
 
@@ -215,12 +467,7 @@ internal static class Program
     {
         Console.Error.WriteLine(error);
         log.Write($"失败：{error.Code} {error}");
-        return error.Code switch
-        {
-            "update.trust_missing" or "update.unknown_key" or "update.signature_invalid" => 3,
-            "update.executable_missing" or "update.launch_failed" => 5,
-            _ => 4,
-        };
+        return BootstrapperExitCodes.FromError(error);
     }
 
     private static ReleaseVersion GetBootstrapperVersion()
@@ -253,104 +500,17 @@ internal static class Program
               --package <ECL-*.zip>
               [--trust <update-trust.json>] [--deploy-only]
           ECL.Bootstrapper.exe [--install-root <目录>] --rollback [--deploy-only]
+          ECL.Bootstrapper.exe [--install-root <目录>] --cleanup
+          ECL.Bootstrapper.exe [--install-root <目录>] --verify
+          ECL.Bootstrapper.exe [--install-root <目录>] --repair
 
         默认读取 <install-root>/current.json 并启动其中的版本。更新部署在独立进程中完成，
-        不会覆盖正在运行的 ECL。
+        不会覆盖正在运行的 ECL。--cleanup 只清理未完成的 staging，不触碰 current 版本。
+        --verify 全量核对签名清单与文件哈希；--repair 只使用本地恢复材料恢复 ECL 自有文件，
+        不会删除或重置实例、存档、配置等用户数据。正常启动只做轻量检查，发现内容损坏时进入 Repair Mode。
+        设置 ECL_UPDATE_FEED 为 HTTPS 更新源时，本地恢复材料不足可尝试从该源获取当前版本完整包修复；
+        远程修复同样必须通过签名、包哈希与逐文件哈希验证。
         """;
-
-    private sealed record DeployOptions(
-        string ManifestPath,
-        string SignaturePath,
-        string PackagePath,
-        string? TrustFile);
-
-    private sealed record BootstrapperOptions(
-        string? InstallRoot,
-        DeployOptions? Deploy,
-        bool Rollback,
-        bool DeployOnly,
-        bool Help,
-        IReadOnlyList<string> ApplicationArguments)
-    {
-        public static BootstrapperOptions Parse(string[] args)
-        {
-            string? installRoot = null;
-            string? manifest = null;
-            string? signature = null;
-            string? package = null;
-            string? trust = null;
-            var rollback = false;
-            var apply = false;
-            var deployOnly = false;
-            var help = false;
-            var application = new List<string>();
-
-            for (var index = 0; index < args.Length; index++)
-            {
-                switch (args[index])
-                {
-                    case "--install-root":
-                        installRoot = TakeValue(args, ref index, "--install-root");
-                        break;
-                    case "--apply":
-                        apply = true;
-                        break;
-                    case "--manifest":
-                        manifest = TakeValue(args, ref index, "--manifest");
-                        break;
-                    case "--signature":
-                        signature = TakeValue(args, ref index, "--signature");
-                        break;
-                    case "--package":
-                        package = TakeValue(args, ref index, "--package");
-                        break;
-                    case "--trust":
-                        trust = TakeValue(args, ref index, "--trust");
-                        break;
-                    case "--rollback":
-                        rollback = true;
-                        break;
-                    case "--deploy-only":
-                        deployOnly = true;
-                        break;
-                    case "--help":
-                    case "-h":
-                    case "/?":
-                        help = true;
-                        break;
-                    default:
-                        application.Add(args[index]);
-                        break;
-                }
-            }
-
-            DeployOptions? deploy = null;
-            if (apply || manifest is not null || signature is not null || package is not null)
-            {
-                if (string.IsNullOrWhiteSpace(manifest) ||
-                    string.IsNullOrWhiteSpace(signature) ||
-                    string.IsNullOrWhiteSpace(package))
-                {
-                    throw new ArgumentException("--apply 需要同时提供 --manifest、--signature 与 --package。");
-                }
-
-                deploy = new DeployOptions(manifest, signature, package, trust);
-            }
-
-            return new BootstrapperOptions(installRoot, deploy, rollback, deployOnly, help, application);
-        }
-
-        private static string TakeValue(string[] args, ref int index, string name)
-        {
-            if (index + 1 >= args.Length || string.IsNullOrWhiteSpace(args[index + 1]))
-            {
-                throw new ArgumentException($"{name} 需要参数值。");
-            }
-
-            index++;
-            return args[index];
-        }
-    }
 
     private sealed class BootstrapperLog : IDisposable
     {

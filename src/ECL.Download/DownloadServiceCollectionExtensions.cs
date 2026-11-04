@@ -12,6 +12,7 @@ public static class DownloadServiceCollectionExtensions
         // 下载是第一个接入统一任务中心的服务；Operation Store 同时供 UI / CLI 读取。
         services.AddEclOperations();
         services.AddSingleton<IHttpClientProvider, SettingsHttpClientProvider>();
+        services.AddSingleton(new DownloadArtifactLifecycle());
         services.AddSingleton<DownloadSourceResolver>();
         services.AddSingleton<DownloadService>();
         services.AddSingleton<IDownloadService>(provider => provider.GetRequiredService<DownloadService>());

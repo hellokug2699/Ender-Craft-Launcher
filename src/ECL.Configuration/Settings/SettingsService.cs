@@ -104,6 +104,11 @@ public sealed class SettingsService : ISettingsService
 
     public bool IsVisible(OptionDefinition definition, string? instanceId = null)
     {
+        if (definition.IsHidden)
+        {
+            return false;
+        }
+
         if (string.IsNullOrEmpty(definition.VisibleWhenKey))
         {
             return true;

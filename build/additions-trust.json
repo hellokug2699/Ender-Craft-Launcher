@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "keys": [
+    {
+      "keyId": "ecl-additions",
+      "algorithm": "RSA-PSS-SHA256",
+      "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA5+LM2PzLRKUJnPEZj2kr\ntBkKPI8iiBvB3E2o+8ju4KH/FbLXdJCU0ZufdduJZPn9JKY4H6BGeoiZFyy/CfHB\nvvtmBZ9FSkouHdOIXocqOL3PaNOKRkHpSjtvbi/QaJ3kxgD34YxcW2SXT6/yPb4V\nbEAsfj3jhs1j5Nr3Di15d8PF3W+lbInJlSDp/AP30UNjdB8242X7yNlvnqlZCHiI\nLjr+Xv9zdP8+dndw0KOoyDdFC7DEE1l5bDLzXSl3LesFhG+SiHlzw8QMa/0qxj86\nfjyXvtknvYhxpsvZx52eVaSJuPEIEIp6ZgXLcqnv3qFEzjvlCNYkJHDHw6TQxJM/\ndHqF8oHFEG8A5FYAln6HwS5ldSOGMXkKhZCBkAM55Rimx93cRl+cdw5532j5PBwV\njeoO6DfqZNOUhmbfzL7TL6kJ4tDn3hdgN3f7RwdQ4G/3szVYKH1i138CW4dghP1R\n/n549i5t8OFZfZYuZXhS5Yc4jxtuDByuCRlkLbRoQvkJAgMBAAE=\n-----END PUBLIC KEY-----"
+    }
+  ]
+}

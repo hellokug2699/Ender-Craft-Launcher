@@ -49,10 +49,11 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IDownloadController _downloads;
     private readonly ICrashReportService _crashReports;
     private readonly IDiagnosticPackageService _diagnostics;
+    private readonly Ecl.Minecraft.World.WorldWorkbenchService _worldWorkbench;
+    private readonly Ecl.Core.Storage.InstanceSourceService _instanceSources;
     private bool _initialized;
     private bool _suppressAccountSelection;
     private bool _suppressJavaSelection;
-    private bool _suppressJavaCheck;
     private bool _suppressVersionReload;
     private IReadOnlyList<MinecraftGameVersion> _allVersions = [];
 
@@ -65,6 +66,10 @@ public sealed partial class InstancesViewModel : ObservableObject
     public Func<string, Task<string>>? GetModHealthSummary { get; set; }
 
     public ObservableCollection<InstanceItemViewModel> Instances { get; } = [];
+
+    public ObservableCollection<InstanceSourceGroupViewModel> SourceGroups { get; } = [];
+
+    public bool HasSourceGroups => SourceGroups.Count > 0;
 
     public ObservableCollection<AccountItemViewModel> Accounts { get; } = [];
 
@@ -172,9 +177,6 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     [ObservableProperty]
     private string _javaStatus = string.Empty;
-
-    [ObservableProperty]
-    private bool _disableJavaCompatibilityCheck;
 
     [ObservableProperty]
     private string _instanceJvmArguments = string.Empty;
@@ -297,7 +299,9 @@ public sealed partial class InstancesViewModel : ObservableObject
         ILoaderCatalog loaderCatalog,
         IDownloadController downloads,
         ICrashReportService crashReports,
-        IDiagnosticPackageService diagnostics)
+        IDiagnosticPackageService diagnostics,
+        Ecl.Minecraft.World.WorldWorkbenchService worldWorkbench,
+        Ecl.Core.Storage.InstanceSourceService instanceSources)
     {
         _instances = instances;
         _accounts = accounts;
@@ -319,6 +323,8 @@ public sealed partial class InstancesViewModel : ObservableObject
         _downloads = downloads;
         _crashReports = crashReports;
         _diagnostics = diagnostics;
+        _worldWorkbench = worldWorkbench;
+        _instanceSources = instanceSources;
 
         DownloadPauseButtonText = _localizer.Get("instances.download.pause");
 
@@ -482,6 +488,34 @@ public sealed partial class InstancesViewModel : ObservableObject
         await RefreshAccountsAsync().ConfigureAwait(true);
         await RefreshInstancesAsync().ConfigureAwait(true);
         await RefreshJavaAsync().ConfigureAwait(true);
+        await RefreshSourceGroupsAsync().ConfigureAwait(true);
+    }
+
+    private async Task RefreshSourceGroupsAsync()
+    {
+        try
+        {
+            var catalog = await _instanceSources.ScanAllAsync();
+            SourceGroups.Clear();
+            foreach (var group in catalog.Groups)
+            {
+                SourceGroups.Add(new InstanceSourceGroupViewModel(
+                    group.Source.Name,
+                    group.Source.Path,
+                    group.IsAccessible ? group.Structure.ToString() : "不可访问",
+                    group.Instances.Select(instance => new InstanceSourceItemViewModel(
+                        instance.Name,
+                        instance.GameVersion ?? "版本未知",
+                        instance.Loader,
+                        instance.CanLaunch)).ToArray()));
+            }
+
+            OnPropertyChanged(nameof(HasSourceGroups));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            StatusMessage = $"实例来源扫描失败：{exception.Message}";
+        }
     }
 
     [RelayCommand]
@@ -766,7 +800,22 @@ public sealed partial class InstancesViewModel : ObservableObject
         // 新建 Forge/Cleanroom 实例时版本 JSON 可能尚未写入；此时按 GameVersion 推断
         // Java 要求，避免“先有版本 JSON 才能下载 Java、先有 Java 才能安装加载器”的死循环。
         var version = versionResult.IsSuccess ? versionResult.Value : null;
-        var requirement = JavaRequirements.Resolve(version, instance.GameVersion);
+        var requirements = await _javaSelection
+            .ResolveRequirementsAsync(instance, version)
+            .ConfigureAwait(true);
+        if (requirements.HasConflicts)
+        {
+            JavaDownloadStatus = _localizer.Get("instances.java.conflict", requirements.Explain());
+            StatusMessage = JavaDownloadStatus;
+            return;
+        }
+
+        if (requirements.IsUnknown)
+        {
+            JavaDownloadStatus = _localizer.Get("instances.java.unknownRequirement", instance.GameVersion);
+        }
+
+        var requirement = requirements.ToRequirement();
         if (!versionResult.IsSuccess)
         {
             JavaDownloadStatus = _localizer.Get("instances.java.usingGameVersion", instance.GameVersion);
@@ -1611,6 +1660,25 @@ public sealed partial class InstancesViewModel : ObservableObject
     private void BackToInstances() => NavigateBackFromDetails?.Invoke();
 
     [RelayCommand]
+    private void OpenWorldWorkbench()
+    {
+        if (SelectedInstance is null)
+        {
+            return;
+        }
+
+        var window = new WorldWorkbenchWindow(
+            _worldWorkbench,
+            _dialogs,
+            SelectedInstance.Model.Id,
+            SelectedInstance.Name)
+        {
+            Owner = Application.Current.MainWindow,
+        };
+        window.ShowDialog();
+    }
+
+    [RelayCommand]
     private void OpenInstanceFolder() => OpenSelectedDirectory(
         SelectedInstance is null ? null : _paths.GetInstanceDirectory(SelectedInstance.Model.Id));
 
@@ -1720,26 +1788,6 @@ public sealed partial class InstancesViewModel : ObservableObject
         _ = UpdateJavaStatusAsync();
     }
 
-    partial void OnDisableJavaCompatibilityCheckChanged(bool value)
-    {
-        if (_suppressJavaCheck || SelectedInstance is null)
-        {
-            return;
-        }
-
-        _settings.TrySetRaw(
-            "instance.java.disableCompatibilityCheck",
-            value ? "true" : "false",
-            SelectedInstance.Model.Id,
-            out var error);
-
-        if (error is not null)
-        {
-            StatusMessage = error;
-        }
-
-        _ = UpdateJavaStatusAsync();
-    }
 
     partial void OnSelectedAccountChanged(AccountItemViewModel? value)
     {
@@ -1801,6 +1849,22 @@ public sealed partial class InstancesViewModel : ObservableObject
             .ResolveAsync(instance, versionResult.Value)
             .ConfigureAwait(true);
 
+        if (selection.IsBlocked)
+        {
+            var blockedMessage = selection.Compatibility?.Status switch
+            {
+                JavaCompatibilityStatus.UnsupportedArchitecture => _localizer.Get(
+                    "instances.java.unsupported32",
+                    selection.Runtime?.DisplayName ?? "Java"),
+                JavaCompatibilityStatus.RequirementsConflict => _localizer.Get(
+                    "instances.java.conflict",
+                    selection.Decision?.Requirements?.Explain() ?? string.Empty),
+                _ => selection.BlockReason ?? _localizer.Get("instances.java.blocked"),
+            };
+            _dialogs.ShowError(_localizer.Get("instances.java.blockedTitle"), blockedMessage);
+            return false;
+        }
+
         if (selection.Runtime is null)
         {
             var shouldDownload = _dialogs.Confirm(
@@ -1815,18 +1879,39 @@ public sealed partial class InstancesViewModel : ObservableObject
             return false;
         }
 
-        if (!selection.CompatibilityCheckEnabled ||
-            selection.Compatibility is null ||
+        if (selection.Compatibility is null ||
             selection.Compatibility.IsCompatible)
         {
             return true;
         }
 
+        // 未知要求不是不兼容；按优先级选择后只提示，不弹风险确认。
+        if (selection.Compatibility.Status == JavaCompatibilityStatus.UnknownRequirement)
+        {
+            return true;
+        }
+
+        // 自动选择永远不应选中已知不兼容的运行时；如果出现，这是内部错误而不是用户风险。
+        if (!selection.IsExplicitOverride)
+        {
+            _dialogs.ShowError(
+                _localizer.Get("instances.java.blockedTitle"),
+                _localizer.Get("instances.java.autoSelectionIncompatible"));
+            return false;
+        }
+
         var actual = selection.Runtime.Version?.Raw ?? selection.Runtime.DisplayName;
         var required = selection.Requirement?.Describe() ?? "Java";
+        var message = selection.Compatibility.Status == JavaCompatibilityStatus.Unknown
+            ? _localizer.Get("instances.java.unknownPrompt", actual)
+            : _localizer.Get("instances.java.incompatiblePrompt", actual, required);
         return _dialogs.Confirm(
-            _localizer.Get("instances.java.incompatibleTitle"),
-            _localizer.Get("instances.java.incompatiblePrompt", actual, required));
+            _localizer.Get(
+                selection.Compatibility.Status == JavaCompatibilityStatus.Unknown
+                    ? "instances.java.unknownTitle"
+                    : "instances.java.incompatibleTitle"),
+            message,
+            selection.CompatibilityAcknowledgementToken);
     }
 
     private void SelectConfiguredJavaOption(string? configuredPath)
@@ -1864,9 +1949,6 @@ public sealed partial class InstancesViewModel : ObservableObject
             SelectConfiguredJavaOption(configured);
             _suppressJavaSelection = false;
 
-            _suppressJavaCheck = true;
-            DisableJavaCompatibilityCheck = _settings.Get<bool>("instance.java.disableCompatibilityCheck", instance.Id);
-            _suppressJavaCheck = false;
 
             await UpdateJavaStatusAsync().ConfigureAwait(true);
         }
@@ -1898,22 +1980,40 @@ public sealed partial class InstancesViewModel : ObservableObject
                 .ResolveAsync(instance, versionResult.Value)
                 .ConfigureAwait(true);
 
-            _suppressJavaCheck = true;
-            DisableJavaCompatibilityCheck = !selection.CompatibilityCheckEnabled;
-            _suppressJavaCheck = false;
+
+            if (selection.IsBlocked)
+            {
+                var blockedMessage = selection.Compatibility?.Status switch
+                {
+                    JavaCompatibilityStatus.UnsupportedArchitecture => _localizer.Get(
+                        "instances.java.unsupported32",
+                        selection.Runtime?.DisplayName ?? "Java"),
+                    JavaCompatibilityStatus.RequirementsConflict => _localizer.Get(
+                        "instances.java.conflict",
+                        selection.Decision?.Requirements?.Explain() ?? string.Empty),
+                    _ => selection.BlockReason ?? _localizer.Get("instances.java.blocked"),
+                };
+                JavaStatus = WithWarnings(blockedMessage);
+                return;
+            }
 
             if (selection.Runtime is null)
             {
-                JavaStatus = WithWarnings(_localizer.Get("instances.java.notFound"));
+                var message = selection.Decision?.Failure switch
+                {
+                    JavaSelectionFailure.RequirementsConflict => _localizer.Get(
+                        "instances.java.conflict",
+                        selection.Decision.Requirements?.Explain() ?? string.Empty),
+                    JavaSelectionFailure.NoCompatibleCandidate => _localizer.Get(
+                        "instances.java.noCompatibleReasons",
+                        selection.Requirement?.Describe() ?? "Java",
+                        DescribeRejectedCandidates(selection.Decision)),
+                    _ => _localizer.Get("instances.java.notFound"),
+                };
+                JavaStatus = WithWarnings(message);
                 return;
             }
 
-            if (!selection.CompatibilityCheckEnabled)
-            {
-                JavaStatus = WithWarnings(
-                    _localizer.Get("instances.java.checkDisabled", selection.Runtime.DisplayName));
-                return;
-            }
 
             if (selection.Compatibility is null || selection.Compatibility.IsCompatible)
             {
@@ -1929,10 +2029,25 @@ public sealed partial class InstancesViewModel : ObservableObject
                 return;
             }
 
-            JavaStatus = WithWarnings(_localizer.Get(
-                "instances.java.incompatible",
-                selection.Runtime.Version?.Raw ?? selection.Runtime.DisplayName,
-                selection.Requirement?.Describe() ?? "Java"));
+            if (selection.Compatibility.Status == JavaCompatibilityStatus.UnknownRequirement)
+            {
+                JavaStatus = WithWarnings(
+                    _localizer.Get("instances.java.unknownRequirement", selection.Runtime.DisplayName));
+                return;
+            }
+
+            if (selection.Compatibility.Status == JavaCompatibilityStatus.UnsupportedArchitecture)
+            {
+                JavaStatus = WithWarnings(
+                    _localizer.Get("instances.java.unsupported32", selection.Runtime.DisplayName));
+                return;
+            }
+
+            var actual = selection.Runtime.Version?.Raw ?? selection.Runtime.DisplayName;
+            var required = selection.Requirement?.Describe() ?? "Java";
+            JavaStatus = WithWarnings(selection.IsCompatibilityWarningAcknowledged
+                ? _localizer.Get("instances.java.incompatibleAcknowledged", actual, required)
+                : _localizer.Get("instances.java.incompatible", actual, required));
 
             string WithWarnings(string text) => selection.Warnings.Count == 0
                 ? text
@@ -1943,6 +2058,31 @@ public sealed partial class InstancesViewModel : ObservableObject
             JavaStatus = exception.Message;
         }
     }
+
+    private string DescribeRejectedCandidates(JavaSelectionDecision? decision)
+    {
+        if (decision is null || decision.RejectedCandidates.Count == 0)
+        {
+            return _localizer.Get("instances.java.notFound");
+        }
+
+        return string.Join(
+            "，",
+            decision.RejectedCandidates
+                .GroupBy(candidate => candidate.Status)
+                .Select(group => $"{DescribeCandidateStatus(group.Key)} ×{group.Count()}"));
+    }
+
+    private string DescribeCandidateStatus(JavaCandidateStatus status) => _localizer.Get(status switch
+    {
+        JavaCandidateStatus.TooOld => "instances.java.candidate.tooOld",
+        JavaCandidateStatus.TooNew => "instances.java.candidate.tooNew",
+        JavaCandidateStatus.Unsupported32Bit => "instances.java.candidate.unsupported32Bit",
+        JavaCandidateStatus.UnknownVersion => "instances.java.candidate.unknownVersion",
+        JavaCandidateStatus.CompatibleButNotPreferred => "instances.java.candidate.compatibleButNotPreferred",
+        JavaCandidateStatus.RequirementsConflict => "instances.java.candidate.requirementsConflict",
+        _ => "instances.java.candidate.unknownVersion",
+    });
 
     private static string FormatJava(JavaRuntime runtime)
     {
@@ -2080,6 +2220,42 @@ public sealed partial class InstancesViewModel : ObservableObject
             StatusMessage = _localizer.Get("instances.launchException", exception.Message);
         }
     }
+}
+
+public sealed record InstanceSourceItemViewModel(string Name, string GameVersion, string Loader, bool CanLaunch)
+{
+    public string Meta => $"{GameVersion} · {Loader}";
+
+    public string Availability => CanLaunch ? "ECL 托管" : "外部只读";
+}
+
+public sealed partial class InstanceSourceGroupViewModel : ObservableObject
+{
+    public InstanceSourceGroupViewModel(
+        string name,
+        string path,
+        string status,
+        IReadOnlyList<InstanceSourceItemViewModel> instances)
+    {
+        Name = name;
+        Path = path;
+        Status = status;
+        Instances = instances;
+    }
+
+    public string Name { get; }
+
+    public string Path { get; }
+
+    public string Status { get; }
+
+    public IReadOnlyList<InstanceSourceItemViewModel> Instances { get; }
+
+    public string CountText => $"{Instances.Count} 个实例";
+
+    /// <summary>折叠只影响展示，不改变实例选择、扫描状态或清理目标。</summary>
+    [ObservableProperty]
+    private bool _isExpanded = true;
 }
 
 public sealed class InstanceItemViewModel

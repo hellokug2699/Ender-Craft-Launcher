@@ -1,39 +1,23 @@
-name: Release
+name: ECL channel builds
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [dev, nightly]
+    tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Semver version, for example 1.0.1"
-        required: true
-        type: string
-      channel:
-        description: "Update channel"
-        required: true
-        default: stable
-        type: choice
-        options:
-          - stable
-          - beta
-          - dev
-      release_notes:
-        description: "Optional release notes"
-        required: false
-        type: string
 
 permissions:
   contents: write
 
+# A newer push to the same channel supersedes an older queued build.
+# Stable tags are unique refs, so they are not cancelled by other releases.
 concurrency:
-  group: release-${{ github.ref }}
+  group: ecl-build-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   release:
-    name: Build, sign and publish
+    name: Build, sign and publish channel snapshot
     runs-on: windows-latest
     environment: release
     steps:
@@ -45,24 +29,51 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Resolve version and channel
+      - name: Resolve version and channel from branch
         shell: pwsh
+        env:
+          ECL_REF_NAME: ${{ github.ref_name }}
+          ECL_REF_TYPE: ${{ github.ref_type }}
+          ECL_RUN_NUMBER: ${{ github.run_number }}
+          ECL_RUN_ATTEMPT: ${{ github.run_attempt }}
+          ECL_COMMIT_SHA: ${{ github.sha }}
         run: |
-          $version = "${{ inputs.version }}"
-          $channel = "${{ inputs.channel }}"
-          if ([string]::IsNullOrWhiteSpace($version)) {
-            $version = "${{ github.ref_name }}".TrimStart("v")
-            $channel = if ($version.Contains("-")) { "beta" } else { "stable" }
+          $base = [xml](Get-Content "Directory.Build.props" -Raw)
+          $baseVersion = [string]$base.Project.PropertyGroup.VersionPrefix
+          if ($baseVersion -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
+            throw "Directory.Build.props VersionPrefix must be MAJOR.MINOR.PATCH."
           }
-          if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?$') {
-            throw "Invalid version: $version"
+
+          if ($env:ECL_REF_TYPE -eq "tag") {
+            $version = $env:ECL_REF_NAME -replace '^v', ''
+            if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
+              throw "Release tags must be stable SemVer tags such as v1.2.3."
+            }
+            $channel = "main"
           }
-          if ($channel -notin @("stable", "beta", "dev")) { throw "Invalid channel: $channel" }
+          else {
+            $channel = $env:ECL_REF_NAME
+            if ($channel -notin @("dev", "nightly")) {
+              throw "workflow_dispatch must target dev or nightly; stable releases are tag-only."
+            }
+
+            $date = [DateTime]::UtcNow.ToString("yyyyMMdd")
+            $attempt = [int]$env:ECL_RUN_ATTEMPT
+            $version = "$baseVersion-$channel.$date.$($env:ECL_RUN_NUMBER).$attempt"
+          }
+
           "ECL_VERSION=$version" >> $env:GITHUB_ENV
           "ECL_CHANNEL=$channel" >> $env:GITHUB_ENV
-          $notes = "${{ inputs.release_notes }}"
-          if ([string]::IsNullOrWhiteSpace($notes)) { $notes = "ECL $version ($channel)" }
-          $notes | Set-Content -Path "$env:RUNNER_TEMP/release-notes.md" -Encoding utf8NoBOM
+          "ECL_RELEASE_TITLE=ECL $channel (latest: $version)" >> $env:GITHUB_ENV
+          @"
+          ECL $version
+          Channel: $channel
+          Commit: $env:ECL_COMMIT_SHA
+          Build: $env:GITHUB_RUN_NUMBER (attempt $env:ECL_RUN_ATTEMPT)
+
+          This is the latest rolling $channel build. Older build history is available
+          in GitHub Actions artifacts and workflow runs.
+          "@ | Set-Content -Path "$env:RUNNER_TEMP/release-notes.md" -Encoding utf8NoBOM
 
       - name: Materialize update signing key
         shell: pwsh
@@ -85,10 +96,9 @@ jobs:
               -OutFile $keyPath
           }
           else {
-            throw "No update signing key. Configure ECL_UPDATE_SIGNING_KEY (recommended) or ECL_CORE_READ_TOKEN."
+            throw "No update signing key. Configure ECL_UPDATE_SIGNING_KEY or ECL_CORE_READ_TOKEN."
           }
 
-          # Validate the private key against the committed public trust store before signing.
           $trust = Get-Content "build/update-trust.json" -Raw | ConvertFrom-Json
           $expected = [string]$trust.keys[0].publicKey
           $rsa = [System.Security.Cryptography.RSA]::Create()
@@ -96,14 +106,11 @@ jobs:
             $rsa.ImportFromPem([System.IO.File]::ReadAllText($keyPath))
             $actual = $rsa.ExportSubjectPublicKeyInfoPem()
           }
-          finally {
-            $rsa.Dispose()
-          }
+          finally { $rsa.Dispose() }
           if ($actual.Trim() -ne $expected.Trim()) {
-            throw "Signing key does not match build/update-trust.json. Refusing to sign."
+            throw "Signing key does not match build/update-trust.json."
           }
           "ECL_UPDATE_SIGNING_KEY=$keyPath" >> $env:GITHUB_ENV
-          Write-Host "Signing key materialized and matched the committed trust store."
 
       - name: Build signed release artifacts
         shell: pwsh
@@ -124,9 +131,47 @@ jobs:
           $dir = "artifacts/release/$env:ECL_VERSION"
           $boot = Join-Path $dir "ECL.Bootstrapper-$env:ECL_VERSION-win-x64.zip"
           Compress-Archive -Path (Join-Path $dir "bootstrapper/*") -DestinationPath $boot -Force
+          $installerMedia = Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.zip"
+          Compress-Archive -Path (Join-Path $dir "installer/*") -DestinationPath $installerMedia -Force
           Get-ChildItem $dir | Select-Object Name, Length
 
-      - name: Publish GitHub Release
+      # Every build remains independently downloadable for a limited period.
+      # The updater does not consume Actions artifacts; it uses the signed rolling feed below.
+      - name: Archive this build in Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: ECL-${{ env.ECL_VERSION }}-${{ env.ECL_CHANNEL }}-${{ github.sha }}
+          path: artifacts/release/${{ env.ECL_VERSION }}/
+          if-no-files-found: error
+          retention-days: 14
+
+      # Never interrupt a publication halfway through. Older branch builds are
+      # retained as Actions artifacts, but only the current branch head updates the feed.
+      - name: Check whether this is the latest channel commit
+        id: freshness
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ECL_REF_TYPE: ${{ github.ref_type }}
+          ECL_CHANNEL: ${{ env.ECL_CHANNEL }}
+        run: |
+          if ($env:ECL_REF_TYPE -eq "tag") {
+            "publish=true" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          $head = gh api "repos/$env:GITHUB_REPOSITORY/branches/$env:ECL_CHANNEL" --jq '.commit.sha'
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($head)) {
+            throw "Failed to resolve current branch head for $env:ECL_CHANNEL"
+          }
+          $shouldPublish = ($head.Trim() -eq $env:GITHUB_SHA)
+          "publish=$($shouldPublish.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          if (-not $shouldPublish) {
+            Write-Host "Skipping stale channel publication for $env:GITHUB_SHA; current head is $head."
+          }
+
+      - name: Publish stable release or update rolling channel feed
+        if: steps.freshness.outputs.publish == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -135,37 +180,67 @@ jobs:
           $assets = @(
             (Join-Path $dir "ECL-$env:ECL_VERSION-win-x64.zip"),
             (Join-Path $dir "ECL.Bootstrapper-$env:ECL_VERSION-win-x64.zip"),
+            (Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.zip"),
             (Join-Path $dir "update-manifest.json"),
             (Join-Path $dir "update-manifest.sig"),
             (Join-Path $dir "update-trust.json")
           )
           $notes = "$env:RUNNER_TEMP/release-notes.md"
-          $prerelease = $env:ECL_CHANNEL -ne "stable"
-          $versionTag = "v$env:ECL_VERSION"
 
-          function Publish-Release([string]$tag, [string]$title) {
-            $existing = gh release view $tag 2>$null
-            if ($LASTEXITCODE -eq 0 -and $existing) {
-              gh release upload $tag @assets --clobber
-              gh release edit $tag --title $title --notes-file $notes
-            }
-            else {
-              $ghArgs = @("release", "create", $tag, "--title", $title, "--notes-file", $notes, "--target", $env:GITHUB_SHA)
-              if ($prerelease) { $ghArgs += "--prerelease" }
-              gh @ghArgs @assets
-            }
-            if ($LASTEXITCODE -ne 0) { throw "Failed to publish release $tag" }
+          if ($env:ECL_CHANNEL -eq "main") {
+            # Keep an immutable, versioned stable release for humans and rollback.
+            $versionTag = "v$env:ECL_VERSION"
+            gh release create $versionTag @assets --title "ECL $env:ECL_VERSION" --notes-file $notes --target $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { throw "Failed to publish stable release $versionTag" }
+
+            # The updater consumes the stable channel feed at /main/, not /vX.Y.Z/.
+            # Maintain one rolling stable feed alongside immutable versioned releases.
+            $tag = "main"
+            $releaseTitle = "ECL main (latest: $env:ECL_VERSION)"
+          }
+          else {
+            # One mutable Release per prerelease channel: no per-commit Release spam.
+            $tag = $env:ECL_CHANNEL
+            $releaseTitle = $env:ECL_RELEASE_TITLE
           }
 
-          Publish-Release $versionTag "ECL $env:ECL_VERSION"
-          Publish-Release $env:ECL_CHANNEL "ECL $env:ECL_CHANNEL channel ($env:ECL_VERSION)"
+          gh release view $tag 2>$null
+          $releaseExists = ($LASTEXITCODE -eq 0)
+          $oldAssets = @()
+          if ($releaseExists) {
+            $oldAssets = @(gh release view $tag --json assets --jq '.assets[].name')
+            if ($LASTEXITCODE -ne 0) { throw "Failed to enumerate existing assets for $tag" }
+            gh release upload $tag @assets --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Failed to upload rolling assets for $tag" }
+            if ($env:ECL_CHANNEL -eq "main") {
+              gh release edit $tag --title $releaseTitle --notes-file $notes
+            }
+            else {
+              gh release edit $tag --title $releaseTitle --notes-file $notes --prerelease
+            }
+            if ($LASTEXITCODE -ne 0) { throw "Failed to update rolling release metadata for $tag" }
+          }
+          else {
+            $createArgs = @("release", "create", $tag) + $assets + @("--title", $releaseTitle, "--notes-file", $notes, "--target", $env:GITHUB_SHA)
+            if ($env:ECL_CHANNEL -ne "main") { $createArgs += "--prerelease" }
+            gh @createArgs
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create rolling release $tag" }
+          }
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ECL-${{ env.ECL_VERSION }}
-          path: artifacts/release/${{ env.ECL_VERSION }}/
-          if-no-files-found: error
+          # gh release upload does not move an existing tag. Move it only after all
+          # assets are uploaded so the channel tag always identifies the published build.
+          gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$env:GITHUB_SHA" -F force=true
+          if ($LASTEXITCODE -ne 0) { throw "Failed to move rolling channel tag $tag to $env:GITHUB_SHA" }
+
+          # Package names contain the unique build version. Remove stale assets only
+          # after the new manifest/signature are published and the channel tag has moved.
+          $currentAssetNames = @($assets | ForEach-Object { [System.IO.Path]::GetFileName($_) })
+          foreach ($oldAsset in $oldAssets) {
+            if ($oldAsset -and $oldAsset -notin $currentAssetNames) {
+              gh release delete-asset $tag $oldAsset --yes
+              if ($LASTEXITCODE -ne 0) { throw "Failed to remove stale asset $oldAsset from $tag" }
+            }
+          }
 
       - name: Remove signing key
         if: always()

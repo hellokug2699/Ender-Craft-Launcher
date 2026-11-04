@@ -32,7 +32,9 @@ internal static class Program
         }
 
         var paths = AppPaths.Create(commandLine.DataDirectory);
-        paths.SetGameRoot(SettingsBootstrap.ReadGlobalString(paths, "launcher.minecraftDirectory"));
+        Ecl.Core.Storage.WorkspaceBootstrap.Apply(
+            paths,
+            SettingsBootstrap.ReadGlobalString(paths, "launcher.minecraftDirectory"));
         paths.EnsureCreated();
 
         var language = commandLine.Language ?? SettingsBootstrap.ReadGlobalString(paths, "launcher.language") ?? CultureInfo.CurrentUICulture.Name;
@@ -48,8 +50,23 @@ internal static class Program
         services.AddEclMinecraft();
 
         await using var provider = services.BuildServiceProvider();
+        var lifecycle = provider.GetRequiredService<Ecl.Core.Runtime.IApplicationLifecycle>();
+        lifecycle.BeginStart();
         var application = new CliApplication(provider, commandLine);
-        return await application.RunAsync().ConfigureAwait(false);
+        lifecycle.MarkRunning();
+        try
+        {
+            return await application.RunAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            // ADR 0039：CLI 也是应用运行时，退出前等待受管理后台工作收尾。
+            var report = await lifecycle.ShutdownAsync().ConfigureAwait(false);
+            if (!report.IsClean)
+            {
+                Console.Error.WriteLine($"关闭时存在未完成或失败的工作：{string.Join("；", report.Issues)}");
+            }
+        }
     }
 
     internal const string HelpText = """
@@ -63,6 +80,17 @@ internal static class Program
           update check [--feed <URL>] [--trust <文件>] [--install-root <目录>] [--json]
                                           按 launcher.checkUpdates / launcher.updateChannel 检查更新
           instance list [--json]          列出实例
+          workspace status [--json]       查看工作区配置、可用性与存储边界
+          workspace set <目录>            确认 Minecraft 工作区（实例与游戏文件所在位置）
+          workspace validate [--json]     校验当前工作区是否仍可用
+          workspace suggest [--json]      推荐可见的数据盘目录
+          workspace adopt-legacy          继续使用旧版数据目录（仅在确有旧数据时可用）
+          workspace skip                  暂不配置；创建/下载前仍会要求确认
+          workspace roots [--json]        列出已登记的工作区根目录
+          workspace migrate --to <目录> [--apply] [--json]
+                                          预览/执行工作区迁移：复制→校验→切换，源目录保留
+          workspace migrate --resume|--discard|--status
+                                          恢复、放弃或查看中断的迁移
           instance create <名称> --version <版本> [--loader <加载器>] [--loader-version <版本>]
                            [--fabric-api-version <版本>] [--optifine-version <type:patch>]
                                           创建实例；加载器支持 vanilla、fabric、forge、neoforge、cleanroom
@@ -74,9 +102,11 @@ internal static class Program
           loader list --version <版本> [--type fabric|forge|neoforge|cleanroom|fabric-api|optifine] [--json]
                                           列出加载器/组件版本与更新时间
           install <实例ID>                下载/补全版本文件、加载器与组件
-          launch <实例ID> [--dry-run] [--accept-eula] [--json]
+          launch <实例ID> [--dry-run] [--accept-eula] [--accept-java-risk] [--accept-security-risk] [--json]
                                           启动实例；--dry-run 仅生成命令，
-                                          --accept-eula 首次启动时同意 EULA
+                                          --accept-eula 首次启动时同意 EULA，
+                                          --accept-java-risk 显式接受实例固定 Java 的已知风险，
+                                          --accept-security-risk 明确接受安全中心列出的风险并记录
           settings list [--instance <实例ID>] [--json]
                                           列出配置项
           settings get <键> [--instance <实例ID>]
@@ -87,6 +117,7 @@ internal static class Program
                                           清除配置项
           java list [--json]              列出发现的 Java 运行时
           java install <实例ID>           自动下载该版本需要的 Java 运行时
+          java why <实例ID> [--json]      解释 Java 选择：有效要求、被拒候选与固定/自动模式
           mod list <实例ID> [--json]      列出 Mod、启用状态与问题
           mod check <实例ID> [--json]     检查依赖/冲突/重复/加载器不匹配
           mod enable|disable <实例ID> <文件>
@@ -114,9 +145,43 @@ internal static class Program
                                           导入资源包/光影包
           pack delete <实例ID> <文件> [--type resource|shader]
                                           删除资源包/光影包
+          session list [--json]           列出游戏日志会话
+          session show <会话ID> [--json]   查看会话状态、证据与警告
+          session export <会话ID> [--output <路径>] [--json]
+                                          按单次启动导出诊断包
+          session recover [--json]        恢复中断会话（幂等）
+          session prune --older-than-days <N> [--apply] [--json]
+                                          显式清理超过保留期的已完成/已中断会话
           crash <实例ID> [--json]         分析最近一次崩溃与可疑 Mod
           diagnostics export <实例ID> [--output <路径>] [--json]
                                           导出脱敏诊断包
+          engine inventory <实例ID> [--no-deep] [--no-icons] [--json]
+                                          共享 Instance Inventory 三阶段扫描与资源证据
+          engine snapshot <list|create|verify|restore|delete> <实例ID> [快照ID]
+                           [--scope full|environment|world] [--world <名称>]
+                           [--allow-running] [--keep-extra] [--json]
+                                          用户快照的创建、校验、差异与事务化恢复
+          engine verify <实例ID>          校验实例内标记与本地身份登记
+          engine transactions <实例ID> [--json]
+                                          查看实例事务日志与前态恢复状态
+          engine clone <源实例ID> <新名称>
+                                          克隆为独立实例（新 InstanceId）
+          engine relocate <实例ID> <新游戏目录>
+                                          保留实例身份重新关联路径
+          security scan <实例ID> [--shallow] [--json]
+                                          手动扫描实例内模组/资源包/脚本并保留证据
+          security status <实例ID> [--json]
+                                          查看最近扫描与启动前风险门控结论
+          security quarantine <实例ID> <相对路径>
+                                          把可疑文件移入可恢复隔离区
+          security restore <实例ID> <隔离ID>
+                                          恢复隔离文件
+          security list <实例ID> [--json]
+                                          列出本地隔离记录
+          network diag [目标ID...] [--proxy <URL>] [--json]
+                                          DNS/TCP/TLS/HTTP 分阶段连通性与延迟诊断（不测速）
+          github resolve <引用> [--base <文件路径>] [--json]
+                                          按固定仓库边界解析 GitHub 原生资源引用
           account list [--json]           列出账户
           account add-offline <名称> [--default]
                                           添加离线账户
@@ -140,6 +205,7 @@ internal static class Program
           --help                          显示帮助
 
         示例:
+          ecl workspace set "<可见数据盘目录，例如 <盘符>:\Games\ECL>"
           ecl account add-offline Steve --default
           ecl instance create "Survival" --version 1.21.1
           ecl install survival-a1b2c3

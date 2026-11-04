@@ -13,9 +13,20 @@ public sealed class ParsedCommandLine
         "default",
         "dry-run",
         "accept-eula",
+        "accept-java-risk",
+        "accept-security-risk",
         "verbose",
         "check",
         "no-dependencies",
+        "no-icons",
+        "no-deep",
+        "shallow",
+        "keep-extra",
+        "no-safety",
+        "allow-running",
+        "deep",
+        "apply",
+        "resolved",
     };
 
     private readonly Dictionary<string, string?> _options = new(StringComparer.Ordinal);

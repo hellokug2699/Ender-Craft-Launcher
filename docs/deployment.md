@@ -54,7 +54,7 @@ Manifest schema v1，严格拒绝未知字段，避免旧客户端静默忽略�
 校验规则：
 
 - `product` 必须为 `ECL`，`schemaVersion` 必须为当前支持值；
-- `channel` 只接受 `stable` / `beta` / `dev`；
+- `channel` 使用内部通道标识：`main`（正式版）、`dev`（测试版）、`nightly`（夜间版）；旧值 `stable` / `beta` 仅作为兼容输入。
 - 版本号采用 semver 子集 `major.minor.patch[-prerelease]`，并用于版本目录名；
 - 平台固定 `windows`，架构只接受 `x64` / `arm64`；
 - 包大小与 SHA-256 必填；
@@ -110,17 +110,22 @@ ECL.Bootstrapper.exe --install-root "C:\Program Files\ECL" --apply `
 
 # 回滚到上一版本
 ECL.Bootstrapper.exe --install-root "C:\Program Files\ECL" --rollback --deploy-only
+
+# 清理异常中断留下的 staging（不触碰 current 指向的版本）
+ECL.Bootstrapper.exe --install-root "C:\Program Files\ECL" --cleanup
 ```
 
-退出码：`0` 成功；`2` 参数错误；`3` 信任/签名/公钥错误；`4` 部署失败；`5` 启动失败。
-引导程序使用 `.update.lock` 防止并发更新，日志写入 `bootstrapper.log`。
+退出码：`0` 成功；`2` 参数错误；`3` 信任/签名/公钥错误；`4` 部署失败；`5` 启动失败。该映射由 `BootstrapperExitCodes` 统一提供并被单元测试锁定，失败路径不得临时发明新的退出码。
+引导程序使用 `.update.lock` 防止并发更新，日志写入 `bootstrapper.log`；`--apply`、`--rollback` 与 `--cleanup` 都在锁内执行。
+部署前会自动清理未完成的 `staging/`，`versions/` 与 `current.json` 不受影响。
+安装介质中的 Bootstrapper 以单文件自包含方式发布，首次安装不要求目标机器预装 .NET 运行时。
 
 ## 6. 设置与检查
 
 现有配置是产品契约，更新模块沿用：
 
 - `launcher.checkUpdates`：关闭时不得执行自动检查；
-- `launcher.updateChannel`：`stable` / `beta` / `dev`。
+- `launcher.updateChannel`：`main` / `dev` / `nightly`（旧值 `stable` / `beta` 仍可读取并兼容映射）。\n\n- `main` 对应正式版；`dev` 对应测试版；`nightly` 对应夜间版。
 
 当前 CLI 已接入设置：
 
@@ -140,7 +145,7 @@ ecl update check --json
 
 ```powershell
 ./build/pack-release.ps1 -Version 1.0.1 -Channel stable `
-  -SigningKeyPath "D:\Core\signing\update-signing.key" `
+  -SigningKeyPath ".\signing\update-signing.key" `
   -KeyId "ecl-release-2026-11" `
   -TrustStorePath "build/update-trust.json"
 ```
@@ -159,30 +164,60 @@ artifacts/release/1.0.1/
 
 `-Unsigned` 只用于本地检查；未签名清单不会通过客户端验证。
 
-### GitHub Actions / Release
+### GitHub Actions：版本发布与滚动构建
 
-[release.yml](../.github/workflows/release.yml) 在 tag `v*` 或手动触发时：
+[release.yml](../.github/workflows/release.yml) 统一负责签名构建，但将“构建记录”“更新源”和“正式版本发布”分开处理：
 
-1. 校验版本与通道；
-2. 从 Actions Secret `ECL_UPDATE_SIGNING_KEY`（推荐）或私有 Core 的 `ECL_CORE_READ_TOKEN` 读取私钥；
-3. 校验私钥导出的公钥与 `build/update-trust.json` 完全一致；
-4. 构建完整包、生成逐文件清单并用 RSA-PSS 签名；
-5. 创建 `v<version>` 与通道 tag（`stable` / `beta` / `dev`）的 GitHub Release，上传 zip、Manifest、签名、信任库与 Bootstrapper 包；
-6. 在 `always()` 步骤删除 runner 上的临时私钥。
+| 触发来源 | 产物归档 | GitHub Release | 更新源 Tag |
+|---|---|---|---|
+| 推送 `nightly` | Actions Artifact，保留 14 天 | 更新唯一的滚动 Nightly Release | `nightly` |
+| 推送 `dev` | Actions Artifact，保留 14 天 | 更新唯一的滚动 Dev Release | `dev` |
+| 推送 `vMAJOR.MINOR.PATCH` | Actions Artifact，保留 14 天 | 创建不可变的版本 Release，并更新唯一的正式版滚动 Release | `main` |
+| 手动运行 | Actions Artifact，保留 14 天 | 根据所选分支更新对应滚动 Release | 对应通道 |
 
-客户端更新源基址形如：
+- Nightly 每次成功构建都会产生独立的 Actions Artifact，便于高级用户下载特定构建；Artifact 保留 14 天，过期后不保证可取回。
+- Nightly 不再为每次提交创建新的 GitHub Release。公开 Release 列表中只保留一个 `nightly` 滚动入口，资产以 `--clobber` 更新。
+- `nightly`、`dev`、`main` 是可移动的通道 Tag。工作流在所有资产上传成功后才移动 Tag，避免 Tag 指向尚未完整发布的构建。
+- 正式版本仍通过 `vX.Y.Z` 保留不可变 Release；额外维护 `main` 滚动 Release，因为客户端更新协议读取的是 `/<channel>/update-manifest.json`。
+- 同一分支的构建按队列执行，避免在上传资产或移动通道 Tag 时被强制取消；旧提交仍可作为短期 Actions Artifact 追溯，但只有检查时仍是分支最新 HEAD 的构建才能更新滚动源。
+- 手动运行 workflow 时选择 `dev` 或 `nightly` 分支；正式版只能通过版本 Tag 发布。
+
+构建流程仍然执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 和滚动 Release 都包含完整包、Bootstrapper 包、Manifest、签名与信任库。
+
+### 当前实现与目标架构
+
+当前自动更新/远程修复实现仍使用配置的单一 HTTPS Feed：
 
 ```text
 https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/<channel>/
 ```
 
-对应文件：`<base>/update-manifest.json`、`<base>/update-manifest.sig`、`<base>/<package.file>`。
+其中 `<channel>` 为 `main`、`dev` 或 `nightly`。对应文件为 `update-manifest.json`、`update-manifest.sig` 与 Manifest 指定的完整包。Feed 可通过 CLI 参数或 `ECL_UPDATE_FEED` 指定；当前尚未实现多来源自动发现、代理候选管理或来源健康状态。
 
-> `release` Environment 建议配置 Required reviewers；workflow 只授予 `contents: write`，checkout 不保留凭据。
-> 私钥不得写入日志、Release 附件、artifact 或 public 仓库。CI 的 PR 流程永远不会签名。
->
-> 当前 `release.yml` 位于 `nightly` 分支；GitHub 的 `workflow_dispatch` 按钮只在 workflow 进入默认分支后显示。
-> 在合并到默认分支前，可通过推送 `v*` tag 触发同一 workflow（已验证）。
+根据 [ADR 0051：统一安装、更新与恢复架构](adr/0051-unified-installation-update-and-recovery-architecture.md)，目标架构将由 Update Source Resolver 按有界策略尝试多个来源：
+
+1. 官方 GitHub Release 直连；
+2. 经允许列表配置的 GitHub 代理 / gh-proxy 类传输来源；
+3. 提供相同签名发布资产的独立镜像；
+4. 本地 Recovery Cache 与用户手动导入的完整离线介质。
+
+上述顺序是目标策略，不代表这些来源当前均已实现或已配置。GitHub Actions Artifact 仍只用于构建追溯和人工下载，不作为客户端自动更新源：Artifact 有保留期限，下载也可能要求 GitHub 权限。
+
+**信任边界不随来源变化：**所有来源均是不可信传输渠道。客户端必须使用预置/既有信任根验证 Manifest 签名，再验证 Manifest 语义、包大小、SHA-256 和逐文件清单。代理不得提供或替换信任公钥，不得接收 GitHub Token、访问令牌或签名私钥。代理及镜像的重定向目标必须逐跳检查；不得把任意 URL 当作可信代理。签名或哈希错误属于安全验证失败，不得通过降低校验级别继续部署。
+
+本地 Recovery Cache 在执行修复时优先于联网下载。当前已实现按版本缓存已验证恢复材料及从显式 `ECL_UPDATE_FEED` 远程修复；Bootstrapper 自身损坏后的独立重建、完整离线恢复包手动导入和多来源 Resolver 仍是 ADR 0051 的后续实施范围。所有网络来源不可用且本地材料不足时，系统必须明确停止自动恢复，并指导用户通过另一台设备获取官方完整安装介质、传输到目标机器后进行离线验证与导入；不得伪称恢复成功。
+
+本地构建指定提交：
+
+```powershell
+git checkout <commit-or-tag>
+./build/pack-release.ps1 -Version 0.8.0-local.1 -Channel nightly `
+  -SigningKeyPath ".\\signing\\update-signing.key" `
+  -KeyId "ecl-release-2026-11" `
+  -TrustStorePath "build/update-trust.json"
+```
+
+本地构建如不具备签名私钥，可使用 `-Unsigned` 仅验证打包过程；未签名产物不能作为正式更新源，也不能通过客户端签名校验。
 
 ## 8. 验证记录
 
@@ -192,7 +227,17 @@ https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/<channel>
 - 端到端：用测试密钥签名 `0.8.0-e2e` → Bootstrapper `--apply --deploy-only` 写入 `current.json` → 启动到 `versions/0.8.0-e2e/ECL.exe`；再部署 `0.8.1-e2e` → `--rollback` 回到 `0.8.0-e2e`，两次退出码均为 0。
 - 使用 Core 仓库的 `signing/update-signing.key` 与 public 仓库 `build/update-trust.json` 打包 `0.8.2-prodtest`，Bootstrapper 校验签名并完成部署，退出码 0；私钥与公钥指纹一致。
 - GitHub Actions 实际 Release 测试（run `41220030330`）：通过 tag `v0.8.0-dev.1` 触发，成功生成 `v0.8.0-dev.1` 与 `beta` 两个 Release；`update-manifest.sig` 用 public 信任库验签通过，`beta` 资产 `ECL-0.8.0-dev.1-win-x64.zip` 的 GitHub digest 与 Manifest `package.sha256` 一致，job 日志未出现私钥标记。CI run `41220734282` 在 Linux 交叉路径修复后通过。
-- 未完成：全新 Windows 无 .NET SDK 的安装验收、安装器 UI、卸载、真实稳定版 Release、125%/150% 缩放下的更新 UI。
+
+2026-11-02，安装介质端到端（本地 Windows、临时安装目录）：
+
+- `pack-release.ps1` 用 Core 签名密钥打包两个版本（`0.8.1-local.1`、`0.8.2-local.1`），产出 `installer/` 介质：Installer、单文件自包含 Bootstrapper、Manifest、签名、信任库与 `ECL-package.zip`。
+- 完整程序包内包含 `ECL.LogHost.exe` 及其依赖，安装后由 Bootstrapper 启动 LogHost。
+- 静默安装 `--silent --install-root <目录>`：退出码 0；生成 `current.json`、`versions/<版本>/ECL.exe`，未创建任何 Minecraft 工作区目录。
+- 升级到第二个版本：退出码 0，`previousVersion` 正确指向旧版本，两个版本目录并存。
+- `--rollback --deploy-only`：退出码 0，`current.json` 回到旧版本，版本目录内容未修改。
+- 篡改 `update-manifest.json` 后重新安装：Bootstrapper 退出码 3、安装器退出码 4，未生成 `current.json` 或版本目录（fail-closed）。
+- `--cleanup` 与部署前自动清理只删除 `staging/`；自动化测试确认 `versions/` 与 `current.json` 不受影响。
+- 未完成：全新 Windows 无 .NET SDK、无 .NET 运行时的安装验收；卸载器；Authenticode 签名；GUI 自动化（当前 GUI 仅人工冒烟）。
 
 ## 9. 用户数据与卸载边界
 

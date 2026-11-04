@@ -97,6 +97,68 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
+            <Border Style="{StaticResource Card}" Margin="0,0,0,18"
+                    Visibility="{Binding HasSourceGroups, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <TextBlock Text="已登记实例来源" Style="{StaticResource SectionText}" />
+                    <TextBlock Text="外部来源只登记与扫描，不复制、不移动、不清理；可在存储页查看占用。"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="10"
+                               Margin="0,5,0,10"
+                               TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding SourceGroups}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}"
+                                          Background="{DynamicResource SurfaceAltBrush}"
+                                          BorderBrush="{DynamicResource BorderSoftBrush}"
+                                          BorderThickness="1"
+                                          Margin="0,0,0,8"
+                                          Padding="4">
+                                    <Expander.Header>
+                                        <Grid Margin="4,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Name}" Style="{StaticResource EmphasisText}" />
+                                                <TextBlock Text="{Binding Path}" Foreground="{DynamicResource TextMutedBrush}"
+                                                           FontSize="9" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding CountText}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="9" VerticalAlignment="Center" Margin="10,0,0,0" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Status}"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       FontSize="9" VerticalAlignment="Center" Margin="10,0,8,0" />
+                                        </Grid>
+                                    </Expander.Header>
+                                    <ItemsControl ItemsSource="{Binding Instances}" Margin="8,4,8,8">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,2">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="{Binding Name}" FontSize="10" />
+                                                        <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="8,0,0,0" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Availability}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Expander>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
             <TextBlock Text="{loc:Loc Key=instances.createMovedHint}" Style="{StaticResource SubtitleText}" Margin="0,0,0,14" />
         </StackPanel>
     </ScrollViewer>

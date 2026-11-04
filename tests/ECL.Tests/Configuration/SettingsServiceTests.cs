@@ -114,6 +114,19 @@ public sealed class SettingsServiceTests
     }
 
     [Fact]
+    public void InternalAcknowledgementIsHiddenAndDeprecatedCompatibilitySwitchIsGone()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var settings = provider.GetRequiredService<ISettingsService>();
+
+        Assert.False(settings.IsVisible(settings.GetDefinition("launcher.java.incompatiblePromptAcknowledged")));
+        Assert.DoesNotContain(
+            settings.GetDefinitions(),
+            definition => definition.Key == "instance.java.disableCompatibilityCheck");
+    }
+
+    [Fact]
     public void BootstrapReadsLanguageBeforeContainerIsBuilt()
     {
         using var environment = new TestEnvironment();

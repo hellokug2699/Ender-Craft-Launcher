@@ -17,8 +17,14 @@ public interface IAppPaths
 {
     string Root { get; }
 
-    /// <summary>实例与 .minecraft 文件所在的根目录。</summary>
+    /// <summary>实例与 .minecraft 文件所在的根目录（当前主工作区）。</summary>
     string GameRoot { get; }
+
+    /// <summary>
+    /// 用户是否已经确认过 Minecraft 工作区。未确认时不得创建工作区结构、
+    /// 开始下载或创建实例；路径仍可能回退到数据目录用于只读兼容。
+    /// </summary>
+    bool WorkspaceConfigured { get; }
 
     string ConfigDirectory { get; }
     string AccountsDirectory { get; }
@@ -26,7 +32,12 @@ public interface IAppPaths
     string VersionsDirectory { get; }
     string LibrariesDirectory { get; }
     string AssetsDirectory { get; }
-    string JavaDirectory { get; }
+
+    /// <summary>ECL 管理的 Java 运行时目录（ADR 0018 的 <c>Runtimes</c>）。</summary>
+    string RuntimesDirectory { get; }
+
+    /// <summary>旧版 Java 运行时目录，仅用于继续识别既有安装，不再写入。</summary>
+    string LegacyJavaDirectory { get; }
     string LogsDirectory { get; }
     string CacheDirectory { get; }
     string DownloadsDirectory { get; }
@@ -46,9 +57,11 @@ public interface IAppPaths
 
     /// <summary>
     /// 切换实例下载位置。传空表示恢复默认（数据目录本身）。
-    /// 应在注册服务之前调用；运行期切换目录需要重启启动器。
+    /// 运行期切换目录后，新的路径立即对所有通过 <see cref="IAppPaths"/> 获取路径的模块生效。
     /// </summary>
     void SetGameRoot(string? path);
+
+    void SetWorkspaceConfigured(bool configured);
 
     void EnsureCreated();
 }
@@ -64,13 +77,16 @@ public sealed partial class AppPaths : IAppPaths
 
     public string GameRoot { get; private set; }
 
+    public bool WorkspaceConfigured { get; private set; }
+
     public string ConfigDirectory => Path.Combine(Root, "config");
     public string AccountsDirectory => Path.Combine(Root, "accounts");
     public string InstancesDirectory => Path.Combine(GameRoot, "instances");
     public string VersionsDirectory => Path.Combine(GameRoot, "versions");
     public string LibrariesDirectory => Path.Combine(GameRoot, "libraries");
     public string AssetsDirectory => Path.Combine(GameRoot, "assets");
-    public string JavaDirectory => Path.Combine(Root, "java");
+    public string RuntimesDirectory => Path.Combine(Root, "Runtimes");
+    public string LegacyJavaDirectory => Path.Combine(Root, "java");
     public string LogsDirectory => Path.Combine(Root, "logs");
     public string CacheDirectory => Path.Combine(Root, "cache");
     public string DownloadsDirectory => Path.Combine(Root, "downloads");
@@ -88,6 +104,7 @@ public sealed partial class AppPaths : IAppPaths
 
         Root = Path.GetFullPath(root);
         GameRoot = NormalizeGameRoot(gameRoot) ?? Root;
+        WorkspaceConfigured = NormalizeGameRoot(gameRoot) is not null;
     }
 
     /// <summary>
@@ -128,8 +145,12 @@ public sealed partial class AppPaths : IAppPaths
 
     public void SetGameRoot(string? path)
     {
-        GameRoot = NormalizeGameRoot(path) ?? Root;
+        var normalized = NormalizeGameRoot(path);
+        GameRoot = normalized ?? Root;
+        WorkspaceConfigured = normalized is not null;
     }
+
+    public void SetWorkspaceConfigured(bool configured) => WorkspaceConfigured = configured;
 
     public string GetInstanceDirectory(string instanceId)
     {
@@ -156,9 +177,15 @@ public sealed partial class AppPaths : IAppPaths
         Directory.CreateDirectory(CacheDirectory);
         Directory.CreateDirectory(DownloadsDirectory);
         Directory.CreateDirectory(InjectorDirectory);
+        Directory.CreateDirectory(RuntimesDirectory);
 
-        // 实例与游戏文件可以位于另一个磁盘；目录不存在时一并创建。
-        Directory.CreateDirectory(GameRoot);
+        // 未确认工作区前不得创建工作区结构，避免把实例默认写进数据目录。
+        // 已登记但当前不可用的工作区也不重建，交由工作区校验提示重新连接。
+        if (!WorkspaceConfigured || !Directory.Exists(GameRoot))
+        {
+            return;
+        }
+
         Directory.CreateDirectory(InstancesDirectory);
         Directory.CreateDirectory(VersionsDirectory);
         Directory.CreateDirectory(LibrariesDirectory);

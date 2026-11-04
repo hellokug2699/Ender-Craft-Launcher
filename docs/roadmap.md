@@ -4,6 +4,33 @@
 
 状态：`[x]` 已完成（有实现与验证依据）；`[~]` 进行中；`[ ]` 待开始；`[!]` 外部阻塞；`[-]` 暂不计划。
 
+## 2026-11-02 交付记录（ADR 0014–0019）
+
+本轮按 ADR 完成六条主线的第一阶段落地，详细验证记录见各专项文档：
+
+- 存储与工作区（ADR 0018，Completed）：`StorageLayout`、`workspace.json`、首启引导、路径校验、外部根登记、可恢复迁移与 `workspace` CLI。见 [workspace.md](workspace.md)。
+- 日志会话与证据（ADR 0015，Completed）：`Ecl.Sessions`、manifest/journal、有界采集、恢复、证据置信度、按会话导出、日志页与 CLI。见 [sessions.md](sessions.md)。
+- LogHost 与内存压力（ADR 0019，Completed）：独立采集宿主、命名管道协议、UI 独立性、压力分级；宿主异常退出会把活动会话标记为采集不完整。见 [loghost.md](loghost.md)。
+- 部署（ADR 0016，Completed）与安装（ADR 0017，In Progress）：退出码契约测试、staging 清理、安装介质契约、`InstallerService`、静默安装、真实安装/升级/回滚/篡改拒绝验证。见 [deployment.md](deployment.md)、[installer.md](installer.md)。
+- Java 策略（ADR 0014，Completed）：`java why`、托管运行时 staging 与确定性冲突后缀。见 [java.md](java.md)。
+
+六项 ADR 均已落地；后续独立工作：安装包 Authenticode 与卸载器、干净无 .NET 环境验收、目标机器上的慢盘基准、GUI 交互自动化。
+
+## 2026-11-03 交付记录（ADR 0031–0040 第一阶段）
+
+本轮按 ADR 0031–0040 完成第一批可验证实现，详细证据与缺口见 [ADR 0031–0040 实施记录](adr-0031-0040-implementation.md)。
+
+- [x] 多维度世界（ADR 0031，Implemented）：`DimensionId`、只读维度发现与存储解析、World+Dimension 对象身份、维度切换取消旧渲染、诊断维度绑定；单元测试与真实存档只读验证。
+- [x] 运行时生命周期（ADR 0039，Implemented）：受管理后台工作、有界关闭、WPF/CLI 接入与 9 项自动化测试。
+- [x] 自完整性（ADR 0034，In Progress）：签名清单逐文件校验、轻量启动检查、Repair Mode、本地 Recovery Cache；远程修复待补。
+- [x] Additions（ADR 0032，In Progress）：签名目录、依赖规划、安装事务/回滚、按需加载；官方目录仍为空，管理 UI 待补。
+- [x] 本地诊断（ADR 0033，In Progress）：结构化解析、知识库与证据链；Additions 数据包联动待补。
+- [x] 受限知识浏览器（ADR 0036，In Progress）：域名树/重定向/子资源策略与本地错误页；WebView2 宿主与拦截时机验收待补。
+- [x] 账户外观与衣柜（ADR 0037 / 0038，In Progress）：本地衣柜、PNG 校验、Provider 能力模型、Authlib 材质协议；真实第三方服务端与 Microsoft 外观接口未验证。
+- [x] Vanilla Toolkit（ADR 0040，In Progress）：数据模板/Schema、数据包校验、Registry 查询与本地实例纹理读取；首个发布包与工具页面待补。
+
+> `Implemented` 只表示约定范围已有实现，验收未全部完成；不得据此标记 `Verified` 或 stable 发布。
+
 ## 当前路线图
 
 ```mermaid

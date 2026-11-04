@@ -8,9 +8,11 @@ namespace Ecl.Deployment;
 
 public enum UpdateChannel
 {
-    Stable,
-    Beta,
-    Dev,
+    Main = 0,
+    Stable = Main,
+    Dev = 1,
+    Beta = Dev,
+    Nightly = 2,
 }
 
 public enum UpdateArchitecture
@@ -25,24 +27,26 @@ public static class UpdateChannels
 
     public static string ToApiValue(this UpdateChannel channel) => channel switch
     {
-        UpdateChannel.Stable => "stable",
-        UpdateChannel.Beta => "beta",
+        UpdateChannel.Main => "main",
         UpdateChannel.Dev => "dev",
-        _ => "stable",
+        UpdateChannel.Nightly => "nightly",
+        _ => "main",
     };
 
     public static bool TryParse(string? value, out UpdateChannel channel)
     {
         switch (value?.Trim().ToLowerInvariant())
         {
+            case "main":
             case "stable":
-                channel = UpdateChannel.Stable;
-                return true;
-            case "beta":
-                channel = UpdateChannel.Beta;
+                channel = UpdateChannel.Main;
                 return true;
             case "dev":
+            case "beta":
                 channel = UpdateChannel.Dev;
+                return true;
+            case "nightly":
+                channel = UpdateChannel.Nightly;
                 return true;
             default:
                 channel = UpdateChannel.Stable;

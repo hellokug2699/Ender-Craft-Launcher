@@ -1,5 +1,7 @@
 # 崩溃分析与诊断包
 
+> 新增按进程隔离的日志会话与按会话导出，见 [sessions.md](sessions.md)。
+
 v0.7 增加面向实例的崩溃分析与脱敏诊断包导出。两者都只读取本地文件，不启动游戏。
 
 ## 崩溃分析
@@ -38,6 +40,7 @@ ecl diagnostics export <实例ID> [--output <路径>] [--json]
 - `instance.json`、实例 `settings.json`、全局 `config/global.json`；
 - 最近 5 个崩溃报告、最近 5 个 Minecraft 日志、最近 5 个实例日志；
 - 该实例最近 5 个安装失败诊断；
+- 该实例最近 5 个启动 Java 计划（`launch/launch-<实例ID>-*.json`）；
 - 最近 3 个启动器日志（`logs/ecl-*.log`）。
 
 **不包含** `accounts/accounts.json`。所有文本在写入 zip 前经过 `DiagnosticPackageService.Redact`：

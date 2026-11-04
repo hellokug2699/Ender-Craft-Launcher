@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
 
-    [ValidateSet("stable", "beta", "dev")]
+    [ValidateSet("main", "dev", "nightly", "stable", "beta")]
     [string]$Channel = "dev",
 
     [ValidateSet("win-x64", "win-arm64")]
@@ -20,6 +20,10 @@ param(
 
     [string]$TrustStorePath,
 
+    [string]$CodeSigningPfxPath,
+
+    [string]$CodeSigningPasswordPath,
+
     [string]$ReleaseNotes = "",
 
     [switch]$Unsigned
@@ -29,11 +33,28 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
 
+$codeSigningCertificate = $null
+if (-not [string]::IsNullOrWhiteSpace($CodeSigningPfxPath)) {
+    if (-not (Test-Path $CodeSigningPfxPath)) { throw "代码签名 PFX 不存在：$CodeSigningPfxPath" }
+    if ([string]::IsNullOrWhiteSpace($CodeSigningPasswordPath) -or -not (Test-Path $CodeSigningPasswordPath)) {
+        throw "代码签名需要 -CodeSigningPasswordPath 指向 PFX 密码文件。"
+    }
+    $secure = ConvertTo-SecureString (Get-Content $CodeSigningPasswordPath -Raw).Trim() -AsPlainText -Force
+    $codeSigningCertificate = Get-PfxCertificate -FilePath $CodeSigningPfxPath -Password $secure
+}
+
+function Invoke-CodeSign([string]$Path) {
+    if ($null -eq $codeSigningCertificate -or -not (Test-Path $Path)) { return }
+    $signature = Set-AuthenticodeSignature -FilePath $Path -Certificate $codeSigningCertificate -HashAlgorithm SHA256
+    if ($signature.Status -eq 'NotSigned') { throw "代码签名失败：$Path" }
+}
+
 try {
     if ($Version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?$') {
         throw "版本号必须是 semver（例如 1.0.1 或 1.0.1-rc.1）：$Version"
     }
 
+    $channel = switch ($Channel) { "stable" { "main" } "beta" { "dev" } default { $Channel } }
     $architecture = if ($Runtime -eq "win-arm64") { "arm64" } else { "x64" }
     $releaseRoot = Join-Path $root (Join-Path $OutputRoot $Version)
     $publish = Join-Path $releaseRoot "app"
@@ -58,6 +79,40 @@ try {
         $versionProperty
     if ($LASTEXITCODE -ne 0) { throw "发布 ECL.App 失败" }
 
+    # LogHost 与主程序一起部署：活动会话由独立进程持有管道。
+    dotnet publish src/ECL.LogHost/ECL.LogHost.csproj `
+        -c Release `
+        -r $Runtime `
+        --self-contained $selfContainedValue `
+        -o $publish `
+        $versionProperty
+    if ($LASTEXITCODE -ne 0) { throw "发布 ECL.LogHost 失败" }
+
+    # 独立卸载器发布为单文件；安装器同时把它放到安装根目录，避免依赖同目录 DLL。
+    $uninstallerSingle = Join-Path $releaseRoot "uninstaller-single"
+    New-Item -ItemType Directory -Force -Path $uninstallerSingle | Out-Null
+    dotnet publish src/ECL.Uninstaller/ECL.Uninstaller.csproj `
+        -c Release `
+        -r $Runtime `
+        --self-contained $selfContainedValue `
+        -p:PublishSingleFile=true `
+        -p:IncludeNativeLibrariesForSelfExtract=true `
+        -o $uninstallerSingle `
+        $versionProperty
+    if ($LASTEXITCODE -ne 0) { throw "发布 ECL.Uninstaller 失败" }
+    Copy-Item (Join-Path $uninstallerSingle "ECL.Uninstaller.exe") $publish -Force
+
+    # 发布链中的可执行文件在最终产物确定后签名；签名后不得再修改。
+    Invoke-CodeSign (Join-Path $publish "ECL.exe")
+    Invoke-CodeSign (Join-Path $publish "ECL.LogHost.exe")
+    Invoke-CodeSign (Join-Path $publish "ECL.Uninstaller.exe")
+
+    # 公开证书与固定指纹随程序部署，供设置页展示与用户显式信任。
+    Copy-Item (Join-Path $root "build/code-signing/*") $publish -Force
+
+    # ADR 0032：Additions 目录公钥随客户端部署，用于验证官方扩展目录签名。
+    Copy-Item (Join-Path $root "build/additions-trust.json") $publish -Force
+
     dotnet publish src/ECL.Bootstrapper/ECL.Bootstrapper.csproj `
         -c Release `
         -r $Runtime `
@@ -65,6 +120,7 @@ try {
         -o $bootstrap `
         $versionProperty
     if ($LASTEXITCODE -ne 0) { throw "发布 ECL.Bootstrapper 失败" }
+    Invoke-CodeSign (Join-Path $bootstrap "ECL.Bootstrapper.exe")
 
     if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
     Compress-Archive -Path (Join-Path $publish "*") -DestinationPath $zipPath -CompressionLevel Optimal
@@ -87,7 +143,7 @@ try {
     $manifest = [ordered]@{
         schemaVersion         = 1
         product               = "ECL"
-        channel               = $Channel
+        channel               = $channel
         version               = $Version
         platform              = "windows"
         architecture          = $architecture
@@ -171,10 +227,61 @@ try {
         }
     }
 
+    # 安装介质中的 Bootstrapper 采用单文件自包含发布：介质契约只携带一个 EXE，
+    # 目标机器无需预装 .NET 运行时即可完成部署。
+    $bootstrapSingle = Join-Path $releaseRoot "bootstrapper-single"
+    New-Item -ItemType Directory -Force -Path $bootstrapSingle | Out-Null
+    dotnet publish src/ECL.Bootstrapper/ECL.Bootstrapper.csproj `
+        -c Release `
+        -r $Runtime `
+        --self-contained true `
+        -p:PublishSingleFile=true `
+        -p:IncludeNativeLibrariesForSelfExtract=true `
+        -o $bootstrapSingle `
+        $versionProperty
+    if ($LASTEXITCODE -ne 0) { throw "发布单文件 ECL.Bootstrapper 失败" }
+    Invoke-CodeSign (Join-Path $bootstrapSingle "ECL.Bootstrapper.exe")
+
+    # 首次安装介质（ADR 0017）：安装器 + Bootstrapper + 信任库 + Manifest + 签名 + 完整包。
+    $installer = Join-Path $releaseRoot "installer"
+    if (Test-Path $installer) { Remove-Item $installer -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $installer | Out-Null
+
+    dotnet publish src/ECL.Installer/ECL.Installer.csproj `
+        -c Release `
+        -r $Runtime `
+        --self-contained $selfContainedValue `
+        -o $installer `
+        $versionProperty
+    if ($LASTEXITCODE -ne 0) { throw "发布 ECL.Installer 失败" }
+    Invoke-CodeSign (Join-Path $installer "ECL.Installer.exe")
+
+    Copy-Item (Join-Path $bootstrapSingle "ECL.Bootstrapper.exe") $installer -Force
+    Copy-Item (Join-Path $uninstallerSingle "ECL.Uninstaller.exe") $installer -Force
+    Copy-Item $manifestPath $installer -Force
+    if (Test-Path $trustPath) { Copy-Item $trustPath $installer -Force }
+    if (Test-Path $signaturePath) { Copy-Item $signaturePath $installer -Force }
+    Copy-Item $zipPath (Join-Path $installer "ECL-package.zip") -Force
+
+    # ADR 0025：安装器自身的官方 SHA-256 记录随安装介质发布。
+    $installerExe = Join-Path $installer "ECL.Installer.exe"
+    $installerHash = (Get-FileHash $installerExe -Algorithm SHA256).Hash.ToLowerInvariant()
+    $integrity = [ordered]@{
+        file    = "ECL.Installer.exe"
+        version = $Version
+        sha256  = $installerHash
+    }
+    [System.IO.File]::WriteAllText(
+        (Join-Path $installer "installer-integrity.json"),
+        ($integrity | ConvertTo-Json),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+
     Write-Host "发布目录：$releaseRoot" -ForegroundColor Green
     Write-Host "  包：$zipPath"
     Write-Host "  清单：$manifestPath"
     Write-Host "  引导程序：$bootstrap/ECL.Bootstrapper.exe"
+    Write-Host "  安装介质：$installer"
 }
 finally {
     Pop-Location

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ECL.Diagnostics</RootNamespace>
+    <AssemblyName>ECL.Diagnostics</AssemblyName>
+    <Description>Local Minecraft log, crash and knowledge-based diagnostics.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ECL.Core\ECL.Core.csproj" />
+  </ItemGroup>
+
+</Project>

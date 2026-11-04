@@ -13,7 +13,11 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly DownloadViewModel _download;
     private readonly ModsViewModel _mods;
     private readonly SettingsViewModel _settings;
+    private readonly JavaManagementViewModel _javaManagement;
+    private readonly LogSessionsViewModel _logSessions;
     private readonly InstancesViewModel _instances;
+    private readonly StorageViewModel _storage;
+    private readonly ToolsViewModel _tools;
     private readonly InstanceDetailPageViewModel _instanceDetailPage;
     private bool _showingInstanceDetails;
 
@@ -39,8 +43,12 @@ public sealed partial class MainViewModel : ObservableObject
         HomeViewModel home,
         DownloadViewModel download,
         InstancesViewModel instances,
+        StorageViewModel storage,
         ModsViewModel mods,
         SettingsViewModel settings,
+        JavaManagementViewModel javaManagement,
+        LogSessionsViewModel logSessions,
+        ToolsViewModel tools,
         AboutViewModel about,
         OperationCenterViewModel operationCenter,
         IAppPaths paths,
@@ -50,7 +58,11 @@ public sealed partial class MainViewModel : ObservableObject
         _download = download;
         _mods = mods;
         _settings = settings;
+        _javaManagement = javaManagement;
+        _logSessions = logSessions;
         _instances = instances;
+        _storage = storage;
+        _tools = tools;
         _instanceDetailPage = new InstanceDetailPageViewModel(instances, mods);
         OperationCenter = operationCenter;
 
@@ -59,18 +71,24 @@ public sealed partial class MainViewModel : ObservableObject
             new NavItemViewModel("home", localizer.Get("nav.home"), home),
             new NavItemViewModel("download", localizer.Get("nav.download"), download),
             new NavItemViewModel("instances", localizer.Get("nav.instances"), instances),
+            new NavItemViewModel("tools", "工具箱", tools),
+            new NavItemViewModel("storage", "存储与清理", storage),
             new NavItemViewModel("settings", localizer.Get("nav.settings"), settings),
+            new NavItemViewModel("java", localizer.Get("nav.java"), javaManagement),
+            new NavItemViewModel("logs", localizer.Get("nav.logs"), logSessions),
             new NavItemViewModel("about", localizer.Get("nav.about"), about),
         ];
 
-        _selectedNavItem = NavItems[0];
+        _selectedNavItem = NavItems.FirstOrDefault(item =>
+                                string.Equals(item.Key, Environment.GetEnvironmentVariable("ECL_START_PAGE"), StringComparison.OrdinalIgnoreCase))
+                            ?? NavItems[0];
         _home.Navigate = NavigateTo;
         _home.OpenInstanceWorkspace = OpenSelectedInstanceWorkspace;
         _instances.GetModHealthSummary = _mods.GetHealthSummaryAsync;
         _mods.SearchDependency = OpenDependencySearch;
         _instances.NavigateToDetails = OpenInstanceDetails;
         _instances.NavigateBackFromDetails = BackToInstances;
-        VersionText = $"ECL {typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0"}";
+        VersionText = $"ECL {BuildInfo.Version}";
         BuildTimeText = string.IsNullOrWhiteSpace(BuildInfo.BuildTime)
             ? string.Empty
             : localizer.Get("app.buildTime", BuildInfo.BuildTime);
@@ -128,10 +146,15 @@ public sealed partial class MainViewModel : ObservableObject
 
     public async Task InitializeAsync()
     {
+        await _home.InitializeAsync().ConfigureAwait(true);
         await _home.Launcher.InitializeAsync().ConfigureAwait(true);
         await _download.InitializeAsync().ConfigureAwait(true);
         await _mods.InitializeAsync().ConfigureAwait(true);
         await _settings.InitializeAsync().ConfigureAwait(true);
+        if (SelectedNavItem.Page is ToolsViewModel tools)
+        {
+            await tools.ActivateAsync().ConfigureAwait(true);
+        }
     }
 
     partial void OnSelectedNavItemChanged(NavItemViewModel value)
@@ -143,6 +166,18 @@ public sealed partial class MainViewModel : ObservableObject
         {
             case DownloadViewModel download:
                 _ = download.ActivateAsync();
+                break;
+            case JavaManagementViewModel javaManagement:
+                _ = javaManagement.ActivateAsync();
+                break;
+            case LogSessionsViewModel logSessions:
+                logSessions.Activate();
+                break;
+            case StorageViewModel storage:
+                _ = storage.ActivateAsync();
+                break;
+            case ToolsViewModel tools:
+                _ = tools.ActivateAsync();
                 break;
         }
     }

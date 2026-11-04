@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Ecl.World</RootNamespace>
+    <AssemblyName>Ecl.World</AssemblyName>
+    <Description>Native C# Minecraft world, NBT and server analysis engine.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Semantic\nbt-semantics.json" />
+  </ItemGroup>
+
+</Project>

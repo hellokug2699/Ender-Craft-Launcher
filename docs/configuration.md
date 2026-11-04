@@ -61,7 +61,7 @@ internal sealed class MyOptionsProvider : IOptionProvider
 - 影响所有实例。
 - 全局选项不能写入实例作用域。
 
-`launcher.minecraftDirectory`（实例下载位置）是启动早期读取的全局选项：它把实例与游戏文件的根目录从默认数据目录切换到任意 `.minecraft` 目录。修改后标记为需要重启；已有实例不会自动迁移。启动时还会读取环境变量 `ECL_GAME_DIR` 作为相同语义的覆盖（优先级高于设置）。
+Minecraft 工作区不再由 `launcher.minecraftDirectory` 决定：它改由 `config/workspace.json` 管理，首次启动时必须由用户确认（详见 [workspace.md](workspace.md)）。旧键仅作为一次性迁移输入保留：存在显式值且不等于数据目录时，会迁移为主工作区；之后修改该键不再生效，设置页也不再显示它。环境变量 `ECL_GAME_DIR` 仍可用于测试与高级隔离。
 
 ### Instance
 
@@ -142,7 +142,7 @@ CLI 使用 `ecl launch <实例ID> --accept-eula` 记录同意；未同意时真�
 
 | Key | 作用域 | 含义 |
 | --- | --- | --- |
-| `java.defaultPath` | Global | 全局 Java 目录/路径；可填 java.exe、Java 主目录或包含多个 JDK 的父目录，多个路径用分号分隔；留空自动选择 |
+| `java.defaultPath` | Global | 全局 Java 优先级列表；可填 java.exe、Java 主目录或包含多个 JDK 的父目录，多个路径用分号分隔；留空使用自动发现顺序 |
 | `java.defaultMemoryMb` | Global | 默认最大堆内存 |
 | `java.extraArguments` | Global | 全局额外 JVM 参数 |
 | `java.jvmPreset` | Global | JVM 预设：default / g1 / zgc / aikar；默认 `g1`（推荐） |
@@ -153,9 +153,8 @@ CLI 使用 `ecl launch <实例ID> --accept-eula` 记录同意；未同意时真�
 | `instance.java.extraArguments` | Instance | 实例 JVM 参数覆盖 |
 | `instance.java.jvmPreset` | Instance | 实例 JVM 预设覆盖；留空继承全局 |
 | `instance.java.customJvmPreset` | Instance | 实例自定义 JVM 预设文件；留空继承全局 |
-| `instance.java.disableCompatibilityCheck` | Instance | 关闭该实例的 Java 兼容性检验 |
 
-自动选择与兼容性规则详见 [java.md](java.md)。实例工作区的 Java 下拉框会写入 `instance.java.executablePath`；“自动”会清空该值。配置为父目录时，`java.defaultPath` 下的所有 Java 都会参与自动选择。
+自动选择与兼容性规则详见 [java.md](java.md)。实例工作区的 Java 下拉框会写入 `instance.java.executablePath`；“自动”会清空该值。配置为父目录时，`java.defaultPath` 下的所有 Java 都会参与自动选择。旧版 `instance.java.disableCompatibilityCheck` 已移除：兼容性不能作为可关闭的全局开关，实例显式 pin 的风险确认是唯一例外。
 
 ## 3. 文件格式
 

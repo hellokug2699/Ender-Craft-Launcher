@@ -1,7 +1,11 @@
 # ADR 0010：CurseForge 改由私有代理转发
 
-- 状态：已采纳
-- 日期：2026-10-30
+> 生命周期迁移说明：保留原决策及实施历史；本次仅将原状态拆分为独立字段，不改变既有技术决策或已完成验证。
+
+- Decision: Accepted
+- Implementation: Verified
+- Date: 2026-10-30
+- Scope: ECL 架构与实现
 
 ## 背景
 

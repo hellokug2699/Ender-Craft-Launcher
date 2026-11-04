@@ -170,6 +170,37 @@ public sealed class UpdateInstaller(
         return Result<StagedUpdate>.Ok(new StagedUpdate(manifest, versionDirectory));
     }
 
+    /// <summary>
+    /// 清理未完成的 staging。staging 是临时区域，允许整体清理；
+    /// 但绝不触碰 versions/ 与 current.json 引用的版本。
+    /// </summary>
+    public int CleanupStaging()
+    {
+        if (!Directory.Exists(layout.StagingDirectory))
+        {
+            return 0;
+        }
+
+        var removed = 0;
+        foreach (var directory in Directory.EnumerateDirectories(layout.StagingDirectory).ToArray())
+        {
+            try
+            {
+                if (UpdatePathSafety.IsContainedIn(layout.StagingDirectory, directory))
+                {
+                    Directory.Delete(directory, recursive: true);
+                    removed++;
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning(exception, "清理 staging 失败：{Directory}", directory);
+            }
+        }
+
+        return removed;
+    }
+
     public async Task<Result<CurrentVersion>> RollbackAsync(CancellationToken cancellationToken = default)
     {
         var currentResult = await layout.ReadCurrentAsync(cancellationToken).ConfigureAwait(false);

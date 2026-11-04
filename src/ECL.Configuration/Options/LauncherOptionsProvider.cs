@@ -38,6 +38,8 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             DescriptionKey = "option.launcher.minecraftDirectory.desc",
             Default = string.Empty,
             RequiresRestart = true,
+            // 工作区由专用页面（workspace.json）管理；旧键只作为一次性迁移输入保留。
+            IsHidden = true,
             Order = 20,
             Validate = path => string.IsNullOrWhiteSpace(path) || Path.IsPathFullyQualified(path),
         };
@@ -62,15 +64,15 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             CategoryKey = "category.launcher",
             DisplayNameKey = "option.launcher.updateChannel.name",
             DescriptionKey = "option.launcher.updateChannel.desc",
-            Default = "stable",
+            Default = "main",
             VisibleWhenKey = "launcher.checkUpdates",
             VisibleWhenValue = "true",
             Order = 40,
             Choices =
             [
-                new OptionChoice("stable", "option.launcher.updateChannel.stable"),
-                new OptionChoice("beta", "option.launcher.updateChannel.beta"),
+                new OptionChoice("main", "option.launcher.updateChannel.main"),
                 new OptionChoice("dev", "option.launcher.updateChannel.dev"),
+                new OptionChoice("nightly", "option.launcher.updateChannel.nightly"),
             ],
         };
 
@@ -178,6 +180,22 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             DescriptionKey = "option.java.defaultPath.desc",
             Default = string.Empty,
             Order = 10,
+        };
+
+
+        // Internal acknowledgement state. Hidden from the generic settings editor.
+        yield return new OptionDefinition<string?>
+        {
+            Key = "launcher.java.incompatiblePromptAcknowledged",
+            Kind = OptionKind.Text,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.java",
+            DisplayNameKey = "option.java.defaultPath.name",
+            DescriptionKey = "option.java.defaultPath.desc",
+            Default = null,
+            EmptyIsNull = true,
+            IsHidden = true,
+            Order = 999,
         };
 
         yield return new OptionDefinition<int>

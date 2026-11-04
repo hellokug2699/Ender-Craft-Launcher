@@ -49,10 +49,10 @@ public sealed class JavaVersionTests
 public sealed class JavaLocatorTests
 {
     [Fact]
-    public async Task FindsRuntimeInLauncherJavaDirectory()
+    public async Task FindsRuntimeInManagedRuntimesDirectory()
     {
         using var environment = new TestEnvironment();
-        var home = Path.Combine(environment.Paths.JavaDirectory, "jdk-21.0.4");
+        var home = Path.Combine(environment.Paths.RuntimesDirectory, "jdk-21.0.4");
         var bin = Path.Combine(home, "bin");
         Directory.CreateDirectory(bin);
 

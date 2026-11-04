@@ -1,6 +1,12 @@
 # ADR 0011：全局下载任务与页面解耦
 
-- 状态：已被 `ECL.Operations` 统一任务模型取代
+> 生命周期迁移说明：保留原决策及实施历史；本次仅将原状态拆分为独立字段，不改变既有技术决策或已完成验证。
+
+- Decision: Superseded
+- Implementation: N/A
+- Date: Unknown
+- Scope: 下载任务生命周期、应用层任务协调与 WPF 下载页面
+- Superseded by: `ECL.Operations` 统一任务模型（实现说明见 [operations.md](../operations.md)）
 
 ## 背景
 

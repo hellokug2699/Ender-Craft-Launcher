@@ -2,7 +2,11 @@
 
 using System.Globalization;
 using Ecl.Core.Localization;
+using Ecl.Core.Runtime;
+using Ecl.Core.Storage;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ecl.Core;
 
@@ -12,7 +16,19 @@ public static class EclCoreServiceCollectionExtensions
     {
         services.AddSingleton(paths);
         services.AddSingleton<IAppPaths>(paths);
+        services.AddSingleton<IWorkspaceService>(provider => new WorkspaceService(
+            paths,
+            provider.GetService<ILogger<WorkspaceService>>() ?? NullLogger<WorkspaceService>.Instance));
+        services.AddSingleton<IWorkspaceMigrationService>(provider => new WorkspaceMigrationService(
+            paths,
+            provider.GetRequiredService<IWorkspaceService>(),
+            provider.GetService<ILogger<WorkspaceMigrationService>>() ?? NullLogger<WorkspaceMigrationService>.Instance));
+        services.AddSingleton<InstanceSourceService>();
         services.AddSingleton<ILocalizer>(_ => new JsonLocalizer(culture));
+
+        // ADR 0039：应用级生命周期协调器。App/CLI 各自在组合根解析并驱动状态。
+        services.AddSingleton<ApplicationLifecycleCoordinator>();
+        services.AddSingleton<IApplicationLifecycle>(provider => provider.GetRequiredService<ApplicationLifecycleCoordinator>());
         return services;
     }
 }

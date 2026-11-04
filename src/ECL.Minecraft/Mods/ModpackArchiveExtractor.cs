@@ -14,6 +14,13 @@ internal static class ModpackArchiveExtractor
     private const long MaxEntrySize = 512L * 1024 * 1024;
     private const long MaxExtractedBytes = 2L * 1024 * 1024 * 1024;
 
+    // 压缩比限制针对 zip bomb，而不是正常的高压缩文本：只对超过阈值的条目生效，
+    // 且阈值取得较宽，避免把大型整合包中的普通配置/JSON 误判为攻击。
+    private const long RatioCheckMinimumBytes = 1L * 1024 * 1024;
+    private const double MaxEntryCompressionRatio = 500d;
+    private const long TotalRatioCheckMinimumBytes = 16L * 1024 * 1024;
+    private const double MaxTotalCompressionRatio = 300d;
+
     public static int ExtractOverrides(
         ZipArchive archive,
         string gameDirectory,
@@ -30,6 +37,7 @@ internal static class ModpackArchiveExtractor
 
         var count = 0;
         long extractedBytes = 0;
+        long compressedBytes = 0;
         var destinations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in archive.Entries)
         {
@@ -58,6 +66,23 @@ internal static class ModpackArchiveExtractor
             {
                 throw new InvalidDataException(
                     $"整合包覆盖文件总大小超过限制（上限 {MaxExtractedBytes / (1024 * 1024 * 1024)} GiB）。");
+            }
+
+            if (entry.Length >= RatioCheckMinimumBytes &&
+                entry.CompressedLength > 0 &&
+                entry.Length / (double)entry.CompressedLength > MaxEntryCompressionRatio)
+            {
+                throw new InvalidDataException(
+                    $"整合包条目压缩比异常，疑似 zip bomb：{entry.FullName}");
+            }
+
+            compressedBytes += entry.CompressedLength;
+            var prospectiveBytes = extractedBytes + entry.Length;
+            if (prospectiveBytes >= TotalRatioCheckMinimumBytes &&
+                compressedBytes > 0 &&
+                prospectiveBytes / (double)compressedBytes > MaxTotalCompressionRatio)
+            {
+                throw new InvalidDataException("整合包覆盖数据总压缩比异常，疑似 zip bomb。");
             }
 
             var destination = ResolveSafePath(gameDirectory, relative);

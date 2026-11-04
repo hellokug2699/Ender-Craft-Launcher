@@ -17,7 +17,8 @@ public sealed class DownloadService(
     IHttpClientProvider httpClientProvider,
     ISettingsService settings,
     ILogger<DownloadService> logger,
-    IOperationService? operations = null) : IDownloadService, IDownloadController
+    IOperationService? operations = null,
+    DownloadArtifactLifecycle? artifacts = null) : IDownloadService, IDownloadController
 {
     private const int BufferSize = 81920;
     private const int MaxAttemptsPerUrl = 3;
@@ -25,6 +26,7 @@ public sealed class DownloadService(
     private static readonly TimeSpan TextDownloadTimeout = TimeSpan.FromMinutes(2);
 
     private readonly ManualResetEventSlim _resumeSignal = new(initialState: true);
+    private readonly DownloadArtifactLifecycle _artifacts = artifacts ?? new DownloadArtifactLifecycle();
 
     public bool IsPaused => !_resumeSignal.IsSet;
 
@@ -266,52 +268,75 @@ public sealed class DownloadService(
         var failures = new List<string>();
         var kind = OperationErrorKind.EclInternal;
 
-        foreach (var url in request.Urls)
+        using var lease = _artifacts.TryAcquire(partPath);
+        if (lease is null)
         {
-            for (var attempt = 0; attempt < MaxAttemptsPerUrl; attempt++)
+            throw new DownloadException($"另一个下载任务正在写入同一临时文件：{displayName}", [displayName])
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                try
-                {
-                    await DownloadFromUrlAsync(client, url, request, partPath, tracker, displayName, cancellationToken)
-                        .ConfigureAwait(false);
-                    return;
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception exception)
-                {
-                    failures.Add($"{url}: {exception.Message}");
-                    logger.LogDebug(exception, "下载失败：{Url}（第 {Attempt} 次）", url, attempt + 1);
-                    if (kind == OperationErrorKind.EclInternal)
-                    {
-                        kind = ClassifyFailure(exception, cancellationToken);
-                    }
+                Kind = OperationErrorKind.EclInternal,
+            };
+        }
 
-                    if (!IsRetryable(exception))
-                    {
-                        break;
-                    }
+        var preparation = await _artifacts.PrepareAsync(partPath, request, cancellationToken).ConfigureAwait(false);
+        if (preparation.Reason is not null)
+        {
+            logger.LogInformation("下载临时产物处理：{Reason}", preparation.Reason);
+        }
 
-                    if (attempt + 1 < MaxAttemptsPerUrl)
+        try
+        {
+            foreach (var url in request.Urls)
+            {
+                for (var attempt = 0; attempt < MaxAttemptsPerUrl; attempt++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
                     {
-                        // 让任务中心显示“正在重试”，而不是把可重试的失败直接当成最终失败。
-                        tracker.Retry(displayName, attempt + 1, MaxAttemptsPerUrl, exception.Message);
-                        await Task.Delay(
-                                TimeSpan.FromMilliseconds(400 * (attempt + 1)),
-                                cancellationToken)
+                        await DownloadFromUrlAsync(client, url, request, partPath, tracker, displayName, cancellationToken)
                             .ConfigureAwait(false);
+                        _artifacts.Complete(partPath);
+                        return;
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception exception)
+                    {
+                        failures.Add($"{url}: {exception.Message}");
+                        logger.LogDebug(exception, "下载失败：{Url}（第 {Attempt} 次）", url, attempt + 1);
+                        if (kind == OperationErrorKind.EclInternal)
+                        {
+                            kind = ClassifyFailure(exception, cancellationToken);
+                        }
+
+                        if (!IsRetryable(exception))
+                        {
+                            break;
+                        }
+
+                        if (attempt + 1 < MaxAttemptsPerUrl)
+                        {
+                            // 让任务中心显示“正在重试”，而不是把可重试的失败直接当成最终失败。
+                            tracker.Retry(displayName, attempt + 1, MaxAttemptsPerUrl, exception.Message);
+                            await Task.Delay(
+                                    TimeSpan.FromMilliseconds(400 * (attempt + 1)),
+                                    cancellationToken)
+                                .ConfigureAwait(false);
+                        }
                     }
                 }
             }
-        }
 
-        throw new DownloadException($"下载失败：{displayName}", failures)
+            throw new DownloadException($"下载失败：{displayName}", failures)
+            {
+                Kind = kind,
+            };
+        }
+        finally
         {
-            Kind = kind,
-        };
+            await _artifacts.TouchAsync(partPath, CancellationToken.None).ConfigureAwait(false);
+        }
     }
 
     private async Task DownloadFromUrlAsync(
@@ -330,7 +355,7 @@ public sealed class DownloadService(
         var existingLength = File.Exists(partPath) ? new FileInfo(partPath).Length : 0;
         if (request.Size.HasValue && existingLength > request.Size.Value)
         {
-            File.Delete(partPath);
+            _artifacts.Discard(partPath);
             existingLength = 0;
         }
 
@@ -348,10 +373,11 @@ public sealed class DownloadService(
             if (await IsValidFileAsync(partPath, request, token).ConfigureAwait(false))
             {
                 File.Move(partPath, request.DestinationPath, overwrite: true);
+                _artifacts.Complete(partPath);
                 return;
             }
 
-            File.Delete(partPath);
+            _artifacts.Discard(partPath);
             throw new InvalidDataException("断点文件无效，已重新开始下载。");
         }
 
@@ -412,7 +438,7 @@ public sealed class DownloadService(
 
         if (!await IsValidFileAsync(partPath, request, token, acceptUnknown: true).ConfigureAwait(false))
         {
-            File.Delete(partPath);
+            _artifacts.Discard(partPath);
             throw new InvalidDataException("大小或哈希校验失败。");
         }
 

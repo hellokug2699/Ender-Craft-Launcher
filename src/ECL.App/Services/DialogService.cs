@@ -3,6 +3,8 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
+using Ecl.Configuration.Settings;
+using Ecl.Java;
 using Microsoft.Win32;
 
 namespace Ecl.App.Services;
@@ -16,7 +18,7 @@ public enum InstanceDeletionChoice
 
 public interface IDialogService
 {
-    bool Confirm(string title, string message);
+    bool Confirm(string title, string message, string? acknowledgementToken = null);
 
     /// <summary>
     /// 展示删除计划并选择删除模式：
@@ -38,10 +40,32 @@ public interface IDialogService
     bool OpenUrl(string url);
 }
 
-public sealed class DialogService : IDialogService
+public sealed class DialogService(ISettingsService settings) : IDialogService
 {
-    public bool Confirm(string title, string message) =>
-        MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+    public bool Confirm(string title, string message, string? acknowledgementToken = null)
+    {
+        // 使用稳定风险标识而不是显示文案；语言切换不应触发重复确认。
+        // token 由 Core 计算：规范化路径 + 检测版本 + 有效要求指纹。
+        var savedAcknowledgement = settings.Get<string?>(JavaRiskIdentity.SettingsKey);
+        if (!string.IsNullOrWhiteSpace(acknowledgementToken) &&
+            string.Equals(savedAcknowledgement, acknowledgementToken, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var accepted = MessageBox.Show(
+            message,
+            title,
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question) == MessageBoxResult.Yes;
+
+        if (accepted && !string.IsNullOrWhiteSpace(acknowledgementToken))
+        {
+            settings.TrySetRaw(JavaRiskIdentity.SettingsKey, acknowledgementToken, null, out _);
+        }
+
+        return accepted;
+    }
 
     public InstanceDeletionChoice ChooseInstanceDeletion(
         string title,

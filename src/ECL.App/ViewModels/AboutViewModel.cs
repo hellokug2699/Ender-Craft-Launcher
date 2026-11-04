@@ -9,7 +9,7 @@ public sealed class AboutViewModel
 {
     public AboutViewModel(IAppPaths paths)
     {
-        Version = typeof(AboutViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.1.0";
+        Version = BuildInfo.Version;
         Runtime = RuntimeInformation.FrameworkDescription;
         OperatingSystem = RuntimeInformation.OSDescription;
         DataDirectory = paths.Root;

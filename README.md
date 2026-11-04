@@ -8,12 +8,14 @@ ECL 是一个以 Minecraft 实例为中心的启动器，提供游戏安装、�
 
 - **实例管理**：创建、查看、导入和管理独立 Minecraft 实例。
 - **游戏与加载器**：支持 Minecraft 原版、Fabric、Forge、NeoForge 与 Cleanroom 的安装和启动。
-- **Java 管理**：探测本机 Java、检查版本兼容性、下载 Java 运行时，并支持实例级 Java 选择和 JVM 参数预设。
+- **Java 管理**：探测本机 Java，按 Minecraft/Loader/Mod 的有效要求与全局优先级选择运行时，支持实例级固定、风险确认、下载与 JVM 参数预设。
 - **账户**：支持离线账户；其他认证能力以当前分支实际代码和测试结果为准。
 - **Mod 与内容**：管理 Mod、资源包、光影包和数据包，并检查常见元数据问题。
 - **整合包**：支持 Modrinth `.mrpack` 与 CurseForge `.zip` 导入，并支持 Modrinth 格式导出。
 - **内容平台**：支持 CurseForge / Modrinth 内容搜索与安装；受来源平台作者分发限制的文件仍须遵守平台规则。
 - **启动与诊断**：执行启动前检查、版本解析、文件校验、原生库解压和进程启动，并提供崩溃分析与脱敏诊断包。
+- **实例工作台**：查看本地存档与详情、打开/备份/删除存档，读取 `servers.dat` 并查询服务器状态，浏览世界诊断与只读地图/NBT。
+- **存储与清理**：按实例来源统计 ECL、下载缓存、Java 与工作区占用，提供白名单清理预览/执行，并复用实例删除服务。
 - **CLI 与测试**：提供无图形命令行入口，并持续建设自动化测试与 CI。
 
 > 具体功能是否已经进入某个分支，请以该分支的代码、测试和 CI 为准；README 不记录分支专属功能状态。
@@ -57,7 +59,7 @@ dotnet run --project src/ECL.Cli -- launch <实例ID> --dry-run
 
 - Windows 10 1809+ / Windows 11：运行 WPF 桌面程序。
 - .NET 10 SDK：具体版本以仓库 `global.json` 为准。
-- Java：按目标 Minecraft 版本选择兼容运行时，也可由 ECL 下载。
+- Java：按 Minecraft/Loader/Mod 的有效要求与全局优先级选择运行时，也可由 ECL 下载。
 - Linux / macOS：可用于构建和测试 Core、CLI 等非 WPF 项目。
 
 ## 文档
@@ -68,13 +70,20 @@ dotnet run --project src/ECL.Cli -- launch <实例ID> --dry-run
 - [Java 管理](docs/java.md)
 - [加载器与组件](docs/loaders.md)
 - [Mod、整合包与资源包](docs/mods.md)
+- [光影支持规则库](docs/shader-support/README.md)
 - [CurseForge 集成](docs/curseforge.md)
 - [Modrinth 集成](docs/modrinth.md)
 - [崩溃分析与诊断包](docs/diagnostics.md)
+- [游戏日志会话与诊断导出](docs/sessions.md)
+- [代码签名信任](docs/code-signing.md)
+- [数据处理说明](docs/data-handling.md)
 - [启动流水线](docs/launch-pipeline.md)
 - [仓库与保密策略](docs/repository-policy.md)
 - [开发路线图](docs/roadmap.md)
 - [架构决策记录（ADR）](docs/adr)
+- [ADR 0031–0040 实施记录](docs/adr-0031-0040-implementation.md)
+- [ADR 0041–0049 实施记录](docs/adr-0041-0049-implementation.md)
+- [ADR 0001–0040 完成度扫描](docs/adr-0001-0040-completion-audit.md)
 
 ## 仓库与安全
 

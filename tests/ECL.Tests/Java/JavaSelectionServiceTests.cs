@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using System.Buffers.Binary;
+using System.IO.Compression;
 using Ecl.Configuration.Settings;
+using Ecl.Core.Localization;
 using Ecl.Java;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
@@ -32,6 +35,7 @@ public sealed class JavaSelectionServiceTests
         Assert.Equal(17, automatic.Runtime?.Version?.Major);
         Assert.True(automatic.Compatibility?.IsCompatible);
         Assert.True(automatic.CompatibilityCheckEnabled);
+        Assert.False(automatic.IsExplicitOverride);
 
         Assert.True(settings.TrySetRaw(
             "instance.java.executablePath",
@@ -42,15 +46,84 @@ public sealed class JavaSelectionServiceTests
         var explicitSelection = await selection.ResolveAsync(instance, version);
         Assert.Equal(8, explicitSelection.Runtime?.Version?.Major);
         Assert.Equal(JavaCompatibilityStatus.TooOld, explicitSelection.Compatibility?.Status);
+        Assert.True(explicitSelection.CompatibilityCheckEnabled);
+        Assert.True(explicitSelection.IsExplicitOverride);
+        Assert.False(explicitSelection.IsCompatibilityWarningAcknowledged);
 
+        var acknowledgementToken = explicitSelection.CompatibilityAcknowledgementToken;
+        Assert.NotNull(acknowledgementToken);
         Assert.True(settings.TrySetRaw(
-            "instance.java.disableCompatibilityCheck",
-            "true",
-            instance.Id,
-            out var checkError), checkError);
+            "launcher.java.incompatiblePromptAcknowledged",
+            acknowledgementToken,
+            null,
+            out var acknowledgementError), acknowledgementError);
 
-        var disabled = await selection.ResolveAsync(instance, version);
-        Assert.False(disabled.CompatibilityCheckEnabled);
+        var acknowledged = await selection.ResolveAsync(instance, version);
+        Assert.True(acknowledged.IsCompatibilityWarningAcknowledged);
+
+        // 风险组合改变后必须重新确认：切换到另一条 Java 路径。
+        var java11 = Runtime(environment, "11.0.27");
+        fakeLocator = new FakeJavaLocator([java8, java11, java17]);
+        // 本测试中的 locator 由 DI 单例提供，改用独立实例验证不同 Java 的确认状态。
+        await using var changedJavaProvider = environment.CreateServices(services =>
+            services.AddSingleton<IJavaLocator>(fakeLocator));
+        var changedJavaInstance = await CreateVersionAsync(
+            changedJavaProvider, environment, "1.20.1", instanceName: "Java Test Java11");
+        var changedJavaVersion = (await changedJavaProvider.GetRequiredService<IVersionResolver>()
+            .ResolveAsync(changedJavaInstance.VersionId)).Value!;
+        var changedJavaSettings = changedJavaProvider.GetRequiredService<ISettingsService>();
+        Assert.True(changedJavaSettings.TrySetRaw(
+            "instance.java.executablePath", java11.ExecutablePath, changedJavaInstance.Id, out var changedPathError),
+            changedPathError);
+        Assert.True(changedJavaSettings.TrySetRaw(
+            "launcher.java.incompatiblePromptAcknowledged",
+            acknowledgementToken,
+            null,
+            out var oldAckError), oldAckError);
+        var changedJavaSelection = await changedJavaProvider.GetRequiredService<IJavaSelectionService>()
+            .ResolveAsync(changedJavaInstance, changedJavaVersion);
+        Assert.False(changedJavaSelection.IsCompatibilityWarningAcknowledged);
+
+        // 同一 Java 但最低版本要求变化，也必须重新确认。
+        var newerInstance = await CreateVersionAsync(changedJavaProvider, environment, "1.21.1", javaMajor: 21, instanceName: "Java Test Java21");
+        var newerVersion = (await changedJavaProvider.GetRequiredService<IVersionResolver>()
+            .ResolveAsync(newerInstance.VersionId)).Value!;
+        Assert.True(changedJavaSettings.TrySetRaw(
+            "instance.java.executablePath", java8.ExecutablePath, newerInstance.Id, out var newerPathError),
+            newerPathError);
+        var newerSelection = await changedJavaProvider.GetRequiredService<IJavaSelectionService>()
+            .ResolveAsync(newerInstance, newerVersion);
+        Assert.False(newerSelection.IsCompatibilityWarningAcknowledged);
+    }
+
+    [Fact]
+    public async Task GlobalJavaPathsArePriorityOrderedButSkipIncompatibleEntries()
+    {
+        using var environment = new TestEnvironment();
+        var java8 = Runtime(environment, "8.0.412");
+        var java17 = Runtime(environment, "17.0.15");
+        var java21 = Runtime(environment, "21.0.7");
+        var fakeLocator = new FakeJavaLocator([java21, java8, java17]);
+
+        await using var provider = environment.CreateServices(services =>
+            services.AddSingleton<IJavaLocator>(fakeLocator));
+
+        var settings = provider.GetRequiredService<ISettingsService>();
+        Assert.True(settings.TrySetRaw(
+            "java.defaultPath",
+            string.Join(';', java8.ExecutablePath, java21.ExecutablePath, java17.ExecutablePath),
+            null,
+            out var pathError), pathError);
+
+        var instance = await CreateVersionAsync(provider, environment, "1.20.1", javaMajor: 17);
+        var version = (await provider.GetRequiredService<IVersionResolver>().ResolveAsync(instance.VersionId)).Value!;
+        var selection = await provider.GetRequiredService<IJavaSelectionService>()
+            .ResolveAsync(instance, version);
+
+        // Java 8 是第一优先级，但不兼容 Java 17+ 的实例，因此跳过；Java 21 才是首个兼容项。
+        Assert.Equal(21, selection.Runtime?.Version?.Major);
+        Assert.True(selection.Compatibility?.IsCompatible);
+        Assert.False(selection.IsExplicitOverride);
     }
 
     [Fact]
@@ -77,6 +150,7 @@ public sealed class JavaSelectionServiceTests
 
         Assert.Equal(17, selection.Runtime?.Version?.Major);
         Assert.NotEmpty(selection.Warnings);
+        Assert.False(selection.IsExplicitOverride);
     }
 
     [Fact]
@@ -107,6 +181,7 @@ public sealed class JavaSelectionServiceTests
 
         Assert.Equal(8, selection.Runtime?.Version?.Major);
         Assert.True(selection.Compatibility?.IsCompatible);
+        Assert.False(selection.IsExplicitOverride);
     }
 
     [Fact]
@@ -137,14 +212,77 @@ public sealed class JavaSelectionServiceTests
         Assert.Equal(4096, (await selection.ResolveAsync(instance, version)).MemoryMb);
     }
 
+    [Fact]
+    public async Task ModBytecodeRaisesEffectiveRequirementAboveMinecraftBaseline()
+    {
+        using var environment = new TestEnvironment();
+        var java17 = Runtime(environment, "17.0.15");
+        var java21 = Runtime(environment, "21.0.7");
+        await using var provider = environment.CreateServices(services =>
+            services.AddSingleton<IJavaLocator>(new FakeJavaLocator([java17, java21])));
+
+        var instance = await CreateVersionAsync(provider, environment, "1.20.1", javaMajor: 17);
+        var version = (await provider.GetRequiredService<IVersionResolver>().ResolveAsync(instance.VersionId)).Value!;
+        var mods = Path.Combine(environment.Paths.GetInstanceGameDirectory(instance.Id), "mods");
+        Directory.CreateDirectory(mods);
+        CreateClassJar(Path.Combine(mods, "requires-java21.jar"), classMajor: 65);
+
+        var selection = await provider.GetRequiredService<IJavaSelectionService>()
+            .ResolveAsync(instance, version);
+
+        Assert.Equal(21, selection.Runtime?.Version?.Major);
+        Assert.Equal(21, selection.Requirement?.MinimumMajor);
+        Assert.Contains(selection.Plan!.RequirementSources, source =>
+            source.Kind == JavaRequirementKind.Mod &&
+            source.Evidence == JavaRequirementEvidence.ModClassFileLowerBound);
+    }
+
+    [Fact]
+    public async Task Explicit32BitPinIsBlockedBeforeLaunch()
+    {
+        using var environment = new TestEnvironment();
+        var java17x86 = Runtime(environment, "17.0.15", "x86");
+        await using var provider = environment.CreateServices(services =>
+            services.AddSingleton<IJavaLocator>(new FakeJavaLocator([java17x86])));
+
+        var instance = await CreateVersionAsync(provider, environment, "1.20.1", javaMajor: 17);
+        var version = (await provider.GetRequiredService<IVersionResolver>().ResolveAsync(instance.VersionId)).Value!;
+        Assert.True(provider.GetRequiredService<ISettingsService>().TrySetRaw(
+            "instance.java.executablePath",
+            java17x86.ExecutablePath,
+            instance.Id,
+            out var error), error);
+
+        var selection = await provider.GetRequiredService<IJavaSelectionService>()
+            .ResolveAsync(instance, version);
+
+        Assert.True(selection.IsBlocked);
+        Assert.True(selection.IsExplicitOverride);
+        Assert.Equal(JavaCompatibilityStatus.UnsupportedArchitecture, selection.Compatibility?.Status);
+        Assert.Contains("32", selection.BlockReason, StringComparison.Ordinal);
+    }
+
+    private static void CreateClassJar(string path, int classMajor)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        var entry = archive.CreateEntry("example/Example.class");
+        using var stream = entry.Open();
+        var bytes = new byte[8];
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(0, 4), 0xCAFEBABE);
+        BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(4, 2), 0);
+        BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(6, 2), (ushort)classMajor);
+        stream.Write(bytes);
+    }
+
     private static async Task<GameInstance> CreateVersionAsync(
         IServiceProvider provider,
         TestEnvironment environment,
         string gameVersion,
-        int javaMajor = 17)
+        int javaMajor = 17,
+        string instanceName = "Java Test")
     {
         var created = await provider.GetRequiredService<IInstanceService>()
-            .CreateAsync("Java Test", gameVersion);
+            .CreateAsync(instanceName, gameVersion);
         Assert.True(created.IsSuccess);
         var instance = created.Value!;
 
@@ -162,15 +300,18 @@ public sealed class JavaSelectionServiceTests
         return instance;
     }
 
-    private static JavaRuntime Runtime(TestEnvironment environment, string version)
+    private static JavaRuntime Runtime(
+        TestEnvironment environment,
+        string version,
+        string architecture = "x86_64")
     {
         var parsed = JavaVersion.TryParse(version)!;
-        var home = Path.Combine(environment.Root, "java", version);
+        var home = Path.Combine(environment.Root, "java", version, architecture);
         return new JavaRuntime(
             home,
             Path.Combine(home, "bin", OperatingSystem.IsWindows() ? "java.exe" : "java"),
             "Test",
-            "x86_64",
+            architecture,
             parsed);
     }
 

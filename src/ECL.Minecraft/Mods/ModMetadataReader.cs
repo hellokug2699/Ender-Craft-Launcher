@@ -23,7 +23,7 @@ public static class ModMetadataReader
             var fabric = FindEntry(archive, FabricMetadata);
             if (fabric is not null)
             {
-                return ReadFabric(fabric, jarPath);
+                return ReadFabric(archive, fabric, jarPath);
             }
 
             var neoForge = FindEntry(archive, NeoForgeMetadata);
@@ -53,7 +53,7 @@ public static class ModMetadataReader
         }
     }
 
-    private static ModMetadataReadResult ReadFabric(ZipArchiveEntry entry, string jarPath)
+    private static ModMetadataReadResult ReadFabric(ZipArchive archive, ZipArchiveEntry entry, string jarPath)
     {
         using var document = JsonDocument.Parse(ReadText(entry));
         var root = document.RootElement;
@@ -84,6 +84,10 @@ public static class ModMetadataReader
             .Concat(ReadStringList(root, "conflicts"))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        var provides = ReadStringList(root, "provides")
+            .Concat(ReadNestedFabricProvides(archive, root))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
         return new ModMetadataReadResult(
             new ModMetadata(
@@ -93,8 +97,107 @@ public static class ModMetadataReader
                 GetString(root, "description"),
                 ModPlatform.Fabric,
                 dependencies,
-                breaks),
+                breaks,
+                provides),
             null);
+    }
+
+    /// <summary>
+    /// Fabric API 等聚合 Mod 把实际模块放在 META-INF/jars/ 下的嵌套 JAR 中；
+    /// 顶层 fabric.mod.json 的 provides 只列出 "fabric"。依赖检查需要读取嵌套模块 ID，
+    /// 否则 Sodium 等 Mod 会被误报缺少 fabric-rendering-* 模块。
+    /// </summary>
+    private static IEnumerable<string> ReadNestedFabricProvides(ZipArchive archive, JsonElement root)
+    {
+        if (!root.TryGetProperty("jars", out var jars) || jars.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var provided = new List<string>();
+        var count = 0;
+        foreach (var item in jars.EnumerateArray())
+        {
+            if (++count > 256 ||
+                item.ValueKind != JsonValueKind.Object ||
+                !item.TryGetProperty("file", out var file) ||
+                file.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var nestedPath = file.GetString();
+            if (string.IsNullOrWhiteSpace(nestedPath) || !IsSafeRelativePath(nestedPath, out var safePath))
+            {
+                continue;
+            }
+
+            // Fabric API 的 jars[].file 通常已经包含 META-INF/jars/ 前缀，旧格式则可能只有文件名。
+            var nestedArchivePath = safePath.StartsWith("META-INF/jars/", StringComparison.OrdinalIgnoreCase)
+                ? safePath
+                : "META-INF/jars/" + safePath;
+            var nestedEntry = archive.Entries.FirstOrDefault(candidate =>
+                string.Equals(
+                    candidate.FullName.Replace('\\', '/'),
+                    nestedArchivePath,
+                    StringComparison.OrdinalIgnoreCase));
+            if (nestedEntry is null || nestedEntry.Length > 16 * 1024 * 1024)
+            {
+                continue;
+            }
+
+            try
+            {
+                using var nestedStream = nestedEntry.Open();
+                using var nestedArchive = new ZipArchive(nestedStream, ZipArchiveMode.Read, leaveOpen: false);
+                var metadata = FindEntry(nestedArchive, FabricMetadata);
+                if (metadata is null || metadata.Length > 2 * 1024 * 1024)
+                {
+                    continue;
+                }
+
+                using var nestedDocument = JsonDocument.Parse(ReadText(metadata));
+                var nestedRoot = nestedDocument.RootElement;
+                var id = GetString(nestedRoot, "id");
+                if (!string.IsNullOrWhiteSpace(id))
+                {
+                    provided.Add(id.Trim());
+                }
+
+                foreach (var nestedProvide in ReadStringList(nestedRoot, "provides"))
+                {
+                    provided.Add(nestedProvide);
+                }
+            }
+            catch (Exception exception) when (exception is InvalidDataException or IOException or JsonException)
+            {
+                // 单个嵌套模块损坏不阻断整个 Mod 的元数据。
+            }
+        }
+
+        return provided;
+    }
+
+    private static bool IsSafeRelativePath(string path, out string normalized)
+    {
+        normalized = string.Empty;
+        var candidate = path.Trim().Replace('\\', '/');
+        if (candidate.Length == 0 ||
+            candidate.StartsWith('/') ||
+            candidate.Contains(':') ||
+            candidate.Contains('\0'))
+        {
+            return false;
+        }
+
+        var parts = candidate.Split('/', StringSplitOptions.None);
+        if (parts.Any(part => part.Length == 0 || part is "." or ".."))
+        {
+            return false;
+        }
+
+        normalized = string.Join('/', parts);
+        return true;
     }
 
     private static ModMetadataReadResult ReadForge(
