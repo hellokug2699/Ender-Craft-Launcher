@@ -149,6 +149,16 @@
                     <ListBoxItem Content="{loc:Loc Key=output.tab.output}" FontSize="12" />
                 </ListBox>
 
+                <TextBlock Grid.Column="1"
+                           Text="{Binding TruncationText}"
+                           Foreground="{DynamicResource WarningBrush}"
+                           FontSize="11"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Right"
+                           Margin="0,0,10,0"
+                           TextTrimming="CharacterEllipsis"
+                           Visibility="{Binding HasDropped, Converter={StaticResource BoolToVisibility}}" />
+
                 <Button Grid.Column="2"
                         Content="{loc:Loc Key=output.clear}"
                         Command="{Binding ClearOutputCommand}"

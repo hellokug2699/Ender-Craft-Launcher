@@ -20,8 +20,9 @@ namespace Ecl.App.Shell;
 /// <summary>
 /// Application Shell 的 ViewModel：全局导航、工作区标签、Inspector、Output/Task 面板与弹窗层的组合。
 /// 工作区身份与生命周期由 <see cref="IWorkspaceHost"/> 持有；这里只保存页面 ViewModel 与呈现状态。
+/// 宿主状态变化通过 <see cref="IWorkspaceChangeSource"/> 推送，不轮询。
 /// </summary>
-public sealed partial class ShellViewModel : ObservableObject
+public sealed partial class ShellViewModel : ObservableObject, IDisposable
 {
     private readonly IWorkspaceHost _workspaces;
     private readonly IDialogEngine _dialogs;
@@ -32,6 +33,7 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly ModsViewModel _mods;
     private readonly SettingsViewModel _settings;
     private readonly ToolsViewModel _tools;
+    private readonly IDisposable _workspaceChanges;
     private bool _suppressNavigation;
 
     public ShellViewModel(
@@ -104,6 +106,7 @@ public sealed partial class ShellViewModel : ObservableObject
         _selectedNavigationItem = NavigationItems.FirstOrDefault(item =>
                                     string.Equals(item.Key, Environment.GetEnvironmentVariable("ECL_START_PAGE"), StringComparison.OrdinalIgnoreCase))
                                 ?? NavigationItems[0];
+        _workspaceChanges = workspaces.Subscribe(OnWorkspaceChanged);
         OpenDestination(_selectedNavigationItem);
     }
 
@@ -373,4 +376,29 @@ public sealed partial class ShellViewModel : ObservableObject
         OnPropertyChanged(nameof(HeaderTitle));
         OnPropertyChanged(nameof(HeaderSubtitle));
     }
+
+    /// <summary>
+    /// 宿主状态推送：只更新对应标签的脏标记与活动工作区的 Inspector，不复制权威状态。
+    /// 通知由宿主在 UI 线程同步发出，因此这里直接修改绑定属性。
+    /// </summary>
+    private void OnWorkspaceChanged(WorkspaceChangeNotification change)
+    {
+        if (Workspaces.FirstOrDefault(workspace => workspace.Id == change.WorkspaceId) is not { } tab)
+        {
+            return;
+        }
+
+        switch (change.Kind)
+        {
+            case WorkspaceChangeKind.DirtyStateChanged:
+                tab.IsDirty = change.NewIsDirty;
+                break;
+            case WorkspaceChangeKind.LifecycleStateChanged
+                when ReferenceEquals(tab, ActiveWorkspace) && change.NewState != WorkspaceLifecycleState.Disposed:
+                Inspector.Show(tab.Entry, tab.ToolDisplayName);
+                break;
+        }
+    }
+
+    public void Dispose() => _workspaceChanges.Dispose();
 }

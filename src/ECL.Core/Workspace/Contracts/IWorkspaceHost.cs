@@ -23,8 +23,9 @@ public sealed record WorkspaceCloseAttempt(bool Closed, WorkspaceCloseDecision D
 
 /// <summary>
 /// 宿主工作区登记与生命周期（ADR 0055 §1、§4）。不承载任何 UI 类型，也不负责工具业务状态。
+/// 状态变化的订阅契约见 <see cref="IWorkspaceChangeSource"/>。
 /// </summary>
-public interface IWorkspaceHost
+public interface IWorkspaceHost : IWorkspaceChangeSource
 {
     /// <summary>按打开顺序返回的工作区；关闭后移除。</summary>
     IReadOnlyList<WorkspaceEntry> Workspaces { get; }

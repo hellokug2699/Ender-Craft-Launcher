@@ -851,6 +851,7 @@
   "output.collapseHint": "Collapsing the panel never cancels or pauses a task.",
   "output.tasksEmpty": "No running or recently finished tasks.",
   "output.logEmpty": "No application output yet.",
+  "output.truncated": "Dropped {0} older output lines",
   "dialog.yes": "Yes",
   "dialog.no": "No",
   "dialog.ok": "OK",

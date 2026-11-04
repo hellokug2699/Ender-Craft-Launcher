@@ -25,7 +25,15 @@ public partial class MainWindow : Window
     /// <summary>弹窗宿主附加到主窗口后，统一弹窗才可用；在此之前调用方使用兼容路径。</summary>
     private void OnLoaded(object sender, RoutedEventArgs e) => ViewModel.Dialogs.AttachHost();
 
-    private void OnClosed(object? sender, EventArgs e) => ViewModel.Dialogs.DetachHost();
+    /// <summary>
+    /// 窗口关闭时先关停弹窗层：打开的弹窗按 Closed 完成，等待中的嵌套消息循环退出，
+    /// 然后才解除宿主关联，避免关闭流程被未完成的弹窗任务阻塞。
+    /// </summary>
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        ViewModel.Dialogs.Shutdown();
+        ViewModel.Dialogs.DetachHost();
+    }
 
     private void OnPageTargetUpdated(object? sender, DataTransferEventArgs e)
     {

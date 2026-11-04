@@ -851,6 +851,7 @@
   "output.collapseHint": "收起面板不会取消或暂停任何任务。",
   "output.tasksEmpty": "没有正在运行或最近完成的任务。",
   "output.logEmpty": "还没有应用输出。",
+  "output.truncated": "已丢弃较早的 {0} 行输出",
   "dialog.yes": "是",
   "dialog.no": "否",
   "dialog.ok": "确定",

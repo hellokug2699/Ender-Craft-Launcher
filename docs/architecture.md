@@ -326,6 +326,8 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - `TestEnvironment` 为每个测试创建独立临时数据目录。
 - `FakeProcessLauncher` 验证启动命令而不真的拉起 Java。
 - WPF 项目可在 Linux 上交叉编译（`EnableWindowsTargeting`），但 UI 行为需在 Windows 验证。
+- `tests/ECL.App.Tests` 使用独立 STA Dispatcher 验证弹窗线程契约与有界输出管线，仅在 Windows CI job 运行；
+  跨平台逻辑仍集中在 `ECL.Tests`。
 
 ## 9. 扩展点
 

@@ -93,9 +93,13 @@ public partial class App : Application
             services.AddSingleton<OperationCenterViewModel>();
 
             // Shell / Workspace Host / Inspector / Output / Dialog Engine
+            // 弹窗层与输出面板绑定到创建主窗口的 UI Dispatcher；Core 保持 UI 无关。
+            var uiDispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+            services.AddSingleton(uiDispatcher);
             services.AddSingleton<DialogLayerViewModel>();
             services.AddSingleton<IDialogEngine, DialogEngine>();
-            services.AddSingleton<IWorkspaceHost>(_ => new WorkspaceHost());
+            services.AddSingleton<IWorkspaceHost>(provider => new WorkspaceHost(
+                logger: provider.GetService<ILogger<WorkspaceHost>>()));
             services.AddSingleton<InspectorViewModel>();
             services.AddSingleton<OutputPanelViewModel>();
             services.AddSingleton<ShellViewModel>();

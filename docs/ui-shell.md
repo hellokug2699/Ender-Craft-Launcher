@@ -94,9 +94,42 @@ Inspector 只投影活动工作区的宿主元数据（标题、工具、生命�
 - `WorkspaceSetupWindow`、`NbtExplorerWindow`、`WorldWorkbenchWindow`、`VersionImportDialog`、
   `AuthlibAccountDialog` 仍是旧窗口实现，尚未迁移。
 
-## 6. 已知限制
+## 6. 线程与状态通知契约
+
+### 6.1 Dialog Engine
+
+- `DialogLayerViewModel`、`DialogEntryViewModel` 与所有绑定属性只归创建它们的 WPF Dispatcher 所有；
+  在错误线程上构造或修改会抛出 `DialogThreadAffinityException`，而不是静默跨线程写绑定状态。
+- `ShowAsync` 可从任意线程调用：后台调用会被封送到 UI 线程创建弹窗，并返回同一个结果任务。
+  `Show` 使用嵌套消息循环实现同步模态，只能在 UI 线程调用。
+- CancellationToken 回调可能在线程池执行；引擎把关闭请求封送到 UI 线程，重复关闭/取消竞争由 UI 线程串行化，
+  每个弹窗任务只完成一次。
+- 关闭父弹窗时，仍打开的嵌套子弹窗先按 `Closed` 完成，再完成父弹窗；不会留下失去所有者的窗口或悬挂任务。
+- 主窗口关闭或 Dispatcher 开始关停时，弹窗层 `Shutdown()` 以 `Closed` 完成所有打开中的弹窗；
+  引擎内部等待不依赖 UI 同步上下文，避免关停期间续体被丢弃造成调用方永久等待。
+
+### 6.2 Output 管线
+
+- 三个内存阶段都有固定上限：日志观察缓冲 2000 条、待刷新队列 1000 条、UI 可见集合 500 条。
+- 所有阶段都采用“丢弃最旧”策略；`AppLogBuffer.DroppedCount`、pending 丢弃数与可见截断数汇总为
+  `DroppedEntries`，面板以“已丢弃较早的 N 行输出”提示，压力下不会静默丢日志。
+- `ClearOutput` 在 UI 线程先清空待刷新队列，再清空可见集合并重置截断计数；清空提交后，
+  之前的 pending 条目不会重新出现在界面。
+- 面板释放时退订日志事件、清空队列并停止刷新；日志缓冲释放后不再接收新行。
+
+### 6.3 Workspace 状态通知
+
+- `IWorkspaceHost` 继承 `IWorkspaceChangeSource`；`Subscribe` 返回可释放令牌，通知包含
+  `WorkspaceId`、变化种类（生命周期 / 脏状态）与变化前后的值。
+- 通知在状态提交之后、于引起变化的线程上同步发出，按订阅顺序调用；订阅者异常被记录并隔离，
+  不会回滚状态迁移或阻止其他订阅者。Core 不依赖 WPF。
+- Shell 通过订阅更新标签脏标记与活动工作区的 Inspector，不轮询，也不复制权威状态。
+
+## 7. 已知限制
 
 - 无活动工作区时中央区域显示空状态；关闭全部标签后需要从导航重新打开。
 - 页面内部布局尚未按 ADR 0050 逐页重构；窄窗口下需要折叠导航或 Inspector 才能获得更宽内容区。
 - 工作区页面在切换标签时会重新创建视图（ViewModel 状态保留，滚动位置等视图状态不保留）。
 - Split、Detached、Snapshot 恢复与运行时隔离仍未实现，相关能力不会以按钮或菜单形式出现。
+- WPF 线程/Dispatcher 与输出管线测试位于仅 Windows 可运行的 `tests/ECL.App.Tests`；CI 在 Windows job 执行，
+  Linux job 不运行该测试项目。
