@@ -6,6 +6,8 @@
 - Scope: ECL 网络诊断能力、可选 Addition、诊断数据生命周期与用户隐私边界
 - Related: [0032 原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[0033 本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md)
 
+> **Addition 登记说明：** 本 ADR 记录领域架构决策，不再作为扩展目录或发布状态的权威来源。相关 Addition 的正式身份、登记状态、版本与发布信息统一以 [ECL Additions Registry](../additions/README.md) 为准；当前登记目录中的对应项目仍属于候选，须完成 ADR 0054 评审与登记流程后才成为正式条目。
+
 ## 背景
 
 Minecraft 启动器依赖多个外部服务完成资源查询、版本元数据获取、文件下载和知识访问。用户遇到连接失败或响应缓慢时，需要能够区分 DNS 解析、TCP 连接、TLS 握手和 HTTP 请求等阶段的问题，并了解不同服务的实际可达性与响应延迟。
