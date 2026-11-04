@@ -160,8 +160,8 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0013 分支驱动的版本与发布频道](0013-branch-based-versioning-and-release-channels.md) | Accepted | Implemented | 版本与发布 |
 | [0014 Java 运行时优先级与兼容性策略](0014-java-runtime-priority-and-compatibility-policy.md) | Accepted | Verified | Java 选择与兼容性 |
 | [0015 按进程隔离的游戏日志会话与诊断证据](0015-process-scoped-game-log-sessions-and-diagnostics.md) | Accepted | Verified | 日志与诊断 |
-| [0016 独立 Bootstrapper 与安全部署边界](0016-independent-bootstrapper-and-safe-deployment-boundaries.md) | Accepted | Verified | 更新与部署 |
-| [0017 图形化首次安装程序](0017-graphical-first-run-installer.md) | Accepted | Verified | 安装器 |
+| [0016 独立 Bootstrapper 与安全部署边界](0016-independent-bootstrapper-and-safe-deployment-boundaries.md) | Superseded | N/A | 历史决策（由 0051 统一取代） |
+| [0017 图形化首次安装程序](0017-graphical-first-run-installer.md) | Superseded | N/A | 历史决策（由 0051 统一取代） |
 | [0018 Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md) | Accepted | Verified | 工作区与实例存储 |
 | [0019 内存压力下的进程保活与诊断连续性](0019-memory-pressure-process-survival-and-diagnostic-continuity.md) | Accepted | Verified | 进程生存与诊断 |
 | [0020 下载临时产物生命周期与失败清理](0020-download-artifact-lifecycle-and-cleanup.md) | Accepted | Implemented | 下载临时文件 |
@@ -178,7 +178,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0031 多维度世界架构与存储解析](0031-multi-dimension-world-architecture.md) | Accepted | Implemented | 多维度架构 |
 | [0032 原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md) | Accepted | In Progress | 功能扩展与数据分发 |
 | [0033 本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md) | Accepted | In Progress | 本地诊断与知识库 |
-| [0034 ECL 自身完整性与可恢复安装架构](0034-ecl-self-integrity-and-recovery.md) | Accepted | In Progress | 启动器完整性与自修复 |
+| [0034 ECL 自身完整性与可恢复安装架构](0034-ecl-self-integrity-and-recovery.md) | Superseded | N/A | 历史决策（由 0051 统一取代） |
 | [0035 Offline Minecraft Knowledge Library as an Optional Addition](0035-offline-minecraft-knowledge-library.md) | Superseded | N/A | 离线知识库方向（由 0036 取代主要交付方式） |
 | [0036 Embedded Browser for Minecraft Knowledge Access](0036-embedded-browser-for-minecraft-knowledge.md) | Accepted | In Progress | 受限知识浏览器与站点白名单 |
 | [0037 Account Appearance and Local Wardrobe Architecture](0037-account-appearance-and-local-wardrobe.md) | Accepted | In Progress | 皮肤、披风与账户外观管理 |
@@ -195,3 +195,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0048 实例快照与恢复架构](0048-instance-snapshots-and-recovery.md) | Accepted | Implemented | 用户快照、事务恢复材料、差异比较与恢复 |
 | [0049：原生 GitHub 项目中心与仓库资源边界](0049-native-github-integration-and-repository-bounded-navigation.md) | Accepted | In Progress | GitHub 项目中心 Addition、ECL 原生渲染、GitHub App 最小权限与仓库内资源解析 |
 | [0050 ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) | Accepted | Not Started | UI 设计系统、Application Shell、右侧工具栏、信息架构、排版与 DPI 适配（UI 领域最高优先级） |
+| [0051 统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md) | Accepted | In Progress | 首次安装、更新源容灾、发布验证、部署、Repair Mode 与离线恢复 |
