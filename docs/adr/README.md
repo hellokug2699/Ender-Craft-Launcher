@@ -196,3 +196,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0049：原生 GitHub 项目中心与仓库资源边界](0049-native-github-integration-and-repository-bounded-navigation.md) | Accepted | In Progress | GitHub 项目中心 Addition、ECL 原生渲染、GitHub App 最小权限与仓库内资源解析 |
 | [0050 ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) | Accepted | Not Started | UI 设计系统、Application Shell、右侧工具栏、信息架构、排版与 DPI 适配（UI 领域最高优先级） |
 | [0051 统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md) | Accepted | In Progress | Installer / Bootstrapper 独立 UI、首次安装、更新源容灾、发布验证、部署、Repair Mode 与离线恢复 |
+| [0052 Unified Dialog Engine and Incremental Migration](0052-unified-dialog-engine-and-incremental-migration.md) | Accepted | Not Started | 统一弹窗引擎、应用内背景暗化、模态交互与旧弹窗渐进迁移 |
