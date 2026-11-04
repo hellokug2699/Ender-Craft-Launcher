@@ -198,3 +198,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0051 统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md) | Accepted | In Progress | Installer / Bootstrapper 独立 UI、首次安装、更新源容灾、发布验证、部署、Repair Mode 与离线恢复 |
 | [0052 Unified Dialog Engine and Incremental Migration](0052-unified-dialog-engine-and-incremental-migration.md) | Accepted | Not Started | 统一弹窗引擎、应用内背景暗化、模态交互与旧弹窗渐进迁移 |
 | [0053 Additions 能力权限模型与用户授权流程](0053-addition-capability-permission-and-user-consent.md) | Proposed | Not Started | 扩展权限声明、安装前知情授权、宿主能力执行控制与撤销 |
+| [0054 Addition 注册表、清单与生命周期治理](0054-addition-registry-and-manifest-governance.md) | Proposed | Not Started | 官方 Addition 统一目录、Manifest、登记审核、生命周期与既有扩展 ADR 迁移 |
