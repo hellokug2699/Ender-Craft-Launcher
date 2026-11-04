@@ -197,3 +197,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0050 ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) | Accepted | Not Started | UI 设计系统、Application Shell、右侧工具栏、信息架构、排版与 DPI 适配（UI 领域最高优先级） |
 | [0051 统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md) | Accepted | In Progress | Installer / Bootstrapper 独立 UI、首次安装、更新源容灾、发布验证、部署、Repair Mode 与离线恢复 |
 | [0052 Unified Dialog Engine and Incremental Migration](0052-unified-dialog-engine-and-incremental-migration.md) | Accepted | Not Started | 统一弹窗引擎、应用内背景暗化、模态交互与旧弹窗渐进迁移 |
+| [0053 Additions 能力权限模型与用户授权流程](0053-addition-capability-permission-and-user-consent.md) | Proposed | Not Started | 扩展权限声明、安装前知情授权、宿主能力执行控制与撤销 |
