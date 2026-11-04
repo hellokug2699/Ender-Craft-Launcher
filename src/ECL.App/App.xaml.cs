@@ -4,8 +4,12 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Threading;
+using Ecl.App.Dialogs;
 using Ecl.App.Localization;
 using Ecl.App.Services;
+using Ecl.App.Shell;
+using Ecl.App.Shell.Inspector;
+using Ecl.App.Shell.Output;
 using Ecl.App.ViewModels;
 using Ecl.App.Views;
 using Ecl.Auth;
@@ -16,6 +20,7 @@ using Ecl.Core.Localization;
 using Ecl.Core.Logging;
 using Ecl.Core.Runtime;
 using Ecl.Core.Storage;
+using Ecl.Core.Workspace;
 using Ecl.Download;
 using Ecl.Java;
 using Ecl.Minecraft;
@@ -55,6 +60,12 @@ public partial class App : Application
 
             var services = new ServiceCollection();
             services.AddEclLogging(paths, console: false);
+
+            // Output 面板只读取应用级有界日志缓冲；文件日志与游戏进程日志仍由各自机制负责。
+            var logBuffer = new AppLogBuffer();
+            services.AddSingleton(logBuffer);
+            services.AddLogging(builder => builder.AddProvider(logBuffer));
+
             services.AddEclCore(paths, culture);
             services.AddEclConfiguration();
             services.AddEclDownload();
@@ -80,7 +91,14 @@ public partial class App : Application
             services.AddSingleton<IMemoryPressureMonitor, MemoryPressureMonitor>();
             services.AddSingleton<AboutViewModel>();
             services.AddSingleton<OperationCenterViewModel>();
-            services.AddSingleton<MainViewModel>();
+
+            // Shell / Workspace Host / Inspector / Output / Dialog Engine
+            services.AddSingleton<DialogLayerViewModel>();
+            services.AddSingleton<IDialogEngine, DialogEngine>();
+            services.AddSingleton<IWorkspaceHost>(_ => new WorkspaceHost());
+            services.AddSingleton<InspectorViewModel>();
+            services.AddSingleton<OutputPanelViewModel>();
+            services.AddSingleton<ShellViewModel>();
             services.AddSingleton<MainWindow>();
 
             _services = services.BuildServiceProvider();
@@ -120,7 +138,7 @@ public partial class App : Application
                 token => CleanupDownloadArtifactsAsync(_services, paths, token));
 
             lifecycle.MarkRunning();
-            await _services.GetRequiredService<MainViewModel>().InitializeAsync();
+            await _services.GetRequiredService<ShellViewModel>().InitializeAsync();
         }
         catch (Exception exception)
         {

@@ -3,7 +3,10 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
+using Ecl.App.Dialogs;
+using Ecl.App.Dialogs.ViewModels;
 using Ecl.Configuration.Settings;
+using Ecl.Core.Localization;
 using Ecl.Java;
 using Microsoft.Win32;
 
@@ -40,7 +43,15 @@ public interface IDialogService
     bool OpenUrl(string url);
 }
 
-public sealed class DialogService(ISettingsService settings) : IDialogService
+/// <summary>
+/// 兼容层：现有同步调用继续可用，但确认/提示类弹窗统一走 <see cref="IDialogEngine"/>（ADR 0052）。
+/// 主窗口弹窗宿主尚未附加时（例如首次启动向导、启动失败）回退到系统 MessageBox，
+/// 文件选择仍使用 Windows 原生对话框。
+/// </summary>
+public sealed class DialogService(
+    ISettingsService settings,
+    IDialogEngine dialogs,
+    ILocalizer localizer) : IDialogService
 {
     public bool Confirm(string title, string message, string? acknowledgementToken = null)
     {
@@ -53,11 +64,12 @@ public sealed class DialogService(ISettingsService settings) : IDialogService
             return true;
         }
 
-        var accepted = MessageBox.Show(
-            message,
+        var accepted = ShowMessage(
             title,
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question) == MessageBoxResult.Yes;
+            message,
+            localizer.Get("dialog.yes"),
+            cancelText: localizer.Get("dialog.no"),
+            DialogSeverity.Warning);
 
         if (accepted && !string.IsNullOrWhiteSpace(acknowledgementToken))
         {
@@ -74,32 +86,59 @@ public sealed class DialogService(ISettingsService settings) : IDialogService
     {
         if (!canDeleteManagedData)
         {
-            return MessageBox.Show(
-                       message,
+            return ShowMessage(
                        title,
-                       MessageBoxButton.OKCancel,
-                       MessageBoxImage.Warning) == MessageBoxResult.OK
+                       message,
+                       localizer.Get("dialog.removeRecordOnly"),
+                       cancelText: localizer.Get("dialog.cancel"),
+                       DialogSeverity.Warning)
                 ? InstanceDeletionChoice.RemoveRecordOnly
                 : InstanceDeletionChoice.Cancel;
         }
 
-        return MessageBox.Show(
-                   message,
-                   title,
-                   MessageBoxButton.YesNoCancel,
-                   MessageBoxImage.Warning) switch
+        var result = dialogs.IsAvailable
+            ? dialogs.Show(new DialogRequest
+            {
+                Title = title,
+                Content = new MessageDialogViewModel(
+                    message,
+                    localizer.Get("dialog.deleteManagedData"),
+                    localizer.Get("dialog.removeRecordOnly"),
+                    localizer.Get("dialog.cancel"),
+                    DialogSeverity.Warning,
+                    isDestructive: true),
+                InitialFocus = DialogInitialFocus.Cancel,
+                Severity = DialogSeverity.Warning,
+            })
+            : null;
+
+        if (result is null)
         {
-            MessageBoxResult.Yes => InstanceDeletionChoice.DeleteManagedData,
-            MessageBoxResult.No => InstanceDeletionChoice.RemoveRecordOnly,
+            return MessageBox.Show(
+                       message,
+                       title,
+                       MessageBoxButton.YesNoCancel,
+                       MessageBoxImage.Warning) switch
+            {
+                MessageBoxResult.Yes => InstanceDeletionChoice.DeleteManagedData,
+                MessageBoxResult.No => InstanceDeletionChoice.RemoveRecordOnly,
+                _ => InstanceDeletionChoice.Cancel,
+            };
+        }
+
+        return result.Outcome switch
+        {
+            DialogOutcome.Primary => InstanceDeletionChoice.DeleteManagedData,
+            DialogOutcome.Secondary => InstanceDeletionChoice.RemoveRecordOnly,
             _ => InstanceDeletionChoice.Cancel,
         };
     }
 
     public void ShowInfo(string title, string message) =>
-        MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information);
+        ShowMessage(title, message, localizer.Get("dialog.ok"), severity: DialogSeverity.Information);
 
     public void ShowError(string title, string message) =>
-        MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
+        ShowMessage(title, message, localizer.Get("dialog.ok"), severity: DialogSeverity.Error);
 
     public string? PickOpenFile(string title, string filter)
     {
@@ -149,4 +188,45 @@ public sealed class DialogService(ISettingsService settings) : IDialogService
             return false;
         }
     }
+
+    /// <summary>返回主操作是否被选择；关闭弹窗或取消都视为否。</summary>
+    private bool ShowMessage(
+        string title,
+        string message,
+        string primaryText,
+        string? cancelText = null,
+        DialogSeverity severity = DialogSeverity.Neutral)
+    {
+        if (dialogs.IsAvailable)
+        {
+            try
+            {
+                var result = dialogs.Show(new DialogRequest
+                {
+                    Title = title,
+                    Content = new MessageDialogViewModel(message, primaryText, cancelText: cancelText, severity: severity),
+                    InitialFocus = cancelText is null ? DialogInitialFocus.FirstFocusable : DialogInitialFocus.Cancel,
+                    Severity = severity,
+                });
+                return result.IsPrimary;
+            }
+            catch (DialogHostUnavailableException)
+            {
+                // 宿主在检查与显示之间被卸载：回退到兼容路径，不能让用户操作静默丢失。
+            }
+        }
+
+        var fallbackResult = cancelText is null
+            ? MessageBox.Show(message, title, MessageBoxButton.OK, ToImage(severity))
+            : MessageBox.Show(message, title, MessageBoxButton.YesNo, ToImage(severity));
+        return fallbackResult is MessageBoxResult.OK or MessageBoxResult.Yes;
+    }
+
+    private static MessageBoxImage ToImage(DialogSeverity severity) => severity switch
+    {
+        DialogSeverity.Error => MessageBoxImage.Error,
+        DialogSeverity.Warning => MessageBoxImage.Warning,
+        DialogSeverity.Information => MessageBoxImage.Information,
+        _ => MessageBoxImage.None,
+    };
 }

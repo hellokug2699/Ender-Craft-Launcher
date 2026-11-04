@@ -39,6 +39,11 @@
     <Color x:Key="DangerHoverColor">#3B2029</Color>
     <Color x:Key="ScrollThumbColor">#372F49</Color>
     <Color x:Key="ScrollThumbHoverColor">#4B4262</Color>
+    <!--
+        模态弹窗遮罩：只覆盖 ECL 自身窗口客户区，属于应用内视觉与输入隔离，
+        不模拟 Windows 安全桌面。透明度经实机校准，保留背景布局轮廓。
+    -->
+    <Color x:Key="ScrimColor">#B3100D1A</Color>
 
     <!-- 动效令牌：只用于表现层，不参与命令、导航数据加载或后台任务生命周期。 -->
     <sys:TimeSpan x:Key="MotionInstant">0:0:0.06</sys:TimeSpan>
@@ -74,6 +79,7 @@
     <SolidColorBrush x:Key="DangerHoverBrush" Color="{StaticResource DangerHoverColor}" />
     <SolidColorBrush x:Key="ScrollThumbBrush" Color="{StaticResource ScrollThumbColor}" />
     <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="{StaticResource ScrollThumbHoverColor}" />
+    <SolidColorBrush x:Key="ScrimBrush" Color="{StaticResource ScrimColor}" />
 
     <!--
         内嵌 UI 字体：HarmonyOS Sans SC（Regular / Medium / Bold 三个静态字面），
@@ -917,6 +923,88 @@
                         <ContentPresenter />
                     </Border>
                 </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============================ Application Shell & Dialogs ============================ -->
+
+    <!--
+        Shell 图标统一使用 PathGeometry 描边，与 ComboBox 箭头、SectionExpander chevron 一致；
+        不允许页面用 emoji 或随意字符代替常规功能图标。
+    -->
+    <PathGeometry x:Key="IconNavigation" Figures="M 3,5 L 17,5 M 3,10 L 17,10 M 3,15 L 17,15" />
+    <PathGeometry x:Key="IconInspector" Figures="M 3,4 L 17,4 L 17,16 L 3,16 Z M 12,4 L 12,16" />
+    <PathGeometry x:Key="IconOutput" Figures="M 3,4 L 17,4 L 17,16 L 3,16 Z M 3,11.5 L 17,11.5" />
+    <PathGeometry x:Key="IconClose" Figures="M 4,4 L 12,12 M 12,4 L 4,12" />
+
+    <!-- 顶部栏的面板开关：折叠/展开状态必须同时由颜色、边框和提示表达。 -->
+    <Style x:Key="PanelToggleButton" TargetType="ToggleButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="9,7" />
+        <Setter Property="MinWidth" Value="34" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="10"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource AccentHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.4" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 工作区标签上的关闭入口：小尺寸但仍保留键盘焦点与提示。 -->
+    <Style x:Key="TabCloseButton" TargetType="Button" BasedOn="{StaticResource GhostButton}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="MinWidth" Value="20" />
+        <Setter Property="MinHeight" Value="20" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- 弹窗外壳：内容自行排版；引擎只负责尺寸约束、层级、遮罩与焦点。 -->
+    <Style x:Key="DialogCard" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="14" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Effect">
+            <Setter.Value>
+                <DropShadowEffect BlurRadius="28" ShadowDepth="10" Opacity="0.5" Color="#000000" />
             </Setter.Value>
         </Setter>
     </Style>

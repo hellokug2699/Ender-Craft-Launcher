@@ -96,7 +96,7 @@ flowchart TD
 | `ECL.Diagnostics` | 本地日志/崩溃解析、知识库规则、证据链与诊断历史 | `DiagnosticEngine`, `KnowledgeBaseLoader`, `DiagnosticHistoryStore` |
 | `ECL.VanillaToolkit` | 原版数据包校验、版本选择与 Registry 查询（官方 Addition 项目，位于 `additions/`） | `VanillaDataPackLoader`, `RegistryQueryService`, `InstalledVersionResources` |
 | `ECL.Bootstrapper` | 读取当前版本指针、启动已安装版本、应用签名更新与回滚；ADR 0034 `--verify`/`--repair`；不覆盖运行中的主程序 | `ECL.Bootstrapper.exe` |
-| `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框、任务中心 | `MainViewModel`, `HomeViewModel`, `DownloadViewModel`, `InstancesViewModel`, `ModsViewModel`, `SettingsViewModel`, `OperationCenterViewModel` |
+| `ECL.App` | WPF 外壳、MVVM、主题、页面、对话框、任务中心 | `ShellViewModel`, `IWorkspaceHost`, `DialogEngine`, `OutputPanelViewModel`, `InspectorViewModel`, `HomeViewModel`, `DownloadViewModel`, `InstancesViewModel`, `ModsViewModel`, `SettingsViewModel`, `OperationCenterViewModel` |
 | `ECL.Cli` | 无 GUI 管理、调试启动链路、长任务进度输出 | `CliApplication`, `ParsedCommandLine`, `CliOperationReporter` |
 | `ECL.Tests` | 单元测试与临时数据目录 | `TestEnvironment`, `FakeProcessLauncher` |
 
@@ -117,6 +117,9 @@ services.AddEclMinecraft();
 - 配置注册表在首次解析时聚合所有 `IOptionProvider`，因此新模块可以在自己的 `Add...` 中追加选项。
 - 启动步骤通过 `IEnumerable<ILaunchStep>` 注入并按 `Order` 排序，新增步骤不需要改启动器。
 - App 启动顺序：创建 `AppPaths` → 读取语言与实例下载位置 → 建立本地化器 → 构建容器 → 显示主窗口 → 异步加载实例、设置与版本情报。
+- Shell 组合根额外注册：`IWorkspaceHost`（UI 无关的工作区登记与生命周期）、`DialogLayerViewModel` / `IDialogEngine`
+  （统一弹窗）、`InspectorViewModel`、`OutputPanelViewModel`（复用 `OperationCenterViewModel`）与 `ShellViewModel`。
+  `AppLogBuffer` 作为有界日志提供程序接入 `ILoggingBuilder`，只服务 Output 面板。详见 [ui-shell.md](ui-shell.md)。
 - ADR 0039：`AddEclCore` 注册应用级生命周期协调器；`BeginStart`/`MarkRunning` 表达启动阶段，WPF `Closing` 与 CLI 退出都会等待受管理后台工作、停止步骤和登记资源完成。游戏进程与日志会话仍遵循 ADR 0015/0019 的独立生命周期。
 - ADR 0032/0033/0036/0037/0040 的可选能力模块（Additions、Knowledge、Wardrobe、Diagnostics、Vanilla Toolkit）不进入普通启动链；目录、扩展与知识库只在用户进入对应功能时按需读取或加载。
 - 语言切换标记为“需要重启”，XAML 中的静态文本由 `LocExtension` 在加载时解析。
@@ -351,7 +354,9 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 
 1. 新建 ViewModel（继承 `ObservableObject`）。
 2. 新建 UserControl，并在 `App.xaml` 添加 `DataTemplate` 映射。
-3. 在 `MainViewModel.NavItems` 中添加入口。
+3. 在 `ShellViewModel` 的 `NavigationItems` 中添加入口（`Key`、`ToolId`、分组与页面 ViewModel）；
+   页面会作为工作区标签打开，导航本身不直接承载内容。
+4. 新弹窗必须通过 `IDialogEngine` 呈现，不创建独立窗口或自行叠加遮罩。详见 [ui-shell.md](ui-shell.md)。
 
 ## 10. 当前边界与已知缺口
 
@@ -363,6 +368,7 @@ Validate(100) → ResolveVersion(150) → ResolveJava(200) → CheckFiles(350)
 - 已实现更新协议核心、独立 Bootstrapper、staging/版本指针/回滚与签名 Release workflow；安装器 UI、卸载、主程序内自动检查/下载与 Authenticode 代码签名仍待后续。详见 [deployment.md](deployment.md)。
 - 未实现下载限速；并发、重试、续传、暂停/恢复已生效。
 - 界面固定为 ECL 深色主题（浅色模式已移除），内嵌 HarmonyOS Sans SC 的 Regular / Medium / Bold 三个静态字面；正文、强调与标题通过共享排版 token 区分，主题刷子统一使用 `DynamicResource`。字体与许可细节见 [typography.md](typography.md)。托盘、完整 i18n 热切换与更细的无障碍仍在路线图中。
+- Application Shell / Workspace Host / Inspector / Output / Dialog Engine 第一批基础设施已落地（见 [ui-shell.md](ui-shell.md)）：导航目的地以工作区标签承载，模态弹窗统一暗化并锁定背景。Split 布局、Detached Window、Session Snapshot 恢复和 Addition Runtime 仍未实现；现有页面内部布局尚未按 ADR 0050 逐页重构。
 - 崩溃分析基于日志/崩溃报告文本与 Mod 元数据排序，不是完整的符号化解析；诊断包导出已做脱敏，详见 [diagnostics.md](diagnostics.md)。
 - CurseForge 与 Modrinth 的搜索、一键安装、整合包远程下载与 `.mrpack` 自动建实例导入已完成；不做 Mod 更新检查、可选依赖选择，作者禁止第三方分发或无 CDN 地址的文件无法下载。实例工作区可按 Mod 元数据精确匹配并下载缺失的强制依赖；无法匹配时只提示手动搜索。
 - 实例创建页从 Mojang 版本清单选择正式版 / 快照版 / 愚人节版；愚人节版本依赖固定 ID 列表识别，新版本出现时需要更新列表。旧版 alpha/beta 不参与实例创建。

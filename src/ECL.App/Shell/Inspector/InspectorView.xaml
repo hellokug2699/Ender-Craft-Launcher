@@ -1,0 +1,87 @@
+<UserControl x:Class="Ecl.App.Shell.Inspector.InspectorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization">
+    <!--
+        Inspector 只呈现当前活动工作区的上下文与辅助动作。
+        它不复制页面内容，也不成为第二个导航面板；没有上下文时给出明确空状态。
+    -->
+    <Grid Background="{DynamicResource SidebarBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border BorderBrush="{DynamicResource BorderSoftBrush}" BorderThickness="0,0,0,1" Padding="16,12">
+            <TextBlock Text="{Binding HeaderText}"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       FontSize="11"
+                       Style="{StaticResource EmphasisText}" />
+        </Border>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <Grid Margin="16,16,16,18">
+                <!-- 空状态：没有任何工作区或当前工作区没有可检查的上下文 -->
+                <StackPanel VerticalAlignment="Top"
+                            Visibility="{Binding HasContext, Converter={StaticResource InverseBoolToVisibility}}">
+                    <TextBlock Text="{Binding EmptyTitle}"
+                               FontSize="13"
+                               Style="{StaticResource EmphasisText}"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding EmptyDescription}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Margin="0,8,0,0" />
+                </StackPanel>
+
+                <!-- 上下文状态 -->
+                <StackPanel Visibility="{Binding HasContext, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="{Binding Title}"
+                               FontSize="15"
+                               Style="{StaticResource HeadingText}"
+                               TextWrapping="Wrap" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Border Style="{StaticResource Badge}" Margin="0">
+                            <TextBlock Text="{Binding StateText}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource AccentHoverBrush}" />
+                        </Border>
+                        <Border Style="{StaticResource Badge}"
+                                Visibility="{Binding IsDirty, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="{Binding DirtyText}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource WarningBrush}" />
+                        </Border>
+                    </StackPanel>
+
+                    <Border Height="1" Background="{DynamicResource BorderSoftBrush}" Margin="0,16,0,12" />
+
+                    <TextBlock Text="{Binding ToolLabel}" Style="{StaticResource LabelText}" Margin="0,0,0,3" />
+                    <TextBlock Text="{Binding ToolName}" FontSize="12" TextWrapping="Wrap" />
+
+                    <TextBlock Text="{Binding StateLabel}" Style="{StaticResource LabelText}" Margin="0,12,0,3" />
+                    <TextBlock Text="{Binding StateText}" FontSize="12" TextWrapping="Wrap" />
+
+                    <StackPanel Visibility="{Binding HasTarget, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{Binding TargetLabel}" Style="{StaticResource LabelText}" Margin="0,12,0,3" />
+                        <TextBlock Text="{Binding TargetText}"
+                                   FontSize="12"
+                                   FontFamily="Consolas"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding CreatedLabel}" Style="{StaticResource LabelText}" Margin="0,12,0,3" />
+                    <TextBlock Text="{Binding CreatedText}" FontSize="12" />
+
+                    <Button Content="{Binding CloseText}"
+                            Command="{Binding CloseWorkspaceCommand}"
+                            Style="{StaticResource GhostButton}"
+                            HorizontalAlignment="Left"
+                            Margin="0,20,0,0" />
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</UserControl>
