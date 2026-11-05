@@ -189,6 +189,10 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
 - 入口：`IDialogEngine.ShowAsync` / `Show`；宿主：`DialogLayerViewModel` + `Dialogs/Views/DialogHostView`。
 - 模态弹窗打开时，`ShellRoot.IsEnabled` 由 `DialogLayerViewModel.IsShellInteractive` 绑定禁用，
   整窗遮罩（`ScrimBrush`）覆盖导航、主内容与 Inspector；弹窗本身位于遮罩之上的独立层。
+- 禁用整个 Shell 时，主题内的 `ListBox` 使用 `Theme.xaml` 的自绘模板：WPF 默认模板会在
+  `IsEnabled=false` 时把列表背景换成 `SystemColors.ControlBrush`（浅色），在深色主题下表现为
+  「弹窗一出现主页面整块发白」。自绘模板只保留 ScrollViewer + ItemsPresenter，禁用仅影响交互、
+  不改变配色；`tests/ECL.App.Tests/Controls/PageControlsTests.cs` 有对应回归测试（渲染禁用列表并断言深色背景）。
 - 弹窗栈只显示最上层弹窗；父弹窗在下层保留，子弹窗关闭后恢复父弹窗与焦点。
 - 尺寸受主窗口客户区约束（`DialogHostView` 动态计算），内容过多时在弹窗内部滚动。
 - 关闭语义区分 `Primary` / `Secondary` / `Cancel` / `Closed` / `Failed`；忙碌状态拒绝普通关闭。

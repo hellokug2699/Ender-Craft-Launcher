@@ -113,6 +113,60 @@ public sealed class PageControlsTests
     }
 
     [Fact]
+    public void DisabledListBoxKeepsTheThemeBackground()
+    {
+        byte[] pixel = [];
+
+        using (var ui = new UiThread())
+        {
+            ui.Invoke(() =>
+            {
+                lock (ApplicationGate)
+                {
+                    EnsureApplication();
+
+                    // 弹窗打开会禁用整个 Shell。WPF 默认 ListBox 模板在禁用时改用
+                    // SystemColors.ControlBrush（浅色），会让深色页面整块发白；
+                    // 主题模板必须保持深色背景。
+                    var host = new Grid
+                    {
+                        Width = 200,
+                        Height = 100,
+                        Background = new SolidColorBrush(Color.FromRgb(0x17, 0x15, 0x1F)),
+                    };
+                    var list = new ListBox
+                    {
+                        Width = 200,
+                        Height = 100,
+                        IsEnabled = false,
+                        ItemsSource = Array.Empty<string>(),
+                    };
+                    host.Children.Add(list);
+                    host.Measure(new Size(200, 100));
+                    host.Arrange(new Rect(0, 0, 200, 100));
+                    host.UpdateLayout();
+
+                    var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                        200,
+                        100,
+                        96,
+                        96,
+                        PixelFormats.Pbgra32);
+                    bitmap.Render(host);
+
+                    pixel = new byte[4];
+                    bitmap.CopyPixels(new Int32Rect(20, 80, 1, 1), pixel, 4, 0);
+                }
+            });
+        }
+
+        Assert.Equal(0xFF, pixel[3]);
+        Assert.True(
+            pixel[0] < 0x50 && pixel[1] < 0x50 && pixel[2] < 0x50,
+            $"禁用列表的背景不应变成系统浅色：B={pixel[0]} G={pixel[1]} R={pixel[2]}");
+    }
+
+    [Fact]
     public void ModStatusBadgePanelArrangesOneTwoThreeAndFourIcons()
     {
         using var ui = new UiThread();
@@ -178,4 +232,5 @@ public sealed class PageControlsTests
         application.Resources["LoaderKindBrush"] = new LoaderKindToBrushConverter();
     }
 }
+
 

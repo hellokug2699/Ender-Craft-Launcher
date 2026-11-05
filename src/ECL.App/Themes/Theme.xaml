@@ -690,10 +690,35 @@
         <Setter Property="BorderThickness" Value="0" />
     </Style>
 
+    <!--
+        自绘 ListBox 模板：弹窗打开时整个 Shell 会被禁用（IsEnabled=false），
+        WPF 默认模板在该状态下把列表背景换成 SystemColors.ControlBrush（浅色），
+        在深色主题里表现为整页发白。这里去掉该触发器，禁用只影响交互、不改变配色。
+    -->
     <Style TargetType="ListBox">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBox">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
+                        <ScrollViewer x:Name="Scroller"
+                                      Focusable="False"
+                                      CanContentScroll="True"
+                                      HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                      VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}">
+                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                        </ScrollViewer>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <Style TargetType="ListBoxItem">
