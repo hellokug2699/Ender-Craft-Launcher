@@ -1,6 +1,6 @@
 # ADR 0056: Right Auxiliary Rail and Inspector Integration
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-05
 - Scope: ECL 主窗口右侧辅助区域、工具入口可发现性、Inspector 上下文面板及其与中央 Workspace 的边界
@@ -12,9 +12,9 @@ ADR 0050 §3 将右侧区域定义为可折叠工具栏：默认折叠为窄图�
 
 如果直接选择其中一项，会导致另一项已批准决策被隐式废弃；如果同时创建两个独立的右侧面板，又会压缩中央 Workspace，并产生两个相互竞争的辅助区域。工具入口和 Inspector 的职责其实不同：前者负责发现与启动工具，后者负责展示当前对象上下文。二者可以共享同一右侧辅助区域，但不能混成同一种内容。
 
-本 ADR 提出一个复合式右侧辅助区域，作为对两项既有决策的协调方案。当前仍为 Proposed；在维护者明确批准前，不改变 ADR 0050/0055 的状态与效力，也不得据此完成 Shell 视觉重构。
+本 ADR 经维护者于 2026-11-05 明确批准，Decision 状态为 Accepted、Implementation 状态仍为 Not Started。它对 ADR 0050 §3 的右侧工具栏与 ADR 0055 §1 的右侧 Inspector 作出范围明确的协调决策：两项既有职责保留，由统一 Right Auxiliary Rail 承载。仅右侧区域的容器组成、模式切换与入口呈现以本 ADR 为准；ADR 0050 的 Design System、主导航和全局 Shell 规则，以及 ADR 0055 的 Inspector 上下文语义、Workspace/Runtime/Session/Task 生命周期和权限边界继续有效。该批准不代表 Shell 已实现或通过视觉验收。
 
-## 决策提案
+## 决策
 
 ### 1. 右侧采用统一 Right Auxiliary Rail
 
@@ -99,7 +99,7 @@ Right Auxiliary Rail 的 Tools 模式是快速入口，不替代完整工具中�
 
 缺点：增加固定横向占用，挤压中央 Workspace；小窗口和高 DPI 下风险较高；两者的折叠、焦点和状态同步复杂。
 
-### 方案 D：Right Auxiliary Rail 复合区域（推荐）
+### 方案 D：Right Auxiliary Rail 复合区域（已采纳）
 
 优点：保留工具入口与 Inspector 两种职责，共享同一空间，不将复杂工具内容放进右侧；可以逐步实现。
 
@@ -126,4 +126,5 @@ Right Auxiliary Rail 的 Tools 模式是快速入口，不替代完整工具中�
 
 ## 修订记录
 
-- 2026-11-05：首次提出 Right Auxiliary Rail，用于协调 ADR 0050 右侧工具栏与 ADR 0055 Inspector 两项既有决策；当前为 Proposed，等待维护者评审。
+- 2026-11-05：首次提出 Right Auxiliary Rail，用于协调 ADR 0050 右侧工具栏与 ADR 0055 Inspector 两项既有决策。
+- 2026-11-05：维护者明确批准本决策。仅协调右侧区域的视觉容器与模式交互；ADR 0050/0055 的其他全局 UI、Workspace 生命周期、上下文和权限约束继续有效。Implementation 保持 Not Started，须经原型、键盘、DPI 与窄窗口验收后更新状态。
