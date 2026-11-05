@@ -175,6 +175,108 @@ public sealed class OutputLifecycleTests : IDisposable
         _buffer.CreateLogger("Test").LogInformation("after-dispose");
     }
 
+    /// <summary>
+    /// 场景 e：后台线程调用 ClearOutput，已通过 Dispatcher 归属检查、尚未提交 DispatcherOperation 时
+    /// Dispose 完成并返回。恢复后的清空不得再提交新的 Dispatcher 操作。
+    /// </summary>
+    [Fact]
+    public async Task DisposePreventsPendingClearOutputFromSchedulingAfterDisposal()
+    {
+        using var clearPassedEarlyCheck = new ManualResetEventSlim(false);
+        using var resumeClear = new ManualResetEventSlim(false);
+
+        var viewModel = CreateViewModel();
+        var paused = 0;
+        viewModel.ClearDispatchPaused = () =>
+        {
+            if (Interlocked.Exchange(ref paused, 1) != 0)
+            {
+                return;
+            }
+
+            clearPassedEarlyCheck.Set();
+            resumeClear.Wait(Timeout);
+        };
+
+        // 后台线程进入跨线程清空路径：CheckAccess 已为 false，但尚未提交 DispatcherOperation。
+        var clearTask = Task.Run(() => viewModel.ClearOutputCommand.Execute(null));
+        Assert.True(clearPassedEarlyCheck.Wait(Timeout), "ClearOutput 未进入跨线程调度路径。");
+
+        // 清空被暂停期间，Dispose 在 UI 线程完成并返回。
+        var disposeTask = Task.Run(() => _ui.Invoke(viewModel.Dispose));
+        await disposeTask.WaitAsync(Timeout);
+
+        // 占住 UI 线程，使“释放后错误提交的清空操作”保持可观察，而不会立刻被 Dispatcher 执行。
+        using var uiBlocked = new ManualResetEventSlim(false);
+        using var releaseUi = new ManualResetEventSlim(false);
+        var blocker = _ui.InvokeAsync(() =>
+        {
+            uiBlocked.Set();
+            releaseUi.Wait(Timeout);
+        });
+        Assert.True(uiBlocked.Wait(Timeout), "UI 线程未被占住。");
+
+        resumeClear.Set();
+        await clearTask.WaitAsync(Timeout);
+
+        Assert.False(viewModel.HasPendingClearOperation, "Dispose 返回后不得再提交清空操作。");
+
+        releaseUi.Set();
+        await blocker.WaitAsync(Timeout);
+        _ui.Drain();
+
+        Assert.False(viewModel.HasPendingClearOperation);
+        Assert.Empty(viewModel.OutputEntries);
+    }
+
+    /// <summary>
+    /// 场景 f：清空已提交为 DispatcherOperation、尚未执行时 Dispose。
+    /// 尚未开始的清空必须被取消，不得在释放后清理可见集合或推进代次。
+    /// </summary>
+    [Fact]
+    public async Task DisposeCancelsPendingClearOperation()
+    {
+        using var uiBlocked = new ManualResetEventSlim(false);
+        using var releaseUi = new ManualResetEventSlim(false);
+
+        var viewModel = CreateViewModel();
+        var logger = _buffer.CreateLogger("Test");
+
+        logger.LogInformation("kept");
+        _ui.Drain();
+        Assert.Equal(1, _ui.Invoke(() => viewModel.OutputEntries.Count));
+
+        var blocker = _ui.InvokeAsync(() =>
+        {
+            uiBlocked.Set();
+            releaseUi.Wait(Timeout);
+        });
+        Assert.True(uiBlocked.Wait(Timeout), "UI 线程未被占住。");
+
+        var clearTask = Task.Run(() => viewModel.ClearOutputCommand.Execute(null));
+        Assert.True(
+            SpinWait.SpinUntil(() => viewModel.HasPendingClearOperation, Timeout),
+            "清空操作未提交为 DispatcherOperation。");
+        await clearTask.WaitAsync(Timeout);
+
+        // Send 优先级保证 Dispose 先于 Normal 优先级的清空操作执行，从而取消它。
+        var disposeCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = _ui.Dispatcher.BeginInvoke(DispatcherPriority.Send, new Action(() =>
+        {
+            viewModel.Dispose();
+            disposeCompleted.TrySetResult();
+        }));
+
+        releaseUi.Set();
+        await blocker.WaitAsync(Timeout);
+        await disposeCompleted.Task.WaitAsync(Timeout);
+        _ui.Drain();
+
+        // 清空被取消：Dispose 不会清空可见集合，被取消的回调也不会改动它。
+        Assert.Equal(1, _ui.Invoke(() => viewModel.OutputEntries.Count));
+        Assert.False(viewModel.HasPendingClearOperation);
+    }
+
     public void Dispose()
     {
         _buffer.Dispose();

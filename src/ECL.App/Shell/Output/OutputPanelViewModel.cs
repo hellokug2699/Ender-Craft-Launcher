@@ -27,10 +27,10 @@ namespace Ecl.App.Shell.Output;
 /// 执行：之前提交的条目无论何时到达都会被拒绝，之后提交的条目携带新代次并正常显示。
 ///
 /// 释放（线性化）：
-/// 日志事件可能来自任意线程，而 Dispose 可能在任何线程调用。事件准入、队列入队、刷新调度
-/// 与 Dispose 共用 <see cref="_lifecycleGate"/>，因此 Dispose 返回后不会再有新的有效入队或
-/// 新的 Dispatcher 调度；Dispose 只在释放该锁之后才通过 UI Dispatcher 屏障等待已经在执行的
-/// 刷新回调，不会持锁等待 UI 线程。刷新回调自身在触碰可见集合前再次检查释放状态。
+/// 日志事件可能来自任意线程，而 Dispose 可能在任何线程调用。事件准入、队列入队、刷新调度、
+/// 跨线程清空调度与 Dispose 共用 <see cref="_lifecycleGate"/>，因此 Dispose 返回后不会再有
+/// 新的有效入队或新的 Dispatcher 操作；Dispose 只在释放该锁之后才通过 UI Dispatcher 屏障等待
+/// 已经在执行的回调，不会持锁等待 UI 线程。回调自身在触碰可见集合前再次检查释放状态。
 ///
 /// 线程契约：本 ViewModel 及其集合只属于创建它的 UI Dispatcher。日志事件可能来自任意线程，
 /// 这里只把条目放入加锁的有界队列，并把一次刷新封送到 UI 线程；批量刷新，不逐条调度。
@@ -50,6 +50,7 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
     private long _generationFloor;
     private int _visibleDropped;
     private DispatcherOperation? _flushOperation;
+    private DispatcherOperation? _clearOperation;
 
     public OutputPanelViewModel(
         OperationCenterViewModel operations,
@@ -102,6 +103,18 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
 
     internal int PendingDroppedCount => _pending.DroppedCount;
 
+    /// <summary>是否存在已经提交、尚未开始的跨线程清空操作。</summary>
+    internal bool HasPendingClearOperation
+    {
+        get
+        {
+            lock (_lifecycleGate)
+            {
+                return _clearOperation is not null;
+            }
+        }
+    }
+
     /// <summary>测试 seam：在生命周期锁内、事件准入检查之后调用，用于构造确定性交错；生产代码不设置。</summary>
     internal Action? AdmissionPaused { get; set; }
 
@@ -110,6 +123,11 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
 
     /// <summary>测试 seam：刷新已写入可见集合之后调用（仅 UI 线程）；生产代码不设置。</summary>
     internal Action? FlushPaused { get; set; }
+
+    /// <summary>
+    /// 测试 seam：跨线程清空已通过 Dispatcher 归属检查、尚未获取生命周期锁时调用；生产代码不设置。
+    /// </summary>
+    internal Action? ClearDispatchPaused { get; set; }
 
     [RelayCommand]
     private void Toggle() => IsOpen = !IsOpen;
@@ -121,28 +139,20 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
     /// 清空输出。执行顺序：清空待刷新队列 → 在日志锁内推进输出代次 → 在队列锁内推进代次下限 →
     /// 发布新代次下限 → 清空可见集合。清空提交后，此前提交的条目即使通知迟到也会被代次判定拒绝，
     /// 不可能再出现在界面上；清空之后提交的条目携带新代次，不会被这里的队列清空误删。
+    ///
+    /// 跨线程调用时，释放检查与 DispatcherOperation 提交在同一生命周期锁内完成；
+    /// Dispose 返回后不会再提交新的清空操作。
     /// </summary>
     [RelayCommand]
     private void ClearOutput()
     {
-        if (Volatile.Read(ref _disposed) != 0)
+        if (_dispatcher.CheckAccess())
         {
+            ClearOutputOnDispatcher();
             return;
         }
 
-        if (!_dispatcher.CheckAccess())
-        {
-            try
-            {
-                _dispatcher.BeginInvoke(new Action(ClearOutput));
-            }
-            catch (InvalidOperationException)
-            {
-                // Dispatcher 已关停：没有可见集合需要清理。
-            }
-
-            return;
-        }
+        ClearDispatchPaused?.Invoke();
 
         lock (_lifecycleGate)
         {
@@ -150,6 +160,58 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
             {
                 return;
             }
+
+            // 已有一个待执行清空时不再重复调度：它执行时会覆盖新的清空请求。
+            if (_clearOperation is not null)
+            {
+                return;
+            }
+
+            if (_dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            try
+            {
+                _clearOperation = _dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(ClearQueued));
+            }
+            catch (InvalidOperationException)
+            {
+                // Dispatcher 已关停：没有可见集合需要清理。
+                _clearOperation = null;
+            }
+        }
+    }
+
+    private void ClearQueued()
+    {
+        lock (_lifecycleGate)
+        {
+            _clearOperation = null;
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return;
+            }
+        }
+
+        ClearOutputOnDispatcher();
+    }
+
+    /// <summary>在 UI 线程执行清空；Dispose 的屏障会等待这里开始的清空完成。</summary>
+    private void ClearOutputOnDispatcher()
+    {
+        DispatcherOperation? superseded;
+        lock (_lifecycleGate)
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return;
+            }
+
+            // 同步清空晚于已排队的跨线程清空：后者已被这次清空覆盖，取消它避免再次推进代次。
+            superseded = _clearOperation;
+            _clearOperation = null;
 
             // 1. 清空队列。此时所有待处理条目仍属于旧代次，可以连同其丢弃计数一起清除。
             _pending.Clear();
@@ -164,6 +226,8 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
             Volatile.Write(ref _generationFloor, generation);
             _visibleDropped = 0;
         }
+
+        AbortQuietly(superseded);
 
         // 5. 可见集合只在 UI 线程上清理；此后不会再有旧条目进入。
         OutputEntries.Clear();
@@ -180,14 +244,15 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// 释放面板：与日志事件准入共用生命周期锁，幂等地发布释放状态、退订事件并清空队列；
-    /// 释放锁之后再取消尚未开始的刷新操作，并用 UI 屏障等待已开始的刷新回调结束。
+    /// 释放面板：与日志事件准入、跨线程清空调度共用生命周期锁，幂等地发布释放状态、退订事件并清空队列；
+    /// 释放锁之后再取消尚未开始的刷新与清空操作，并用 UI 屏障等待已开始的回调结束。
     /// </summary>
     public void Dispose()
     {
         DisposeStarted?.Invoke();
 
         DispatcherOperation? queuedFlush;
+        DispatcherOperation? queuedClear;
         lock (_lifecycleGate)
         {
             if (Volatile.Read(ref _disposed) != 0)
@@ -200,21 +265,14 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
             Operations.PropertyChanged -= OnOperationsPropertyChanged;
             queuedFlush = _flushOperation;
             _flushOperation = null;
+            queuedClear = _clearOperation;
+            _clearOperation = null;
             _flushQueued = 0;
             _pending.Clear();
         }
 
-        if (queuedFlush is not null)
-        {
-            try
-            {
-                queuedFlush.Abort();
-            }
-            catch (InvalidOperationException)
-            {
-                // Dispatcher 已关停：操作不会再执行，回调本身也会检查释放状态。
-            }
-        }
+        AbortQuietly(queuedFlush);
+        AbortQuietly(queuedClear);
 
         if (_dispatcher.CheckAccess() || _dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished)
         {
@@ -223,7 +281,7 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
 
         try
         {
-            // 屏障：已经在 UI 线程执行的刷新回调先完成，之后才允许 Dispose 返回。
+            // 屏障：已经在 UI 线程执行的刷新/清空回调先完成，之后才允许 Dispose 返回。
             _dispatcher.Invoke(DispatcherPriority.Background, new Action(static () => { }));
         }
         catch (InvalidOperationException)
@@ -232,7 +290,24 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
         }
         catch (TaskCanceledException)
         {
-            // 屏障操作被关停取消；刷新回调自身会在触碰集合前检查释放状态。
+            // 屏障操作被关停取消；回调自身会在触碰集合前检查释放状态。
+        }
+    }
+
+    private static void AbortQuietly(DispatcherOperation? operation)
+    {
+        if (operation is null)
+        {
+            return;
+        }
+
+        try
+        {
+            operation.Abort();
+        }
+        catch (InvalidOperationException)
+        {
+            // Dispatcher 已关停：操作不会再执行，回调本身也会检查释放状态。
         }
     }
 
