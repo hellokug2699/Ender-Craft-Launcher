@@ -204,8 +204,16 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
 - 实例工作区拥有自己的身份快照（`InstanceWorkspaceState`）：打开时捕获实例条目，标签标题、
   页面身份区块与 Inspector 目标都来自该快照，不再依赖全局 `SelectedInstance` 的更新顺序；
   关闭标签时释放该状态（`IDisposable`），释放后再参与页面状态。
-- 仍待完成（C-01 出口）：实例编辑表单字段与模组列表仍由共享的 `InstancesViewModel` / `ModsViewModel`
-  持有，两个实例工作区同时打开时这部分编辑状态仍未完全隔离；迁移与验收在进行中。
+- 实例编辑状态已按工作区作用域拆分（B2 步骤 1c）：`InstanceRuntimeSettingsViewModel` 持有 Java 覆盖、
+  内存与 JVM 字段及保存命令，按稳定 InstanceId 读写 `instance.java.*`；`ModsViewModel` 构造时绑定
+  唯一 InstanceId，模组、资源包与整合包命令不再读取“当前选中实例”。两者都由
+  `InstanceDetailPageViewModel` 持有，关闭标签时释放。Java 选择结果的措辞只有一份实现
+  （`JavaSelectionPresentation`），主页启动面板与实例页共用。
+- 仍待完成（C-01 出口）：实例页上的启动、健康检查、修复、崩溃分析、诊断导出、日志导出、打开目录
+  与世界工作台等命令仍由共享 `InstancesViewModel` 以全局 `SelectedInstance` 执行，其操作结果状态
+  （`LaunchSteps`、`HealthReportText` 等）也是全局一份。因此两个实例工作区同时打开时，
+  **这些操作的目标实例与结果显示仍未隔离**；移除 `ShellViewModel` 中的全局 `SelectedInstance`
+  赋值必须与这些命令的实例化改造同批完成，否则会造成“点了启动却启动另一个实例”或按钮失效。
 - 右侧仍是单一 Inspector 面板；ADR 0056 的 Right Auxiliary Rail（Inspector / Tools 双模式）尚未实现。
 - 工作区页面在切换标签时会重新创建视图（ViewModel 状态保留，滚动位置等视图状态不保留）。
 - Split、Detached、Snapshot 恢复与运行时隔离仍未实现，相关能力不会以按钮或菜单形式出现。
