@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Ecl.App.Services;
 using Ecl.App.ViewModels;
 using Ecl.Core.Localization;
+using Ecl.Minecraft.Storage;
 
 namespace Ecl.App.Workspace.ViewModels;
 
@@ -27,6 +28,8 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         InstancesViewModel instances,
         ModsViewModel mods,
         InstanceRuntimeSettingsViewModel runtime,
+        StorageAnalysisService storageAnalysis,
+        Action<string>? manageStorage,
         IMemoryPressureMonitor memory,
         ILocalizer localizer)
     {
@@ -35,7 +38,19 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         Mods = mods;
         Runtime = runtime;
         Operations = new InstanceOperationsViewModel(instances, state);
-        BasicInfo = new InstanceBasicInfoViewModel(state, instances, runtime, Operations, memory, localizer);
+        Storage = new InstanceStorageViewModel(
+            state.Model,
+            storageAnalysis.MeasureInstanceAsync,
+            manageStorage,
+            localizer);
+        BasicInfo = new InstanceBasicInfoViewModel(
+            state,
+            instances,
+            runtime,
+            Operations,
+            Storage,
+            memory,
+            localizer);
 
         Navigation = InstanceWorkspaceNavigationFactory.Create(
             localizer,
@@ -61,6 +76,9 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
     /// <summary>默认二级页「基本信息」。</summary>
     public InstanceBasicInfoViewModel BasicInfo { get; }
 
+    /// <summary>当前实例的存储占用卡状态（§5）；由基本信息页展示。</summary>
+    public InstanceStorageViewModel Storage { get; }
+
     /// <summary>§10 二级导航；切换只在工作区内换页。</summary>
     public InstanceWorkspaceNavigationViewModel Navigation { get; }
 
@@ -79,16 +97,17 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
     public string InstanceMeta => State.Item.VersionText;
 
     /// <summary>
-    /// 加载本页面的实例作用域状态（运行设置与模组内容）。
+    /// 加载本页面的实例作用域状态（运行设置、模组内容与存储占用）。
     /// 失败只影响本页文案，不构造空白页面；调用方负责记录异常。
     /// </summary>
     public Task InitializeAsync() =>
-        Task.WhenAll(Runtime.InitializeAsync(), Mods.InitializeAsync());
+        Task.WhenAll(Runtime.InitializeAsync(), Mods.InitializeAsync(), Storage.RefreshAsync());
 
     public void Dispose()
     {
         Navigation.Dispose();
         BasicInfo.Dispose();
+        Storage.Dispose();
         Operations.Dispose();
         Mods.Dispose();
         Runtime.Dispose();

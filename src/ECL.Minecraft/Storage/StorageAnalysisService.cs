@@ -2,6 +2,7 @@
 
 using Ecl.Core;
 using Ecl.Core.Storage;
+using Ecl.Minecraft.Instances;
 
 namespace Ecl.Minecraft.Storage;
 
@@ -186,6 +187,34 @@ public sealed class StorageAnalysisService(
             instanceCount,
             DateTimeOffset.UtcNow,
             allWarnings);
+    }
+
+    /// <summary>
+    /// 测量单个实例游戏目录的占用，供实例基本信息页的存储卡使用。
+    /// 与存储中心共用同一枚举、状态语义与统计上限：未知/不可访问不当作 0 字节。
+    /// </summary>
+    public async Task<StorageUsage> MeasureInstanceAsync(
+        GameInstance instance,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+
+        var directory = InstancePaths.GetGameDirectory(paths, instance);
+        var measured = await MeasureAsync(directory, cancellationToken).ConfigureAwait(false);
+        var status = measured.Bytes is null
+            ? StorageUsageStatus.Unavailable
+            : measured.Status;
+
+        return new StorageUsage(
+            "instance:" + instance.Id,
+            instance.Name,
+            directory,
+            measured.Bytes,
+            measured.Files,
+            status,
+            "当前实例可识别文件；不可访问或尚未扫描的内容不计入。",
+            IsCleanable: false,
+            measured.Error);
     }
 
     private async Task AddAsync(

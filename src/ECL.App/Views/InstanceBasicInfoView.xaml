@@ -389,6 +389,42 @@
                 </StackPanel>
             </Border>
 
+            <!-- 存储空间卡片（§5）：只显示当前实例占用与状态，管理跳转到存储中心。 -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{loc:Loc Key=instance.storage.title}" Style="{StaticResource SectionText}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Storage.SizeText}"
+                                       FontSize="18"
+                                       Style="{StaticResource EmphasisText}"
+                                       Margin="14,0,0,0"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding Storage.StatusText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   Margin="0,6,0,0"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Storage.DetailText}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   Margin="0,4,0,0"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Content="{loc:Loc Key=instance.storage.manage}"
+                            Command="{Binding Storage.ManageStorageCommand}"
+                            Style="{StaticResource GhostButton}"
+                            VerticalAlignment="Center"
+                            Margin="16,0,0,0" />
+                </Grid>
+            </Border>
+
             <Grid Margin="0,0,0,14">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                 <Border Style="{StaticResource Card}">

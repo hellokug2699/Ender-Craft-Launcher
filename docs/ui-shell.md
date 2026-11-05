@@ -119,7 +119,11 @@
 - JVM 参数恢复可编辑（`MonoInputTextBox`；`MonoTextBox` 仍只用于只读命令预览），默认显示
   「遵循全局设置」水印；新增「还原」仅清理本实例 `extraArguments/jvmPreset/customJvmPreset`。
   逐参数黄/红标记与内存过少/过大阈值仍缺产品定义，本批未自行设定。
-- 关闭标签时依次释放导航、实例操作、模组、运行设置与实例快照；每个工作区的导航选中项与页面对象互不共享。
+- 基本信息「存储空间」卡片已接入（B2 步骤 3b-2）：`StorageAnalysisService.MeasureInstanceAsync`
+  按实例游戏目录测量，复用存储中心的 `StorageUsageStatus`（已扫描/估算/不可用）与文件数口径；
+  未知或不可访问不显示为 0。「管理存储空间」跳到存储中心并定位当前实例
+  （`StorageViewModel.FocusInstance`；存储页首次进入才扫描）；大小文本由 `StorageSizeFormatter` 统一格式。
+- 关闭标签时依次释放导航、实例操作、模组、运行设置、存储卡状态与实例快照；每个工作区的导航选中项与页面对象互不共享。
 - 仍待 B2 步骤 3b–3d：概览「应用」与实例改名事务、三段式内存条与提示、JVM 逐参数校验与「还原」、
   实例级 Java 警告抑制、存储空间卡片；模组页固定列/状态重写；Modify 页面。本批次只重写顶部信息区与 Java 方块，
   未改变实例写入、启动准入或存储统计逻辑。

@@ -39,13 +39,7 @@ public sealed record StorageUsageItemViewModel(StorageUsage Usage)
 
     public bool IsCleanable => Usage.IsCleanable;
 
-    private static string FormatBytes(long bytes) => bytes switch
-    {
-        >= 1024L * 1024 * 1024 => $"{bytes / (1024d * 1024 * 1024):0.##} GB",
-        >= 1024L * 1024 => $"{bytes / (1024d * 1024):0.##} MB",
-        >= 1024 => $"{bytes / 1024d:0.##} KB",
-        _ => $"{bytes} B",
-    };
+    private static string FormatBytes(long bytes) => StorageSizeFormatter.FormatBytes(bytes);
 }
 
 public sealed record SourceGroupViewModel(
@@ -98,6 +92,7 @@ public sealed partial class StorageViewModel : ObservableObject
     private readonly IDialogService _dialogs;
     private CleanupPreview? _preview;
     private bool _activated;
+    private string? _pendingInstanceFocus;
 
     public StorageViewModel(
         StorageAnalysisService analysis,
@@ -155,6 +150,39 @@ public sealed partial class StorageViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _hasPreview;
+
+    /// <summary>
+    /// 从实例基本信息页「管理存储空间」进入时定位到该实例（`instance-workspace.md` §5.2）。
+    /// 若存储页尚未加载实例列表，先记录目标，等扫描/加载完成后应用。
+    /// </summary>
+    public void FocusInstance(string instanceId)
+    {
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            return;
+        }
+
+        _pendingInstanceFocus = instanceId;
+        ApplyPendingInstanceFocus();
+    }
+
+    private void ApplyPendingInstanceFocus()
+    {
+        if (_pendingInstanceFocus is not { } instanceId)
+        {
+            return;
+        }
+
+        var target = Instances.FirstOrDefault(item =>
+            string.Equals(item.Model.Id, instanceId, StringComparison.Ordinal));
+        if (target is null)
+        {
+            return;
+        }
+
+        SelectedInstance = target;
+        _pendingInstanceFocus = null;
+    }
 
     public async Task ActivateAsync()
     {
@@ -266,6 +294,7 @@ public sealed partial class StorageViewModel : ObservableObject
         }
 
         SelectedInstance = Instances.FirstOrDefault(item => item.Model.Id == selectedId) ?? Instances.FirstOrDefault();
+        ApplyPendingInstanceFocus();
     }
 
     [RelayCommand]
@@ -393,11 +422,5 @@ public sealed partial class StorageViewModel : ObservableObject
         }
     }
 
-    private static string FormatBytes(long bytes) => bytes switch
-    {
-        >= 1024L * 1024 * 1024 => $"{bytes / (1024d * 1024 * 1024):0.##} GB",
-        >= 1024L * 1024 => $"{bytes / (1024d * 1024):0.##} MB",
-        >= 1024 => $"{bytes / 1024d:0.##} KB",
-        _ => $"{bytes} B",
-    };
+    private static string FormatBytes(long bytes) => StorageSizeFormatter.FormatBytes(bytes);
 }

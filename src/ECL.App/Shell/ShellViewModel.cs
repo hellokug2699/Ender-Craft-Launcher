@@ -16,6 +16,7 @@ using Ecl.App.Workspace.ViewModels;
 using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Core.Workspace;
+using Ecl.Minecraft.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace Ecl.App.Shell;
@@ -37,6 +38,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly ModsPageFactory _modsFactory;
     private readonly SettingsViewModel _settings;
     private readonly ToolsViewModel _tools;
+    private readonly StorageViewModel _storage;
+    private readonly StorageAnalysisService _storageAnalysis;
     private readonly IMemoryPressureMonitor _memoryPressure;
     private readonly IReadOnlyList<string> _navigationKeys;
     private readonly IDisposable _workspaceChanges;
@@ -47,6 +50,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         DownloadViewModel download,
         InstancesViewModel instances,
         StorageViewModel storage,
+        StorageAnalysisService storageAnalysis,
         ModsPageFactory modsFactory,
         SettingsViewModel settings,
         JavaManagementViewModel javaManagement,
@@ -69,6 +73,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _modsFactory = modsFactory;
         _settings = settings;
         _tools = tools;
+        _storage = storage;
+        _storageAnalysis = storageAnalysis;
         _memoryPressure = memoryPressure;
         _localizer = localizer;
         _logger = logger;
@@ -460,6 +466,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 _instances,
                 _modsFactory.Create(instance.Model.Id, instance.Name),
                 _instances.CreateRuntimeSettings(instance.Model),
+                _storageAnalysis,
+                OpenStorageForInstance,
                 _memoryPressure,
                 _localizer);
             _ = InitializeInstancePageAsync(detail);
@@ -485,6 +493,29 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "实例工作区初始化失败：{InstanceId}", detail.InstanceId);
+        }
+    }
+
+    /// <summary>
+    /// 从实例基本信息页「管理存储空间」进入存储中心，并定位到当前实例
+    /// （`instance-workspace.md` §5.2）。存储页首次进入时才扫描。
+    /// </summary>
+    private void OpenStorageForInstance(string instanceId)
+    {
+        _storage.FocusInstance(instanceId);
+        ActivateDestination("storage");
+        _ = ActivateStorageAsync(_storage);
+    }
+
+    private async Task ActivateStorageAsync(StorageViewModel storage)
+    {
+        try
+        {
+            await storage.ActivateAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "存储中心激活失败。");
         }
     }
 

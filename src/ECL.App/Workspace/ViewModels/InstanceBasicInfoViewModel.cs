@@ -26,6 +26,7 @@ public sealed partial class InstanceBasicInfoViewModel : ObservableObject, IDisp
         InstancesViewModel instances,
         InstanceRuntimeSettingsViewModel runtime,
         InstanceOperationsViewModel operations,
+        InstanceStorageViewModel storage,
         IMemoryPressureMonitor memory,
         ILocalizer localizer)
     {
@@ -33,6 +34,7 @@ public sealed partial class InstanceBasicInfoViewModel : ObservableObject, IDisp
         ArgumentNullException.ThrowIfNull(instances);
         ArgumentNullException.ThrowIfNull(runtime);
         ArgumentNullException.ThrowIfNull(operations);
+        ArgumentNullException.ThrowIfNull(storage);
         ArgumentNullException.ThrowIfNull(memory);
         ArgumentNullException.ThrowIfNull(localizer);
 
@@ -40,6 +42,7 @@ public sealed partial class InstanceBasicInfoViewModel : ObservableObject, IDisp
         Instances = instances;
         Runtime = runtime;
         Operations = operations;
+        Storage = storage;
         _memory = memory;
         _localizer = localizer;
 
@@ -56,6 +59,9 @@ public sealed partial class InstanceBasicInfoViewModel : ObservableObject, IDisp
 
     /// <summary>本工作区自有的启动/健康检查/诊断/文件操作与结果状态。</summary>
     public InstanceOperationsViewModel Operations { get; }
+
+    /// <summary>当前实例的存储占用卡片（§5）；只测量与跳转，不执行清理。</summary>
+    public InstanceStorageViewModel Storage { get; }
 
     public string InstanceId => State.InstanceId;
 
