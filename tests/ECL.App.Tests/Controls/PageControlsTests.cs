@@ -2,7 +2,10 @@
 
 using System.Globalization;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using Ecl.App.Controls;
+using Ecl.App.Converters;
 using Ecl.App.Localization;
 using Ecl.Core.Localization;
 using Xunit;
@@ -69,6 +72,45 @@ public sealed class PageControlsTests
         });
     }
 
+    [Fact]
+    public void LoaderKindsResolveToDistinctThemeBrushes()
+    {
+        using var ui = new UiThread();
+        ui.Invoke(() =>
+        {
+            lock (ApplicationGate)
+            {
+                EnsureApplication();
+
+                var converter = new LoaderKindToBrushConverter();
+                var brushes = new[] { "forge", "neoforge", "fabric", "cleanroom", "unknown" }
+                    .Select(kind => converter.Convert(kind, typeof(Brush), null, CultureInfo.InvariantCulture))
+                    .Cast<Brush>()
+                    .ToArray();
+
+                Assert.All(brushes, brush => Assert.NotSame(Brushes.Transparent, brush));
+                Assert.Equal(5, brushes.Distinct().Count());
+            }
+        });
+    }
+
+    [Fact]
+    public void InstanceDirectoryDialogViewLoadsFromTheme()
+    {
+        using var ui = new UiThread();
+        ui.Invoke(() =>
+        {
+            lock (ApplicationGate)
+            {
+                EnsureApplication();
+
+                var view = new Ecl.App.Dialogs.Views.InstanceDirectoryDialogView();
+
+                Assert.NotNull(view.Content);
+            }
+        });
+    }
+
     private static void EnsureApplication()
     {
         LocalizationProvider.Current ??= new JsonLocalizer(CultureInfo.GetCultureInfo("zh-CN"));
@@ -87,5 +129,13 @@ public sealed class PageControlsTests
         {
             Source = new Uri("pack://application:,,,/ECL;component/Themes/Brand.xaml", UriKind.Absolute),
         });
+
+        // 与 App.xaml 保持同一组应用级转换器：页面与弹窗视图在测试环境中也必须能完整加载。
+        application.Resources["BoolToVisibility"] = new BooleanToVisibilityConverter();
+        application.Resources["InverseBoolToVisibility"] = new InverseBooleanToVisibilityConverter();
+        application.Resources["StringToVisibility"] = new StringToVisibilityConverter();
+        application.Resources["NullToVisibility"] = new NullToVisibilityConverter();
+        application.Resources["LogLevelBrush"] = new LogLevelToBrushConverter();
+        application.Resources["LoaderKindBrush"] = new LoaderKindToBrushConverter();
     }
 }

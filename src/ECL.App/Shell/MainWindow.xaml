@@ -12,6 +12,8 @@
         MinWidth="1080"
         MinHeight="720"
         WindowStartupLocation="CenterScreen"
+        AllowDrop="True"
+        Drop="OnFilesDropped"
         Background="{DynamicResource BackgroundBrush}"
         FontFamily="{StaticResource UiFontFamily}"
         UseLayoutRounding="True"

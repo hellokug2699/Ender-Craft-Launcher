@@ -57,6 +57,23 @@ public partial class MainWindow : Window
             new DoubleAnimation(6, 0, new Duration(MotionSettings.Normal)) { EasingFunction = easing });
     }
 
+    /// <summary>
+    /// 全局拖拽导入（instances.md §5.2）：接收能力不限于实例页面，
+    /// 主动选择与拖拽共用同一个解析流程。
+    /// </summary>
+    private void OnFilesDropped(object sender, DragEventArgs e)
+    {
+        if (DataContext is not ShellViewModel viewModel
+            || !e.Data.GetDataPresent(DataFormats.FileDrop)
+            || e.Data.GetData(DataFormats.FileDrop) is not string[] files)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        _ = viewModel.HandleDroppedFilesAsync(files);
+    }
+
     /// <summary>Ctrl+1…9 直接激活对应导航目的地；其余快捷键由 XAML InputBindings 声明。</summary>
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {

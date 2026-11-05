@@ -40,6 +40,15 @@
     <Color x:Key="ScrollThumbColor">#372F49</Color>
     <Color x:Key="ScrollThumbHoverColor">#4B4262</Color>
     <!--
+        加载器标识色（instances.md §3.2）：Forge 红、NeoForge 橙、Fabric 蓝、Cleanroom 绿、未知灰。
+        只用于加载器类型标识，不改变其它文字颜色规则。
+    -->
+    <Color x:Key="LoaderForgeColor">#F4797F</Color>
+    <Color x:Key="LoaderNeoForgeColor">#E9B949</Color>
+    <Color x:Key="LoaderFabricColor">#5AA9FF</Color>
+    <Color x:Key="LoaderCleanroomColor">#4BDA9F</Color>
+    <Color x:Key="LoaderUnknownColor">#716C82</Color>
+    <!--
         模态弹窗遮罩：只覆盖 ECL 自身窗口客户区，属于应用内视觉与输入隔离，
         不模拟 Windows 安全桌面。透明度经实机校准，保留背景布局轮廓。
     -->
@@ -92,6 +101,11 @@
     <SolidColorBrush x:Key="DangerHoverBrush" Color="{StaticResource DangerHoverColor}" />
     <SolidColorBrush x:Key="ScrollThumbBrush" Color="{StaticResource ScrollThumbColor}" />
     <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="{StaticResource ScrollThumbHoverColor}" />
+    <SolidColorBrush x:Key="LoaderForgeBrush" Color="{StaticResource LoaderForgeColor}" />
+    <SolidColorBrush x:Key="LoaderNeoForgeBrush" Color="{StaticResource LoaderNeoForgeColor}" />
+    <SolidColorBrush x:Key="LoaderFabricBrush" Color="{StaticResource LoaderFabricColor}" />
+    <SolidColorBrush x:Key="LoaderCleanroomBrush" Color="{StaticResource LoaderCleanroomColor}" />
+    <SolidColorBrush x:Key="LoaderUnknownBrush" Color="{StaticResource LoaderUnknownColor}" />
     <SolidColorBrush x:Key="ScrimBrush" Color="{StaticResource ScrimColor}" />
 
     <!--

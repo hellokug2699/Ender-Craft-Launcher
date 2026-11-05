@@ -40,6 +40,9 @@ public interface IDialogService
 
     string? PickSaveFile(string title, string filter, string? defaultFileName = null);
 
+    /// <summary>选择文件夹（Windows 原生对话框）；取消返回 null。</summary>
+    string? PickFolder(string title);
+
     bool OpenUrl(string url);
 }
 
@@ -174,6 +177,17 @@ public sealed class DialogService(
         };
 
         return dialog.ShowDialog() == true ? dialog.FileName : null;
+    }
+
+    public string? PickFolder(string title)
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = title,
+            Multiselect = false,
+        };
+
+        return dialog.ShowDialog() == true ? dialog.FolderName : null;
     }
 
     public bool OpenUrl(string url)

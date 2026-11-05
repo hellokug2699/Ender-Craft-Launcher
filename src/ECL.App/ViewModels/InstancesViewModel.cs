@@ -8,6 +8,8 @@ using System.Text;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Ecl.App.Dialogs;
+using Ecl.App.Dialogs.ViewModels;
 using Ecl.App.Services;
 using Ecl.App.Views;
 using Ecl.Auth;
@@ -16,6 +18,7 @@ using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Download;
 using Ecl.Java;
+using Ecl.Minecraft.Content;
 using Ecl.Minecraft.Diagnostics;
 using Ecl.Minecraft.Eula;
 using Ecl.Minecraft.Install;
@@ -51,6 +54,8 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IDiagnosticPackageService _diagnostics;
     private readonly Ecl.Minecraft.World.WorldWorkbenchService _worldWorkbench;
     private readonly Ecl.Core.Storage.InstanceSourceService _instanceSources;
+    private readonly Ecl.Core.Storage.IWorkspaceService _workspace;
+    private readonly IDialogEngine _dialogsEngine;
     private bool _initialized;
     private bool _suppressAccountSelection;
     private bool _suppressJavaSelection;
@@ -160,6 +165,14 @@ public sealed partial class InstancesViewModel : ObservableObject
     [ObservableProperty]
     private bool _isBusy;
 
+    /// <summary>实例列表正在读取（首次进入或刷新）；用于加载态，不表示任何长任务。</summary>
+    [ObservableProperty]
+    private bool _isLoadingInstances;
+
+    /// <summary>实例读取失败原因；仅在没有可展示实例时呈现错误态。</summary>
+    [ObservableProperty]
+    private string _instanceLoadError = string.Empty;
+
     [ObservableProperty]
     private bool _isInstalling;
 
@@ -238,6 +251,17 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     public bool IsEmpty => Instances.Count == 0;
 
+    /// <summary>实例列表加载中（此时不显示空态文案）。</summary>
+    public bool ShowLoadingState => IsLoadingInstances && Instances.Count == 0;
+
+    /// <summary>读取失败且没有任何可展示实例；失败原因通过 <see cref="InstanceLoadError"/> 呈现。</summary>
+    public bool ShowErrorState => !IsLoadingInstances && HasInstanceLoadError && Instances.Count == 0;
+
+    public bool HasInstanceLoadError => !string.IsNullOrWhiteSpace(InstanceLoadError);
+
+    /// <summary>真正的空列表：读取完成、没有错误、也没有实例。</summary>
+    public bool ShowEmptyState => !IsLoadingInstances && !HasInstanceLoadError && Instances.Count == 0;
+
     public string InstanceCountText => _localizer.Get("instances.count", Instances.Count);
 
     public string SelectedInstanceName => SelectedInstance?.Name ?? string.Empty;
@@ -301,7 +325,9 @@ public sealed partial class InstancesViewModel : ObservableObject
         ICrashReportService crashReports,
         IDiagnosticPackageService diagnostics,
         Ecl.Minecraft.World.WorldWorkbenchService worldWorkbench,
-        Ecl.Core.Storage.InstanceSourceService instanceSources)
+        Ecl.Core.Storage.InstanceSourceService instanceSources,
+        Ecl.Core.Storage.IWorkspaceService workspace,
+        IDialogEngine dialogsEngine)
     {
         _instances = instances;
         _accounts = accounts;
@@ -325,6 +351,8 @@ public sealed partial class InstancesViewModel : ObservableObject
         _diagnostics = diagnostics;
         _worldWorkbench = worldWorkbench;
         _instanceSources = instanceSources;
+        _workspace = workspace;
+        _dialogsEngine = dialogsEngine;
 
         DownloadPauseButtonText = _localizer.Get("instances.download.pause");
 
@@ -468,6 +496,18 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
     }
 
+    partial void OnIsLoadingInstancesChanged(bool value) => RaiseInstanceStateChanged();
+
+    partial void OnInstanceLoadErrorChanged(string value) => RaiseInstanceStateChanged();
+
+    private void RaiseInstanceStateChanged()
+    {
+        OnPropertyChanged(nameof(ShowLoadingState));
+        OnPropertyChanged(nameof(ShowErrorState));
+        OnPropertyChanged(nameof(ShowEmptyState));
+        OnPropertyChanged(nameof(HasInstanceLoadError));
+    }
+
     partial void OnUseGlobalMemoryChanged(bool value)
     {
         OnPropertyChanged(nameof(IsInstanceMemoryEditable));
@@ -491,6 +531,118 @@ public sealed partial class InstancesViewModel : ObservableObject
         await RefreshSourceGroupsAsync().ConfigureAwait(true);
     }
 
+    /// <summary>
+    /// “添加MC目录”（instances.md §4）：打开“已经选择的目录”弹窗。
+    /// 弹窗内的解绑/删除都由领域服务执行；本方法只负责打开与刷新。
+    /// </summary>
+    [RelayCommand]
+    private async Task AddDirectoryAsync()
+    {
+        if (!_dialogsEngine.IsAvailable)
+        {
+            return;
+        }
+
+        var dialog = new InstanceDirectoryDialogViewModel(
+            _workspace,
+            _instanceSources,
+            _dialogsEngine,
+            _dialogs,
+            _localizer,
+            DeleteInstancesInDirectoryAsync);
+
+        await dialog.LoadAsync().ConfigureAwait(true);
+        await _dialogsEngine.ShowAsync(new DialogRequest
+        {
+            Title = dialog.Title,
+            Content = dialog,
+            MinWidth = 520,
+            MaxWidth = 680,
+            MaxHeight = 640,
+            InitialFocus = DialogInitialFocus.FirstFocusable,
+        }).ConfigureAwait(true);
+
+        await RefreshSourceGroupsAsync().ConfigureAwait(true);
+        await RefreshInstancesAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 目录行的“删除实例”：逐个使用实例卡片同一条删除计划与确认流程，
+    /// 用户对每个实例都可以取消；外部只读版本不会被删除。
+    /// </summary>
+    private async Task DeleteInstancesInDirectoryAsync(string directoryPath)
+    {
+        var targets = Instances
+            .Where(item => IsUnderDirectory(directoryPath, item.PathText))
+            .ToArray();
+
+        if (targets.Length == 0)
+        {
+            StatusMessage = _localizer.Get("instanceDirectories.noManagedInstances", directoryPath);
+            return;
+        }
+
+        foreach (var target in targets)
+        {
+            SelectedInstance = target;
+            await DeleteInstanceAsync(target).ConfigureAwait(true);
+        }
+    }
+
+    private static bool IsUnderDirectory(string directoryPath, string candidatePath)
+    {
+        try
+        {
+            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directoryPath));
+            var candidate = Path.TrimEndingDirectorySeparator(Path.GetFullPath(candidatePath));
+            return string.Equals(candidate, root, StringComparison.OrdinalIgnoreCase)
+                   || candidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                   || candidate.StartsWith(root + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// “导入整合包”（instances.md §5.1）：只允许 .zip / .mrpack，读取清单后给出失败或成功状态。
+    /// 成功后的“下载中心 → 实例版本 · 整合包模式”属于下载页迁移批次（B4），
+    /// 当前构建不会伪造该流程，而是明确说明尚不可继续。
+    /// </summary>
+    [RelayCommand]
+    private async Task ImportModpackAsync()
+    {
+        var archive = _dialogs.PickOpenFile(
+            _localizer.Get("instances.modpack.pickTitle"),
+            _localizer.Get("instances.modpack.filter"));
+        if (string.IsNullOrWhiteSpace(archive))
+        {
+            return;
+        }
+
+        await ImportModpackFileAsync(archive).ConfigureAwait(true);
+    }
+
+    /// <summary>主动选择与全局拖拽共用的解析入口。</summary>
+    public Task ImportModpackFileAsync(string archivePath)
+    {
+        var inspection = ModpackArchiveInspector.Read(archivePath);
+        if (!inspection.IsSuccess)
+        {
+            _dialogs.ShowError(
+                _localizer.Get("instances.modpack.title"),
+                _localizer.Get("instances.modpack.notFound"));
+            return Task.CompletedTask;
+        }
+
+        var metadata = inspection.Value!;
+        _dialogs.ShowInfo(
+            _localizer.Get("instances.modpack.title"),
+            _localizer.Get("instances.modpack.notAvailable", metadata.Name));
+        return Task.CompletedTask;
+    }
+
     private async Task RefreshSourceGroupsAsync()
     {
         try
@@ -502,12 +654,18 @@ public sealed partial class InstancesViewModel : ObservableObject
                 SourceGroups.Add(new InstanceSourceGroupViewModel(
                     group.Source.Name,
                     group.Source.Path,
-                    group.IsAccessible ? group.Structure.ToString() : "不可访问",
+                    group.IsAccessible,
                     group.Instances.Select(instance => new InstanceSourceItemViewModel(
                         instance.Name,
-                        instance.GameVersion ?? "版本未知",
+                        instance.GameVersion ?? _localizer.Get("instances.source.versionUnknown"),
                         instance.Loader,
-                        instance.CanLaunch)).ToArray()));
+                        instance.CanLaunch)
+                    {
+                        Availability = instance.CanLaunch
+                            ? _localizer.Get("instances.source.managed")
+                            : _localizer.Get("instances.source.readOnly"),
+                    }).ToArray(),
+                    _localizer));
             }
 
             OnPropertyChanged(nameof(HasSourceGroups));
@@ -971,14 +1129,14 @@ public sealed partial class InstancesViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task DeleteInstanceAsync()
+    private async Task DeleteInstanceAsync(InstanceItemViewModel? instance)
     {
-        if (SelectedInstance is null || IsBusy)
+        instance ??= SelectedInstance;
+        if (instance is null || IsBusy)
         {
             return;
         }
 
-        var instance = SelectedInstance;
         var planResult = await _instances.GetDeletionPlanAsync(instance.Model.Id).ConfigureAwait(true);
         if (!planResult.IsSuccess)
         {
@@ -2145,18 +2303,36 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     private async Task RefreshInstancesAsync()
     {
-        var selectedId = SelectedInstance?.Model.Id;
-        var instances = await _instances.GetInstancesAsync().ConfigureAwait(true);
-
-        Instances.Clear();
-        foreach (var instance in instances)
+        IsLoadingInstances = true;
+        InstanceLoadError = string.Empty;
+        try
         {
-            Instances.Add(new InstanceItemViewModel(instance, _localizer, _paths));
-        }
+            var selectedId = SelectedInstance?.Model.Id;
+            var instances = await _instances.GetInstancesAsync().ConfigureAwait(true);
 
-        SelectedInstance = Instances.FirstOrDefault(item => item.Model.Id == selectedId) ?? Instances.FirstOrDefault();
-        OnPropertyChanged(nameof(IsEmpty));
-        OnPropertyChanged(nameof(InstanceCountText));
+            Instances.Clear();
+            foreach (var instance in instances)
+            {
+                Instances.Add(new InstanceItemViewModel(instance, _localizer, _paths));
+            }
+
+            SelectedInstance = Instances.FirstOrDefault(item => item.Model.Id == selectedId) ?? Instances.FirstOrDefault();
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // 读取失败时保留已有卡片：不得因为一次读取失败就清空用户看到的实例记录。
+            InstanceLoadError = _localizer.Get("instances.loadFailed", exception.Message);
+        }
+        finally
+        {
+            IsLoadingInstances = false;
+            OnPropertyChanged(nameof(IsEmpty));
+            OnPropertyChanged(nameof(InstanceCountText));
+            OnPropertyChanged(nameof(ShowLoadingState));
+            OnPropertyChanged(nameof(ShowErrorState));
+            OnPropertyChanged(nameof(ShowEmptyState));
+            OnPropertyChanged(nameof(HasInstanceLoadError));
+        }
     }
 
     private async Task RefreshAuthServersAsync()
@@ -2226,7 +2402,8 @@ public sealed record InstanceSourceItemViewModel(string Name, string GameVersion
 {
     public string Meta => $"{GameVersion} · {Loader}";
 
-    public string Availability => CanLaunch ? "ECL 托管" : "外部只读";
+    /// <summary>实例是否由 ECL 托管；文案已本地化，由调用方在构造前决定语言。</summary>
+    public string Availability { get; init; } = string.Empty;
 }
 
 public sealed partial class InstanceSourceGroupViewModel : ObservableObject
@@ -2234,13 +2411,17 @@ public sealed partial class InstanceSourceGroupViewModel : ObservableObject
     public InstanceSourceGroupViewModel(
         string name,
         string path,
-        string status,
-        IReadOnlyList<InstanceSourceItemViewModel> instances)
+        bool isAccessible,
+        IReadOnlyList<InstanceSourceItemViewModel> instances,
+        ILocalizer localizer)
     {
         Name = name;
         Path = path;
-        Status = status;
+        Status = isAccessible
+            ? localizer.Get("instances.source.accessible")
+            : localizer.Get("instances.source.inaccessible");
         Instances = instances;
+        CountText = localizer.Get("instances.source.count", instances.Count);
     }
 
     public string Name { get; }
@@ -2251,7 +2432,7 @@ public sealed partial class InstanceSourceGroupViewModel : ObservableObject
 
     public IReadOnlyList<InstanceSourceItemViewModel> Instances { get; }
 
-    public string CountText => $"{Instances.Count} 个实例";
+    public string CountText { get; }
 
     /// <summary>折叠只影响展示，不改变实例选择、扫描状态或清理目标。</summary>
     [ObservableProperty]
@@ -2268,9 +2449,18 @@ public sealed class InstanceItemViewModel
         LoaderText = FormatLoader(model, localizer);
         VersionText = $"{MinecraftVersionText} · {LoaderText}";
         LastPlayedText = model.LastPlayedAt is null
-            ? localizer.Get("instances.never")
-            : localizer.Get("instances.lastPlayedAt", model.LastPlayedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm"));
+            ? localizer.Get("instances.neverPlayed")
+            : localizer.Get("instances.lastPlayedLabel", model.LastPlayedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm"));
+        CreatedText = localizer.Get("instances.createdAt", model.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd"));
         PathText = InstancePaths.GetGameDirectory(paths, model);
+        LoaderKind = model.Loader.ToLowerInvariant() switch
+        {
+            "fabric" => "fabric",
+            "forge" => "forge",
+            "neoforge" => "neoforge",
+            "cleanroom" => "cleanroom",
+            _ => "unknown",
+        };
     }
 
     public GameInstance Model { get; }
@@ -2283,9 +2473,15 @@ public sealed class InstanceItemViewModel
     /// <summary>加载器名称与版本，例如“Fabric 0.16.10”；原版显示为“原版”。</summary>
     public string LoaderText { get; }
 
+    /// <summary>加载器类型键：fabric / forge / neoforge / cleanroom / unknown（用于颜色标识）。</summary>
+    public string LoaderKind { get; }
+
     public string VersionText { get; }
 
     public string LastPlayedText { get; }
+
+    /// <summary>创建日期；按实例页规划作为卡片的独立信息行。</summary>
+    public string CreatedText { get; }
 
     public string PathText { get; }
 

@@ -75,6 +75,33 @@
                     <TextBlock Text="{Binding CreatedLabel}" Style="{StaticResource LabelText}" Margin="0,12,0,3" />
                     <TextBlock Text="{Binding CreatedText}" FontSize="12" />
 
+                    <!-- 选择层：当前选中对象的只读摘要；切换工作区时由 Shell 清空。 -->
+                    <StackPanel Margin="0,18,0,0"
+                                Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}">
+                        <Border Height="1" Background="{DynamicResource BorderSoftBrush}" Margin="0,0,0,12" />
+                        <TextBlock Text="{Binding SelectionHeading}" Style="{StaticResource LabelText}" Margin="0,0,0,6" />
+                        <TextBlock Text="{Binding Selection.Title}"
+                                   FontSize="13"
+                                   Style="{StaticResource EmphasisText}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Selection.Subtitle}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0"
+                                   Visibility="{Binding Selection.Subtitle, Converter={StaticResource StringToVisibility}}" />
+                        <ItemsControl ItemsSource="{Binding Selection.Fields}" Margin="0,10,0,0">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,0,0,8">
+                                        <TextBlock Text="{Binding Label}" Style="{StaticResource LabelText}" Margin="0,0,0,2" />
+                                        <TextBlock Text="{Binding Value}" FontSize="11" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
                     <Button Content="{Binding CloseText}"
                             Command="{Binding CloseWorkspaceCommand}"
                             Style="{StaticResource GhostButton}"

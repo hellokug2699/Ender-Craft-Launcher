@@ -124,6 +124,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _selectedNavigationItem = NavigationItems.First(item =>
             string.Equals(item.Key, startPage, StringComparison.Ordinal));
         _workspaceChanges = workspaces.Subscribe(OnWorkspaceChanged);
+        _instances.PropertyChanged += OnInstancesPropertyChanged;
         OpenDestination(_selectedNavigationItem);
     }
 
@@ -315,6 +316,28 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private void OpenDependencySearch(string dependencyId, string instanceId) =>
         _ = OpenDependencySearchAsync(dependencyId, instanceId);
 
+    /// <summary>
+    /// 全局拖拽入口（instances.md §5.2）：只接收 .zip / .mrpack，并走与主动选择相同的解析流程。
+    /// 其它文件类型不触发任何导入，也不改变当前页面。
+    /// </summary>
+    public async Task HandleDroppedFilesAsync(IReadOnlyList<string> files)
+    {
+        var archive = files.FirstOrDefault(file =>
+        {
+            var extension = System.IO.Path.GetExtension(file);
+            return string.Equals(extension, ".zip", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(extension, ".mrpack", StringComparison.OrdinalIgnoreCase);
+        });
+
+        if (archive is null)
+        {
+            _logger.LogInformation("拖入的文件不是受支持的整合包，已忽略：{Count} 个文件。", files.Count);
+            return;
+        }
+
+        await _instances.ImportModpackFileAsync(archive).ConfigureAwait(true);
+    }
+
     private async Task OpenDependencySearchAsync(string dependencyId, string instanceId)
     {
         await _download.SearchDependencyAsync(dependencyId, instanceId).ConfigureAwait(true);
@@ -495,6 +518,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         // 选择层属于页面上下文：切换工作区必须先清空，避免把上一工作区的选中对象显示到新工作区。
         Inspector.ClearSelection();
         Inspector.Show(value.Entry, value.ToolDisplayName);
+        UpdateInspectorSelection();
 
         // 导航高亮跟随活动工作区；实例工作区没有独立导航项，因此清空高亮。
         SyncNavigationSelection(value.TargetResource is null ? value.ToolId : null);
@@ -526,5 +550,41 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         }
     }
 
-    public void Dispose() => _workspaceChanges.Dispose();
+    public void Dispose()
+    {
+        _instances.PropertyChanged -= OnInstancesPropertyChanged;
+        _workspaceChanges.Dispose();
+    }
+
+    private void OnInstancesPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(InstancesViewModel.SelectedInstance))
+        {
+            UpdateInspectorSelection();
+        }
+    }
+
+    /// <summary>
+    /// Inspector 选择层由 Shell 统一下发（ADR 0056 §3）：实例列表页只报告选中实例的只读摘要，
+    /// 其它工作区切换时清空，避免跨工作区残留。
+    /// </summary>
+    private void UpdateInspectorSelection()
+    {
+        if (ActiveWorkspace is { TargetResource: null } workspace
+            && string.Equals(workspace.ToolId, "instances", StringComparison.Ordinal)
+            && _instances.SelectedInstance is { } instance)
+        {
+            Inspector.ShowSelection(new InspectorSelectionContext(
+                instance.Name,
+                instance.VersionText,
+                [
+                    new InspectorSelectionField(_localizer.Get("inspector.selection.loader"), instance.LoaderText),
+                    new InspectorSelectionField(_localizer.Get("inspector.selection.created"), instance.CreatedText),
+                    new InspectorSelectionField(_localizer.Get("inspector.selection.lastPlayed"), instance.LastPlayedText),
+                ]));
+            return;
+        }
+
+        Inspector.ClearSelection();
+    }
 }

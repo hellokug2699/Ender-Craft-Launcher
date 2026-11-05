@@ -45,6 +45,9 @@ public sealed partial class InspectorViewModel(ILocalizer localizer) : Observabl
 
     public bool HasSelection => Selection is not null;
 
+    partial void OnSelectionChanged(InspectorSelectionContext? value) =>
+        OnPropertyChanged(nameof(HasSelection));
+
     /// <summary>由 Shell 下发选择层内容；不改变工作区层元数据。</summary>
     public void ShowSelection(InspectorSelectionContext context)
     {
