@@ -10,6 +10,7 @@ using Ecl.App.Dialogs.ViewModels;
 using Ecl.App.Shell.Inspector;
 using Ecl.App.Shell.Output;
 using Ecl.App.ViewModels;
+using Ecl.App.Workspace;
 using Ecl.App.Workspace.ViewModels;
 using Ecl.Core;
 using Ecl.Core.Localization;
@@ -256,6 +257,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Workspaces.Remove(tab);
         OnPropertyChanged(nameof(HasWorkspaces));
 
+        // 关闭即释放该工作区拥有的页面状态与订阅（ADR 0055 §4、迁移规划 §8.3）。
+        if (tab.Page is IDisposable disposablePage)
+        {
+            disposablePage.Dispose();
+        }
+
         // 宿主已经按标签顺序选出新的活动工作区；UI 只跟随它。
         ActiveWorkspace = Workspaces.FirstOrDefault(candidate => candidate.Id == _workspaces.Active?.Id);
     }
@@ -437,7 +444,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         if (string.Equals(toolId, "instance", StringComparison.Ordinal))
         {
-            page = new InstanceDetailPageViewModel(_instances, _mods);
+            if (_instances.Instances.FirstOrDefault(item =>
+                    string.Equals(item.Model.Id, target.StableInstanceId, StringComparison.Ordinal)) is not { } instance)
+            {
+                // 实例已不存在或尚未加载：工作区保持不可用，不伪造一个空白实例页。
+                return false;
+            }
+
+            page = new InstanceDetailPageViewModel(new InstanceWorkspaceState(instance), _instances, _mods);
             toolDisplayName = _localizer.Get("nav.instances");
             workspaceTitle = string.IsNullOrWhiteSpace(title) ? target.StableInstanceId! : title;
             return true;

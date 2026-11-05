@@ -276,31 +276,30 @@ public sealed partial class InstancesViewModel : ObservableObject
         ? string.Empty
         : _localizer.Get("instances.createdAt", SelectedInstance.Model.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd"));
 
-    public string SelectedInstanceComponents
+    public string SelectedInstanceComponents => SelectedInstance is null
+        ? string.Empty
+        : GetInstanceComponents(SelectedInstance.Model);
+
+    /// <summary>
+    /// 组件摘要的唯一格式化实现；实例工作区页面同样使用它，避免页面自己拼接文案。
+    /// </summary>
+    public string GetInstanceComponents(GameInstance model)
     {
-        get
+        ArgumentNullException.ThrowIfNull(model);
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(model.FabricApiVersion))
         {
-            if (SelectedInstance is null)
-            {
-                return string.Empty;
-            }
-
-            var model = SelectedInstance.Model;
-            var parts = new List<string>();
-            if (!string.IsNullOrWhiteSpace(model.FabricApiVersion))
-            {
-                parts.Add($"Fabric API {model.FabricApiVersion}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(model.OptiFineVersion))
-            {
-                parts.Add($"OptiFine {model.OptiFineVersion}");
-            }
-
-            return parts.Count == 0
-                ? string.Empty
-                : _localizer.Get("instances.components.summary", string.Join(" · ", parts));
+            parts.Add($"Fabric API {model.FabricApiVersion}");
         }
+
+        if (!string.IsNullOrWhiteSpace(model.OptiFineVersion))
+        {
+            parts.Add($"OptiFine {model.OptiFineVersion}");
+        }
+
+        return parts.Count == 0
+            ? string.Empty
+            : _localizer.Get("instances.components.summary", string.Join(" · ", parts));
     }
 
     public InstancesViewModel(

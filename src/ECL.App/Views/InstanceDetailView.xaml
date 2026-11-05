@@ -19,10 +19,10 @@
                 <Grid>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Text="{Binding Instances.SelectedInstanceName}" FontSize="27" Style="{StaticResource HeadingText}" />
-                        <TextBlock Text="{Binding Instances.SelectedInstanceMeta}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,6,0,0" />
-                        <TextBlock Text="{Binding Instances.SelectedInstanceComponents}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding Instances.SelectedInstancePath}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding Instances.SelectedInstancePath}" />
+                        <TextBlock Text="{Binding InstanceName}" FontSize="27" Style="{StaticResource HeadingText}" />
+                        <TextBlock Text="{Binding InstanceMeta}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,6,0,0" />
+                        <TextBlock Text="{Binding InstanceComponents}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding InstancePath}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding InstancePath}" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                         <Button Content="{loc:Loc Key=instance.detail.launch}" Command="{Binding Instances.LaunchCommand}" Style="{StaticResource PrimaryButton}" MinWidth="132" Height="42" IsEnabled="{Binding Instances.HasSelection}" />
@@ -85,13 +85,13 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="110" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                             <TextBlock Text="{loc:Loc Key=instance.detail.minecraft}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" />
-                            <TextBlock Grid.Column="1" Text="{Binding Instances.SelectedInstance.MinecraftVersionText}" FontSize="11" />
+                            <TextBlock Grid.Column="1" Text="{Binding InstanceMinecraftVersion}" FontSize="11" />
                             <TextBlock Grid.Row="1" Text="{loc:Loc Key=instance.detail.loader}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,8,0,0" />
-                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Instances.SelectedInstance.LoaderText}" FontSize="11" Margin="0,8,0,0" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding InstanceLoaderText}" FontSize="11" Margin="0,8,0,0" />
                             <TextBlock Grid.Row="2" Text="{loc:Loc Key=instance.detail.created}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,8,0,0" />
-                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Instances.SelectedInstanceCreated}" FontSize="11" Margin="0,8,0,0" />
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding InstanceCreated}" FontSize="11" Margin="0,8,0,0" />
                             <TextBlock Grid.Row="3" Text="{loc:Loc Key=instance.detail.lastPlayed}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,8,0,0" />
-                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Instances.SelectedInstance.LastPlayedText}" FontSize="11" Margin="0,8,0,0" />
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding InstanceLastPlayed}" FontSize="11" Margin="0,8,0,0" />
                         </Grid>
                         <Button Content="{loc:Loc Key=instance.detail.delete}" Command="{Binding Instances.DeleteInstanceCommand}" Style="{StaticResource DangerButton}" HorizontalAlignment="Left" Margin="0,16,0,0" />
                     </StackPanel>
