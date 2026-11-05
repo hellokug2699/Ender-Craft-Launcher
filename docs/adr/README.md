@@ -133,7 +133,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 
 ## 最高优先级 UI 架构约束
 
-[ADR 0050: ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) 是 ECL **UI 全局架构与设计系统的最高优先级约束**，负责 Design System、Application Shell、全局导航职责、工具栏定位、统一排版及 DPI/分辨率适配。
+[ADR 0050: ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) 是 ECL **UI 全局架构与设计系统的最高优先级约束**，负责 Design System、Application Shell、全局导航职责、统一排版及 DPI/分辨率适配。[ADR 0056: Right Auxiliary Rail and Inspector Integration](0056-right-auxiliary-rail-and-inspector-integration.md) 是其右侧辅助区域的专门协调决策，具体规定 Rail 的组成、Inspector/Tools 模式职责与交互；两者按此分工共同生效，不存在 0056 取代 0050 全文的关系。
 
 具体页面的布局、信息组织、功能入口、页面内导航、交互流程、用户可见状态、文案和页面级验收，以已确认的 UI 页面规划（Feature Spec）为准。页面规划可以取代其他 ADR 中过时的局部 UI 假设，但不得改变该 ADR 中仍然有效的领域架构决策。
 
@@ -200,4 +200,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0053 Additions 能力权限模型与用户授权流程](0053-addition-capability-permission-and-user-consent.md) | Proposed | Not Started | 扩展权限声明、安装前知情授权、宿主能力执行控制与撤销 |
 | [0054 Addition 注册表、清单与生命周期治理](0054-addition-registry-and-manifest-governance.md) | Proposed | Not Started | 官方 Addition 统一目录、Manifest、登记审核、生命周期与既有扩展 ADR 迁移 |
 | [0055 ECL 混合工作区与原生工具平台架构](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md) | Accepted | Not Started | Workspace、Native UI SDK、Addition Runtime、IPC、Event Bus 与资源边界 |
-| [0056 Right Auxiliary Rail and Inspector Integration](0056-right-auxiliary-rail-and-inspector-integration.md) | Proposed | Not Started | 右侧工具入口与 Inspector 的复合式辅助区域协调方案 |
+| [0056 Right Auxiliary Rail and Inspector Integration](0056-right-auxiliary-rail-and-inspector-integration.md) | Accepted | Not Started | Right Auxiliary Rail：协调右侧 Tools 与 Inspector 两种模式 |
