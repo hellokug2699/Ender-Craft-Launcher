@@ -554,8 +554,6 @@
   "mod.recommend.invalidMetadata": "Suggested action: verify the JAR is intact and from a trusted source; redownload if needed.",
   "mod.recommend.duplicate": "Suggested action: inspect duplicate mods; usually only one valid copy should remain.",
   "mods.toggle": "Toggle",
-  "mods.enableAll": "Enable all",
-  "mods.disableAll": "Disable all",
   "mods.import": "Import mods",
   "mods.importPack": "Import modpack",
   "mods.exportPack": "Export modpack",
@@ -598,9 +596,8 @@
   "mods.disabled": "Disabled {0}",
   "mods.enabledLabel": "Enabled",
   "mods.disabledLabel": "Disabled",
-  "mods.batchDone": "Processed {0} mods.",
-  "mods.importTitle": "Import mods",
-  "mods.importFilter": "Mod files (*.jar;*.jar.disabled)|*.jar;*.jar.disabled|All files (*.*)|*.*",
+  "mods.importTitle": "Add mods",
+  "mods.importFilter": "Mod files (*.jar)|*.jar",
   "mods.importDone": "Imported {0} mods.",
   "mods.importFailed": "Failed to import mods.",
   "mods.modpackTitle": "Import modpack",
@@ -677,6 +674,7 @@
   "downloads.resultFor": "Results for “{0}”",
   "downloads.searchFailed": "Search failed: {0}",
   "downloads.selectInstanceFirst": "Select a target instance first, or use Download only.",
+  "downloads.instanceMissing": "The target instance is no longer available. Select an instance again before installing mods.",
   "downloads.installing": "Installing {0}…",
   "downloads.downloading": "Downloading {0}…",
   "downloads.installingPack": "Downloading and importing modpack {0}…",
@@ -803,10 +801,7 @@
   "instance.detail.extraArgs": "Additional JVM arguments",
   "instance.detail.save": "Save runtime settings",
   "instance.detail.mods": "Mods and content",
-  "instance.detail.importMods": "Import mods",
   "instance.detail.refresh": "Refresh",
-  "instance.detail.toggleMod": "Enable/disable selected",
-  "instance.detail.deleteMod": "Delete selected",
   "instance.detail.importModpack": "Import modpack",
   "instance.detail.exportModpack": "Export modpack",
   "instance.detail.files": "Files and folders",
@@ -1011,4 +1006,6 @@
   "instanceDirectories.noManagedInstances": "No ECL-managed instances were found under this directory; external read-only versions are not deleted.",
   "instanceDirectories.footnote": "Unbinding only removes the management relationship; nothing on disk is deleted."
 }
+
+
 

@@ -554,8 +554,6 @@
   "mod.recommend.invalidMetadata": "建议：确认 JAR 文件完整且来自可信来源；必要时重新下载。",
   "mod.recommend.duplicate": "建议：检查重复模组，通常只应保留一个有效版本。",
   "mods.toggle": "切换启用状态",
-  "mods.enableAll": "全部启用",
-  "mods.disableAll": "全部禁用",
   "mods.import": "导入 Mod",
   "mods.importPack": "导入整合包",
   "mods.exportPack": "导出整合包",
@@ -598,9 +596,8 @@
   "mods.disabled": "已禁用 {0}",
   "mods.enabledLabel": "启用",
   "mods.disabledLabel": "禁用",
-  "mods.batchDone": "已处理 {0} 个 Mod。",
-  "mods.importTitle": "导入 Mod",
-  "mods.importFilter": "Mod 文件 (*.jar;*.jar.disabled)|*.jar;*.jar.disabled|所有文件 (*.*)|*.*",
+  "mods.importTitle": "添加模组",
+  "mods.importFilter": "Mod 文件 (*.jar)|*.jar",
   "mods.importDone": "已导入 {0} 个 Mod。",
   "mods.importFailed": "导入 Mod 失败。",
   "mods.modpackTitle": "导入整合包",
@@ -677,6 +674,7 @@
   "downloads.resultFor": "“{0}”的搜索结果",
   "downloads.searchFailed": "搜索失败：{0}",
   "downloads.selectInstanceFirst": "请先选择目标实例，或使用“仅下载”。",
+  "downloads.instanceMissing": "目标实例已失效，请重新选择实例后再安装模组。",
   "downloads.installing": "正在安装 {0}…",
   "downloads.downloading": "正在下载 {0}…",
   "downloads.installingPack": "正在下载并导入整合包 {0}…",
@@ -803,10 +801,7 @@
   "instance.detail.extraArgs": "额外 JVM 参数",
   "instance.detail.save": "保存运行设置",
   "instance.detail.mods": "模组与内容",
-  "instance.detail.importMods": "导入模组",
   "instance.detail.refresh": "刷新",
-  "instance.detail.toggleMod": "启用/禁用所选",
-  "instance.detail.deleteMod": "删除所选",
   "instance.detail.importModpack": "导入整合包",
   "instance.detail.exportModpack": "导出整合包",
   "instance.detail.files": "文件与目录",
@@ -1011,4 +1006,6 @@
   "instanceDirectories.noManagedInstances": "该目录下没有由 ECL 托管的实例；外部只读版本不会被删除。",
   "instanceDirectories.footnote": "解绑只解除管理关系，不删除磁盘内容。"
 }
+
+
 

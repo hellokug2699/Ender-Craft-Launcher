@@ -21,8 +21,11 @@ public sealed class ModsPageFactory(
     IDialogService dialogs,
     ILocalizer localizer)
 {
-    /// <summary>由 Shell 注入的依赖搜索入口（跳转到下载中心并带上依赖 ID 与实例 ID）。</summary>
-    public Action<string, string>? SearchDependency { get; set; }
+    /// <summary>
+    /// 由 Shell 注入的下载入口：跳转到下载中心并带入实例 ID 与可选搜索词
+    /// （已有实例目标模式；mods.md §2.1「下载模组」/§5.5「搜索缺失依赖」）。
+    /// </summary>
+    public Action<string, string?>? OpenModBrowser { get; set; }
 
     public ModsViewModel Create(string instanceId, string instanceName) =>
         new(
@@ -35,7 +38,7 @@ public sealed class ModsPageFactory(
             instanceId,
             instanceName)
         {
-            SearchDependency = SearchDependency,
+            OpenModBrowser = OpenModBrowser,
         };
 
     /// <summary>启动前健康检查的模组摘要；不创建页面、不修改任何页面状态。</summary>

@@ -156,6 +156,23 @@ public sealed class ModService(
                 continue;
             }
 
+            // 添加模组（mods.md §2.1）：先确认文件含可识别的模组信息，再检查是否适用于当前实例。
+            // ADR 0043 的逐文件威胁扫描尚无单文件入口，这里不做安全判定，也不伪造“已检查”；
+            // 实例级启动安全门控（SecurityGateStep）仍然覆盖导入后的模组。
+            var metadata = ModMetadataReader.Read(source);
+            if (metadata.Metadata is null)
+            {
+                errors.Add($"{fileName}: 不包含可识别的模组信息（{metadata.Error ?? "未知原因"}）。");
+                continue;
+            }
+
+            if (!IsPlatformCompatible(instance.Loader, metadata.Metadata.Platform))
+            {
+                errors.Add(
+                    $"{fileName}: 不适用于当前实例的加载器 {instance.Loader}（检测到 {metadata.Metadata.Platform}）。");
+                continue;
+            }
+
             var destination = Path.Combine(modsDirectory, fileName);
             if (File.Exists(destination) && !overwrite)
             {

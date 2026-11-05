@@ -110,7 +110,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _home.Navigate = key => ActivateDestination(key);
         _home.OpenInstanceWorkspace = OpenSelectedInstanceWorkspace;
         instances.GetModHealthSummary = modsFactory.DescribeHealthAsync;
-        modsFactory.SearchDependency = OpenDependencySearch;
+        modsFactory.OpenModBrowser = OpenModBrowser;
         instances.NavigateToDetails = instanceId => OpenInstanceWorkspace(instanceId);
         instances.NavigateBackFromDetails = NavigateToInstances;
 
@@ -329,8 +329,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         ActivateDestination("instances");
     }
 
-    private void OpenDependencySearch(string dependencyId, string instanceId) =>
-        _ = OpenDependencySearchAsync(dependencyId, instanceId);
+    private void OpenModBrowser(string instanceId, string? query) =>
+        _ = OpenModBrowserAsync(instanceId, query);
 
     /// <summary>
     /// 全局拖拽入口（instances.md §5.2）：只接收 .zip / .mrpack，并走与主动选择相同的解析流程。
@@ -354,9 +354,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         await _instances.ImportModpackFileAsync(archive).ConfigureAwait(true);
     }
 
-    private async Task OpenDependencySearchAsync(string dependencyId, string instanceId)
+    private async Task OpenModBrowserAsync(string instanceId, string? query)
     {
-        await _download.SearchDependencyAsync(dependencyId, instanceId).ConfigureAwait(true);
+        await _download.OpenModBrowserAsync(instanceId, query).ConfigureAwait(true);
         ActivateDestination("download");
     }
 
@@ -661,3 +661,4 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Inspector.ClearSelection();
     }
 }
+

@@ -25,7 +25,11 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
     private readonly IDialogService _dialogs;
     private readonly ILocalizer _localizer;
 
-    public Action<string, string>? SearchDependency { get; set; }
+    /// <summary>
+    /// 由 Shell 注入的下载入口：打开下载中心并带入本实例的稳定 InstanceId、Minecraft 版本、
+    /// 加载器与搜索词（已有实例目标模式）。目标实例失效时由下载页明确报错。
+    /// </summary>
+    public Action<string, string?>? OpenModBrowser { get; set; }
 
     public ObservableCollection<ModItemViewModel> Mods { get; } = [];
 
@@ -443,51 +447,20 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanActOnSelection))]
     private Task DisableSelectedAsync() => SetSelectedEnabledAsync(false);
 
-    /// <summary>旧版“全部启用/全部禁用”入口；B2 步骤 3b-3b 由“全选 + 启用/禁用所选”取代。</summary>
+    /// <summary>
+    /// 打开下载中心（mods.md §2.1「下载模组」）：带入稳定 InstanceId、当前搜索词；
+    /// 下载页从实例读取 Minecraft 版本与加载器，并以已有实例目标模式打开。
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanRefresh))]
-    private async Task EnableAllAsync()
+    private void DownloadMods()
     {
         if (IsDisposed)
         {
             return;
         }
 
-        IsBusy = true;
-        try
-        {
-            var result = await _mods.SetAllEnabledAsync(InstanceId, true).ConfigureAwait(true);
-            StatusMessage = result.IsSuccess
-                ? _localizer.Get("mods.batchDone", result.Value!.Succeeded)
-                : result.Error?.ToString() ?? _localizer.Get("mods.updateFailed");
-            await RefreshAndKeepStatusAsync().ConfigureAwait(true);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanRefresh))]
-    private async Task DisableAllAsync()
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        IsBusy = true;
-        try
-        {
-            var result = await _mods.SetAllEnabledAsync(InstanceId, false).ConfigureAwait(true);
-            StatusMessage = result.IsSuccess
-                ? _localizer.Get("mods.batchDone", result.Value!.Succeeded)
-                : result.Error?.ToString() ?? _localizer.Get("mods.updateFailed");
-            await RefreshAndKeepStatusAsync().ConfigureAwait(true);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        var query = AppliedSearchText.Length > 0 ? AppliedSearchText : null;
+        OpenModBrowser?.Invoke(InstanceId, query);
     }
 
     [RelayCommand(CanExecute = nameof(CanClearStatusFilter))]
@@ -648,7 +621,7 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
             return;
         }
 
-        SearchDependency?.Invoke(dependencyId, InstanceId);
+        OpenModBrowser?.Invoke(InstanceId, dependencyId);
     }
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
@@ -865,8 +838,7 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         DisableSelectedCommand.NotifyCanExecuteChanged();
         SelectAllOrInvertCommand.NotifyCanExecuteChanged();
         ClearStatusFilterCommand.NotifyCanExecuteChanged();
-        EnableAllCommand.NotifyCanExecuteChanged();
-        DisableAllCommand.NotifyCanExecuteChanged();
+        DownloadModsCommand.NotifyCanExecuteChanged();
         ImportModsCommand.NotifyCanExecuteChanged();
         ImportPackCommand.NotifyCanExecuteChanged();
         DeletePackCommand.NotifyCanExecuteChanged();
@@ -995,4 +967,5 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
 }
 
 public sealed record PackTypeChoice(ContentPackKind Kind, string Title);
+
 

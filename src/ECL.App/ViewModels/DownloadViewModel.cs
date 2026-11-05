@@ -26,6 +26,7 @@ public sealed partial class DownloadViewModel : ObservableObject
     private readonly IDownloadController _downloads;
     private bool _initialized;
     private bool _suppressInstanceFilter;
+    private bool _suppressTabSearch;
 
     public InstancesViewModel Game { get; }
 
@@ -179,21 +180,40 @@ public sealed partial class DownloadViewModel : ObservableObject
         await RefreshInstancesAsync().ConfigureAwait(true);
     }
 
-    public async Task SearchDependencyAsync(string dependencyId, string instanceId)
+    /// <summary>
+    /// 从实例工作区模组页打开本页（download-mods.md §4）：按已有实例目标模式带入稳定 InstanceId，
+    /// 自动填充实例的 Minecraft 版本与加载器，再用给定搜索词检索（空搜索词表示直接浏览）。
+    /// 目标实例已被移除或失效时明确要求重新选择，不静默退回自定义筛选/任意目录。
+    /// </summary>
+    public async Task OpenModBrowserAsync(string instanceId, string? query)
     {
         await RefreshInstancesAsync().ConfigureAwait(true);
-        SelectedInstance = TargetInstances.FirstOrDefault(item => item.Id == instanceId);
-        if (SelectedInstance is null)
+
+        // 切换页签会触发现有搜索；这里先屏蔽，等实例与搜索词都就位后统一检索。
+        _suppressTabSearch = true;
+        try
         {
-            StatusMessage = _localizer.Get("downloads.selectInstanceFirst");
+            SelectedTab = Tabs.FirstOrDefault(tab => tab.Kind == ContentKind.Mod) ?? Tabs[0];
+        }
+        finally
+        {
+            _suppressTabSearch = false;
+        }
+
+        var target = TargetInstances.FirstOrDefault(item =>
+            string.Equals(item.Id, instanceId, StringComparison.Ordinal));
+        if (target is null)
+        {
+            SelectedInstance = TargetInstances[0];
+            Results.Clear();
+            ResultSummary = string.Empty;
+            SelectedResult = null;
+            StatusMessage = _localizer.Get("downloads.instanceMissing");
             return;
         }
 
-        Query = dependencyId;
-        SelectedTab = Tabs.FirstOrDefault(tab => tab.Kind == ContentKind.Mod) ?? Tabs[0];
-        GameVersion = SelectedInstance.GameVersion;
-        SelectedLoaderFilter = LoaderFilters.FirstOrDefault(item =>
-            string.Equals(item.Id, SelectedInstance.Loader, StringComparison.OrdinalIgnoreCase)) ?? LoaderFilters[0];
+        Query = query ?? string.Empty;
+        SelectedInstance = target;
         await SearchAsync().ConfigureAwait(true);
     }
 
@@ -573,7 +593,7 @@ public sealed partial class DownloadViewModel : ObservableObject
         HasReport = false;
         ReportText = string.Empty;
 
-        if (_initialized && value?.Kind is not null)
+        if (_initialized && value?.Kind is not null && !_suppressTabSearch)
         {
             _ = SearchAsync();
         }

@@ -228,6 +228,27 @@ public sealed class ModsPageTests
     }
 
     [Fact]
+    public async Task DownloadModsPassesTheStableInstanceAndAppliedQuery()
+    {
+        var (viewModel, _) = Create(Entry("alpha.jar", metadata: Metadata("alpha")));
+        await viewModel.InitializeAsync();
+
+        (string InstanceId, string? Query)? opened = null;
+        viewModel.OpenModBrowser = (instanceId, query) => opened = (instanceId, query);
+
+        viewModel.ModSearchText = "alpha";
+        viewModel.SearchCommand.Execute(null);
+        viewModel.DownloadModsCommand.Execute(null);
+        Assert.Equal(("instance-a", (string?)"alpha"), opened!.Value);
+
+        viewModel.ModSearchText = string.Empty;
+        viewModel.SearchCommand.Execute(null);
+        viewModel.DownloadModsCommand.Execute(null);
+        Assert.Equal("instance-a", opened!.Value.InstanceId);
+        Assert.Null(opened.Value.Query);
+    }
+
+    [Fact]
     public async Task UpdateCommandsAreNeverAvailable()
     {
         var (viewModel, _) = Create(Entry("alpha.jar", metadata: Metadata("alpha")));

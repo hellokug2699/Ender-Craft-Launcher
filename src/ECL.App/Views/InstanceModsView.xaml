@@ -45,15 +45,41 @@
         <StackPanel>
             <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                 <StackPanel>
-                    <!-- 旧版顶部入口：B2 步骤 3b-3b 会替换为规格要求的两行操作区。 -->
-                    <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <TextBlock Text="{loc:Loc Key=instance.detail.mods}" Style="{StaticResource SectionText}" VerticalAlignment="Center" />
-                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <Button Content="{loc:Loc Key=instance.detail.importMods}" Command="{Binding ImportModsCommand}" Style="{StaticResource GhostButton}" />
-                            <Button Content="{loc:Loc Key=instance.detail.refresh}" Command="{Binding RefreshCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
-                        </StackPanel>
-                    </Grid>
+                    <!-- 第一行（mods.md §2.1）：刷新 / 添加模组 / 下载模组。 -->
+                    <WrapPanel>
+                        <Button Content="{loc:Loc Key=mods.action.refresh}"
+                                Command="{Binding RefreshCommand}"
+                                Style="{StaticResource ToolbarButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="{loc:Loc Key=mods.action.add}"
+                                Command="{Binding ImportModsCommand}"
+                                Style="{StaticResource ToolbarButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="{loc:Loc Key=mods.action.download}"
+                                Command="{Binding DownloadModsCommand}"
+                                Style="{StaticResource PrimaryButton}" />
+                    </WrapPanel>
+
+                    <!-- 第二行（mods.md §2.2）：批量操作；「更新所选」缺少领域 API，保持不可用并说明原因。 -->
+                    <WrapPanel Margin="0,10,0,0">
+                        <Button Content="{loc:Loc Key=mods.action.selectAll}"
+                                Command="{Binding SelectAllOrInvertCommand}"
+                                Style="{StaticResource GhostButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="{loc:Loc Key=mods.action.enableSelected}"
+                                Command="{Binding EnableSelectedCommand}"
+                                Style="{StaticResource GhostButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="{loc:Loc Key=mods.action.disableSelected}"
+                                Command="{Binding DisableSelectedCommand}"
+                                Style="{StaticResource GhostButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="{loc:Loc Key=mods.action.updateSelected}"
+                                Command="{Binding UpdateSelectedCommand}"
+                                Style="{StaticResource GhostButton}"
+                                ToolTip="{Binding UpdateUnavailableHint}"
+                                ToolTipService.ShowOnDisabled="True" />
+                    </WrapPanel>
 
                     <!-- 第三行（mods.md §3）：左侧排序约 1/2，右侧状态筛选约 1/2，筛选项两行。 -->
                     <Grid Margin="0,14,0,0">
@@ -347,16 +373,6 @@
                                         Margin="0,0,8,8" />
                                 <Button Content="{loc:Loc Key=mods.searchDependency}"
                                         Command="{Binding SearchSelectedDependencyCommand}"
-                                        Style="{StaticResource GhostButton}"
-                                        Margin="0,0,8,8" />
-                            </WrapPanel>
-                            <WrapPanel>
-                                <Button Content="{loc:Loc Key=mods.enableAll}"
-                                        Command="{Binding EnableAllCommand}"
-                                        Style="{StaticResource GhostButton}"
-                                        Margin="0,0,8,8" />
-                                <Button Content="{loc:Loc Key=mods.disableAll}"
-                                        Command="{Binding DisableAllCommand}"
                                         Style="{StaticResource GhostButton}"
                                         Margin="0,0,8,8" />
                             </WrapPanel>
