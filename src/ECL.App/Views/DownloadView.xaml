@@ -119,7 +119,7 @@
                                      Value="{Binding Game.InstallProgressValue}"
                                      IsIndeterminate="{Binding Game.InstallIndeterminate}"
                                      Visibility="{Binding Game.IsInstalling, Converter={StaticResource BoolToVisibility}}" />
-                        <TextBlock Text="{Binding Game.InstallStatus}"
+                        <TextBlock Text="{Binding Game.Operation.InstallStatus}"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    FontSize="10"
                                    Margin="0,6,0,0"

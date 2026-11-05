@@ -209,11 +209,18 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
   唯一 InstanceId，模组、资源包与整合包命令不再读取“当前选中实例”。两者都由
   `InstanceDetailPageViewModel` 持有，关闭标签时释放。Java 选择结果的措辞只有一份实现
   （`JavaSelectionPresentation`），主页启动面板与实例页共用。
-- 仍待完成（C-01 出口）：实例页上的启动、健康检查、修复、崩溃分析、诊断导出、日志导出、打开目录
-  与世界工作台等命令仍由共享 `InstancesViewModel` 以全局 `SelectedInstance` 执行，其操作结果状态
-  （`LaunchSteps`、`HealthReportText` 等）也是全局一份。因此两个实例工作区同时打开时，
-  **这些操作的目标实例与结果显示仍未隔离**；移除 `ShellViewModel` 中的全局 `SelectedInstance`
-  赋值必须与这些命令的实例化改造同批完成，否则会造成“点了启动却启动另一个实例”或按钮失效。
+- 实例操作状态已按工作区作用域拆分（B2 步骤 1c）：`InstanceOperationsViewModel` 持有本工作区自有的
+  `InstanceOperationState`（启动步骤/状态、命令预览、健康报告、崩溃分析、诊断导出、安装进度）与
+  启动、健康检查、修复、崩溃分析、诊断/日志导出、打开目录、世界工作台、删除命令。这些命令通过
+  `LaunchForAsync` / `CheckHealthForAsync` / `InstallForAsync` / `AnalyzeCrashForAsync` 等
+  **以显式实例为参数**的内部方法执行，操作实现只有一份，状态每个工作区一份。
+  主页启动面板使用 `InstancesViewModel.Operation`，与实例工作区各自独立。
+- 因此 `ShellViewModel.OpenInstanceWorkspace` 不再把打开的实例写成全局 `SelectedInstance`；
+  实例列表页与主页的选择同步只由它们自己维护。账户卡片仍是全局账户状态（按页面规划账户属于 Home），
+  不属于实例作用域。
+- C-01 出口验收（本批证据）：两个实例工作区同时打开时，身份、Java/内存/JVM 编辑状态、模组内容、
+  健康检查与启动报告互不覆盖；分别执行健康检查后各自保留自己的报告；关闭其中一个不改变另一个；
+  重开工作区得到新的身份与空的操作报告；实例页所有操作按钮保持可用。
 - 右侧仍是单一 Inspector 面板；ADR 0056 的 Right Auxiliary Rail（Inspector / Tools 双模式）尚未实现。
 - 工作区页面在切换标签时会重新创建视图（ViewModel 状态保留，滚动位置等视图状态不保留）。
 - Split、Detached、Snapshot 恢复与运行时隔离仍未实现，相关能力不会以按钮或菜单形式出现。

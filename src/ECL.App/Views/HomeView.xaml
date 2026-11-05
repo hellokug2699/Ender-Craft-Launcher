@@ -196,11 +196,11 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="最近一次启动" Style="{StaticResource SectionText}" />
-                        <TextBlock Grid.Column="1" Text="{Binding Launcher.LaunchStatus}"
+                        <TextBlock Grid.Column="1" Text="{Binding Launcher.Operation.LaunchStatus}"
                                    Foreground="{DynamicResource TextMutedBrush}" FontSize="11"
                                    VerticalAlignment="Center" TextWrapping="Wrap" />
                     </Grid>
-                    <ItemsControl ItemsSource="{Binding Launcher.LaunchSteps}" Margin="0,10,0,0">
+                    <ItemsControl ItemsSource="{Binding Launcher.Operation.LaunchSteps}" Margin="0,10,0,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Grid Margin="0,4">

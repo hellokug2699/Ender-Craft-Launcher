@@ -14,7 +14,7 @@ namespace Ecl.App.ViewModels;
 /// 两者必须给出同一套文案与判断顺序；把它们留在各自的 ViewModel 里会形成两套规则。
 /// 本类只负责措辞与顺序，不改变领域层的兼容性结论。
 /// </summary>
-internal static class JavaSelectionPresentation
+public static class JavaSelectionPresentation
 {
     /// <summary>把一次 Java 选择结果描述为页面文案；警告文本统一追加在句末。</summary>
     public static string Describe(JavaSelectionResult selection, ILocalizer localizer)

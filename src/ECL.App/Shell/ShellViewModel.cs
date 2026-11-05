@@ -364,12 +364,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             return false;
         }
 
+        // 实例工作区只按稳定 ID 打开；页面状态由工作区自有对象持有，
+        // 不再把该实例写成全局“当前选中实例”（列表页与主页的选择同步由它们自己维护）。
         var instance = _instances.Instances.FirstOrDefault(item =>
             string.Equals(item.Model.Id, stableInstanceId, StringComparison.Ordinal));
-        if (instance is not null)
-        {
-            _instances.SelectedInstance = instance;
-        }
 
         // 标签标题来自该实例的快照，不依赖全局 SelectedInstance 的更新顺序。
         var title = instance?.Name is { Length: > 0 } name ? name : stableInstanceId;

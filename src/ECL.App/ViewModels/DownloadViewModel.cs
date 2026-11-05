@@ -321,7 +321,7 @@ public sealed partial class DownloadViewModel : ObservableObject
                                 ?? Game.SelectedInstance;
         StatusMessage = _localizer.Get("downloads.installingGame");
         await Game.InstallCommand.ExecuteAsync(null).ConfigureAwait(true);
-        StatusMessage = Game.InstallStatus;
+        StatusMessage = Game.Operation.InstallStatus;
     }
 
     [RelayCommand]

@@ -83,7 +83,13 @@ public sealed partial class InstancesViewModel : ObservableObject
     /// <summary>只有第三方账户才有“账户设置”可编辑（服务器地址与注册链接）。</summary>
     public bool CanOpenAccountSettings => SelectedAccount?.Model.Type == AccountType.ThirdParty;
 
-    public ObservableCollection<LaunchStepItemViewModel> LaunchSteps { get; } = [];
+    public ObservableCollection<LaunchStepItemViewModel> LaunchSteps => Operation.LaunchSteps;
+
+    /// <summary>
+    /// 主页启动面板与实例列表页共用的操作结果显示状态。
+    /// 实例工作区不使用这一份，而是各自持有 <see cref="InstanceOperationState"/>（B2 步骤 1c）。
+    /// </summary>
+    public InstanceOperationState Operation { get; } = new();
 
     public ObservableCollection<LoaderChoiceViewModel> LoaderChoices { get; } = [];
 
@@ -153,12 +159,6 @@ public sealed partial class InstancesViewModel : ObservableObject
     private string _statusMessage = string.Empty;
 
     [ObservableProperty]
-    private string _launchStatus = string.Empty;
-
-    [ObservableProperty]
-    private string _launchCommandPreview = string.Empty;
-
-    [ObservableProperty]
     private bool _isBusy;
 
     /// <summary>实例列表正在读取（首次进入或刷新）；用于加载态，不表示任何长任务。</summary>
@@ -179,9 +179,6 @@ public sealed partial class InstancesViewModel : ObservableObject
     private double _installProgressValue;
 
     [ObservableProperty]
-    private string _installStatus = string.Empty;
-
-    [ObservableProperty]
     private string _javaStatus = string.Empty;
 
     [ObservableProperty]
@@ -195,15 +192,6 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _canPauseDownload;
-
-    [ObservableProperty]
-    private string _crashAnalysisText = string.Empty;
-
-    [ObservableProperty]
-    private string _diagnosticStatus = string.Empty;
-
-    [ObservableProperty]
-    private string _healthReportText = string.Empty;
 
     [ObservableProperty]
     private bool _isCheckingHealth;
@@ -1025,15 +1013,22 @@ public sealed partial class InstancesViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private Task LaunchAsync() => RunLaunchAsync(dryRun: false);
+    private Task LaunchAsync() => LaunchForAsync(SelectedInstance, Operation, dryRun: false);
 
     [RelayCommand]
-    private Task DryRunAsync() => RunLaunchAsync(dryRun: true);
+    private Task DryRunAsync() => LaunchForAsync(SelectedInstance, Operation, dryRun: true);
 
     [RelayCommand]
-    private async Task AnalyzeCrashAsync()
+    private Task AnalyzeCrashAsync() => AnalyzeCrashForAsync(SelectedInstance, Operation);
+
+    /// <summary>
+    /// 分析指定实例最近一次崩溃；进度写入调用方自己的状态，
+    /// 因此实例工作区与主页/列表页同时使用时互不覆盖。
+    /// </summary>
+    internal async Task AnalyzeCrashForAsync(InstanceItemViewModel? item, InstanceOperationState state)
     {
-        if (SelectedInstance is null)
+        ArgumentNullException.ThrowIfNull(state);
+        if (item is null)
         {
             StatusMessage = _localizer.Get("instances.selectFirst");
             return;
@@ -1045,22 +1040,22 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
 
         IsAnalyzingCrash = true;
-        CrashAnalysisText = _localizer.Get("diagnostics.analyzing");
+        state.CrashAnalysisText = _localizer.Get("diagnostics.analyzing");
         try
         {
             var result = await _crashReports
-                .AnalyzeLatestAsync(SelectedInstance.Model.Id)
+                .AnalyzeLatestAsync(item.Model.Id)
                 .ConfigureAwait(true);
 
             if (!result.IsSuccess)
             {
-                CrashAnalysisText = result.Error?.ToString() ?? _localizer.Get("diagnostics.failed");
+                state.CrashAnalysisText = result.Error?.ToString() ?? _localizer.Get("diagnostics.failed");
                 return;
             }
 
             if (result.Value is null)
             {
-                CrashAnalysisText = _localizer.Get("diagnostics.noCrash");
+                state.CrashAnalysisText = _localizer.Get("diagnostics.noCrash");
                 return;
             }
 
@@ -1094,11 +1089,11 @@ public sealed partial class InstancesViewModel : ObservableObject
                 }
             }
 
-            CrashAnalysisText = builder.ToString().TrimEnd();
+            state.CrashAnalysisText = builder.ToString().TrimEnd();
         }
         catch (Exception exception)
         {
-            CrashAnalysisText = exception.Message;
+            state.CrashAnalysisText = exception.Message;
         }
         finally
         {
@@ -1107,35 +1102,45 @@ public sealed partial class InstancesViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ExportDiagnosticsAsync()
+    private Task ExportDiagnosticsAsync() => ExportDiagnosticsForAsync(SelectedInstance, Operation);
+
+    [RelayCommand]
+    private Task RepairFilesAsync() => RepairForAsync(SelectedInstance, Operation);
+
+    [RelayCommand]
+    private Task CheckHealthAsync() => CheckHealthForAsync(SelectedInstance, Operation);
+
+    /// <summary>导出指定实例的诊断包；结果写入调用方自己的状态。</summary>
+    internal async Task ExportDiagnosticsForAsync(InstanceItemViewModel? item, InstanceOperationState state)
     {
-        if (SelectedInstance is null)
+        ArgumentNullException.ThrowIfNull(state);
+        if (item is null)
         {
             StatusMessage = _localizer.Get("instances.selectFirst");
             return;
         }
 
-        DiagnosticStatus = _localizer.Get("diagnostics.exporting");
+        state.DiagnosticStatus = _localizer.Get("diagnostics.exporting");
         try
         {
             var result = await _diagnostics
-                .ExportAsync(SelectedInstance.Model.Id)
+                .ExportAsync(item.Model.Id)
                 .ConfigureAwait(true);
 
-            DiagnosticStatus = result.IsSuccess
+            state.DiagnosticStatus = result.IsSuccess
                 ? _localizer.Get("diagnostics.exported", result.Value!.OutputPath, result.Value.Entries)
                 : result.Error?.ToString() ?? _localizer.Get("diagnostics.exportFailed");
         }
         catch (Exception exception)
         {
-            DiagnosticStatus = exception.Message;
+            state.DiagnosticStatus = exception.Message;
         }
     }
 
-    [RelayCommand]
-    private async Task RepairFilesAsync()
+    /// <summary>补全/修复指定实例：确认后走与安装相同的受控流程。</summary>
+    internal async Task RepairForAsync(InstanceItemViewModel? item, InstanceOperationState state)
     {
-        if (SelectedInstance is null)
+        if (item is null)
         {
             StatusMessage = _localizer.Get("instances.selectFirst");
             return;
@@ -1143,18 +1148,19 @@ public sealed partial class InstancesViewModel : ObservableObject
 
         if (!_dialogs.Confirm(
                 _localizer.Get("instances.repairTitle"),
-                _localizer.Get("instances.repairConfirm", SelectedInstance.Name)))
+                _localizer.Get("instances.repairConfirm", item.Name)))
         {
             return;
         }
 
-        await InstallAsync().ConfigureAwait(true);
+        await InstallForAsync(item, state).ConfigureAwait(true);
     }
 
-    [RelayCommand]
-    private async Task CheckHealthAsync()
+    /// <summary>对指定实例做启动前健康检查（试运行 + 账户 + 模组摘要）。</summary>
+    internal async Task CheckHealthForAsync(InstanceItemViewModel? item, InstanceOperationState state)
     {
-        if (SelectedInstance is null)
+        ArgumentNullException.ThrowIfNull(state);
+        if (item is null)
         {
             StatusMessage = _localizer.Get("instances.selectFirst");
             return;
@@ -1167,34 +1173,34 @@ public sealed partial class InstancesViewModel : ObservableObject
 
         IsCheckingHealth = true;
         IsBusy = true;
-        HealthReportText = _localizer.Get("instances.healthChecking");
+        state.HealthReportText = _localizer.Get("instances.healthChecking");
         try
         {
             var account = await _accounts.GetDefaultAccountAsync().ConfigureAwait(true);
             var report = await _launchService
-                .LaunchAsync(SelectedInstance.Model.Id, dryRun: true)
+                .LaunchAsync(item.Model.Id, dryRun: true)
                 .ConfigureAwait(true);
-            LaunchSteps.Clear();
+            state.LaunchSteps.Clear();
             foreach (var step in report.Steps)
             {
-                LaunchSteps.Add(new LaunchStepItemViewModel(step, _localizer));
+                state.LaunchSteps.Add(new LaunchStepItemViewModel(step, _localizer));
             }
 
             // 命令预览会展示给用户（也可能被截图），token 只保留两端、中间脱敏。
-            LaunchCommandPreview = SecretRedaction.CommandLine(report.CommandLine ?? string.Empty);
+            state.LaunchCommandPreview = SecretRedaction.CommandLine(report.CommandLine ?? string.Empty);
             var launchReady = report.Success && report.Steps.All(step => step.Status is LaunchStepStatus.Success or LaunchStepStatus.Skipped);
-            LaunchStatus = _localizer.Get(launchReady ? "instances.healthLaunchReady" : "instances.healthLaunchIssues");
+            state.LaunchStatus = _localizer.Get(launchReady ? "instances.healthLaunchReady" : "instances.healthLaunchIssues");
             var modSummary = GetModHealthSummary is null
                 ? _localizer.Get("instances.healthModsUnavailable")
-                : await GetModHealthSummary(SelectedInstance.Model.Id).ConfigureAwait(true);
+                : await GetModHealthSummary(item.Model.Id).ConfigureAwait(true);
             var accountStatus = account is null
                 ? _localizer.Get("instances.healthAccountMissing")
                 : _localizer.Get("instances.healthAccountReady", account.Name);
-            HealthReportText = $"{accountStatus}{Environment.NewLine}{modSummary}";
+            state.HealthReportText = $"{accountStatus}{Environment.NewLine}{modSummary}";
         }
         catch (Exception exception)
         {
-            HealthReportText = _localizer.Get("instances.healthFailed", exception.Message);
+            state.HealthReportText = _localizer.Get("instances.healthFailed", exception.Message);
         }
         finally
         {
@@ -1204,9 +1210,13 @@ public sealed partial class InstancesViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task InstallAsync()
+    private Task InstallAsync() => InstallForAsync(SelectedInstance, Operation);
+
+    /// <summary>对指定实例执行版本/加载器补全安装；进度写入调用方自己的状态。</summary>
+    internal async Task InstallForAsync(InstanceItemViewModel? item, InstanceOperationState state)
     {
-        if (SelectedInstance is null)
+        ArgumentNullException.ThrowIfNull(state);
+        if (item is null)
         {
             StatusMessage = _localizer.Get("instances.selectFirst");
             return;
@@ -1221,14 +1231,14 @@ public sealed partial class InstancesViewModel : ObservableObject
         IsInstalling = true;
         InstallIndeterminate = true;
         InstallProgressValue = 0;
-        InstallStatus = _localizer.Get("instances.installing");
+        state.InstallStatus = _localizer.Get("instances.installing");
         BeginDownloadUi();
 
         var progress = new Progress<InstallProgress>(update =>
         {
             InstallIndeterminate = update.IsIndeterminate;
             InstallProgressValue = update.Percent;
-            InstallStatus = update.TotalFiles > 0
+            state.InstallStatus = update.TotalFiles > 0
                 ? $"{update.Message} ({update.CompletedFiles}/{update.TotalFiles})"
                 : update.Message;
             if (update.BytesPerSecond > 0)
@@ -1240,25 +1250,25 @@ public sealed partial class InstancesViewModel : ObservableObject
         try
         {
             var result = await _installService
-                .InstallAsync(SelectedInstance.Model.Id, progress)
+                .InstallAsync(item.Model.Id, progress)
                 .ConfigureAwait(true);
 
             if (!result.IsSuccess)
             {
-                InstallStatus = result.Error?.Message ?? _localizer.Get("instances.installFailed");
-                StatusMessage = InstallStatus;
+                state.InstallStatus = result.Error?.Message ?? _localizer.Get("instances.installFailed");
+                StatusMessage = state.InstallStatus;
                 return;
             }
 
             InstallIndeterminate = false;
             InstallProgressValue = 100;
-            InstallStatus = _localizer.Get("instances.installSucceeded");
-            StatusMessage = InstallStatus;
+            state.InstallStatus = _localizer.Get("instances.installSucceeded");
+            StatusMessage = state.InstallStatus;
             await UpdateJavaStatusAsync().ConfigureAwait(true);
         }
         catch (Exception exception)
         {
-            InstallStatus = _localizer.Get("instances.installFailed");
+            state.InstallStatus = _localizer.Get("instances.installFailed");
             StatusMessage = _localizer.Get("install.failed", exception.Message);
         }
         finally
@@ -1512,53 +1522,93 @@ public sealed partial class InstancesViewModel : ObservableObject
     private void BackToInstances() => NavigateBackFromDetails?.Invoke();
 
     [RelayCommand]
-    private void OpenInstanceFolder() => OpenSelectedDirectory(
-        SelectedInstance is null ? null : _paths.GetInstanceDirectory(SelectedInstance.Model.Id));
+    private void OpenInstanceFolder() => OpenInstanceFolderFor(SelectedInstance);
 
     [RelayCommand]
-    private void OpenModsFolder() => OpenSelectedDirectory(
-        SelectedInstance is null ? null : Path.Combine(InstancePaths.GetGameDirectory(_paths, SelectedInstance.Model), "mods"));
+    private void OpenModsFolder() => OpenModsFolderFor(SelectedInstance);
 
     [RelayCommand]
     private void ExportLatestLog()
     {
-        if (SelectedInstance is null)
+        var message = ExportLatestLogFor(SelectedInstance);
+        if (message.Length > 0)
         {
-            return;
+            StatusMessage = message;
+        }
+    }
+
+    /// <summary>打开指定实例的数据目录（实例工作区使用显式实例）。</summary>
+    internal void OpenInstanceFolderFor(InstanceItemViewModel? item) =>
+        OpenSelectedDirectory(item is null ? null : _paths.GetInstanceDirectory(item.Model.Id));
+
+    /// <summary>打开指定实例的模组目录。</summary>
+    internal void OpenModsFolderFor(InstanceItemViewModel? item) =>
+        OpenSelectedDirectory(item is null ? null : Path.Combine(InstancePaths.GetGameDirectory(_paths, item.Model), "mods"));
+
+    /// <summary>
+    /// 导出指定实例的 latest.log，返回给调用方显示的结果文案（空字符串表示用户取消或无操作）。
+    /// </summary>
+    internal string ExportLatestLogFor(InstanceItemViewModel? item)
+    {
+        if (item is null)
+        {
+            return string.Empty;
         }
 
-        var source = Path.Combine(InstancePaths.GetGameDirectory(_paths, SelectedInstance.Model), "logs", "latest.log");
+        var source = Path.Combine(InstancePaths.GetGameDirectory(_paths, item.Model), "logs", "latest.log");
         if (!File.Exists(source))
         {
-            StatusMessage = "该实例尚无 latest.log；请先运行一次游戏。";
-            return;
+            return "该实例尚无 latest.log；请先运行一次游戏。";
         }
 
         if (!_dialogs.Confirm(
                 "导出运行日志",
                 "latest.log 可能包含服务器地址、玩家名称或其他运行环境信息。请确认目标文件仅分享给可信任的人。"))
         {
-            return;
+            return string.Empty;
         }
 
         var destination = _dialogs.PickSaveFile(
             "导出最近一次运行日志",
             "日志文件 (*.log)|*.log|所有文件 (*.*)|*.*",
-            $"{SelectedInstance.Name}-latest.log");
+            $"{item.Name}-latest.log");
         if (destination is null)
         {
-            return;
+            return string.Empty;
         }
 
         try
         {
             File.Copy(source, destination, overwrite: true);
-            StatusMessage = $"日志已导出：{destination}";
+            return $"日志已导出：{destination}";
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            StatusMessage = $"导出日志失败：{exception.Message}";
+            return $"导出日志失败：{exception.Message}";
         }
+    }
+
+    /// <summary>打开"世界与服务器"工作台（列表页与主页共用的全局选中实例入口）。</summary>
+    [RelayCommand]
+    private void OpenWorldWorkbench() => OpenWorldWorkbenchFor(SelectedInstance);
+
+    /// <summary>打开指定实例的“世界与服务器”工作台（显式实例，不读全局选中状态）。</summary>
+    internal void OpenWorldWorkbenchFor(InstanceItemViewModel? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        var window = new WorldWorkbenchWindow(
+            _worldWorkbench,
+            _dialogs,
+            item.Model.Id,
+            item.Name)
+        {
+            Owner = Application.Current.MainWindow,
+        };
+        window.ShowDialog();
     }
 
     private void OpenSelectedDirectory(string? path)
@@ -1589,10 +1639,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedInstanceCreated));
         OnPropertyChanged(nameof(SelectedInstanceComponents));
 
-        LaunchSteps.Clear();
-        LaunchStatus = string.Empty;
-        LaunchCommandPreview = string.Empty;
-        InstallStatus = string.Empty;
+        Operation.ResetLaunchReport();
         InstallProgressValue = 0;
         InstallIndeterminate = false;
 
@@ -1641,14 +1688,9 @@ public sealed partial class InstancesViewModel : ObservableObject
         return true;
     }
 
-    private async Task<bool> ConfirmJavaBeforeLaunchAsync()
+    private async Task<bool> ConfirmJavaBeforeLaunchAsync(GameInstance instance)
     {
-        if (SelectedInstance is null)
-        {
-            return false;
-        }
-
-        var instance = SelectedInstance.Model;
+        ArgumentNullException.ThrowIfNull(instance);
         var versionResult = await _versionResolver.ResolveAsync(instance.VersionId).ConfigureAwait(true);
         if (!versionResult.IsSuccess)
         {
@@ -1683,7 +1725,7 @@ public sealed partial class InstancesViewModel : ObservableObject
 
             if (shouldDownload)
             {
-                await DownloadJavaForLaunchAsync().ConfigureAwait(true);
+                await DownloadJavaForLaunchAsync(instance).ConfigureAwait(true);
             }
 
             return false;
@@ -1728,9 +1770,10 @@ public sealed partial class InstancesViewModel : ObservableObject
     /// 启动前的 Java 补装：把当前实例需要的运行时安装到本机并写回该实例的覆盖路径。
     /// 页面上的“下载 Java”按钮属于实例工作区自有的运行设置（B2 步骤 1c），这里只服务启动流程。
     /// </summary>
-    private async Task DownloadJavaForLaunchAsync()
+    private async Task DownloadJavaForLaunchAsync(GameInstance instance)
     {
-        if (SelectedInstance is null || IsBusy)
+        ArgumentNullException.ThrowIfNull(instance);
+        if (IsBusy)
         {
             return;
         }
@@ -1747,7 +1790,7 @@ public sealed partial class InstancesViewModel : ObservableObject
                     DownloadSpeedText = FormatSpeed(update.BytesPerSecond);
                 }
             });
-            StatusMessage = await ProvisionJavaAsync(SelectedInstance.Model, progress).ConfigureAwait(true);
+            StatusMessage = await ProvisionJavaAsync(instance, progress).ConfigureAwait(true);
             await UpdateJavaStatusAsync().ConfigureAwait(true);
         }
         catch (Exception exception)
@@ -1861,9 +1904,14 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
     }
 
-    private async Task RunLaunchAsync(bool dryRun)
+    /// <summary>
+    /// 启动指定实例（dryRun 只生成命令预览并校验），进度与结果写入调用方自己的状态。
+    /// 实例工作区传入自己的实例与状态，因此两个工作区同时启动时结果不会互相覆盖。
+    /// </summary>
+    internal async Task LaunchForAsync(InstanceItemViewModel? item, InstanceOperationState state, bool dryRun)
     {
-        if (SelectedInstance is null)
+        ArgumentNullException.ThrowIfNull(state);
+        if (item is null)
         {
             StatusMessage = _localizer.Get("instances.selectFirst");
             return;
@@ -1879,32 +1927,32 @@ public sealed partial class InstancesViewModel : ObservableObject
             return;
         }
 
-        if (!dryRun && !await ConfirmJavaBeforeLaunchAsync().ConfigureAwait(true))
+        if (!dryRun && !await ConfirmJavaBeforeLaunchAsync(item.Model).ConfigureAwait(true))
         {
             return;
         }
 
         IsBusy = true;
-        LaunchSteps.Clear();
-        LaunchCommandPreview = string.Empty;
-        LaunchStatus = _localizer.Get("instances.launching");
+        state.LaunchSteps.Clear();
+        state.LaunchCommandPreview = string.Empty;
+        state.LaunchStatus = _localizer.Get("instances.launching");
 
         try
         {
-            var report = await _launchService.LaunchAsync(SelectedInstance.Model.Id, dryRun).ConfigureAwait(true);
+            var report = await _launchService.LaunchAsync(item.Model.Id, dryRun).ConfigureAwait(true);
             foreach (var step in report.Steps)
             {
-                LaunchSteps.Add(new LaunchStepItemViewModel(step, _localizer));
+                state.LaunchSteps.Add(new LaunchStepItemViewModel(step, _localizer));
             }
 
-            LaunchCommandPreview = SecretRedaction.CommandLine(report.CommandLine ?? string.Empty);
-            LaunchStatus = report.Success
+            state.LaunchCommandPreview = SecretRedaction.CommandLine(report.CommandLine ?? string.Empty);
+            state.LaunchStatus = report.Success
                 ? _localizer.Get(dryRun ? "instances.dryRunSucceeded" : "instances.launchSucceeded")
                 : _localizer.Get("instances.launchFailed");
         }
         catch (Exception exception)
         {
-            LaunchStatus = _localizer.Get("instances.launchException", exception.Message);
+            state.LaunchStatus = _localizer.Get("instances.launchException", exception.Message);
         }
         finally
         {

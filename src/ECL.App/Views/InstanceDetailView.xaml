@@ -25,10 +25,10 @@
                         <TextBlock Text="{Binding InstancePath}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding InstancePath}" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <Button Content="{loc:Loc Key=instance.detail.launch}" Command="{Binding Instances.LaunchCommand}" Style="{StaticResource PrimaryButton}" MinWidth="132" Height="42" IsEnabled="{Binding Instances.HasSelection}" />
-                        <Button Content="世界与服务器" Command="{Binding Instances.OpenWorldWorkbenchCommand}" Style="{StaticResource GhostButton}" Margin="0,8,0,0" IsEnabled="{Binding Instances.HasSelection}" />
-                        <Button Content="{loc:Loc Key=instances.healthCheck}" Command="{Binding Instances.CheckHealthCommand}" Style="{StaticResource GhostButton}" Margin="0,8,0,0" IsEnabled="{Binding Instances.HasSelection}" />
-                        <Button Content="{loc:Loc Key=instances.repairFiles}" Command="{Binding Instances.RepairFilesCommand}" Style="{StaticResource GhostButton}" Margin="0,8,0,0" IsEnabled="{Binding Instances.HasSelection}" />
+                        <Button Content="{loc:Loc Key=instance.detail.launch}" Command="{Binding Operations.LaunchCommand}" Style="{StaticResource PrimaryButton}" MinWidth="132" Height="42" IsEnabled="{Binding Operations.CanOperate}" />
+                        <Button Content="世界与服务器" Command="{Binding Operations.OpenWorldWorkbenchCommand}" Style="{StaticResource GhostButton}" Margin="0,8,0,0" IsEnabled="{Binding Operations.CanOperate}" />
+                        <Button Content="{loc:Loc Key=instances.healthCheck}" Command="{Binding Operations.CheckHealthCommand}" Style="{StaticResource GhostButton}" Margin="0,8,0,0" IsEnabled="{Binding Operations.CanOperate}" />
+                        <Button Content="{loc:Loc Key=instances.repairFiles}" Command="{Binding Operations.RepairFilesCommand}" Style="{StaticResource GhostButton}" Margin="0,8,0,0" IsEnabled="{Binding Operations.CanOperate}" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -93,7 +93,7 @@
                             <TextBlock Grid.Row="3" Text="{loc:Loc Key=instance.detail.lastPlayed}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,8,0,0" />
                             <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding InstanceLastPlayed}" FontSize="11" Margin="0,8,0,0" />
                         </Grid>
-                        <Button Content="{loc:Loc Key=instance.detail.delete}" Command="{Binding Instances.DeleteInstanceCommand}" Style="{StaticResource DangerButton}" HorizontalAlignment="Left" Margin="0,16,0,0" />
+                        <Button Content="{loc:Loc Key=instance.detail.delete}" Command="{Binding Operations.DeleteCommand}" Style="{StaticResource DangerButton}" HorizontalAlignment="Left" Margin="0,16,0,0" />
                     </StackPanel>
                 </Border>
 
@@ -148,7 +148,7 @@
                     <TextBox Text="{Binding Runtime.JvmArguments, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MonoTextBox}" MinHeight="76" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                         <Button Content="{loc:Loc Key=instance.detail.save}" Command="{Binding Runtime.SaveCommand}" Style="{StaticResource PrimaryButton}" />
-                        <TextBlock Text="{Binding Instances.StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Runtime.StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -300,8 +300,8 @@
                     <StackPanel>
                         <TextBlock Text="{loc:Loc Key=instance.detail.files}" Style="{StaticResource SectionText}" />
                         <WrapPanel Margin="0,12,0,0">
-                            <Button Content="{loc:Loc Key=instance.detail.openFolder}" Command="{Binding Instances.OpenInstanceFolderCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
-                            <Button Content="{loc:Loc Key=instance.detail.openMods}" Command="{Binding Instances.OpenModsFolderCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                            <Button Content="{loc:Loc Key=instance.detail.openFolder}" Command="{Binding Operations.OpenInstanceFolderCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                            <Button Content="{loc:Loc Key=instance.detail.openMods}" Command="{Binding Operations.OpenModsFolderCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
                         </WrapPanel>
                     </StackPanel>
                 </Border>
@@ -309,12 +309,13 @@
                     <StackPanel>
                         <TextBlock Text="{loc:Loc Key=instance.detail.logs}" Style="{StaticResource SectionText}" />
                         <WrapPanel Margin="0,12,0,0">
-                            <Button Content="{loc:Loc Key=instance.detail.exportLog}" Command="{Binding Instances.ExportLatestLogCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
-                            <Button Content="{loc:Loc Key=instance.detail.analyzeCrash}" Command="{Binding Instances.AnalyzeCrashCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
-                            <Button Content="{loc:Loc Key=instance.detail.exportDiagnostics}" Command="{Binding Instances.ExportDiagnosticsCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                            <Button Content="{loc:Loc Key=instance.detail.exportLog}" Command="{Binding Operations.ExportLatestLogCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                            <Button Content="{loc:Loc Key=instance.detail.analyzeCrash}" Command="{Binding Operations.AnalyzeCrashCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
+                            <Button Content="{loc:Loc Key=instance.detail.exportDiagnostics}" Command="{Binding Operations.ExportDiagnosticsCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
                         </WrapPanel>
-                        <TextBlock Text="{Binding Instances.CrashAnalysisText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding Instances.DiagnosticStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Operations.Operation.CrashAnalysisText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Operations.Operation.DiagnosticStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Operations.StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -322,9 +323,9 @@
             <Border Style="{StaticResource Card}" Margin="0,0,0,18">
                 <StackPanel>
                     <TextBlock Text="{loc:Loc Key=instance.detail.latestLaunch}" Style="{StaticResource SectionText}" />
-                    <TextBlock Text="{Binding Instances.HealthReportText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
-                    <TextBlock Text="{Binding Instances.LaunchStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
-                    <ItemsControl ItemsSource="{Binding Instances.LaunchSteps}" Margin="0,8,0,0">
+                    <TextBlock Text="{Binding Operations.Operation.HealthReportText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding Operations.Operation.LaunchStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding Operations.Operation.LaunchSteps}" Margin="0,8,0,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Grid Margin="0,3">
@@ -340,8 +341,8 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <TextBlock Text="{loc:Loc Key=instance.detail.commandPreview}" Style="{StaticResource LabelText}" Margin="0,12,0,6" />
-                    <TextBox Style="{StaticResource MonoTextBox}" Text="{Binding Instances.LaunchCommandPreview, Mode=OneWay}" Height="72" />
-                    <TextBlock Text="{Binding Instances.InstallStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
+                    <TextBox Style="{StaticResource MonoTextBox}" Text="{Binding Operations.Operation.LaunchCommandPreview, Mode=OneWay}" Height="72" />
+                    <TextBlock Text="{Binding Operations.Operation.InstallStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
         </StackPanel>
