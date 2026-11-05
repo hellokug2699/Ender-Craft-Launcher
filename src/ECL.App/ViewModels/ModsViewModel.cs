@@ -10,7 +10,7 @@ using Ecl.Minecraft.Mods;
 namespace Ecl.App.ViewModels;
 
 /// <summary>
-/// 一个实例工作区自有的模组与资源包页面状态（B2 步骤 1c）。
+/// 一个实例工作区自有的模组与资源包页面状态（B2 步骤 1c、3b-3）。
 ///
 /// 本对象在创建时绑定唯一稳定 <see cref="InstanceId"/>，所有命令只作用于该实例，
 /// 不再依赖共享的“当前选中实例”：两个实例工作区同时打开时，各自的模组列表、
@@ -31,7 +31,9 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<ModItemViewModel> FilteredMods { get; } = [];
 
-    public ObservableCollection<ModFilterChoice> ModFilters { get; } = [];
+    public ObservableCollection<ModStatusFilterChoice> StatusFilters { get; } = [];
+
+    public ObservableCollection<ModSortChoice> SortOrders { get; } = [];
 
     public ObservableCollection<PackTypeChoice> PackTypes { get; } = [];
 
@@ -44,7 +46,16 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
     private string _modSearchText = string.Empty;
 
     [ObservableProperty]
-    private ModFilterChoice? _selectedModFilter;
+    private string _appliedSearchText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isSearchInvalid;
+
+    [ObservableProperty]
+    private ModStatusFilterChoice? _selectedStatusFilter;
+
+    [ObservableProperty]
+    private ModSortChoice? _selectedSortOrder;
 
     [ObservableProperty]
     private PackTypeChoice? _selectedPackType;
@@ -56,7 +67,22 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
     private string _statusMessage = string.Empty;
 
     [ObservableProperty]
-    private string _summary = string.Empty;
+    private string _resultSummary = string.Empty;
+
+    [ObservableProperty]
+    private string _emptyMessage = string.Empty;
+
+    [ObservableProperty]
+    private string _capabilityHint = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasResults;
+
+    [ObservableProperty]
+    private bool _hasSelection;
+
+    [ObservableProperty]
+    private bool _isFilterActive;
 
     [ObservableProperty]
     private string _packSummary = string.Empty;
@@ -90,15 +116,30 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         InstanceId = instanceId;
         InstanceName = instanceName;
 
-        ModFilters.Add(new ModFilterChoice("all", localizer.Get("mods.filter.all")));
-        ModFilters.Add(new ModFilterChoice("enabled", localizer.Get("mods.filter.enabled")));
-        ModFilters.Add(new ModFilterChoice("disabled", localizer.Get("mods.filter.disabled")));
-        ModFilters.Add(new ModFilterChoice("issues", localizer.Get("mods.filter.issues")));
-        _selectedModFilter = ModFilters[0];
+        SortOrders.Add(new ModSortChoice(ModSortOrder.NameAscending, localizer.Get("mods.sort.nameAsc")));
+        SortOrders.Add(new ModSortChoice(ModSortOrder.NameDescending, localizer.Get("mods.sort.nameDesc")));
+        SortOrders.Add(new ModSortChoice(ModSortOrder.TimeAscending, localizer.Get("mods.sort.timeAsc")));
+        SortOrders.Add(new ModSortChoice(ModSortOrder.TimeDescending, localizer.Get("mods.sort.timeDesc")));
+        _selectedSortOrder = SortOrders[0];
+
+        StatusFilters.Add(new ModStatusFilterChoice(ModStatusFilter.Available, localizer.Get("mods.filter.available")));
+        StatusFilters.Add(new ModStatusFilterChoice(ModStatusFilter.Disabled, localizer.Get("mods.filter.disabled")));
+        StatusFilters.Add(new ModStatusFilterChoice(
+            ModStatusFilter.Dangerous,
+            localizer.Get("mods.filter.danger"),
+            localizer.Get("mods.capability.dangerFilter")));
+        StatusFilters.Add(new ModStatusFilterChoice(ModStatusFilter.Abnormal, localizer.Get("mods.filter.abnormal")));
+        StatusFilters.Add(new ModStatusFilterChoice(
+            ModStatusFilter.Updatable,
+            localizer.Get("mods.filter.updatable"),
+            localizer.Get("mods.capability.updateFilter")));
 
         PackTypes.Add(new PackTypeChoice(ContentPackKind.ResourcePack, localizer.Get("mods.resourcePacks")));
         PackTypes.Add(new PackTypeChoice(ContentPackKind.ShaderPack, localizer.Get("mods.shaderPacks")));
         _selectedPackType = PackTypes[0];
+
+        EmptyMessage = localizer.Get("mods.empty.none");
+        ResultSummary = localizer.Get("mods.count.total", 0);
     }
 
     /// <summary>本页面绑定的稳定实例 ID；模组、资源包与整合包命令都只作用于它。</summary>
@@ -109,9 +150,11 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
 
     public bool IsDisposed { get; private set; }
 
+    public string UpdateUnavailableHint => _localizer.Get("mods.tool.updateUnavailable");
+
     public Task InitializeAsync() => ReloadAsync();
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task ReloadAsync()
     {
         if (IsDisposed)
@@ -123,7 +166,7 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         await RefreshPacksAsync().ConfigureAwait(true);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task RefreshAsync()
     {
         if (IsDisposed)
@@ -148,18 +191,22 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
             }
 
             var report = result.Value!;
+            var selectedFileName = SelectedMod?.FileName;
+            foreach (var mod in Mods)
+            {
+                mod.PropertyChanged -= OnModPropertyChanged;
+            }
+
             Mods.Clear();
             foreach (var mod in report.Mods)
             {
-                Mods.Add(new ModItemViewModel(mod, _localizer));
+                var item = new ModItemViewModel(mod, _localizer);
+                item.PropertyChanged += OnModPropertyChanged;
+                Mods.Add(item);
             }
 
+            SelectedMod = Mods.FirstOrDefault(mod => mod.FileName == selectedFileName);
             RefreshFilteredMods();
-            Summary = _localizer.Get(
-                "mods.summary",
-                report.EnabledCount,
-                report.DisabledCount,
-                report.IssueCount);
             StatusMessage = string.Empty;
         }
         catch (Exception exception)
@@ -172,7 +219,21 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
+    /// <summary>
+    /// 写操作后的重新扫描：扫描成功会清空上一条提示，因此保留命令刚写入的结果文案；
+    /// 扫描本身失败时以扫描错误为准，不覆盖为成功文案。
+    /// </summary>
+    private async Task RefreshAndKeepStatusAsync()
+    {
+        var message = StatusMessage;
+        await RefreshAsync().ConfigureAwait(true);
+        if (StatusMessage.Length == 0)
+        {
+            StatusMessage = message;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task RefreshPacksAsync()
     {
         if (IsDisposed || SelectedPackType is null)
@@ -262,7 +323,7 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         return entries.Count > limit ? $"{names} …" : names;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task TogglePackAsync()
     {
         if (IsDisposed || SelectedPackType is null || SelectedPack is null)
@@ -283,40 +344,205 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         await RefreshPacksAsync().ConfigureAwait(true);
     }
 
-    [RelayCommand]
-    private async Task ToggleSelectedAsync()
+    /// <summary>行内切换单个模组的启用状态（mods.md §5.5「禁用」与启用复选框共用）。</summary>
+    [RelayCommand(CanExecute = nameof(CanActOnMod))]
+    private async Task ToggleModAsync(ModItemViewModel? mod)
     {
-        if (IsDisposed || SelectedMod is null)
+        if (IsDisposed || mod is null)
         {
-            StatusMessage = _localizer.Get("mods.selectMod");
             return;
         }
 
-        var result = await _mods
-            .SetEnabledAsync(InstanceId, SelectedMod.FileName, !SelectedMod.Enabled)
-            .ConfigureAwait(true);
-
-        if (!result.IsSuccess)
+        IsBusy = true;
+        try
         {
-            StatusMessage = result.Error?.ToString() ?? _localizer.Get("mods.updateFailed");
-            return;
-        }
+            var result = await _mods
+                .SetEnabledAsync(InstanceId, mod.FileName, !mod.Enabled)
+                .ConfigureAwait(true);
 
-        StatusMessage = _localizer.Get(
-            SelectedMod.Enabled ? "mods.disabled" : "mods.enabled",
-            SelectedMod.FileName);
-        await RefreshAsync().ConfigureAwait(true);
+            if (!result.IsSuccess)
+            {
+                mod.NotifyEnabledChanged();
+                StatusMessage = result.Error?.ToString() ?? _localizer.Get("mods.updateFailed");
+                return;
+            }
+
+            StatusMessage = _localizer.Get(
+                mod.Enabled ? "mods.disabled" : "mods.enabled",
+                mod.FileName);
+            await RefreshAndKeepStatusAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
-    [RelayCommand]
-    private async Task DownloadMissingDependenciesAsync()
+    /// <summary>行内删除：逐项确认后走领域服务，成功后重新扫描。</summary>
+    [RelayCommand(CanExecute = nameof(CanActOnMod))]
+    private async Task DeleteModAsync(ModItemViewModel? mod)
+    {
+        if (IsDisposed || mod is null)
+        {
+            return;
+        }
+
+        if (!_dialogs.Confirm(
+                _localizer.Get("mods.deleteTitle"),
+                _localizer.Get("mods.deleteConfirm", mod.FileName)))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var result = await _mods.DeleteAsync(InstanceId, mod.FileName).ConfigureAwait(true);
+            if (!result.IsSuccess)
+            {
+                StatusMessage = result.Error?.ToString() ?? _localizer.Get("mods.deleteFailed");
+                return;
+            }
+
+            StatusMessage = _localizer.Get("mods.deleted", mod.FileName);
+            await RefreshAndKeepStatusAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// 逐模组更新：领域没有“检查更新/下载新版本”的 API（HANDOFF §5.2），
+    /// 命令保持不可用，不得用空实现伪装成功。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(NeverAvailable))]
+    private void UpdateMod(ModItemViewModel? mod) => StatusMessage = UpdateUnavailableHint;
+
+    [RelayCommand(CanExecute = nameof(NeverAvailable))]
+    private void UpdateSelected() => StatusMessage = UpdateUnavailableHint;
+
+    /// <summary>全选/反选：当前筛选结果全部选中时清空，否则全选当前结果。</summary>
+    [RelayCommand(CanExecute = nameof(CanSelectAllOrInvert))]
+    private void SelectAllOrInvert()
+    {
+        var visible = FilteredMods.ToArray();
+        var allSelected = visible.Length > 0 && visible.All(mod => mod.IsSelected);
+        foreach (var mod in visible)
+        {
+            mod.IsSelected = !allSelected;
+        }
+
+        UpdateSelectionState();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanActOnSelection))]
+    private Task EnableSelectedAsync() => SetSelectedEnabledAsync(true);
+
+    [RelayCommand(CanExecute = nameof(CanActOnSelection))]
+    private Task DisableSelectedAsync() => SetSelectedEnabledAsync(false);
+
+    /// <summary>旧版“全部启用/全部禁用”入口；B2 步骤 3b-3b 由“全选 + 启用/禁用所选”取代。</summary>
+    [RelayCommand(CanExecute = nameof(CanRefresh))]
+    private async Task EnableAllAsync()
     {
         if (IsDisposed)
         {
             return;
         }
 
-        if (IsBusy)
+        IsBusy = true;
+        try
+        {
+            var result = await _mods.SetAllEnabledAsync(InstanceId, true).ConfigureAwait(true);
+            StatusMessage = result.IsSuccess
+                ? _localizer.Get("mods.batchDone", result.Value!.Succeeded)
+                : result.Error?.ToString() ?? _localizer.Get("mods.updateFailed");
+            await RefreshAndKeepStatusAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRefresh))]
+    private async Task DisableAllAsync()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var result = await _mods.SetAllEnabledAsync(InstanceId, false).ConfigureAwait(true);
+            StatusMessage = result.IsSuccess
+                ? _localizer.Get("mods.batchDone", result.Value!.Succeeded)
+                : result.Error?.ToString() ?? _localizer.Get("mods.updateFailed");
+            await RefreshAndKeepStatusAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanClearStatusFilter))]
+    private void ClearStatusFilter() => SelectedStatusFilter = null;
+
+    private bool CanClearStatusFilter() => !IsBusy && SelectedStatusFilter is not null;
+
+    private async Task SetSelectedEnabledAsync(bool enabled)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        var targets = Mods.Where(mod => mod.IsSelected && mod.Enabled != enabled).ToArray();
+        if (targets.Length == 0)
+        {
+            StatusMessage = _localizer.Get("mods.selectionNothingToDo");
+            return;
+        }
+
+        IsBusy = true;
+        var succeeded = 0;
+        var failed = 0;
+        try
+        {
+            foreach (var mod in targets)
+            {
+                var result = await _mods.SetEnabledAsync(InstanceId, mod.FileName, enabled).ConfigureAwait(true);
+                if (result.IsSuccess)
+                {
+                    succeeded++;
+                }
+                else
+                {
+                    failed++;
+                }
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+
+        StatusMessage = _localizer.Get(
+            enabled ? "mods.bulkEnabled" : "mods.bulkDisabled",
+            succeeded,
+            failed);
+        await RefreshAndKeepStatusAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRefresh))]
+    private async Task DownloadMissingDependenciesAsync()
+    {
+        if (IsDisposed)
         {
             return;
         }
@@ -340,7 +566,7 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
                 report.Installed.Count,
                 report.Unresolved.Count,
                 report.Failed.Count);
-            await RefreshAsync().ConfigureAwait(true);
+            await RefreshAndKeepStatusAsync().ConfigureAwait(true);
         }
         finally
         {
@@ -348,7 +574,7 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanUseSelectedMod))]
     private async Task EnableSelectedDependenciesAsync()
     {
         if (IsDisposed || SelectedMod is null)
@@ -400,10 +626,10 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         StatusMessage = errors.Count == 0
             ? _localizer.Get("mods.dependenciesEnabled", enabled)
             : _localizer.Get("mods.dependenciesEnabledWithErrors", enabled, string.Join("; ", errors));
-        await RefreshAsync().ConfigureAwait(true);
+        await RefreshAndKeepStatusAsync().ConfigureAwait(true);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanUseSelectedMod))]
     private void SearchSelectedDependency()
     {
         if (IsDisposed || SelectedMod is null)
@@ -425,64 +651,7 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         SearchDependency?.Invoke(dependencyId, InstanceId);
     }
 
-    [RelayCommand]
-    private async Task DeleteSelectedAsync()
-    {
-        if (IsDisposed || SelectedMod is null)
-        {
-            StatusMessage = _localizer.Get("mods.selectMod");
-            return;
-        }
-
-        if (!_dialogs.Confirm(
-                _localizer.Get("mods.deleteTitle"),
-                _localizer.Get("mods.deleteConfirm", SelectedMod.FileName)))
-        {
-            return;
-        }
-
-        var result = await _mods.DeleteAsync(InstanceId, SelectedMod.FileName).ConfigureAwait(true);
-        if (!result.IsSuccess)
-        {
-            StatusMessage = result.Error?.ToString() ?? _localizer.Get("mods.deleteFailed");
-            return;
-        }
-
-        StatusMessage = _localizer.Get("mods.deleted", SelectedMod.FileName);
-        await RefreshAsync().ConfigureAwait(true);
-    }
-
-    [RelayCommand]
-    private async Task EnableAllAsync()
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        var result = await _mods.SetAllEnabledAsync(InstanceId, true).ConfigureAwait(true);
-        StatusMessage = result.IsSuccess
-            ? _localizer.Get("mods.batchDone", result.Value!.Succeeded)
-            : result.Error?.ToString() ?? _localizer.Get("mods.updateFailed");
-        await RefreshAsync().ConfigureAwait(true);
-    }
-
-    [RelayCommand]
-    private async Task DisableAllAsync()
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        var result = await _mods.SetAllEnabledAsync(InstanceId, false).ConfigureAwait(true);
-        StatusMessage = result.IsSuccess
-            ? _localizer.Get("mods.batchDone", result.Value!.Succeeded)
-            : result.Error?.ToString() ?? _localizer.Get("mods.updateFailed");
-        await RefreshAsync().ConfigureAwait(true);
-    }
-
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task ImportModsAsync()
     {
         if (IsDisposed)
@@ -498,14 +667,30 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var result = await _mods.ImportAsync(InstanceId, files).ConfigureAwait(true);
-        StatusMessage = result.IsSuccess
-            ? _localizer.Get("mods.importDone", result.Value!.Succeeded)
-            : result.Error?.ToString() ?? _localizer.Get("mods.importFailed");
-        await RefreshAsync().ConfigureAwait(true);
+        IsBusy = true;
+        try
+        {
+            var result = await _mods.ImportAsync(InstanceId, files).ConfigureAwait(true);
+            StatusMessage = result.IsSuccess
+                ? DescribeImport(result.Value!)
+                : result.Error?.ToString() ?? _localizer.Get("mods.importFailed");
+            await RefreshAndKeepStatusAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
-    [RelayCommand]
+    private string DescribeImport(ModBatchResult result)
+    {
+        var message = _localizer.Get("mods.importDone", result.Succeeded);
+        return result.Errors.Count == 0
+            ? message
+            : $"{message} {string.Join(" ", result.Errors)}";
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task ImportPackAsync()
     {
         if (IsDisposed || SelectedPackType is null)
@@ -530,7 +715,7 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         await RefreshPacksAsync().ConfigureAwait(true);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task DeletePackAsync()
     {
         if (IsDisposed || SelectedPackType is null || SelectedPack is null)
@@ -555,7 +740,7 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         await RefreshPacksAsync().ConfigureAwait(true);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task ImportModpackAsync()
     {
         if (IsDisposed)
@@ -588,7 +773,7 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
                 "mods.modpackDone",
                 result.Value!.DownloadedFiles,
                 result.Value.OverrideFiles);
-            await RefreshAsync().ConfigureAwait(true);
+            await RefreshAndKeepStatusAsync().ConfigureAwait(true);
             await RefreshPacksAsync().ConfigureAwait(true);
         }
         finally
@@ -597,7 +782,7 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task ExportModpackAsync()
     {
         if (IsDisposed)
@@ -620,31 +805,128 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
             : result.Error?.ToString() ?? _localizer.Get("mods.exportFailed");
     }
 
-    partial void OnModSearchTextChanged(string value) => RefreshFilteredMods();
+    /// <summary>搜索提交：只接受英文，空条件表示不按搜索词过滤（mods.md §4）。</summary>
+    [RelayCommand]
+    private void Search()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
 
-    partial void OnSelectedModFilterChanged(ModFilterChoice? value) => RefreshFilteredMods();
+        var text = ModSearchText.Trim();
+        if (text.Any(character => character > 0x7F))
+        {
+            IsSearchInvalid = true;
+            StatusMessage = _localizer.Get("mods.search.invalidEnglish");
+            return;
+        }
+
+        IsSearchInvalid = false;
+        StatusMessage = string.Empty;
+        AppliedSearchText = text;
+        RefreshFilteredMods();
+    }
+
+    partial void OnModSearchTextChanged(string value)
+    {
+        if (value.All(character => character <= 0x7F))
+        {
+            IsSearchInvalid = false;
+        }
+    }
+
+    partial void OnSelectedStatusFilterChanged(ModStatusFilterChoice? value)
+    {
+        IsFilterActive = value is not null;
+        CapabilityHint = value?.CapabilityHint ?? string.Empty;
+        ClearStatusFilterCommand.NotifyCanExecuteChanged();
+        RefreshFilteredMods();
+    }
+
+    partial void OnSelectedModChanged(ModItemViewModel? value)
+    {
+        EnableSelectedDependenciesCommand.NotifyCanExecuteChanged();
+        SearchSelectedDependencyCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnSelectedSortOrderChanged(ModSortChoice? value) => RefreshFilteredMods();
+
+    partial void OnIsBusyChanged(bool value) => NotifyCommandStates();
+
+    private void NotifyCommandStates()
+    {
+        ReloadCommand.NotifyCanExecuteChanged();
+        RefreshCommand.NotifyCanExecuteChanged();
+        RefreshPacksCommand.NotifyCanExecuteChanged();
+        ToggleModCommand.NotifyCanExecuteChanged();
+        DeleteModCommand.NotifyCanExecuteChanged();
+        EnableSelectedCommand.NotifyCanExecuteChanged();
+        DisableSelectedCommand.NotifyCanExecuteChanged();
+        SelectAllOrInvertCommand.NotifyCanExecuteChanged();
+        ClearStatusFilterCommand.NotifyCanExecuteChanged();
+        EnableAllCommand.NotifyCanExecuteChanged();
+        DisableAllCommand.NotifyCanExecuteChanged();
+        ImportModsCommand.NotifyCanExecuteChanged();
+        ImportPackCommand.NotifyCanExecuteChanged();
+        DeletePackCommand.NotifyCanExecuteChanged();
+        ImportModpackCommand.NotifyCanExecuteChanged();
+        ExportModpackCommand.NotifyCanExecuteChanged();
+        DownloadMissingDependenciesCommand.NotifyCanExecuteChanged();
+        EnableSelectedDependenciesCommand.NotifyCanExecuteChanged();
+        SearchSelectedDependencyCommand.NotifyCanExecuteChanged();
+        ClearStatusFilterCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool CanRefresh() => !IsBusy;
+
+    private bool CanActOnMod(ModItemViewModel? mod) => !IsBusy && mod is not null;
+
+    private bool CanUseSelectedMod() => !IsBusy && SelectedMod is not null;
+
+    private bool CanActOnSelection() => !IsBusy && HasSelection;
+
+    private bool CanSelectAllOrInvert() => !IsBusy && FilteredMods.Count > 0;
+
+    private static bool NeverAvailable() => false;
+
+    private void OnModPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName == nameof(ModItemViewModel.IsSelected))
+        {
+            UpdateSelectionState();
+        }
+    }
+
+    private void UpdateSelectionState()
+    {
+        var hasSelection = Mods.Any(mod => mod.IsSelected);
+        if (hasSelection == HasSelection)
+        {
+            return;
+        }
+
+        HasSelection = hasSelection;
+        EnableSelectedCommand.NotifyCanExecuteChanged();
+        DisableSelectedCommand.NotifyCanExecuteChanged();
+    }
 
     private void RefreshFilteredMods()
     {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        var filter = SelectedStatusFilter?.Filter;
+        var search = AppliedSearchText;
         var selectedFileName = SelectedMod?.FileName;
-        var search = ModSearchText.Trim();
-        var filter = SelectedModFilter?.Key ?? "all";
 
         var matches = Mods.Where(mod =>
-        {
-            var matchesSearch = search.Length == 0
-                || mod.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
-                || mod.FileName.Contains(search, StringComparison.OrdinalIgnoreCase)
-                || mod.Meta.Contains(search, StringComparison.OrdinalIgnoreCase);
-            var matchesFilter = filter switch
-            {
-                "enabled" => mod.Enabled,
-                "disabled" => !mod.Enabled,
-                "issues" => mod.HasIssues,
-                _ => true,
-            };
-            return matchesSearch && matchesFilter;
-        }).ToArray();
+            (search.Length == 0 || mod.MatchesSearch(search))
+            && (filter is null || mod.MatchesFilter(filter.Value)));
+
+        matches = Sort(matches, SelectedSortOrder?.Order ?? ModSortOrder.NameAscending);
 
         FilteredMods.Clear();
         foreach (var mod in matches)
@@ -652,8 +934,35 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
             FilteredMods.Add(mod);
         }
 
+        HasResults = FilteredMods.Count > 0;
+        EmptyMessage = Mods.Count == 0
+            ? _localizer.Get("mods.empty.none")
+            : _localizer.Get("mods.empty.filtered");
+        ResultSummary = search.Length > 0 || filter is not null
+            ? _localizer.Get("mods.count.results", FilteredMods.Count)
+            : _localizer.Get("mods.count.total", FilteredMods.Count);
+
         SelectedMod = FilteredMods.FirstOrDefault(mod => mod.FileName == selectedFileName);
+        SelectAllOrInvertCommand.NotifyCanExecuteChanged();
     }
+
+    private static IEnumerable<ModItemViewModel> Sort(
+        IEnumerable<ModItemViewModel> source,
+        ModSortOrder order) => order switch
+        {
+            ModSortOrder.NameDescending => source
+                .OrderByDescending(mod => mod.FileName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(mod => mod.FileName, StringComparer.Ordinal),
+            ModSortOrder.TimeAscending => source
+                .OrderBy(mod => mod.LastWriteTimeUtc ?? DateTime.MinValue)
+                .ThenBy(mod => mod.FileName, StringComparer.OrdinalIgnoreCase),
+            ModSortOrder.TimeDescending => source
+                .OrderByDescending(mod => mod.LastWriteTimeUtc ?? DateTime.MinValue)
+                .ThenBy(mod => mod.FileName, StringComparer.OrdinalIgnoreCase),
+            _ => source
+                .OrderBy(mod => mod.FileName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(mod => mod.FileName, StringComparer.Ordinal),
+        };
 
     partial void OnSelectedPackTypeChanged(PackTypeChoice? value)
     {
@@ -672,6 +981,11 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         }
 
         IsDisposed = true;
+        foreach (var mod in Mods)
+        {
+            mod.PropertyChanged -= OnModPropertyChanged;
+        }
+
         Mods.Clear();
         FilteredMods.Clear();
         Packs.Clear();
@@ -682,106 +996,3 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
 
 public sealed record PackTypeChoice(ContentPackKind Kind, string Title);
 
-public sealed record ModFilterChoice(string Key, string Title);
-
-public sealed class ContentPackItemViewModel
-{
-    private readonly ContentPackEntry _entry;
-    private readonly ILocalizer _localizer;
-
-    public ContentPackItemViewModel(ContentPackEntry entry, ILocalizer localizer)
-    {
-        _entry = entry;
-        _localizer = localizer;
-    }
-
-    public string FileName => _entry.FileName;
-
-    public bool Enabled => _entry.Enabled;
-
-    public string Name => _entry.Name;
-
-    public string StatusText
-    {
-        get
-        {
-            var state = _localizer.Get(Enabled ? "mods.packEnabledLabel" : "mods.packDisabledLabel");
-            return _entry.Incompatible
-                ? $"{state} · {_localizer.Get("mods.packIncompatibleLabel")}"
-                : state;
-        }
-    }
-
-    public string Meta => _entry.PackFormat is null
-        ? _entry.FileName
-        : $"{_entry.FileName} · pack_format {_entry.PackFormat}";
-}
-
-public sealed class ModItemViewModel
-{
-    private readonly ModEntry _entry;
-    private readonly ILocalizer _localizer;
-
-    public ModItemViewModel(ModEntry entry, ILocalizer localizer)
-    {
-        _entry = entry;
-        _localizer = localizer;
-    }
-
-    public string FileName => _entry.FileName;
-
-    public string? ModId => _entry.Metadata?.ModId;
-
-    public string PlatformText => _entry.Metadata?.Platform switch
-    {
-        ModPlatform.Fabric => _localizer.Get("mods.platform.fabric"),
-        ModPlatform.Forge => _localizer.Get("mods.platform.forge"),
-        ModPlatform.NeoForge => _localizer.Get("mods.platform.neoforge"),
-        ModPlatform.LegacyForge => _localizer.Get("mods.platform.legacyForge"),
-        _ => _localizer.Get("mods.platform.unknown"),
-    };
-
-    public IReadOnlyList<ModIssue> Issues => _entry.Issues;
-
-    public bool Enabled => _entry.Enabled;
-
-    public string RecommendationText => string.Join(Environment.NewLine, _entry.Issues.Select(Recommend));
-
-    public string StatusText => Enabled
-        ? _localizer.Get("mods.enabledLabel")
-        : _localizer.Get("mods.disabledLabel");
-
-    public string Name => _entry.Metadata?.Name ?? _entry.FileName;
-
-    public string Meta => _entry.Metadata is null
-        ? $"{_entry.FileName} · {PlatformText}"
-        : $"{_entry.Metadata.ModId} · {_entry.Metadata.Version} · {PlatformText}";
-
-    public string IssuesText => string.Join(
-        Environment.NewLine,
-        _entry.Issues.Select(issue => Describe(issue)));
-
-    public bool HasIssues => _entry.Issues.Count > 0;
-
-    private string Recommend(ModIssue issue) => issue.Kind switch
-    {
-        ModIssueKind.DisabledDependency => _localizer.Get("mod.recommend.disabledDependency", issue.RelatedModId ?? "?"),
-        ModIssueKind.MissingDependency => _localizer.Get("mod.recommend.missingDependency", issue.RelatedModId ?? "?"),
-        ModIssueKind.Conflict => _localizer.Get("mod.recommend.conflict", issue.RelatedModId ?? "?"),
-        ModIssueKind.LoaderMismatch => _localizer.Get("mod.recommend.loaderMismatch", issue.Detail ?? "?"),
-        ModIssueKind.InvalidMetadata => _localizer.Get("mod.recommend.invalidMetadata"),
-        ModIssueKind.DuplicateModId => _localizer.Get("mod.recommend.duplicate"),
-        _ => string.Empty,
-    };
-
-    private string Describe(ModIssue issue) => issue.Kind switch
-    {
-        ModIssueKind.DuplicateModId => _localizer.Get("mod.issue.duplicate", issue.ModId ?? "?", issue.RelatedModId ?? "?"),
-        ModIssueKind.MissingDependency => _localizer.Get("mod.issue.missingDependency", issue.ModId ?? "?", issue.RelatedModId ?? "?"),
-        ModIssueKind.DisabledDependency => _localizer.Get("mod.issue.disabledDependency", issue.ModId ?? "?", issue.RelatedModId ?? "?"),
-        ModIssueKind.Conflict => _localizer.Get("mod.issue.conflict", issue.ModId ?? "?", issue.RelatedModId ?? "?"),
-        ModIssueKind.LoaderMismatch => _localizer.Get("mod.issue.loaderMismatch", issue.ModId ?? "?", issue.Detail ?? "?"),
-        ModIssueKind.InvalidMetadata => _localizer.Get("mod.issue.invalidMetadata", issue.FileName, issue.Detail ?? "?"),
-        _ => issue.Kind.ToString(),
-    };
-}

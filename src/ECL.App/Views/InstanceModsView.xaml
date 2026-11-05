@@ -2,54 +2,326 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:Ecl.App.Localization"
+             xmlns:controls="clr-namespace:Ecl.App.Controls"
              xmlns:behaviors="clr-namespace:Ecl.App.Behaviors">
     <!--
-        实例工作区「内容 · 模组」二级页（B2 步骤 2 搬迁现有能力；页面布局重写在 B2 步骤 3）。
-        本页只拥有自己的滚动容器，不重复工作区大标题。
+        实例工作区「内容 · 模组」二级页（B2 步骤 3b-3）。
+        布局按 `hints/ui/pages/mods.md`：顶部操作、排序/筛选、搜索与结果数量、固定列表格；
+        表格高度受限并只在内部滚动，页面不随模组数量增长。
     -->
+    <UserControl.Resources>
+        <!-- 行内工具：比工具条按钮更紧凑，但仍保留 28px 高度与禁用态。 -->
+        <Style x:Key="ModRowToolButton" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+
+        <!-- 状态筛选：沿用胶囊样式，在 UniformGrid 里固定为两行、三列。 -->
+        <Style x:Key="ModFilterItemStyle" TargetType="ListBoxItem" BasedOn="{StaticResource PillItemStyle}">
+            <Setter Property="Margin" Value="0,0,6,6" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding Title}" />
+        </Style>
+
+        <Style x:Key="ModRowItemStyle" TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding FileName}" />
+        </Style>
+
+        <Style x:Key="ModTableHeaderText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+            <Setter Property="FontFamily" Value="{StaticResource UiMediumFontFamily}" />
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
+
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                   behaviors:WheelScroll.IsEnabled="True">
         <StackPanel>
             <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                 <StackPanel>
+                    <!-- 旧版顶部入口：B2 步骤 3b-3b 会替换为规格要求的两行操作区。 -->
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="{loc:Loc Key=instance.detail.mods}" Style="{StaticResource SectionText}" />
-                            <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,4,0,0" />
-                        </StackPanel>
+                        <TextBlock Text="{loc:Loc Key=instance.detail.mods}" Style="{StaticResource SectionText}" VerticalAlignment="Center" />
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
                             <Button Content="{loc:Loc Key=instance.detail.importMods}" Command="{Binding ImportModsCommand}" Style="{StaticResource GhostButton}" />
                             <Button Content="{loc:Loc Key=instance.detail.refresh}" Command="{Binding RefreshCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
                         </StackPanel>
                     </Grid>
-                    <Grid Margin="0,10,0,0">
+
+                    <!-- 第三行（mods.md §3）：左侧排序约 1/2，右侧状态筛选约 1/2，筛选项两行。 -->
+                    <Grid Margin="0,14,0,0">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" /><ColumnDefinition Width="10" /><ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <TextBox Text="{Binding ModSearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="{loc:Loc Key=mods.searchPlaceholder}" />
-                        <ComboBox Grid.Column="2" ItemsSource="{Binding ModFilters}" SelectedItem="{Binding SelectedModFilter, Mode=TwoWay}" ItemTemplate="{StaticResource TitleItemTemplate}" />
+
+                        <StackPanel>
+                            <TextBlock Text="{loc:Loc Key=mods.sort.label}" Style="{StaticResource LabelText}" />
+                            <ComboBox ItemsSource="{Binding SortOrders}"
+                                      SelectedItem="{Binding SelectedSortOrder, Mode=TwoWay}"
+                                      ItemTemplate="{StaticResource TitleItemTemplate}"
+                                      AutomationProperties.Name="{loc:Loc Key=mods.sort.label}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="{loc:Loc Key=mods.filter.label}" Style="{StaticResource LabelText}" VerticalAlignment="Center" />
+                                <Button Grid.Column="1"
+                                        Content="{loc:Loc Key=mods.filter.clear}"
+                                        Command="{Binding ClearStatusFilterCommand}"
+                                        Style="{StaticResource ToolbarButton}"
+                                        Padding="8,3"
+                                        MinHeight="24"
+                                        FontSize="9"
+                                        Margin="0,0,0,6"
+                                        Visibility="{Binding IsFilterActive, Converter={StaticResource BoolToVisibility}}" />
+                            </Grid>
+                            <ListBox ItemsSource="{Binding StatusFilters}"
+                                     SelectedItem="{Binding SelectedStatusFilter, Mode=TwoWay}"
+                                     ItemContainerStyle="{StaticResource ModFilterItemStyle}"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     AutomationProperties.Name="{loc:Loc Key=mods.filter.label}">
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="3" />
+                                    </ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Title}"
+                                                   FontSize="9"
+                                                   HorizontalAlignment="Center"
+                                                   ToolTip="{Binding CapabilityHint}" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
                     </Grid>
-                    <ListBox ItemsSource="{Binding FilteredMods}" SelectedItem="{Binding SelectedMod, Mode=TwoWay}" Height="230" Margin="0,12,0,0" BorderBrush="{DynamicResource BorderSoftBrush}" Background="{DynamicResource SurfaceBrush}">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="5,4">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding Name}" FontSize="11" Style="{StaticResource EmphasisText}" />
-                                        <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="0,3,0,0" />
-                                        <TextBlock Text="{Binding RecommendationText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="9" TextWrapping="Wrap" Visibility="{Binding HasIssues, Converter={StaticResource BoolToVisibility}}" />
-                                        <TextBlock Text="{Binding IssuesText}" Foreground="{DynamicResource DangerBrush}" FontSize="9" TextWrapping="Wrap" Visibility="{Binding HasIssues, Converter={StaticResource BoolToVisibility}}" />
-                                    </StackPanel>
-                                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="9" VerticalAlignment="Center" Margin="10,0,0,0" />
+
+                    <TextBlock Text="{Binding CapabilityHint}"
+                               Foreground="{DynamicResource WarningBrush}"
+                               FontSize="9"
+                               Margin="0,2,0,0"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding CapabilityHint, Converter={StaticResource StringToVisibility}}" />
+
+                    <!-- 第四行（mods.md §4）：搜索（仅英文）+ 搜索按钮 + 结果数量。 -->
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="8" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Grid>
+                            <TextBox Text="{Binding ModSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="{loc:Loc Key=mods.search.label}"
+                                     ToolTip="{loc:Loc Key=mods.searchPlaceholder}">
+                                <TextBox.InputBindings>
+                                    <KeyBinding Key="Enter" Command="{Binding SearchCommand}" />
+                                </TextBox.InputBindings>
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSearchInvalid}" Value="True">
+                                                <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                            <TextBlock Text="{loc:Loc Key=mods.searchPlaceholder}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="11"
+                                       Margin="13,0,0,0"
+                                       VerticalAlignment="Center"
+                                       IsHitTestVisible="False">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ModSearchText}" Value="">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+
+                        <Button Grid.Column="2"
+                                Content="{loc:Loc Key=mods.search.button}"
+                                Command="{Binding SearchCommand}"
+                                Style="{StaticResource PrimaryButton}"
+                                MinWidth="80" />
+                        <TextBlock Grid.Column="4"
+                                   Text="{Binding ResultSummary}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   MinWidth="110"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBlock Text="{loc:Loc Key=mods.search.englishOnly}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="9"
+                               Margin="0,6,0,0" />
+
+                    <!-- 模组表格（mods.md §5/§7）：列序固定，高度受限，只在表格内部滚动。 -->
+                    <!-- 列宽固定；窄窗口下表格保持最小可读宽度并在表格内部横向滚动，不压缩列。 -->
+                    <ScrollViewer Margin="0,14,0,0"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled">
+                        <Grid MinWidth="480"
+                              Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{DynamicResource InputBrush}"
+                                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                                    BorderThickness="0,0,0,1"
+                                    CornerRadius="8,8,0,0"
+                                    Padding="10,7">
+                                <Grid Margin="0,0,9,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="44" />
+                                        <ColumnDefinition Width="46" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="128" />
+                                        <ColumnDefinition Width="132" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{loc:Loc Key=mods.column.enabled}" Style="{StaticResource ModTableHeaderText}" HorizontalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{loc:Loc Key=mods.column.status}" Style="{StaticResource ModTableHeaderText}" HorizontalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{loc:Loc Key=mods.column.file}" Style="{StaticResource ModTableHeaderText}" />
+                                    <TextBlock Grid.Column="3" Text="{loc:Loc Key=mods.column.version}" Style="{StaticResource ModTableHeaderText}" />
+                                    <TextBlock Grid.Column="4" Text="{loc:Loc Key=mods.column.tools}" Style="{StaticResource ModTableHeaderText}" />
                                 </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Content="{loc:Loc Key=instance.detail.toggleMod}" Command="{Binding ToggleSelectedCommand}" Style="{StaticResource PrimaryButton}" />
-                        <Button Content="{loc:Loc Key=instance.detail.deleteMod}" Command="{Binding DeleteSelectedCommand}" Style="{StaticResource DangerButton}" Margin="8,0,0,0" />
-                    </StackPanel>
+                            </Border>
+
+                            <Grid Grid.Row="1" Height="340">
+                        <ListBox ItemsSource="{Binding FilteredMods}"
+                                 SelectedItem="{Binding SelectedMod, Mode=TwoWay}"
+                                 ItemContainerStyle="{StaticResource ModRowItemStyle}"
+                                 Background="{DynamicResource SurfaceBrush}"
+                                 BorderThickness="0"
+                                 ScrollViewer.VerticalScrollBarVisibility="Visible"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 VirtualizingPanel.IsVirtualizing="True"
+                                 VirtualizingPanel.VirtualizationMode="Recycling">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid MinHeight="42" Margin="10,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="44" />
+                                            <ColumnDefinition Width="46" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="128" />
+                                            <ColumnDefinition Width="132" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- 启用：复选框直接反映真实启用状态；切换走领域服务。 -->
+                                        <CheckBox IsChecked="{Binding Enabled, Mode=OneWay}"
+                                                  Command="{Binding DataContext.ToggleModCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                  CommandParameter="{Binding}"
+                                                  ToolTip="{loc:Loc Key=mods.toggle}"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  AutomationProperties.Name="{Binding FileName}"
+                                                  AutomationProperties.HelpText="{loc:Loc Key=mods.toggle}" />
+
+                                        <!-- 状态：多状态全部展示，最多四个，按 1/2/3/4 排列。 -->
+                                        <ItemsControl Grid.Column="1"
+                                                      ItemsSource="{Binding StatusBadges}"
+                                                      HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"
+                                                      Width="30"
+                                                      Height="30">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <controls:ModStatusBadgePanel IconSize="14" Gap="2" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <controls:ModStatusGlyph Kind="{Binding Kind}"
+                                                                             AutomationProperties.Name="{Binding Description}"
+                                                                             ToolTip="{Binding Description}"
+                                                                             ToolTipService.ShowDuration="60000" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding FileName}"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding TooltipText}"
+                                                   ToolTipService.ShowDuration="60000"
+                                                   Margin="0,0,10,0" />
+
+                                        <TextBlock Grid.Column="3"
+                                                   Text="{Binding ApplicableVersionText}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   FontSize="10"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding ApplicableVersionText}"
+                                                   Margin="0,0,8,0" />
+
+                                        <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <!-- 更新：领域没有逐模组更新 API，命令保持不可用并在 Tooltip 说明。 -->
+                                            <Button Content="{loc:Loc Key=mods.row.update}"
+                                                    Command="{Binding DataContext.UpdateModCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource ModRowToolButton}"
+                                                    ToolTip="{Binding DataContext.UpdateUnavailableHint, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                    ToolTipService.ShowOnDisabled="True" />
+                                            <Button Content="{Binding ToggleLabel}"
+                                                    Command="{Binding DataContext.ToggleModCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource ModRowToolButton}" />
+                                            <Button Content="{loc:Loc Key=mods.row.delete}"
+                                                    Command="{Binding DataContext.DeleteModCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource ModRowToolButton}"
+                                                    Foreground="{DynamicResource DangerBrush}"
+                                                    Margin="0" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <!-- 空状态：未安装任何模组 / 没有匹配结果，保持表格空白区域。 -->
+                        <StackPanel HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    MaxWidth="420"
+                                    Visibility="{Binding HasResults, Converter={StaticResource InverseBoolToVisibility}}">
+                            <TextBlock Text="{Binding EmptyMessage}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="11"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </ScrollViewer>
+
+                    <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,10,0,0" TextWrapping="Wrap" />
 
                     <!-- 依赖处理：下载缺失依赖 / 启用已安装依赖 / 搜索依赖 / 批量启用禁用 -->
                     <Expander Style="{StaticResource SectionExpander}" IsExpanded="True">
@@ -148,10 +420,13 @@
                             </WrapPanel>
                         </StackPanel>
                     </Expander>
-
-                    <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>
+
+
+
+
+
