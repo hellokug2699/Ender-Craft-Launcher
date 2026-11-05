@@ -64,22 +64,112 @@ public sealed class VanillaInstallService : IVersionInstallService
         IProgress<InstallProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        var outcome = await RunInstallAsync(instanceId, progress, cancellationToken).ConfigureAwait(false);
+        if (outcome.IsSuccess)
+        {
+            return Result<InstallReport>.Ok(outcome.Report!);
+        }
+
+        // 取消沿用既有语义（Operation 已标记为取消，调用方按取消处理），其余失败返回错误。
+        if (string.Equals(outcome.Error!.Code, "install.cancelled", StringComparison.Ordinal))
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
+
+        return Result<InstallReport>.Fail(outcome.Error!);
+    }
+
+    public async Task<InstallOutcome> ReconfigureAsync(
+        string instanceId,
+        string gameVersion,
+        string loader,
+        string? loaderVersion = null,
+        string? fabricApiVersion = null,
+        string? optiFineVersion = null,
+        IProgress<InstallProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var original = await _instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        if (original is null)
+        {
+            return Failed("install.instance_missing", _localizer.Get("install.error.instanceMissing", instanceId));
+        }
+
+        var update = await _instances.UpdateConfigurationAsync(
+            instanceId, gameVersion, loader, loaderVersion, fabricApiVersion, optiFineVersion, cancellationToken)
+            .ConfigureAwait(false);
+        if (!update.IsSuccess)
+        {
+            // 配置没有写成，本次变更还没有开始写入任何文件。
+            return Failed(update.Error!);
+        }
+
+        InstallOutcome outcome;
+        try
+        {
+            outcome = await RunInstallAsync(instanceId, progress, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            // 未被安装事务捕获的异常无法证明文件级回滚是否发生；只恢复已知的元数据，
+            // 并如实报告“回滚状态未知”，由调用方按需要恢复处理。
+            var restored = await RestoreConfigurationAsync(original).ConfigureAwait(false);
+            var error = new EclError("install.failed", _localizer.Get("install.failed", exception.Message));
+            var rollback = new InstallRollbackResult(
+                [],
+                [$"rollback state unknown: {exception.Message}"]);
+            return InstallOutcome.Fail(new InstallFailure(
+                error,
+                restored ? rollback : WithMetadataFailure(rollback, "failed to restore instance configuration"),
+                MetadataRestored: restored,
+                DiagnosticPath: null));
+        }
+
+        if (outcome.IsSuccess)
+        {
+            _logger.LogInformation(
+                "实例 {InstanceId} 已完成原地配置变更；旧版本文件保留以便安全回退。",
+                instanceId);
+            return outcome;
+        }
+
+        var metadataRestored = await RestoreConfigurationAsync(original).ConfigureAwait(false);
+        var failure = outcome.Failure!;
+        var rollbackResult = metadataRestored
+            ? failure.Rollback
+            : WithMetadataFailure(failure.Rollback, "failed to restore instance configuration");
+        return InstallOutcome.Fail(failure with
+        {
+            Rollback = rollbackResult,
+            MetadataRestored = metadataRestored,
+        });
+    }
+
+    /// <summary>
+    /// 实际安装流程：所有失败分支都只返回事务的真实结果（回滚是否完整、诊断文件位置），
+    /// 不在这里猜测实例是否已回到原状态。
+    /// </summary>
+    private async Task<InstallOutcome> RunInstallAsync(
+        string instanceId,
+        IProgress<InstallProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         var instance = await _instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
         if (instance is null)
         {
-            return Result<InstallReport>.Fail("install.instance_missing", _localizer.Get("install.error.instanceMissing", instanceId));
+            return Failed("install.instance_missing", _localizer.Get("install.error.instanceMissing", instanceId));
         }
 
         if (!LoaderKinds.TryParse(instance.Loader, out var loaderKind))
         {
-            return Result<InstallReport>.Fail(
+            return Failed(
                 "install.unsupported_loader",
                 _localizer.Get("install.error.unsupportedLoader"));
         }
 
         if (loaderKind != LoaderKind.Vanilla && string.IsNullOrWhiteSpace(instance.LoaderVersion))
         {
-            return Result<InstallReport>.Fail(
+            return Failed(
                 "install.loader_version_missing",
                 _localizer.Get("install.error.loaderVersionMissing"));
         }
@@ -114,23 +204,16 @@ public sealed class VanillaInstallService : IVersionInstallService
             {
                 transaction.Commit();
                 operation.Complete();
-            }
-            else
-            {
-                var actions = transaction.Rollback();
-                WriteDiagnostics(instance, result.Error!, actions);
-                operation.Fail(ToOperationError(result.Error!));
+                return InstallOutcome.Ok(result.Value!);
             }
 
-            return result;
+            return FailedWithRollback(instance, transaction, operation, result.Error!);
         }
         catch (OperationCanceledException)
         {
             operation.Cancel();
             var error = new EclError("install.cancelled", _localizer.Get("install.cancelled"));
-            var actions = transaction.Rollback();
-            WriteDiagnostics(instance, error, actions);
-            throw;
+            return FailedWithRollback(instance, transaction, operation, error, failOperation: false);
         }
         catch (DownloadException exception)
         {
@@ -144,9 +227,7 @@ public sealed class VanillaInstallService : IVersionInstallService
                 "install.download_failed",
                 _localizer.Get("install.downloadFailed", exception.Message),
                 string.Join("; ", exception.Failures.Take(5)));
-            var actions = transaction.Rollback();
-            WriteDiagnostics(instance, error, actions);
-            return Result<InstallReport>.Fail(error);
+            return FailedWithRollback(instance, transaction, operation, error, failOperation: false);
         }
         catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException
                                               or InvalidOperationException or InvalidDataException
@@ -155,68 +236,68 @@ public sealed class VanillaInstallService : IVersionInstallService
             operation.Fail(OperationErrors.FromException("install.failed", exception));
             _logger.LogError(exception, "安装实例 {InstanceId} 失败。", instance.Id);
             var error = new EclError("install.failed", _localizer.Get("install.failed", exception.Message));
-            var actions = transaction.Rollback();
-            WriteDiagnostics(instance, error, actions);
-            return Result<InstallReport>.Fail(error);
+            return FailedWithRollback(instance, transaction, operation, error, failOperation: false);
         }
     }
 
-    public async Task<Result<InstallReport>> ReconfigureAsync(
-        string instanceId,
-        string gameVersion,
-        string loader,
-        string? loaderVersion = null,
-        string? fabricApiVersion = null,
-        string? optiFineVersion = null,
-        IProgress<InstallProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+    /// <summary>回滚并提供可验证的失败结果；诊断文件路径与回滚失败项一并返回。</summary>
+    private InstallOutcome FailedWithRollback(
+        GameInstance instance,
+        InstallTransaction transaction,
+        OperationProgressBridge<InstallProgress> operation,
+        EclError error,
+        bool failOperation = true)
     {
-        var original = await _instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
-        if (original is null)
+        var rollback = transaction.Rollback();
+        var diagnosticPath = WriteDiagnostics(instance, error, rollback.Actions);
+        if (failOperation)
         {
-            return Result<InstallReport>.Fail("install.instance_missing", _localizer.Get("install.error.instanceMissing", instanceId));
+            operation.Fail(ToOperationError(error));
         }
 
-        var update = await _instances.UpdateConfigurationAsync(
-            instanceId, gameVersion, loader, loaderVersion, fabricApiVersion, optiFineVersion, cancellationToken)
-            .ConfigureAwait(false);
-        if (!update.IsSuccess)
-        {
-            return Result<InstallReport>.Fail(update.Error!);
-        }
+        return InstallOutcome.Fail(new InstallFailure(
+            error,
+            rollback,
+            MetadataRestored: true,
+            diagnosticPath));
+    }
 
+    /// <summary>还没有开始写入（或写入前就失败）时使用的失败结果。</summary>
+    private static InstallOutcome Failed(string code, string message) =>
+        Failed(new EclError(code, message));
+
+    private static InstallOutcome Failed(EclError error) =>
+        InstallOutcome.Fail(new InstallFailure(
+            error,
+            InstallRollbackResult.Empty,
+            MetadataRestored: true,
+            DiagnosticPath: null));
+
+    private static InstallRollbackResult WithMetadataFailure(InstallRollbackResult rollback, string failure) =>
+        new(rollback.Actions, [.. rollback.Failures, failure]);
+
+    /// <summary>把实例记录恢复为变更前的原值；返回元数据是否确实恢复。</summary>
+    private async Task<bool> RestoreConfigurationAsync(GameInstance original)
+    {
         try
         {
-            var result = await InstallAsync(instanceId, progress, cancellationToken).ConfigureAwait(false);
-            if (result.IsSuccess)
+            var restored = await _instances
+                .RestoreConfigurationAsync(original, CancellationToken.None)
+                .ConfigureAwait(false);
+            if (!restored.IsSuccess)
             {
-                _logger.LogInformation(
-                    "实例 {InstanceId} 已完成原地配置变更；旧版本文件保留以便安全回退。",
-                    instanceId);
-                return result;
+                _logger.LogWarning(
+                    "实例 {InstanceId} 的元数据未能恢复为变更前的值：{Error}",
+                    original.Id,
+                    restored.Error);
             }
 
-            await _instances.UpdateConfigurationAsync(
-                instanceId,
-                original.GameVersion,
-                original.Loader,
-                original.LoaderVersion,
-                original.FabricApiVersion,
-                original.OptiFineVersion,
-                CancellationToken.None).ConfigureAwait(false);
-            return result;
+            return restored.IsSuccess;
         }
-        catch
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            await _instances.UpdateConfigurationAsync(
-                instanceId,
-                original.GameVersion,
-                original.Loader,
-                original.LoaderVersion,
-                original.FabricApiVersion,
-                original.OptiFineVersion,
-                CancellationToken.None).ConfigureAwait(false);
-            throw;
+            _logger.LogWarning(exception, "恢复实例 {InstanceId} 元数据时失败。", original.Id);
+            return false;
         }
     }
 
@@ -415,16 +496,19 @@ public sealed class VanillaInstallService : IVersionInstallService
         return Result<InstallReport>.Ok(report);
     }
 
-    private void WriteDiagnostics(GameInstance instance, EclError error, IReadOnlyList<string> rollbackActions)
+    /// <summary>写入失败诊断文件；返回真实路径，写入失败时返回 null（由调用方如实报告）。</summary>
+    private string? WriteDiagnostics(GameInstance instance, EclError error, IReadOnlyList<string> rollbackActions)
     {
         try
         {
             var path = InstallTransaction.WriteDiagnostics(_paths, instance, error, rollbackActions);
             _logger.LogInformation("安装失败诊断已写入 {Path}。", path);
+            return path;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
         {
             _logger.LogWarning(exception, "写入安装失败诊断失败。");
+            return null;
         }
     }
 

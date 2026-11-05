@@ -100,7 +100,7 @@
 - `InstanceDetailPageViewModel` 现在是实例工作区壳：左侧纵向二级导航 + 右侧当前二级页。切换二级页只改变
   `Navigation.CurrentPage`，不新开工作区、不改变工作区标题（迁移规划 §5.1）。已实现页面为
   「基本信息」（`InstanceBasicInfoViewModel`，默认页）、「配置 · 修改」
-  （`InstanceModifyViewModel`，B2 步骤 3b-4a 只读计划）与「内容 · 模组」（`ModsViewModel`），
+  （`InstanceModifyViewModel`，B2 步骤 3b-4a 计划 + 3b-4b 受控执行）与「内容 · 模组」（`ModsViewModel`），
   三者各自拥有唯一的滚动容器，由 `App.xaml` 的 DataTemplate 映射到视图。
 - 尚未实现的页面（资源包、光影包、数据包、截图、投影、导出、日志）只保留不可用导航项：
   `IsEnabled=false`、UIA `HelpText` 与可见的「未实现」徽标共同说明原因，不创建空页、不提供可点击入口；
@@ -166,17 +166,48 @@
   - 状态机按 §7 实现未检查/检查中/可执行/需要处理/不可执行五种。可执行只在全部强制检查通过时出现；
     失败读取、目标组合缺少加载器版本、缺少 Fabric API、目标加载器需要 processors 但没有可用 Java、
     实例目录不存在时进入不可执行并逐条列出原因；游戏进程或写入任务存在、目标与当前一致时进入需要处理。
-  - 本步骤不写入实例、不创建快照、不下载产物：`InstanceModifyViewModel` 的构造依赖里没有任何安装、
-    事务或快照服务，提交/执行入口不存在，页面底部写明受控执行属后续步骤（3b-4b）。
   - 生命周期：每工作区一个页面对象，由 `InstanceModifyPageFactory` 创建、`InstanceDetailPageViewModel`
     持有并在关闭标签时释放；目标目录在首次显示页面时读取，选择变化会取消上一次读取，释放后不再回写。
-  - 测试：`tests/ECL.App.Tests/Workspace/InstanceModifyPageTests.cs`（当前值投影、版本目录与加载器过滤、
-    Cleanroom 限制、无变更、运行进程与过期会话、写入任务冲突、目录缺失、加载器版本/Fabric API 缺失、
-    模组三档影响与手动项、Java 推断与不可用、OptiFine 保留策略、下载清单与「大小未知」、快照与目录范围、
-    「不调用任何写 API」的结构断言、选择变化使计划失效、释放后异步回写保护、双工作区隔离）+
-    `InstanceWorkspaceNavigationTests.ModifyPageBecomesAvailableWhenTheWorkspaceProvidesIt`。
-- 仍待 B2：实例级 Java 警告抑制（步骤 4，受 ADR 0014 门禁）、Modify 受控执行（3b-4b：快照 +
-    `ReconfigureAsync` + 刷新）与可选组件行（3b-4c）；概览「应用」与实例改名仍为 BLOCKED（见交接文档 §6.1）。
+- 「修改」页已按 `instance-modify.md` 落地受控执行（B2 步骤 3b-4b）：在 3b-4a 的只读计划与目标值之上
+  追加确认 → 快照 → 安装 → 结果四段，不另建第二套选择器或第二套计划。
+  - 提交入口只在「计划可执行 + 当前目标与生成计划时完全一致 + 不在执行/恢复中」时可用
+    （`ModifyExecutionTarget` 记录生成计划时的目标组合；任何选择变化都会把计划重置为未检查）。
+  - 确认走 Dialog Engine（`ModifyConfirmDialogViewModel`）：列出目标版本/加载器/组件、影响四档计数、
+    完整实例快照范围与「关闭页面不会取消任务、不提供强制取消」的说明；初始焦点在取消按钮，
+    取消不写入任何内容。无法显示确认时不执行，绝不在未确认的情况下写实例。
+  - 执行前重新核对运行中的游戏进程与写入任务（计划可能已过期），状态变化则回到「需要处理」。
+  - 变更前通过 `IInstanceSnapshotService.CreateAsync(instanceId, Full)` 创建完整快照，再用 `VerifyAsync`
+    校验；快照失败/不完整立即停止（「执行前中止」），不开始安装。快照进度通过
+    `OperationProgressBridge` 登记为统一 Operation（Kind=Backup），不建第二套任务列表。
+  - 安装走 `IVersionInstallService.ReconfigureAsync`（安装服务自己登记 `OperationKind.Install`），
+    页面只转发真实阶段文本与结果，不重复登记任务。页面不提供强制取消；关闭页面不会取消任务
+    （页面只停止回写自己的状态），是否可取消由统一 Operation 与事务阶段决定。
+  - 领域侧新增可验证的回滚信号：`InstallTransaction.Rollback()` 返回 `InstallRollbackResult`
+    （`Actions` + `Failures`），`ReconfigureAsync` 返回 `InstallOutcome`，失败时携带
+    `InstallFailure(Error, Rollback, MetadataRestored, DiagnosticPath)`。`RecoveryRequired` 只在
+    回滚有失败项或实例元数据未还原时为真；UI 只据此显示「失败且已回滚」或「失败且需要恢复」，
+    没有信号时按「无法确认」处理，不得宣称已回滚。
+  - `ReconfigureAsync` 失败时用 `IInstanceService.RestoreConfigurationAsync(original)` 原样写回变更前的
+    实例记录（含 `VersionId` 与时间戳），不再重新推导版本 ID——外部导入实例的 `VersionId` 不是
+    `BuildVersionId` 派生值，旧实现会把回滚后的记录改成不存在的版本目录。
+  - 状态机在 3b-4a 的五态之外补齐执行中/成功/失败且已回滚/失败且需要恢复，并增加「执行前中止」
+    （快照失败、校验不通过等尚未写入的情形）。成功状态显示实际提交的目标组合与已校验快照 ID；
+    失败且需要恢复时显示问题项数、快照 ID 与受控恢复入口（`RestoreAsync` 会先创建安全快照），
+    诊断入口只在诊断文件真实存在时出现，且页面不显示本地路径。
+  - 成功后刷新工作区（`InstancesViewModel.ReloadInstanceAsync` → `InstanceWorkspaceState.ReplaceItem`
+    → 基本信息身份文本 + `InstanceRuntimeSettingsViewModel.RebindInstance` 重新评估 Java + 存储卡片重测），
+    InstanceId 不变；`InstancesViewModel` 只替换目标实例的列表项，不清空其它卡片或当前选择。
+  - 测试：`tests/ECL.App.Tests/Workspace/InstanceModifyPageTests.cs` 覆盖确认前不写入、快照先于安装、
+    `Full` 范围与 `Verify` 调用、成功刷新、回滚完整/需要恢复两种失败、快照失败与不完整快照拒绝、
+    晚出现的游戏进程阻止执行、目标变化使提交失效、执行中拒绝重复提交、真实安装阶段转发、
+    关闭页面不取消任务与不回写；`InstanceWorkspaceStateTests` 覆盖同一实例换快照、拒绝换实例/已释放状态。
+    领域侧 `tests/ECL.Tests/Install/InstallServiceTests.cs` 覆盖回滚失败项、失败后实例记录（含 VersionId）
+    原样恢复、成功提交保持 InstanceId，以及 `InstallTransaction.Rollback()` 在文件被占用时报告失败项。
+  - 实机（1500×950/1080×720、zh-CN/en-US）：临时实例原版 1.20.1 → Fabric，真实创建并校验快照、
+    真实安装、成功后工作区身份刷新；取消确认不产生快照；仅加载器版本变化时内容影响显示「不受本次
+    变更影响」。失败/恢复路径只由自动化测试覆盖（未能可靠制造一次真实的后写入失败），实机标记 NOT RUN。
+- 仍待 B2：实例级 Java 警告抑制（步骤 4，受 ADR 0014 门禁）与可选组件行（3b-4c）；
+  概览「应用」与实例改名仍为 BLOCKED（见交接文档 §6.1）。
 
 ## 3. 共享页面控件（B0）
 
@@ -315,6 +346,18 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
   重开工作区得到新的身份与空的操作报告；实例页所有操作按钮保持可用。
 - 右侧仍是单一 Inspector 面板；ADR 0056 的 Right Auxiliary Rail（Inspector / Tools 双模式）尚未实现。
 - 工作区页面在切换标签时会重新创建视图（ViewModel 状态保留，滚动位置等视图状态不保留）。
+- 「修改」页的失败/恢复入口只做了自动化验收：制造一次真实的后写入失败需要可控的网络/文件错误，
+  本批实机验证未覆盖，因此「失败且已回滚」「失败且需要恢复」与受控恢复在实机上是 NOT RUN。
+- 回滚完整性的口径：`InstallTransaction` 只记录本次新建/带备份覆盖的文件；共享 `libraries`/`assets` 中
+  原本存在、被重新下载覆盖且没有备份的文件不会被还原（也不会被报告为回滚失败），因为它们不是数据丢失。
+- **已知风险（既有安装行为，非本批引入）**：`VanillaInstallService.ResolveVersionChainAsync` 通过
+  `EnsureTextFileAsync` 校正基础版本的 `versions/<gameVersion>/<gameVersion>.json` 与
+  `assets/indexes/<index>.json`；这两个写入**不进入 `InstallTransaction`**，因此不受回滚信号覆盖，
+  且会替换其它启动器（PCL/HMCL）留下的同版本 JSON。实机验证中临时实例安装 1.20.1 时就替换了
+  用户 `versions/1.20.1/1.20.1.json`（PCL 合并的 Fabric 0.20.0 配置），已按游戏日志中的
+  Fabric Loader 0.20.0 重建并 dry-run 通过，但无法保证与原文件逐字节一致。
+  后续批次（Modify 安全边界或独立的安装事务补强）必须先决定：把这两个文件纳入事务备份，
+  或拒绝覆盖不属于 ECL 的基础版本文件。
 - Split、Detached、Snapshot 恢复与运行时隔离仍未实现，相关能力不会以按钮或菜单形式出现。
 - WPF 线程/Dispatcher、共享控件与输出管线测试位于仅 Windows 可运行的 `tests/ECL.App.Tests`；CI 在 Windows job 执行，
   Linux job 不运行该测试项目。

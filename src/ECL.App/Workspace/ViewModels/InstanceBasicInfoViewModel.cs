@@ -99,6 +99,22 @@ public sealed partial class InstanceBasicInfoViewModel : ObservableObject, IDisp
 
     public bool IsDisposed { get; private set; }
 
+    /// <summary>
+    /// 受控变更成功、实例身份快照被替换后重新读取名称/版本/加载器文本（B2 步骤 3b-4b）。
+    /// 只更新呈现，不重新扫描模组或存储。
+    /// </summary>
+    internal void RefreshIdentity()
+    {
+        OnPropertyChanged(nameof(InstanceName));
+        OnPropertyChanged(nameof(InstanceMeta));
+        OnPropertyChanged(nameof(InstanceComponents));
+        OnPropertyChanged(nameof(InstancePath));
+        OnPropertyChanged(nameof(InstanceCreated));
+        OnPropertyChanged(nameof(InstanceMinecraftVersion));
+        OnPropertyChanged(nameof(InstanceLoaderText));
+        OnPropertyChanged(nameof(InstanceLastPlayed));
+    }
+
     public void Dispose()
     {
         if (IsDisposed)

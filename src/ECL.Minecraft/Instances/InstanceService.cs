@@ -283,6 +283,43 @@ public sealed partial class InstanceService : IInstanceService
         return Result<GameInstance>.Ok(updated);
     }
 
+    public async Task<Result<GameInstance>> RestoreConfigurationAsync(
+        GameInstance restorePoint,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(restorePoint);
+
+        if (!AppPaths.IsValidInstanceId(restorePoint.Id))
+        {
+            return Result<GameInstance>.Fail("instance.invalid_id", "实例 ID 不合法。");
+        }
+
+        var current = await _store.GetAsync(restorePoint.Id, cancellationToken).ConfigureAwait(false);
+        if (current is null)
+        {
+            return Result<GameInstance>.Fail("instance.not_found", "实例不存在。");
+        }
+
+        await _store.SaveAsync(restorePoint, cancellationToken).ConfigureAwait(false);
+        var registered = await _identity.EnsureRegisteredAsync(restorePoint, writeMarker: true, cancellationToken)
+            .ConfigureAwait(false);
+        if (!registered.IsSuccess)
+        {
+            _logger.LogWarning(
+                "实例 {InstanceId} 回滚已写回配置，但身份登记未更新：{Error}",
+                restorePoint.Id,
+                registered.Error);
+        }
+
+        _logger.LogInformation(
+            "实例 {InstanceId} 的配置已回滚为变更前的记录（Minecraft {GameVersion}，加载器 {Loader} {LoaderVersion}）。",
+            restorePoint.Id,
+            restorePoint.GameVersion,
+            restorePoint.Loader,
+            restorePoint.LoaderVersion);
+        return Result<GameInstance>.Ok(restorePoint);
+    }
+
     public async Task<IReadOnlyList<DetectedVersion>> ScanVersionsAsync(CancellationToken cancellationToken = default)
     {
         var imported = (await _store.ListAsync(cancellationToken).ConfigureAwait(false))

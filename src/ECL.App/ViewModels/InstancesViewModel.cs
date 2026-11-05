@@ -1945,6 +1945,47 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// 重新读取单个实例并原地替换列表项（B2 步骤 3b-4b）：受控变更成功后实例的版本/加载器
+    /// 已变化，工作区必须读到新记录；只替换目标实例，不清空其它实例卡片或当前选择。
+    /// </summary>
+    internal async Task<InstanceItemViewModel?> ReloadInstanceAsync(string instanceId)
+    {
+        var instance = await _instances.GetAsync(instanceId).ConfigureAwait(true);
+        if (instance is null)
+        {
+            return null;
+        }
+
+        var item = new InstanceItemViewModel(instance, _localizer, _paths);
+        var index = -1;
+        for (var i = 0; i < Instances.Count; i++)
+        {
+            if (string.Equals(Instances[i].Model.Id, instanceId, StringComparison.Ordinal))
+            {
+                index = i;
+                break;
+            }
+        }
+
+        if (index >= 0)
+        {
+            Instances[index] = item;
+        }
+        else
+        {
+            Instances.Add(item);
+        }
+
+        if (SelectedInstance is { } selected &&
+            string.Equals(selected.Model.Id, instanceId, StringComparison.Ordinal))
+        {
+            SelectedInstance = item;
+        }
+
+        return item;
+    }
+
     private async Task RefreshInstancesAsync()
     {
         IsLoadingInstances = true;

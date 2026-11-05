@@ -2,6 +2,8 @@
 
 using System.Globalization;
 using System.IO;
+using Ecl.App.Dialogs;
+using Ecl.App.Dialogs.ViewModels;
 using Ecl.App.Tests.Support;
 using Ecl.App.ViewModels;
 using Ecl.App.Workspace;
@@ -9,6 +11,8 @@ using Ecl.App.Workspace.ViewModels;
 using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Java;
+using Ecl.Minecraft.Engine.Snapshots;
+using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Loaders;
@@ -456,17 +460,270 @@ public sealed class InstanceModifyPageTests
         Assert.Empty(harness.Mods.ImportCalls);
         Assert.Equal(0, harness.Packs.WriteCalls);
 
-        // 结构保证：本页面根本没有执行写入所需的领域依赖，3b-4b 接入前不可能“顺手执行”。
+        // 只生成计划：不创建快照、不调用安装服务、不展示确认弹窗。
+        Assert.Equal(0, harness.Snapshots.CreateCalls);
+        Assert.Equal(0, harness.Snapshots.VerifyCalls);
+        Assert.Empty(harness.Install.Calls);
+        Assert.Empty(harness.Dialogs.Requests);
+
+        // 结构保证：页面没有直接写实例记录的依赖，写入只能经安装服务与快照服务。
         var dependencies = typeof(InstanceModifyViewModel)
             .GetConstructors()
             .SelectMany(constructor => constructor.GetParameters())
             .Select(parameter => parameter.ParameterType)
             .ToArray();
-        Assert.DoesNotContain(typeof(Ecl.Minecraft.Install.IVersionInstallService), dependencies);
-        Assert.DoesNotContain(typeof(Ecl.Minecraft.Engine.Snapshots.IInstanceSnapshotService), dependencies);
         Assert.DoesNotContain(typeof(IInstanceService), dependencies);
         Assert.DoesNotContain(typeof(Ecl.Minecraft.Engine.Transactions.InstanceTransactionCoordinator), dependencies);
     }
+
+    [Fact]
+    public async Task ExecutionRequiresConfirmationBeforeAnyWrite()
+    {
+        using var harness = new Harness();
+        await PrepareExecutablePlanAsync(harness);
+        harness.Dialogs.Outcome = DialogOutcome.Cancel;
+
+        await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, harness.Snapshots.CreateCalls);
+        Assert.Empty(harness.Install.Calls);
+        Assert.Equal(InstanceModifyPlanState.Executable, harness.ViewModel.PlanState);
+        Assert.Single(harness.Dialogs.Requests);
+        Assert.IsType<ModifyConfirmDialogViewModel>(harness.Dialogs.Requests[0].Content);
+    }
+
+    [Fact]
+    public async Task ExecutionCreatesAVerifiedFullSnapshotBeforeInstalling()
+    {
+        using var harness = new Harness();
+        await PrepareExecutablePlanAsync(harness);
+        harness.Install.Factory = _ => SuccessOutcome("1.21-fabric");
+
+        await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
+
+        var vm = harness.ViewModel;
+        Assert.Equal(InstanceModifyPlanState.Succeeded, vm.PlanState);
+        Assert.Contains("1.21", vm.ExecutionResult);
+        Assert.False(vm.HasExecutionStage);
+        Assert.Equal(1, harness.WorkspaceRefreshes);
+
+        // 顺序：先创建并校验快照，再安装。
+        Assert.Equal(["snapshot.create", "snapshot.verify", "install"], harness.Events);
+        Assert.Equal(SnapshotScope.Full, harness.Snapshots.LastCreateOptions!.Scope);
+        Assert.Equal(harness.Snapshots.CreatedSnapshotId, harness.Snapshots.LastVerifiedSnapshotId);
+        Assert.Equal(harness.Snapshots.CreatedSnapshotId, vm.SnapshotId);
+        Assert.Contains("已校验", vm.SnapshotSummary);
+
+        var call = Assert.Single(harness.Install.Calls);
+        Assert.Equal("1-20-1-790872", call.InstanceId);
+        Assert.Equal("1.21", call.GameVersion);
+        Assert.Equal("fabric", call.Loader);
+        Assert.Equal("0.16.10", call.LoaderVersion);
+        Assert.Equal("0.100.0", call.FabricApiVersion);
+        Assert.Null(call.OptiFineVersion);
+    }
+
+    [Fact]
+    public async Task ExecutionFailureWithCompleteRollbackIsNotReportedAsNeedingRecovery()
+    {
+        using var harness = new Harness();
+        await PrepareExecutablePlanAsync(harness);
+        harness.Install.Factory = _ => FailedOutcome(
+            rollbackFailures: [],
+            metadataRestored: true,
+            diagnosticPath: Path.Combine(harness.Root, "install-failed.json"));
+
+        await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
+
+        var vm = harness.ViewModel;
+        Assert.Equal(InstanceModifyPlanState.FailedRolledBack, vm.PlanState);
+        Assert.True(vm.IsFailedRolledBack);
+        Assert.False(vm.IsFailedNeedsRecovery);
+        Assert.Contains("已确认回滚完整", vm.ExecutionResult);
+        Assert.Contains("诊断", vm.DiagnosticNote);
+        Assert.True(vm.HasDiagnosticFile);
+        Assert.False(vm.RestoreSnapshotCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task ExecutionFailureNeedingRecoveryOffersControlledRestore()
+    {
+        using var harness = new Harness();
+        await PrepareExecutablePlanAsync(harness);
+        harness.Install.Factory = _ => FailedOutcome(
+            rollbackFailures: ["failed to rollback locked.jar"],
+            metadataRestored: true,
+            diagnosticPath: null);
+
+        await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
+
+        var vm = harness.ViewModel;
+        Assert.Equal(InstanceModifyPlanState.FailedNeedsRecovery, vm.PlanState);
+        Assert.True(vm.IsFailedNeedsRecovery);
+        Assert.Contains("回滚未完整完成", vm.ExecutionResult);
+        Assert.False(vm.HasDiagnosticFile);
+        Assert.True(vm.RestoreSnapshotCommand.CanExecute(null));
+
+        harness.Dialogs.Outcome = DialogOutcome.Primary;
+        await vm.RestoreSnapshotCommand.ExecuteAsync(null);
+
+        var restore = Assert.Single(harness.Snapshots.RestoreCalls);
+        Assert.Equal(harness.Snapshots.CreatedSnapshotId, restore.SnapshotId);
+        Assert.Equal(InstanceModifyPlanState.FailedRolledBack, vm.PlanState);
+        Assert.Contains("已按快照", vm.RestoreStatus);
+        Assert.Equal(1, harness.WorkspaceRefreshes);
+    }
+
+    [Fact]
+    public async Task SnapshotFailureStopsBeforeInstalling()
+    {
+        using var harness = new Harness();
+        await PrepareExecutablePlanAsync(harness);
+        harness.Snapshots.CreateResult = _ => Result<SnapshotManifest>.Fail(
+            "snapshot.create_failed",
+            "快照创建失败");
+
+        await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
+
+        var vm = harness.ViewModel;
+        Assert.Equal(InstanceModifyPlanState.FailedBeforeChange, vm.PlanState);
+        Assert.Contains("未开始变更", vm.ExecutionResult);
+        Assert.True(vm.IsFailedBeforeChange);
+        Assert.Empty(harness.Install.Calls);
+        Assert.DoesNotContain("snapshot.verify", harness.Events);
+    }
+
+    [Fact]
+    public async Task IncompleteSnapshotIsRejectedBeforeInstalling()
+    {
+        using var harness = new Harness();
+        await PrepareExecutablePlanAsync(harness);
+        harness.Snapshots.Verification = new SnapshotVerification(
+            harness.Snapshots.CreatedSnapshotId, false, 1, 0, 0, ["missing object"]);
+
+        await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
+
+        var vm = harness.ViewModel;
+        Assert.Equal(InstanceModifyPlanState.FailedBeforeChange, vm.PlanState);
+        Assert.Contains("不能用于恢复", vm.SnapshotSummary);
+        Assert.Empty(harness.Install.Calls);
+    }
+
+    [Fact]
+    public async Task RunningGameDetectedAfterPlanningStopsTheChange()
+    {
+        using var harness = new Harness();
+        await PrepareExecutablePlanAsync(harness);
+
+        // 生成计划后游戏启动：写入前必须重新检查，而不是沿用旧结论。
+        harness.Sessions.Sessions.Add(Session("session-late", harness.Model.Id, GameSessionState.Running, Environment.ProcessId));
+
+        await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
+
+        var vm = harness.ViewModel;
+        Assert.Equal(InstanceModifyPlanState.NeedsAction, vm.PlanState);
+        Assert.Equal(0, harness.Snapshots.CreateCalls);
+        Assert.Empty(harness.Install.Calls);
+        Assert.Contains(vm.ActionItems, text => text.Contains("session-late"));
+    }
+
+    [Fact]
+    public async Task ChangingTheTargetAfterPlanningDisablesExecution()
+    {
+        using var harness = new Harness();
+        await PrepareExecutablePlanAsync(harness);
+        Assert.True(harness.ViewModel.ExecuteCommand.CanExecute(null));
+
+        harness.ViewModel.SelectedTargetLoaderVersion = harness.ViewModel.LoaderVersions.Last();
+
+        Assert.Equal(InstanceModifyPlanState.NotChecked, harness.ViewModel.PlanState);
+        Assert.False(harness.ViewModel.ExecuteCommand.CanExecute(null));
+        Assert.Empty(harness.Install.Calls);
+    }
+
+    [Fact]
+    public async Task ExecutionReportsRealInstallStageAndRejectsDuplicateSubmit()
+    {
+        using var harness = new Harness();
+        await PrepareExecutablePlanAsync(harness);
+        harness.Install.Gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Install.Factory = _ => SuccessOutcome("1.21-fabric");
+
+        var execution = harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
+        await WaitForAsync(() => harness.Install.Calls.Count == 1, "安装服务应已开始执行");
+        await WaitForAsync(() => harness.ViewModel.ExecutionStage.Contains("安装客户端"), "执行阶段应转发安装进度");
+
+        Assert.Equal(InstanceModifyPlanState.Executing, harness.ViewModel.PlanState);
+        Assert.False(harness.ViewModel.ExecuteCommand.CanExecute(null));
+        Assert.False(harness.ViewModel.GeneratePlanCommand.CanExecute(null));
+
+        // 重复提交在同一次执行完成前不会产生第二次安装。
+        await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
+        Assert.Single(harness.Install.Calls);
+
+        harness.Install.Gate.SetResult(true);
+        await execution;
+        Assert.Equal(InstanceModifyPlanState.Succeeded, harness.ViewModel.PlanState);
+    }
+
+    [Fact]
+    public async Task ClosingThePageDuringExecutionDoesNotCancelTheTaskOrWriteBack()
+    {
+        using var harness = new Harness();
+        await PrepareExecutablePlanAsync(harness);
+        harness.Install.Gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Install.Factory = _ => SuccessOutcome("1.21-fabric");
+
+        var execution = harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
+        await WaitForAsync(() => harness.Install.Calls.Count == 1, "安装服务应已开始执行");
+
+        harness.ViewModel.Dispose();
+        harness.Install.Gate.SetResult(true);
+        await execution.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // 任务继续执行（安装只调用一次），但页面不再回写执行结果。
+        Assert.Single(harness.Install.Calls);
+        Assert.Equal(InstanceModifyPlanState.Executing, harness.ViewModel.PlanState);
+        Assert.DoesNotContain("已提交", harness.ViewModel.ExecutionResult);
+        Assert.Equal(0, harness.WorkspaceRefreshes);
+    }
+
+    private static async Task WaitForAsync(Func<bool> condition, string because)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline)
+            {
+                throw new Xunit.Sdk.XunitException($"等待超时：{because}");
+            }
+
+            await Task.Delay(20);
+        }
+    }
+
+    private static async Task PrepareExecutablePlanAsync(Harness harness)
+    {
+        var vm = harness.ViewModel;
+        await vm.EnsureLoadedAsync();
+        vm.SelectedTargetVersion = vm.TargetVersions.First(choice => choice.Value == "1.21");
+        await vm.PendingTargetRefresh;
+        await vm.GeneratePlanCommand.ExecuteAsync(null);
+        Assert.Equal(InstanceModifyPlanState.Executable, vm.PlanState);
+    }
+
+    private static InstallOutcome SuccessOutcome(string versionId) =>
+        InstallOutcome.Ok(new InstallReport(versionId, 3, 0, 1024, TimeSpan.FromSeconds(1), ["fabric-api:0.100.0"]));
+
+    private static InstallOutcome FailedOutcome(
+        IReadOnlyList<string> rollbackFailures,
+        bool metadataRestored,
+        string? diagnosticPath) =>
+        InstallOutcome.Fail(new InstallFailure(
+            new EclError("install.download_failed", "下载失败（fake）。"),
+            new InstallRollbackResult([], rollbackFailures),
+            metadataRestored,
+            diagnosticPath));
 
     [Fact]
     public async Task ChangingAnyTargetValueInvalidatesTheExistingPlan()
@@ -578,6 +835,9 @@ public sealed class InstanceModifyPageTests
             string? optiFineVersion = null)
         {
             Root = Directory.CreateTempSubdirectory("ecl-modify-").FullName;
+            Events = [];
+            Install = new FakeInstallService(Events);
+            Snapshots = new FakeSnapshotService(Events);
             var gameDirectory = Path.Combine(Root, "minecraft");
             if (createGameDirectory)
             {
@@ -617,7 +877,15 @@ public sealed class InstanceModifyPageTests
                 Packs,
                 Sessions,
                 Operations,
+                Install,
+                Snapshots,
+                Dialogs,
                 localizer);
+            ViewModel.WorkspaceRefresh = () =>
+            {
+                WorkspaceRefreshes++;
+                return Task.CompletedTask;
+            };
         }
 
         public FakeVersionCatalog Versions { get; } = new();
@@ -633,6 +901,17 @@ public sealed class InstanceModifyPageTests
         public FakeContentPackService Packs { get; } = new();
 
         public FakeGameSessionService Sessions { get; } = new();
+
+        public FakeInstallService Install { get; }
+
+        public FakeSnapshotService Snapshots { get; }
+
+        public FakeDialogEngine Dialogs { get; } = new();
+
+        /// <summary>跨服务的调用顺序：snapshot.create → snapshot.verify → install。</summary>
+        public List<string> Events { get; }
+
+        public int WorkspaceRefreshes { get; private set; }
 
         public IOperationService Operations { get; set; } = new StubOperationService();
 
@@ -906,6 +1185,177 @@ public sealed class InstanceModifyPageTests
             WriteCalls++;
             throw new NotSupportedException();
         }
+    }
+
+    /// <summary>安装服务的调用记录与可控结果；不访问真实下载或文件系统。</summary>
+    private sealed class FakeInstallService(List<string> events) : IVersionInstallService
+    {
+        public List<InstallCall> Calls { get; } = [];
+
+        public Func<InstallCall, InstallOutcome>? Factory { get; set; }
+
+        /// <summary>非空时安装停在进度回调之后，用于观察执行中状态。</summary>
+        public TaskCompletionSource<bool>? Gate { get; set; }
+
+        public Task<Result<InstallReport>> InstallAsync(
+            string instanceId,
+            IProgress<InstallProgress>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("修改页只使用 ReconfigureAsync。");
+
+        public async Task<InstallOutcome> ReconfigureAsync(
+            string instanceId,
+            string gameVersion,
+            string loader,
+            string? loaderVersion = null,
+            string? fabricApiVersion = null,
+            string? optiFineVersion = null,
+            IProgress<InstallProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add(new InstallCall(instanceId, gameVersion, loader, loaderVersion, fabricApiVersion, optiFineVersion));
+            events.Add("install");
+            progress?.Report(new InstallProgress(InstallStage.Client, "安装客户端", 1, 2, 0, 0, null));
+
+            if (Gate is not null)
+            {
+                await Gate.Task;
+            }
+
+            return Factory?.Invoke(Calls[^1])
+                   ?? throw new InvalidOperationException("测试需要先配置安装结果。");
+        }
+    }
+
+    internal sealed record InstallCall(
+        string InstanceId,
+        string GameVersion,
+        string Loader,
+        string? LoaderVersion,
+        string? FabricApiVersion,
+        string? OptiFineVersion);
+
+    /// <summary>快照服务：记录创建/校验/恢复顺序，并允许注入失败。</summary>
+    private sealed class FakeSnapshotService(List<string> events) : IInstanceSnapshotService
+    {
+        public int CreateCalls { get; private set; }
+
+        public int VerifyCalls { get; private set; }
+
+        public SnapshotCreateOptions? LastCreateOptions { get; private set; }
+
+        public string CreatedSnapshotId { get; } = "snap-before-change";
+
+        public string? LastVerifiedSnapshotId { get; private set; }
+
+        public List<(string InstanceId, string SnapshotId)> RestoreCalls { get; } = [];
+
+        public Func<string, Result<SnapshotManifest>>? CreateResult { get; set; }
+
+        public SnapshotVerification? Verification { get; set; }
+
+        public Result<SnapshotRestoreResult>? RestoreResult { get; set; }
+
+        public Task<Result<SnapshotManifest>> CreateAsync(
+            string instanceId,
+            SnapshotCreateOptions options,
+            IProgress<SnapshotProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            CreateCalls++;
+            events.Add("snapshot.create");
+            LastCreateOptions = options;
+            progress?.Report(new SnapshotProgress("snapshot", 1, 2, "region/r.0.0.mca"));
+
+            return Task.FromResult(CreateResult?.Invoke(instanceId) ?? Result<SnapshotManifest>.Ok(new SnapshotManifest(
+                "1",
+                CreatedSnapshotId,
+                instanceId,
+                "Test Instance",
+                string.Empty,
+                DateTimeOffset.UtcNow,
+                SnapshotScope.Full,
+                WorldName: null,
+                IncludeRoots: [],
+                ExcludeRoots: [],
+                Files: [],
+                TotalBytes: 0,
+                Status: SnapshotStatus.Complete)));
+        }
+
+        public Task<Result<SnapshotVerification>> VerifyAsync(
+            string instanceId,
+            string snapshotId,
+            CancellationToken cancellationToken = default)
+        {
+            VerifyCalls++;
+            events.Add("snapshot.verify");
+            LastVerifiedSnapshotId = snapshotId;
+            var verification = Verification ?? new SnapshotVerification(snapshotId, true, 0, 0, 12, []);
+            return Task.FromResult(Result<SnapshotVerification>.Ok(verification));
+        }
+
+        public Task<Result<SnapshotRestoreResult>> RestoreAsync(
+            string instanceId,
+            string snapshotId,
+            SnapshotRestoreOptions? options = null,
+            IProgress<SnapshotProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            RestoreCalls.Add((instanceId, snapshotId));
+            return Task.FromResult(RestoreResult ?? Result<SnapshotRestoreResult>.Ok(
+                new SnapshotRestoreResult(snapshotId, "tx-restore", 3, 1, 0, "safety-snapshot", [])));
+        }
+
+        public Task<Result<IReadOnlyList<SnapshotManifest>>> ListAsync(
+            string instanceId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result<IReadOnlyList<SnapshotManifest>>.Ok([]));
+
+        public Task<Result<SnapshotManifest>> GetAsync(
+            string instanceId,
+            string snapshotId,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<Result<SnapshotDiffSummary>> DiffAsync(
+            string instanceId,
+            string snapshotId,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<Result> DeleteAsync(
+            string instanceId,
+            string snapshotId,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<Result<long>> PruneOrphansAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
+
+    /// <summary>确认弹窗替身：记录请求并返回预设结果（默认“确认”）。</summary>
+    private sealed class FakeDialogEngine : IDialogEngine
+    {
+        public bool IsAvailable { get; set; } = true;
+
+        public DialogOutcome Outcome { get; set; } = DialogOutcome.Primary;
+
+        public List<DialogRequest> Requests { get; } = [];
+
+        public DialogResult Show(DialogRequest request)
+        {
+            Requests.Add(request);
+            return new DialogResult(Outcome);
+        }
+
+        public Task<DialogResult> ShowAsync(DialogRequest request, CancellationToken cancellationToken = default)
+        {
+            Requests.Add(request);
+            return Task.FromResult(new DialogResult(Outcome));
+        }
+
+        public bool CloseTop(DialogOutcome outcome) => false;
     }
 
     private sealed class FakeGameSessionService : IGameSessionService

@@ -29,7 +29,6 @@ namespace Ecl.App.Workspace.ViewModels;
 /// </summary>
 public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject, IDisposable
 {
-    private readonly GameInstance _instance;
     private readonly ISettingsService _settings;
     private readonly IJavaLocator _javaLocator;
     private readonly IJavaSelectionService _javaSelection;
@@ -38,6 +37,7 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
     private readonly IDownloadController _downloads;
     private readonly IDialogService _dialogs;
     private readonly ILocalizer _localizer;
+    private GameInstance _instance;
     private bool _suppressJavaSelection;
     private bool _isDownloadingJava;
 
@@ -142,6 +142,28 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
     {
         await RefreshJavaOptionsAsync().ConfigureAwait(true);
         await UpdateJavaStatusAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 受控变更成功后按新的实例记录重新评估 Java 兼容性（B2 步骤 3b-4b）。
+    /// 只接受同一 InstanceId；Java 覆盖、内存与 JVM 设置不重新读取，也不被替换。
+    /// </summary>
+    internal void RebindInstance(GameInstance instance)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (!string.Equals(instance.Id, InstanceId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("运行时设置只能重新绑定到同一个实例。");
+        }
+
+        _instance = instance;
+        OnPropertyChanged(nameof(InstanceId));
+        _ = UpdateJavaStatusAsync();
     }
 
     [RelayCommand]

@@ -5,8 +5,9 @@ using Ecl.Core.Localization;
 namespace Ecl.App.Workspace.ViewModels;
 
 /// <summary>
-/// 「修改」页的状态机（`instance-modify.md` §7）。本步骤（3b-4a）只实现只读计划相关的
-/// 五种状态；执行中/成功/失败状态属于受控执行步骤（3b-4b），在能力接入前不会伪造。
+/// 「修改」页的状态机（`instance-modify.md` §7）。B2 步骤 3b-4a 实现只读计划相关的五种状态；
+/// B2 步骤 3b-4b 增加执行中、成功、失败且已回滚、失败且需要恢复，以及写入前中止。
+/// 没有领域信号时不得使用「已回滚」；中止状态用于快照/校验失败等尚未写入的失败。
 /// </summary>
 public enum InstanceModifyPlanState
 {
@@ -16,7 +17,7 @@ public enum InstanceModifyPlanState
     /// <summary>检查中：正在收集 Java、内容、任务与快照信息，不允许重复提交。</summary>
     Checking,
 
-    /// <summary>可执行：所有强制检查通过。</summary>
+    /// <summary>可执行：所有强制检查通过，可以请求确认并执行。</summary>
     Executable,
 
     /// <summary>需要处理：存在可由用户解决的冲突或缺失项。</summary>
@@ -24,6 +25,21 @@ public enum InstanceModifyPlanState
 
     /// <summary>不可执行：存在无法安全继续的条件。</summary>
     NotExecutable,
+
+    /// <summary>执行中：快照、安装与验证按真实阶段推进，目标不可修改，不允许重复提交。</summary>
+    Executing,
+
+    /// <summary>成功：领域已提交目标版本/加载器/组件，且工作区身份已刷新。</summary>
+    Succeeded,
+
+    /// <summary>失败且已回滚：领域确认回滚完整且实例元数据已还原。</summary>
+    FailedRolledBack,
+
+    /// <summary>失败且需要恢复：回滚不完整或元数据未还原，必须用变更前快照恢复。</summary>
+    FailedNeedsRecovery,
+
+    /// <summary>执行前中止：快照/校验失败或运行状态变化，实例没有写入本次变更。</summary>
+    FailedBeforeChange,
 }
 
 /// <summary>
@@ -82,6 +98,11 @@ public static class ModifyPlanPresentation
             InstanceModifyPlanState.Executable => "instance.modify.state.executable",
             InstanceModifyPlanState.NeedsAction => "instance.modify.state.needsAction",
             InstanceModifyPlanState.NotExecutable => "instance.modify.state.notExecutable",
+            InstanceModifyPlanState.Executing => "instance.modify.state.executing",
+            InstanceModifyPlanState.Succeeded => "instance.modify.state.succeeded",
+            InstanceModifyPlanState.FailedRolledBack => "instance.modify.state.failedRolledBack",
+            InstanceModifyPlanState.FailedNeedsRecovery => "instance.modify.state.failedNeedsRecovery",
+            InstanceModifyPlanState.FailedBeforeChange => "instance.modify.state.failedBeforeChange",
             _ => "instance.modify.state.notChecked",
         });
     }
@@ -95,6 +116,11 @@ public static class ModifyPlanPresentation
             InstanceModifyPlanState.Executable => "instance.modify.state.executableDetail",
             InstanceModifyPlanState.NeedsAction => "instance.modify.state.needsActionDetail",
             InstanceModifyPlanState.NotExecutable => "instance.modify.state.notExecutableDetail",
+            InstanceModifyPlanState.Executing => "instance.modify.state.executingDetail",
+            InstanceModifyPlanState.Succeeded => "instance.modify.state.succeededDetail",
+            InstanceModifyPlanState.FailedRolledBack => "instance.modify.state.failedRolledBackDetail",
+            InstanceModifyPlanState.FailedNeedsRecovery => "instance.modify.state.failedNeedsRecoveryDetail",
+            InstanceModifyPlanState.FailedBeforeChange => "instance.modify.state.failedBeforeChangeDetail",
             _ => "instance.modify.state.notCheckedDetail",
         });
     }

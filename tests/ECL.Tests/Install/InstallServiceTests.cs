@@ -284,6 +284,129 @@ public sealed class InstallServiceTests
         Assert.False(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, instance.VersionId)));
     }
 
+    [Fact]
+    public async Task ReconfigureFailureReportsCompleteRollbackAndRestoredConfiguration()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService(failOnDisplayName: "1.21.1-fabric-0.16.0.jar");
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(fake);
+            services.AddSingleton<ILoaderCatalog>(new FakeLoaderCatalog());
+        });
+
+        var original = (await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Rollback Target", "1.21.1")).Value!;
+
+        var outcome = await provider.GetRequiredService<IVersionInstallService>()
+            .ReconfigureAsync(original.Id, "1.21.1", "fabric", "0.16.0");
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal("install.download_failed", outcome.Error?.Code);
+        var failure = outcome.Failure!;
+        Assert.True(failure.MetadataRestored);
+        Assert.True(failure.Rollback.IsComplete);
+        Assert.False(failure.RecoveryRequired);
+        Assert.NotNull(failure.DiagnosticPath);
+        Assert.True(File.Exists(failure.DiagnosticPath!));
+
+        // 失败后实例记录（含 VersionId）必须与变更前完全一致，不能重算成新的版本 ID。
+        var restored = await provider.GetRequiredService<IInstanceService>().GetAsync(original.Id);
+        Assert.NotNull(restored);
+        Assert.Equal(original.VersionId, restored!.VersionId);
+        Assert.Equal(original.GameVersion, restored.GameVersion);
+        Assert.Equal(original.Loader, restored.Loader);
+        Assert.Equal(original.LoaderVersion, restored.LoaderVersion);
+
+        // 本次新写入的加载器版本文件必须已删除。
+        Assert.False(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, "1.21.1-fabric-0.16.0")));
+        Assert.False(File.Exists(VersionFilePlanner.GetClientJarPath(environment.Paths, "1.21.1-fabric-0.16.0")));
+    }
+
+    [Fact]
+    public async Task ReconfigureFailureKeepsTheOriginalVersionIdOfImportedInstances()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService(failOnDisplayName: "1.21.1-fabric-0.16.0.jar");
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(fake);
+            services.AddSingleton<ILoaderCatalog>(new FakeLoaderCatalog());
+        });
+
+        var created = (await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Imported", "1.21.1")).Value!;
+        var imported = created with { VersionId = "custom-imported-version" };
+        await provider.GetRequiredService<IInstanceStore>().SaveAsync(imported);
+
+        var outcome = await provider.GetRequiredService<IVersionInstallService>()
+            .ReconfigureAsync(imported.Id, "1.21.1", "fabric", "0.16.0");
+
+        Assert.False(outcome.IsSuccess);
+        var restored = await provider.GetRequiredService<IInstanceService>().GetAsync(imported.Id);
+        Assert.Equal("custom-imported-version", restored!.VersionId);
+        Assert.True(outcome.Failure!.MetadataRestored);
+    }
+
+    [Fact]
+    public async Task ReconfigureSuccessCommitsTargetAndKeepsInstanceId()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService();
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(fake);
+            services.AddSingleton<ILoaderCatalog>(new FakeLoaderCatalog());
+        });
+
+        var original = (await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Reconfigure Ok", "1.21.1")).Value!;
+
+        var outcome = await provider.GetRequiredService<IVersionInstallService>()
+            .ReconfigureAsync(original.Id, "1.21.1", "fabric", "0.16.0");
+
+        Assert.True(outcome.IsSuccess, outcome.Error?.ToString());
+        Assert.Null(outcome.Failure);
+        Assert.Contains(outcome.Report!.Components!, component => component.StartsWith("fabric-api:", StringComparison.Ordinal));
+
+        var updated = await provider.GetRequiredService<IInstanceService>().GetAsync(original.Id);
+        Assert.Equal(original.Id, updated!.Id);
+        Assert.Equal("fabric", updated.Loader);
+        Assert.Equal("0.16.0", updated.LoaderVersion);
+        Assert.Equal("1.21.1-fabric-0.16.0", updated.VersionId);
+        Assert.True(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, updated.VersionId)));
+
+        var operation = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
+        Assert.Equal(OperationKind.Install, operation.Kind);
+        Assert.Equal(OperationState.Completed, operation.State);
+    }
+
+    [Fact]
+    public void RollbackReportsFailedDeletesInsteadOfClaimingSuccess()
+    {
+        var root = Directory.CreateTempSubdirectory("ecl-rollback-").FullName;
+        try
+        {
+            var path = Path.Combine(root, "locked.jar");
+            var transaction = new InstallTransaction();
+            transaction.TrackFile(path);
+            File.WriteAllText(path, "new content");
+
+            using var handle = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.None);
+            var result = transaction.Rollback();
+
+            Assert.False(result.IsComplete);
+            var failure = Assert.Single(result.Failures);
+            Assert.Contains("failed to rollback", failure, StringComparison.Ordinal);
+            Assert.Contains(path, failure, StringComparison.Ordinal);
+            Assert.Single(result.Actions);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>
     {
         public void Report(T value) => callback(value);

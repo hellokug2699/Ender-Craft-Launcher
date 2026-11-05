@@ -5,11 +5,15 @@ using System.Diagnostics;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Ecl.App.Dialogs;
+using Ecl.App.Dialogs.ViewModels;
 using Ecl.App.ViewModels;
 using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Java;
 using Ecl.Minecraft.Engine.Inventory;
+using Ecl.Minecraft.Engine.Snapshots;
+using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Loaders;
@@ -21,11 +25,14 @@ using Ecl.Sessions;
 namespace Ecl.App.Workspace.ViewModels;
 
 /// <summary>
-/// 实例工作区「配置 · 修改」二级页（B2 步骤 3b-4a）。
+/// 实例工作区「配置 · 修改」二级页。
 ///
-/// 本步骤只生成<strong>只读</strong>变更计划与影响预览（`instance-modify.md` §5–§7）：
-/// 不写实例、不创建快照、不下载任何产物，也不显示可执行的提交入口
-/// （受控执行属 3b-4b）。计划内容只来自真实领域结论：
+/// B2 步骤 3b-4a 建立了只读变更计划与影响预览（`instance-modify.md` §5–§7）；
+/// B2 步骤 3b-4b 在这套目标值与五态计划状态机上追加<strong>受控执行</strong>：
+/// 确认 → 创建并校验完整实例快照 → 通过 <see cref="IVersionInstallService.ReconfigureAsync"/>
+/// 执行变更 → 按领域返回的回滚信号区分「失败且已回滚」「失败且需要恢复」。
+///
+/// 计划内容只来自真实领域结论：
 /// - 目标版本目录来自 <see cref="IVersionCatalog"/>，加载器与组件按目标版本过滤后由
 ///   <see cref="ILoaderCatalog"/> 提供，不允许手输版本字符串；
 /// - Java 结论来自 <see cref="IJavaSelectionService"/>；目标版本文件尚未安装时，
@@ -36,11 +43,32 @@ namespace Ecl.App.Workspace.ViewModels;
 ///   两者都只能证明“存在”，不能证明“属于本实例”，因此按需处理项呈现。
 ///
 /// 目标实例由工作区打开时的稳定 InstanceId 固定绑定，页面不提供目录或实例切换入口。
-/// 生命周期由 <see cref="InstanceDetailPageViewModel"/> 持有，关闭工作区时释放。
+/// 生命周期由 <see cref="InstanceDetailPageViewModel"/> 持有；关闭页面不会取消已提交的执行任务
+/// （任务归属统一 Operation，页面只停止回写自己的状态）。
 /// </summary>
 public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposable
 {
     private const int MaxModNamesInPlan = 6;
+
+    /// <summary>
+    /// 可以直接展示给用户的安装错误代码：这些文案只描述失败类别与文件名，不含本地路径。
+    /// 其余错误一律显示通用说明，细节只写诊断文件。
+    /// </summary>
+    private static readonly HashSet<string> SafeInstallErrorCodes = new(StringComparer.Ordinal)
+    {
+        "install.cancelled",
+        "install.download_failed",
+        "install.instance_missing",
+        "install.unsupported_loader",
+        "install.loader_version_missing",
+        "install.client_missing",
+        "install.assets_missing",
+        "install.version_not_found",
+        "install.version_invalid",
+        "install.loader_failed",
+        "install.fabric_api_missing",
+        "install.optifine_missing",
+    };
 
     private static readonly IReadOnlyList<string> LoaderOrder =
     [
@@ -78,11 +106,16 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
     private readonly IContentPackService _contentPacks;
     private readonly IGameSessionService _sessions;
     private readonly IOperationService _operations;
+    private readonly IVersionInstallService _install;
+    private readonly IInstanceSnapshotService _snapshots;
+    private readonly IDialogEngine _dialogs;
     private readonly ILocalizer _localizer;
 
     private CancellationTokenSource? _targetCancellation;
     private CancellationTokenSource? _planCancellation;
     private string _targetFabricApiVersion = string.Empty;
+    private string? _diagnosticPath;
+    private ModifyExecutionTarget? _planTarget;
     private int _generation;
     private bool _suppressTargetReload;
     private bool _initialized;
@@ -97,6 +130,9 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         IContentPackService contentPacks,
         IGameSessionService sessions,
         IOperationService operations,
+        IVersionInstallService install,
+        IInstanceSnapshotService snapshots,
+        IDialogEngine dialogs,
         ILocalizer localizer)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -108,6 +144,9 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         ArgumentNullException.ThrowIfNull(contentPacks);
         ArgumentNullException.ThrowIfNull(sessions);
         ArgumentNullException.ThrowIfNull(operations);
+        ArgumentNullException.ThrowIfNull(install);
+        ArgumentNullException.ThrowIfNull(snapshots);
+        ArgumentNullException.ThrowIfNull(dialogs);
         ArgumentNullException.ThrowIfNull(localizer);
 
         _state = state;
@@ -119,6 +158,9 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         _contentPacks = contentPacks;
         _sessions = sessions;
         _operations = operations;
+        _install = install;
+        _snapshots = snapshots;
+        _dialogs = dialogs;
         _localizer = localizer;
 
         _planStateDetail = ModifyPlanPresentation.StateDetail(InstanceModifyPlanState.NotChecked, _localizer);
@@ -252,6 +294,8 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(GeneratePlanCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExecuteCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RestoreSnapshotCommand))]
     private InstanceModifyPlanState _planState = InstanceModifyPlanState.NotChecked;
 
     public string PlanStateText => ModifyPlanPresentation.StateText(PlanState, _localizer);
@@ -267,13 +311,78 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
 
     public bool IsChecking => PlanState == InstanceModifyPlanState.Checking;
 
+    /// <summary>执行中：目标选择与提交均锁定；页面只转发真实阶段，不提供强制取消。</summary>
+    public bool IsExecuting => PlanState == InstanceModifyPlanState.Executing;
+
+    public bool IsSucceeded => PlanState == InstanceModifyPlanState.Succeeded;
+
+    /// <summary>失败且已回滚：领域确认文件级回滚完整、实例元数据已还原。</summary>
+    public bool IsFailedRolledBack => PlanState == InstanceModifyPlanState.FailedRolledBack;
+
+    /// <summary>失败且需要恢复：回滚不完整或元数据未还原，必须提供受控恢复入口。</summary>
+    public bool IsFailedNeedsRecovery => PlanState == InstanceModifyPlanState.FailedNeedsRecovery;
+
+    /// <summary>执行前中止：快照/校验失败或运行状态变化，实例未写入本次变更。</summary>
+    public bool IsFailedBeforeChange => PlanState == InstanceModifyPlanState.FailedBeforeChange;
+
+    /// <summary>目标选择是否可编辑：执行中与恢复中锁定，避免与正在运行的写入竞争。</summary>
+    public bool IsTargetEditable => !IsExecuting && !IsRestoring;
+
     public bool HasPlan => PlanItems.Count > 0;
 
     public bool HasBlockers => Blockers.Count > 0;
 
     public bool HasActionItems => ActionItems.Count > 0;
 
+    /// <summary>执行/恢复的真实阶段文本（来自领域进度，不做百分比猜测）。</summary>
+    [ObservableProperty]
+    private string _executionStage = string.Empty;
+
+    /// <summary>执行结果摘要：成功时是实际提交的目标，失败时是领域错误与回滚结论。</summary>
+    [ObservableProperty]
+    private string _executionResult = string.Empty;
+
+    /// <summary>变更前快照 ID；创建成功后保留，恢复入口只使用这个已校验的快照。</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RestoreSnapshotCommand))]
+    private string _snapshotId = string.Empty;
+
+    /// <summary>快照范围的说明；未创建快照时为空。</summary>
+    [ObservableProperty]
+    private string _snapshotSummary = string.Empty;
+
+    /// <summary>诊断文件的说明（是否写入、可打开日志目录）；不包含本地路径。</summary>
+    [ObservableProperty]
+    private string _diagnosticNote = string.Empty;
+
+    public bool HasExecutionStage => ExecutionStage.Length > 0;
+
+    public bool HasExecutionResult => ExecutionResult.Length > 0;
+
+    public bool HasSnapshotSummary => SnapshotSummary.Length > 0;
+
+    public bool HasDiagnosticNote => DiagnosticNote.Length > 0;
+
+    /// <summary>诊断文件是否真实存在；只有它存在时才提供打开入口。</summary>
+    public bool HasDiagnosticFile => _diagnosticPath is not null;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RestoreSnapshotCommand))]
+    [NotifyPropertyChangedFor(nameof(IsTargetEditable))]
+    private bool _isRestoring;
+
+    [ObservableProperty]
+    private string _restoreStatus = string.Empty;
+
+    public bool HasRestoreStatus => RestoreStatus.Length > 0;
+
     public bool IsDisposed { get; private set; }
+
+    /// <summary>
+    /// 受控变更成功后刷新工作区身份（由 <see cref="InstanceDetailPageViewModel"/> 注入）。
+    /// 页面不直接读写实例列表，也不自行重新构造工作区。
+    /// </summary>
+    internal Func<Task>? WorkspaceRefresh { get; set; }
 
     /// <summary>
     /// 最近一次由选择变化触发的目标组合读取。绑定层无法等待异步命令，因此把任务暴露给
@@ -771,7 +880,34 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         OnPropertyChanged(nameof(IsPlanBlocked));
         OnPropertyChanged(nameof(IsPlanNeedsAction));
         OnPropertyChanged(nameof(IsChecking));
+        OnPropertyChanged(nameof(IsExecuting));
+        OnPropertyChanged(nameof(IsSucceeded));
+        OnPropertyChanged(nameof(IsFailedRolledBack));
+        OnPropertyChanged(nameof(IsFailedNeedsRecovery));
+        OnPropertyChanged(nameof(IsFailedBeforeChange));
+        OnPropertyChanged(nameof(IsTargetEditable));
+        OnPropertyChanged(nameof(HasExecutionResult));
+        OnPropertyChanged(nameof(HasExecutionStage));
+        OnPropertyChanged(nameof(HasSnapshotSummary));
+        OnPropertyChanged(nameof(HasDiagnosticNote));
+        OnPropertyChanged(nameof(HasDiagnosticFile));
+        ExecuteCommand.NotifyCanExecuteChanged();
+        RestoreSnapshotCommand.NotifyCanExecuteChanged();
     }
+
+    partial void OnExecutionStageChanged(string value) => OnPropertyChanged(nameof(HasExecutionStage));
+
+    partial void OnExecutionResultChanged(string value) => OnPropertyChanged(nameof(HasExecutionResult));
+
+    partial void OnSnapshotSummaryChanged(string value) => OnPropertyChanged(nameof(HasSnapshotSummary));
+
+    partial void OnDiagnosticNoteChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasDiagnosticNote));
+        OnPropertyChanged(nameof(HasDiagnosticFile));
+    }
+
+    partial void OnRestoreStatusChanged(string value) => OnPropertyChanged(nameof(HasRestoreStatus));
 
     partial void OnTargetStatusChanged(string value) => OnPropertyChanged(nameof(HasTargetStatus));
 
@@ -784,6 +920,8 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
     private bool CanGeneratePlan() =>
         !IsDisposed &&
         !IsLoadingTarget &&
+        !IsExecuting &&
+        !IsRestoring &&
         PlanState != InstanceModifyPlanState.Checking;
 
     /// <summary>
@@ -811,6 +949,12 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         OnPropertyChanged(nameof(HasPlan));
         OnPropertyChanged(nameof(HasActionItems));
         OnPropertyChanged(nameof(HasBlockers));
+
+        // 重新生成计划会替换上一次的结论；但“需要恢复”的快照是恢复材料，必须保留。
+        if (!IsFailedNeedsRecovery)
+        {
+            ClearExecutionResult();
+        }
 
         PlanState = InstanceModifyPlanState.Checking;
         PlanStateDetail = ModifyPlanPresentation.StateDetail(InstanceModifyPlanState.Checking, _localizer);
@@ -868,6 +1012,10 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
             Blockers.Add(blocker);
         }
 
+        // 只有“可执行”的计划才允许提交；同时记录生成计划时的目标组合，
+        // 任何选择变化都会重置计划，因此提交前可以证明目标没有被换掉。
+        _planTarget = plan.State == InstanceModifyPlanState.Executable ? CaptureTarget() : null;
+
         PlanState = plan.State;
         PlanStateDetail = ModifyPlanPresentation.StateDetail(plan.State, _localizer);
         OnPropertyChanged(nameof(HasPlan));
@@ -879,15 +1027,551 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
     {
         _planCancellation?.Cancel();
 
+        _planTarget = null;
         PlanItems.Clear();
         ActionItems.Clear();
         Blockers.Clear();
+        ClearExecutionResult();
         PlanState = InstanceModifyPlanState.NotChecked;
         PlanStateDetail = ModifyPlanPresentation.StateDetail(InstanceModifyPlanState.NotChecked, _localizer);
         OnPropertyChanged(nameof(HasPlan));
         OnPropertyChanged(nameof(HasActionItems));
         OnPropertyChanged(nameof(HasBlockers));
     }
+
+    /// <summary>清理上一次执行/恢复的结果，避免新计划沿用旧结论。</summary>
+    private void ClearExecutionResult()
+    {
+        ExecutionStage = string.Empty;
+        ExecutionResult = string.Empty;
+        SnapshotId = string.Empty;
+        SnapshotSummary = string.Empty;
+        DiagnosticNote = string.Empty;
+        RestoreStatus = string.Empty;
+        _diagnosticPath = null;
+    }
+
+    private ModifyExecutionTarget CaptureTarget() => new(
+        SelectedTargetVersion?.Value ?? string.Empty,
+        SelectedTargetLoader?.Id ?? LoaderKinds.Vanilla,
+        IsLoaderVersionRequired ? SelectedTargetLoaderVersion?.Value : null,
+        IsFabricTarget ? _targetFabricApiVersion : null,
+        SelectedTargetOptiFine?.Value);
+
+    /// <summary>
+    /// 提交入口只在“计划可执行 + 目标未变化 + 不在执行/恢复中”时可用（`instance-modify.md` §3、§6）。
+    /// </summary>
+    private bool CanExecutePlan() =>
+        !IsDisposed &&
+        !IsExecuting &&
+        !IsRestoring &&
+        PlanState == InstanceModifyPlanState.Executable &&
+        _planTarget is not null &&
+        _planTarget == CaptureTarget();
+
+    private bool CanRestoreSnapshot() =>
+        !IsDisposed &&
+        !IsRestoring &&
+        PlanState == InstanceModifyPlanState.FailedNeedsRecovery &&
+        !string.IsNullOrWhiteSpace(SnapshotId);
+
+    /// <summary>
+    /// 受控执行（`instance-modify.md` §6）：确认 → 创建并校验完整实例快照 → 原地变更。
+    /// 不提供强制取消入口；页面关闭不会取消已提交的任务。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanExecutePlan))]
+    private async Task ExecuteAsync()
+    {
+        if (IsDisposed || !CanExecutePlan() || _planTarget is not { } target)
+        {
+            return;
+        }
+
+        var confirmed = await ConfirmExecutionAsync(target).ConfigureAwait(true);
+        if (!confirmed || IsDisposed)
+        {
+            return;
+        }
+
+        // 计划可能是在几分钟前生成的：写入前重新核对运行中的游戏进程与写入任务。
+        var running = FindRunningSessions(InstanceId);
+        var writeTasks = FindActiveWriteOperations();
+        if (running.Count > 0 || writeTasks > 0)
+        {
+            PlanState = InstanceModifyPlanState.NeedsAction;
+            PlanStateDetail = running.Count > 0
+                ? _localizer.Get("instance.modify.block.runningChanged")
+                : _localizer.Get("instance.modify.block.tasksChanged");
+            if (running.Count > 0)
+            {
+                ActionItems.Add(_localizer.Get("instance.modify.process.running", running[0]));
+            }
+
+            if (writeTasks > 0)
+            {
+                ActionItems.Add(_localizer.Get("instance.modify.tasks.conflict", writeTasks));
+            }
+
+            OnPropertyChanged(nameof(HasActionItems));
+            return;
+        }
+
+        ClearExecutionResult();
+        PlanState = InstanceModifyPlanState.Executing;
+        PlanStateDetail = ModifyPlanPresentation.StateDetail(InstanceModifyPlanState.Executing, _localizer);
+        ExecutionStage = _localizer.Get("instance.modify.execution.starting");
+
+        await RunExecutionAsync(target).ConfigureAwait(true);
+    }
+
+    private async Task RunExecutionAsync(ModifyExecutionTarget target)
+    {
+        try
+        {
+            // 1. 可验证的完整实例快照：失败/不完整时不得开始安装。
+            ExecutionStage = _localizer.Get("instance.modify.execution.snapshot");
+            var snapshotCreated = await CreateSnapshotAsync().ConfigureAwait(true);
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            if (!snapshotCreated.IsSuccess)
+            {
+                FailBeforeChange(
+                    _localizer.Get("instance.modify.execution.snapshotFailed", snapshotCreated.Error?.Message ?? string.Empty));
+                return;
+            }
+
+            var created = snapshotCreated.Value!;
+            SnapshotId = created.SnapshotId;
+            SnapshotSummary = _localizer.Get(
+                "instance.modify.snapshot.created",
+                created.SnapshotId,
+                created.FileCount);
+            ExecutionStage = _localizer.Get("instance.modify.execution.verify");
+
+            var verified = await _snapshots.VerifyAsync(InstanceId, created.SnapshotId).ConfigureAwait(true);
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            if (!verified.IsSuccess)
+            {
+                FailBeforeChange(_localizer.Get(
+                    "instance.modify.execution.snapshotRejected",
+                    verified.Error?.Message ?? string.Empty));
+                return;
+            }
+
+            var verification = verified.Value!;
+            if (!verification.IsValid)
+            {
+                SnapshotSummary = _localizer.Get("instance.modify.snapshot.invalid", created.FileCount);
+                FailBeforeChange(_localizer.Get(
+                    "instance.modify.execution.snapshotRejected",
+                    _localizer.Get("instance.modify.execution.snapshotIncomplete")));
+                return;
+            }
+
+            SnapshotSummary = _localizer.Get(
+                "instance.modify.snapshot.verified",
+                created.SnapshotId,
+                verification.VerifiedObjects);
+
+            // 2. 原地变更：安装服务自己登记 Operation 并转发进度，本页不重复登记任务。
+            ExecutionStage = _localizer.Get("instance.modify.execution.install");
+            var progress = new Progress<InstallProgress>(update =>
+            {
+                if (IsDisposed || !IsExecuting)
+                {
+                    return;
+                }
+
+                ExecutionStage = update.TotalFiles > 0
+                    ? $"{update.Message} ({update.CompletedFiles}/{update.TotalFiles})"
+                    : update.Message;
+            });
+
+            var outcome = await _install
+                .ReconfigureAsync(
+                    InstanceId,
+                    target.Version,
+                    target.Loader,
+                    target.LoaderVersion,
+                    target.FabricApiVersion,
+                    target.OptiFineVersion,
+                    progress)
+                .ConfigureAwait(true);
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            if (outcome.IsSuccess)
+            {
+                ExecutionStage = string.Empty;
+                ExecutionResult = _localizer.Get("instance.modify.execution.succeeded", DescribeTarget(target));
+                await RefreshWorkspaceAsync().ConfigureAwait(true);
+                if (IsDisposed)
+                {
+                    return;
+                }
+
+                PlanState = InstanceModifyPlanState.Succeeded;
+                PlanStateDetail = ModifyPlanPresentation.StateDetail(InstanceModifyPlanState.Succeeded, _localizer);
+                return;
+            }
+
+            ApplyFailure(outcome.Failure!);
+        }
+        catch (Exception exception)
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            // 没有领域失败结果就无法证明回滚状态：按“需要恢复”处理，并保留已校验的快照。
+            ExecutionStage = string.Empty;
+            ExecutionResult = _localizer.Get("instance.modify.execution.unknown", exception.Message);
+            DiagnosticNote = _localizer.Get("instance.modify.diagnostic.unavailable");
+            PlanState = InstanceModifyPlanState.FailedNeedsRecovery;
+            PlanStateDetail = _localizer.Get("instance.modify.state.failedNeedsRecoveryDetail");
+        }
+    }
+
+    /// <summary>创建变更前完整快照；进度登记到统一 Operation，失败时返回真实原因。</summary>
+    private async Task<Result<SnapshotManifest>> CreateSnapshotAsync()
+    {
+        var progress = new Progress<SnapshotProgress>(update =>
+        {
+            if (IsDisposed || !IsExecuting)
+            {
+                return;
+            }
+
+            ExecutionStage = update.Total > 0
+                ? _localizer.Get("instance.modify.execution.snapshotProgress", update.Processed, update.Total)
+                : _localizer.Get("instance.modify.execution.snapshot");
+        });
+
+        using var bridge = new OperationProgressBridge<SnapshotProgress>(
+            _operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Backup,
+                Title = _localizer.Get("instance.modify.execution.snapshotTask", InstanceName),
+                StageId = "snapshot",
+                CanCancel = false,
+                CanRetry = false,
+            },
+            progress,
+            MapSnapshotProgress);
+
+        var result = await _snapshots
+            .CreateAsync(InstanceId, new SnapshotCreateOptions(SnapshotScope.Full), bridge)
+            .ConfigureAwait(true);
+
+        if (!result.IsSuccess)
+        {
+            bridge.Fail(new OperationError(
+                OperationErrorKind.LocalIO,
+                result.Error?.Code ?? "snapshot.failed",
+                result.Error?.Message ?? string.Empty));
+        }
+        else if (result.Value!.Status != SnapshotStatus.Complete)
+        {
+            bridge.Fail(new OperationError(
+                OperationErrorKind.LocalIO,
+                "snapshot.incomplete",
+                _localizer.Get("instance.modify.execution.snapshotIncomplete")));
+        }
+        else
+        {
+            bridge.Complete();
+        }
+
+        return result;
+    }
+
+    /// <summary>执行前中止：实例还没有写入，快照与已生成的计划保留用于重试或放弃。</summary>
+    private void FailBeforeChange(string message)
+    {
+        ExecutionStage = string.Empty;
+        ExecutionResult = message;
+        PlanState = InstanceModifyPlanState.FailedBeforeChange;
+        PlanStateDetail = ModifyPlanPresentation.StateDetail(InstanceModifyPlanState.FailedBeforeChange, _localizer);
+    }
+
+    /// <summary>按领域返回的回滚信号显示结果；没有信号时不得显示「已回滚」。</summary>
+    private void ApplyFailure(InstallFailure failure)
+    {
+        ExecutionStage = string.Empty;
+        _diagnosticPath = failure.DiagnosticPath;
+        DiagnosticNote = failure.DiagnosticPath is not null
+            ? _localizer.Get("instance.modify.diagnostic.written")
+            : _localizer.Get("instance.modify.diagnostic.unavailable");
+
+        var message = DescribeInstallError(failure.Error);
+        if (failure.RecoveryRequired)
+        {
+            var problems = failure.Rollback.Failures.Count + (failure.MetadataRestored ? 0 : 1);
+            ExecutionResult = _localizer.Get(
+                "instance.modify.execution.failedNeedsRecovery",
+                message,
+                problems);
+            PlanState = InstanceModifyPlanState.FailedNeedsRecovery;
+            PlanStateDetail = _localizer.Get("instance.modify.state.failedNeedsRecoveryDetail");
+            return;
+        }
+
+        ExecutionResult = _localizer.Get("instance.modify.execution.failedRolledBack", message);
+        PlanState = InstanceModifyPlanState.FailedRolledBack;
+        PlanStateDetail = _localizer.Get("instance.modify.state.failedRolledBackDetail");
+    }
+
+    /// <summary>只展示不含本地路径的错误文案；其余细节交给诊断文件。</summary>
+    private string DescribeInstallError(EclError? error)
+    {
+        if (error is null)
+        {
+            return _localizer.Get("instance.modify.execution.failedGeneric");
+        }
+
+        return SafeInstallErrorCodes.Contains(error.Code)
+            ? error.Message
+            : _localizer.Get("instance.modify.execution.failedGeneric");
+    }
+
+    private string DescribeTarget(ModifyExecutionTarget target)
+    {
+        var loader = LoaderText(target.Loader, target.LoaderVersion);
+        var components = DescribeTargetComponents(target.Loader, target.OptiFineVersion);
+        return _localizer.Get(
+            "instance.modify.execution.target",
+            target.Version,
+            loader,
+            components);
+    }
+
+    /// <summary>受控恢复：只使用本次变更前已校验的快照，并在恢复前创建安全快照。</summary>
+    [RelayCommand(CanExecute = nameof(CanRestoreSnapshot))]
+    private async Task RestoreSnapshotAsync()
+    {
+        var snapshotId = SnapshotId;
+        if (IsDisposed || string.IsNullOrWhiteSpace(snapshotId) || !CanRestoreSnapshot())
+        {
+            return;
+        }
+
+        var confirmed = await ConfirmRestoreAsync(snapshotId).ConfigureAwait(true);
+        if (!confirmed || IsDisposed)
+        {
+            return;
+        }
+
+        IsRestoring = true;
+        RestoreStatus = _localizer.Get("instance.modify.restore.running");
+        try
+        {
+            var result = await _snapshots.RestoreAsync(InstanceId, snapshotId).ConfigureAwait(true);
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            if (!result.IsSuccess)
+            {
+                RestoreStatus = _localizer.Get(
+                    "instance.modify.restore.failed",
+                    result.Error?.Message ?? string.Empty);
+                return;
+            }
+
+            var restore = result.Value!;
+            var warnings = restore.Warnings.Count > 0
+                ? " " + _localizer.Get("instance.modify.restore.warnings", restore.Warnings.Count)
+                : string.Empty;
+            RestoreStatus = _localizer.Get(
+                "instance.modify.restore.succeeded",
+                snapshotId,
+                restore.Written,
+                restore.Deleted) + warnings;
+
+            await RefreshWorkspaceAsync().ConfigureAwait(true);
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            ExecutionResult = _localizer.Get("instance.modify.restore.result", snapshotId);
+            PlanState = InstanceModifyPlanState.FailedRolledBack;
+            PlanStateDetail = _localizer.Get("instance.modify.state.restoredDetail", snapshotId);
+        }
+        catch (Exception exception)
+        {
+            if (!IsDisposed)
+            {
+                RestoreStatus = _localizer.Get("instance.modify.restore.failed", exception.Message);
+            }
+        }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                IsRestoring = false;
+            }
+        }
+    }
+
+    private async Task RefreshWorkspaceAsync()
+    {
+        if (WorkspaceRefresh is not { } refresh)
+        {
+            return;
+        }
+
+        try
+        {
+            await refresh().ConfigureAwait(true);
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            NotifyIdentityChanged();
+        }
+        catch (Exception exception)
+        {
+            if (!IsDisposed)
+            {
+                DiagnosticNote = _localizer.Get("instance.modify.refresh.failed", exception.Message);
+            }
+        }
+    }
+
+    /// <summary>身份快照被替换后重新读取页面顶部的当前值。</summary>
+    private void NotifyIdentityChanged()
+    {
+        OnPropertyChanged(nameof(InstanceName));
+        OnPropertyChanged(nameof(InstanceMeta));
+        OnPropertyChanged(nameof(CurrentVersionText));
+        OnPropertyChanged(nameof(CurrentLoaderText));
+        OnPropertyChanged(nameof(CurrentLoaderVersionText));
+        OnPropertyChanged(nameof(CurrentOptiFineText));
+        OnPropertyChanged(nameof(CurrentPath));
+        OnPropertyChanged(nameof(CurrentComponentsText));
+        OnPropertyChanged(nameof(TargetComponentsText));
+    }
+
+    private async Task<bool> ConfirmExecutionAsync(ModifyExecutionTarget target)
+    {
+        if (!_dialogs.IsAvailable)
+        {
+            // 无法展示确认时不写入：宁可拒绝，也不在没有确认的情况下变更实例。
+            ExecutionResult = _localizer.Get("instance.modify.confirm.unavailable");
+            OnPropertyChanged(nameof(HasExecutionResult));
+            return false;
+        }
+
+        var impacts = CountImpacts();
+        var content = new ModifyConfirmDialogViewModel(
+            [
+                _localizer.Get("instance.modify.confirm.target", DescribeTarget(target)),
+                _localizer.Get(
+                    "instance.modify.confirm.impact",
+                    impacts.Certain,
+                    impacts.Possible,
+                    impacts.Unknown,
+                    impacts.Warning),
+            ],
+            _localizer.Get("instance.modify.confirm.snapshot", SnapshotScopeText()),
+            _localizer.Get("instance.modify.confirm.notice"),
+            _localizer.Get("instance.modify.confirm.execute"),
+            _localizer.Get("dialog.cancel"));
+
+        var result = await _dialogs.ShowAsync(new DialogRequest
+        {
+            Title = _localizer.Get("instance.modify.confirm.title"),
+            Content = content,
+            InitialFocus = DialogInitialFocus.Cancel,
+            Severity = DialogSeverity.Warning,
+            MinWidth = 420,
+            MaxWidth = 620,
+            MaxHeight = 640,
+        }).ConfigureAwait(true);
+
+        return result.IsPrimary;
+    }
+
+    private async Task<bool> ConfirmRestoreAsync(string snapshotId)
+    {
+        if (!_dialogs.IsAvailable)
+        {
+            RestoreStatus = _localizer.Get("instance.modify.confirm.unavailable");
+            return false;
+        }
+
+        var result = await _dialogs.ShowAsync(new DialogRequest
+        {
+            Title = _localizer.Get("instance.modify.restore.title"),
+            Content = new MessageDialogViewModel(
+                _localizer.Get("instance.modify.restore.confirm", snapshotId, SnapshotScopeText()),
+                _localizer.Get("instance.modify.restore.confirmYes"),
+                cancelText: _localizer.Get("dialog.cancel"),
+                severity: DialogSeverity.Warning,
+                isDestructive: true),
+            InitialFocus = DialogInitialFocus.Cancel,
+            Severity = DialogSeverity.Warning,
+        }).ConfigureAwait(true);
+
+        return result.IsPrimary;
+    }
+
+    private (int Certain, int Possible, int Unknown, int Warning) CountImpacts()
+    {
+        var certain = PlanItems.Count(item => item.Impact == ModifyPlanImpact.Certain);
+        var possible = PlanItems.Count(item => item.Impact == ModifyPlanImpact.Possible);
+        var unknown = PlanItems.Count(item => item.Impact == ModifyPlanImpact.Unknown);
+        var warning = PlanItems.Count(item => item.Impact == ModifyPlanImpact.Warning);
+        return (certain, possible, unknown, warning);
+    }
+
+    private string SnapshotScopeText() => _localizer.Get("instance.modify.snapshot.scope");
+
+    /// <summary>打开安装诊断文件所在目录；页面不展示路径本身。</summary>
+    [RelayCommand]
+    private void OpenDiagnosticsFolder()
+    {
+        if (_diagnosticPath is not { } path || IsDisposed)
+        {
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(path);
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(directory) { UseShellExecute = true });
+        }
+        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            DiagnosticNote = _localizer.Get("instance.modify.diagnostic.openFailed");
+        }
+    }
+
+    private static OperationProgressUpdate MapSnapshotProgress(SnapshotProgress progress) => new()
+    {
+        StageId = "snapshot",
+        Completed = progress.Processed,
+        Total = progress.Total > 0 ? progress.Total : null,
+    };
 
     private async Task<PlanBuild> BuildPlanAsync(CancellationToken token)
     {
@@ -1641,10 +2325,14 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         LoaderVersions.Clear();
         OptiFineVersions.Clear();
         LoaderChoices.Clear();
+        _planTarget = null;
+        WorkspaceRefresh = null;
         OnPropertyChanged(nameof(HasPlan));
         OnPropertyChanged(nameof(HasActionItems));
         OnPropertyChanged(nameof(HasBlockers));
         GeneratePlanCommand.NotifyCanExecuteChanged();
+        ExecuteCommand.NotifyCanExecuteChanged();
+        RestoreSnapshotCommand.NotifyCanExecuteChanged();
     }
 
     private enum ModTargetImpact
@@ -1659,6 +2347,17 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         IReadOnlyList<ModifyPlanItemViewModel> Items,
         IReadOnlyList<string> Blockers,
         IReadOnlyList<string> Actions);
+
+    /// <summary>
+    /// 生成计划时的目标组合（`instance-modify.md` §4）。提交前必须与当前选择完全一致，
+    /// 避免用旧计划执行新目标；任何选择变化都会把计划重置为未检查。
+    /// </summary>
+    private sealed record ModifyExecutionTarget(
+        string Version,
+        string Loader,
+        string? LoaderVersion,
+        string? FabricApiVersion,
+        string? OptiFineVersion);
 
     private sealed record ModsImpact(
         IReadOnlyList<ModifyPlanItemViewModel> Items,

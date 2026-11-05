@@ -54,6 +54,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
             memory,
             localizer);
         Modify = modifyFactory.Create(state);
+        Modify.WorkspaceRefresh = RefreshAfterModifyAsync;
 
         Navigation = InstanceWorkspaceNavigationFactory.Create(
             localizer,
@@ -109,6 +110,33 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
     /// </summary>
     public Task InitializeAsync() =>
         Task.WhenAll(Runtime.InitializeAsync(), Mods.InitializeAsync(), Storage.RefreshAsync());
+
+    /// <summary>
+    /// 受控变更成功后重新读取实例并刷新工作区身份（B2 步骤 3b-4b）：
+    /// 只替换实例列表中的目标项与页面身份快照，InstanceId 不变；基本信息的身份文本与
+    /// Java 兼容性按新版本重新评估，存储占用重新统计。不重建工作区、不切换标签。
+    /// </summary>
+    internal async Task RefreshAfterModifyAsync()
+    {
+        if (State.IsDisposed)
+        {
+            return;
+        }
+
+        var item = await Instances.ReloadInstanceAsync(State.InstanceId).ConfigureAwait(true);
+        if (item is null || State.IsDisposed)
+        {
+            // 实例记录已不存在：保留页面，但不再替换身份，避免伪造新配置。
+            return;
+        }
+
+        State.ReplaceItem(item);
+        BasicInfo.RefreshIdentity();
+        Runtime.RebindInstance(item.Model);
+        OnPropertyChanged(nameof(InstanceName));
+        OnPropertyChanged(nameof(InstanceMeta));
+        await Storage.RefreshAsync().ConfigureAwait(true);
+    }
 
     public void Dispose()
     {

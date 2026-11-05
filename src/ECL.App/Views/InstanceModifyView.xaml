@@ -5,9 +5,9 @@
              xmlns:wsvm="clr-namespace:Ecl.App.Workspace.ViewModels"
              xmlns:behaviors="clr-namespace:Ecl.App.Behaviors">
     <!--
-        实例工作区「配置 · 修改」二级页（B2 步骤 3b-4a）。
+        实例工作区「配置 · 修改」二级页。
         布局按 `hints/ui/pages/instance-modify.md`：当前值↔拟变更值、只读变更计划与影响预览、
-        页面底部操作。本步骤只生成只读计划，不写实例、不创建快照、不下载产物。
+        页面底部操作；B2 步骤 3b-4b 增加确认后的受控执行、真实阶段、成功/失败结论、快照与恢复入口。
         页面只有一个纵向滚动容器；计划条目数量由固定检查项决定（有界），不使用无上限列表。
     -->
     <UserControl.Resources>
@@ -138,6 +138,7 @@
                                   ItemTemplate="{StaticResource DisplayNameItemTemplate}"
                                   ItemContainerStyle="{StaticResource ModifyChoiceItemStyle}"
                                   AutomationProperties.Name="{loc:Loc Key=instance.modify.item.version}"
+                                  IsEnabled="{Binding IsTargetEditable}"
                                   Margin="0,0,0,8" />
 
                         <!-- 加载器 -->
@@ -155,6 +156,7 @@
                                   ItemTemplate="{StaticResource DisplayNameItemTemplate}"
                                   ItemContainerStyle="{StaticResource ModifyChoiceItemStyle}"
                                   AutomationProperties.Name="{loc:Loc Key=instance.modify.item.loader}"
+                                  IsEnabled="{Binding IsTargetEditable}"
                                   Margin="0,0,0,8" />
 
                         <!-- 加载器版本（原版不需要） -->
@@ -174,6 +176,7 @@
                                   ItemTemplate="{StaticResource DisplayNameItemTemplate}"
                                   ItemContainerStyle="{StaticResource ModifyChoiceItemStyle}"
                                   AutomationProperties.Name="{loc:Loc Key=instance.modify.item.loaderVersion}"
+                                  IsEnabled="{Binding IsTargetEditable}"
                                   Margin="0,0,0,8"
                                   Visibility="{Binding IsLoaderVersionRequired, Converter={StaticResource BoolToVisibility}}" />
 
@@ -198,7 +201,8 @@
                                           SelectedItem="{Binding SelectedTargetOptiFine, Mode=TwoWay}"
                                           ItemTemplate="{StaticResource DisplayNameItemTemplate}"
                                           ItemContainerStyle="{StaticResource ModifyChoiceItemStyle}"
-                                          AutomationProperties.Name="{loc:Loc Key=instance.modify.target.optiFine}" />
+                                          AutomationProperties.Name="{loc:Loc Key=instance.modify.target.optiFine}"
+                                          IsEnabled="{Binding IsTargetEditable}" />
                                 <TextBlock Text="{Binding OptiFineNote}"
                                            Foreground="{DynamicResource WarningBrush}"
                                            FontSize="9"
@@ -231,7 +235,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- 状态与只读计划：状态用文字 + 颜色双重表达，不只靠颜色。 -->
+            <!-- 状态与计划：状态用文字 + 颜色双重表达，不只靠颜色。 -->
             <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                 <StackPanel>
                     <Border Padding="12,10" CornerRadius="4">
@@ -245,11 +249,27 @@
                                         <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
                                         <Setter Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
                                     </DataTrigger>
+                                    <DataTrigger Binding="{Binding PlanState}" Value="{x:Static wsvm:InstanceModifyPlanState.Executing}">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding PlanState}" Value="{x:Static wsvm:InstanceModifyPlanState.Succeeded}">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
+                                    </DataTrigger>
                                     <DataTrigger Binding="{Binding PlanState}" Value="{x:Static wsvm:InstanceModifyPlanState.NeedsAction}">
                                         <Setter Property="Background" Value="{DynamicResource WarningSoftBrush}" />
                                         <Setter Property="BorderBrush" Value="{DynamicResource WarningBorderBrush}" />
                                     </DataTrigger>
+                                    <DataTrigger Binding="{Binding PlanState}" Value="{x:Static wsvm:InstanceModifyPlanState.FailedBeforeChange}">
+                                        <Setter Property="Background" Value="{DynamicResource WarningSoftBrush}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource WarningBorderBrush}" />
+                                    </DataTrigger>
                                     <DataTrigger Binding="{Binding PlanState}" Value="{x:Static wsvm:InstanceModifyPlanState.NotExecutable}">
+                                        <Setter Property="Background" Value="{DynamicResource DangerSoftBrush}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource DangerBorderBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding PlanState}" Value="{x:Static wsvm:InstanceModifyPlanState.FailedNeedsRecovery}">
                                         <Setter Property="Background" Value="{DynamicResource DangerSoftBrush}" />
                                         <Setter Property="BorderBrush" Value="{DynamicResource DangerBorderBrush}" />
                                     </DataTrigger>
@@ -265,6 +285,43 @@
                                        FontSize="10"
                                        Margin="0,4,0,0"
                                        TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding ExecutionStage}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       Margin="0,6,0,0"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding HasExecutionStage, Converter={StaticResource BoolToVisibility}}" />
+                            <TextBlock Text="{Binding ExecutionResult}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       FontSize="10"
+                                       Margin="0,6,0,0"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding HasExecutionResult, Converter={StaticResource BoolToVisibility}}" />
+                            <TextBlock Text="{Binding SnapshotSummary}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="9"
+                                       Margin="0,6,0,0"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding HasSnapshotSummary, Converter={StaticResource BoolToVisibility}}" />
+                            <TextBlock Text="{Binding RestoreStatus}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="9"
+                                       Margin="0,6,0,0"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding HasRestoreStatus, Converter={StaticResource BoolToVisibility}}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0"
+                                        Visibility="{Binding IsFailedNeedsRecovery, Converter={StaticResource BoolToVisibility}}">
+                                <Button Content="{loc:Loc Key=instance.modify.action.restore}"
+                                        Command="{Binding RestoreSnapshotCommand}"
+                                        Style="{StaticResource GhostButton}"
+                                        Margin="0,0,10,0" />
+                                <TextBlock Text="{loc:Loc Key=instance.modify.restore.hint}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="9"
+                                           MaxWidth="430"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 
@@ -334,14 +391,29 @@
                 </StackPanel>
             </Border>
 
-            <!-- 页面底部操作：只提供「生成变更计划」；提交与执行属 3b-4b，能力接入前不放置可执行入口。 -->
+            <!--
+                页面底部操作：生成计划、提交并执行（只在计划可执行且目标未变时可用）、
+                诊断入口。执行中与恢复中不提供强制取消：任务归统一 Operation，
+                取消是否可用由事务阶段决定（`instance-modify.md` §6）。
+            -->
             <WrapPanel Margin="0,0,0,4">
                 <Button Content="{loc:Loc Key=instance.modify.action.generate}"
                         Command="{Binding GeneratePlanCommand}"
                         Style="{StaticResource PrimaryButton}"
                         MinWidth="132"
                         Margin="0,0,12,8" />
-                <TextBlock Text="{loc:Loc Key=instance.modify.action.futureNote}"
+                <Button Content="{loc:Loc Key=instance.modify.action.execute}"
+                        Command="{Binding ExecuteCommand}"
+                        Style="{StaticResource GhostButton}"
+                        MinWidth="132"
+                        Margin="0,0,12,8" />
+                <Button Content="{loc:Loc Key=instance.modify.action.openDiagnostics}"
+                        Command="{Binding OpenDiagnosticsFolderCommand}"
+                        Style="{StaticResource GhostButton}"
+                        MinWidth="132"
+                        Margin="0,0,12,8"
+                        Visibility="{Binding HasDiagnosticFile, Converter={StaticResource BoolToVisibility}}" />
+                <TextBlock Text="{loc:Loc Key=instance.modify.action.executeNote}"
                            Foreground="{DynamicResource TextMutedBrush}"
                            FontSize="9"
                            MaxWidth="420"
@@ -349,6 +421,13 @@
                            VerticalAlignment="Center"
                            Margin="0,0,0,8" />
             </WrapPanel>
+
+            <TextBlock Text="{Binding DiagnosticNote}"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       FontSize="9"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,4"
+                       Visibility="{Binding HasDiagnosticNote, Converter={StaticResource BoolToVisibility}}" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>
