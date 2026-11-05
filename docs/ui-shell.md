@@ -92,6 +92,26 @@
 - **Session Snapshot / 启动恢复询问**：尚未持久化布局或工作区状态；启动仍进入默认目的地。
 - **Addition Runtime / Native UI Host / IPC / Event Bus / Resource Broker / Document Service**：不属于本批范围。
 
+### 2.3 实例工作区二级导航（B2 步骤 2）
+
+- 唯一权威清单是 `hints/ui/pages/instance-workspace.md` §10。代码中的分组、顺序与默认页只有一个构造点
+  （`InstanceWorkspaceNavigationFactory`），测试 `tests/ECL.App.Tests/Workspace/InstanceWorkspaceNavigationTests.cs`
+  逐项核对条目 Key、分组顺序、每组条目数与默认页，防止实现自行增删导航。
+- `InstanceDetailPageViewModel` 现在是实例工作区壳：左侧纵向二级导航 + 右侧当前二级页。切换二级页只改变
+  `Navigation.CurrentPage`，不新开工作区、不改变工作区标题（迁移规划 §5.1）。已实现页面为
+  「基本信息」（`InstanceBasicInfoViewModel`，默认页）与「内容 · 模组」（`ModsViewModel`），
+  两者各自拥有唯一的滚动容器，由 `App.xaml` 的 DataTemplate 映射到视图。
+- 尚未实现的页面（修改、资源包、光影包、数据包、截图、投影、导出、日志）只保留不可用导航项：
+  `IsEnabled=false`、UIA `HelpText` 与可见的「未实现」徽标共同说明原因，不创建空页、不提供可点击入口；
+  日志项单独说明 G-01 页面规格尚未批准。不可用项不会被代码或键盘路径激活（`TryActivate` 与选中 setter 双重拒绝）。
+- 窄窗口收缩（ADR 0050）：工作区页面可用宽度小于 640 时，左侧二级导航折叠为内容区顶部的页面选择器；
+  1080×720 且全局导航与 Inspector 同时展开时，内容区仍保持可用宽度，恢复宽度后回到纵向导航。
+- 打开工作区时同时初始化实例运行设置与模组内容。初始化失败由 Shell 记录警告，不产生未观察的后台任务；
+  模组扫描与 Java 状态更新在页面释放后不再回写已释放状态。
+- 关闭标签时依次释放导航、实例操作、模组、运行设置与实例快照；每个工作区的导航选中项与页面对象互不共享。
+- 仍待 B2 步骤 3：基本信息页面的 2:1 顶区、应用/改名、内存条、JVM 参数校验、Java 方块与存储卡，
+  以及模组页的固定列与状态重写。本步骤只完成导航树与页面拆分，未改变任何业务能力。
+
 ## 3. 共享页面控件（B0）
 
 B0 只提供 B1 立即需要的三个共享件，其余控件（`DataTable`、`StatusBanner`、`InlineProgress`、
@@ -201,6 +221,8 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
 - 无活动工作区时中央区域显示空状态；关闭全部标签后需要从导航重新打开。
 - 页面内部布局尚未按 ADR 0050 逐页重构；窄窗口下需要折叠导航或 Inspector 才能获得更宽内容区。
 - B0 只提供 `PageHeader`、`PageStateView` 与 `ToolbarButton`；页面在 B1 起逐步接入，尚未接入的页面仍使用各自布局。
+- 实例工作区二级导航已在 B2 步骤 2 接入（§2.3）：默认基本信息，模组页可用，其余条目为不可用状态；
+  基本信息与模组页面的布局仍待 B2 步骤 3 按 Approved 页面规格重写。
 - 实例工作区拥有自己的身份快照（`InstanceWorkspaceState`）：打开时捕获实例条目，标签标题、
   页面身份区块与 Inspector 目标都来自该快照，不再依赖全局 `SelectedInstance` 的更新顺序；
   关闭标签时释放该状态（`IDisposable`），释放后再参与页面状态。

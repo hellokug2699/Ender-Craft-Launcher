@@ -363,6 +363,11 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
         try
         {
             var runtimes = await _javaLocator.FindAllAsync().ConfigureAwait(true);
+            if (IsDisposed)
+            {
+                return;
+            }
+
             JavaOptions.Clear();
             JavaOptions.Add(new JavaOptionViewModel(null, _localizer.Get("instances.java.auto")));
             foreach (var runtime in runtimes)
@@ -423,6 +428,11 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
         try
         {
             var versionResult = await _versionResolver.ResolveAsync(_instance.VersionId).ConfigureAwait(true);
+            if (IsDisposed)
+            {
+                return;
+            }
+
             if (!versionResult.IsSuccess)
             {
                 JavaStatus = _localizer.Get("instances.java.installFirst");
@@ -432,6 +442,11 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
             var selection = await _javaSelection
                 .ResolveAsync(_instance, versionResult.Value)
                 .ConfigureAwait(true);
+            if (IsDisposed)
+            {
+                return;
+            }
+
             JavaStatus = JavaSelectionPresentation.Describe(selection, _localizer);
         }
         catch (Exception exception)

@@ -455,8 +455,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 new InstanceWorkspaceState(instance),
                 _instances,
                 _modsFactory.Create(instance.Model.Id, instance.Name),
-                _instances.CreateRuntimeSettings(instance.Model));
-            _ = detail.InitializeAsync();
+                _instances.CreateRuntimeSettings(instance.Model),
+                _localizer);
+            _ = InitializeInstancePageAsync(detail);
             page = detail;
             toolDisplayName = _localizer.Get("nav.instances");
             workspaceTitle = string.IsNullOrWhiteSpace(title) ? target.StableInstanceId! : title;
@@ -464,6 +465,22 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// 工作区页面初始化不是 Shell 就绪条件：显式跟踪并记录失败，避免未观察任务
+    /// 在后台静默失败；页面自身的加载/错误状态仍由各页面文案表达。
+    /// </summary>
+    private async Task InitializeInstancePageAsync(InstanceDetailPageViewModel detail)
+    {
+        try
+        {
+            await detail.InitializeAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "实例工作区初始化失败：{InstanceId}", detail.InstanceId);
+        }
     }
 
     private void OpenDestination(ShellNavigationItem destination)

@@ -135,6 +135,12 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         try
         {
             var result = await _mods.ScanAsync(InstanceId).ConfigureAwait(true);
+            if (IsDisposed)
+            {
+                // 扫描返回时页面可能已关闭：不得把结果写回已释放的页面状态。
+                return;
+            }
+
             if (!result.IsSuccess)
             {
                 StatusMessage = result.Error?.ToString() ?? _localizer.Get("mods.scanFailed");
@@ -183,6 +189,11 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
             var result = await _contentPacks
                 .ListAsync(InstanceId, SelectedPackType.Kind)
                 .ConfigureAwait(true);
+            if (IsDisposed)
+            {
+                return;
+            }
+
             if (!result.IsSuccess)
             {
                 StatusMessage = result.Error?.ToString() ?? _localizer.Get("mods.packScanFailed");
