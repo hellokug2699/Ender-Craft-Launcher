@@ -454,7 +454,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 return false;
             }
 
-            page = new InstanceDetailPageViewModel(new InstanceWorkspaceState(instance), _instances, _mods);
+            // 页面状态按实例作用域构造：身份快照与 Java/内存/JVM 编辑状态都由本工作区自有，
+            // 两个实例同时打开时不共享可编辑字段（B2 步骤 1c）。
+            var detail = new InstanceDetailPageViewModel(
+                new InstanceWorkspaceState(instance),
+                _instances,
+                _mods,
+                _instances.CreateRuntimeSettings(instance.Model));
+            _ = detail.InitializeAsync();
+            page = detail;
             toolDisplayName = _localizer.Get("nav.instances");
             workspaceTitle = string.IsNullOrWhiteSpace(title) ? target.StableInstanceId! : title;
             return true;

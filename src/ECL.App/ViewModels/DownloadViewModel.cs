@@ -333,10 +333,7 @@ public sealed partial class DownloadViewModel : ObservableObject
             return;
         }
 
-        Game.SelectedInstance = Game.Instances.FirstOrDefault(item => item.Model.Id == instanceId)
-                                ?? Game.SelectedInstance;
-        await Game.DownloadJavaCommand.ExecuteAsync(null).ConfigureAwait(true);
-        StatusMessage = Game.JavaDownloadStatus;
+        StatusMessage = await Game.EnsureJavaForInstanceAsync(instanceId).ConfigureAwait(true);
     }
 
     [RelayCommand]

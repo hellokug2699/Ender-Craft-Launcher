@@ -12,6 +12,7 @@ using Ecl.App.Dialogs;
 using Ecl.App.Dialogs.ViewModels;
 using Ecl.App.Services;
 using Ecl.App.Views;
+using Ecl.App.Workspace.ViewModels;
 using Ecl.Auth;
 using Ecl.Configuration.Settings;
 using Ecl.Core;
@@ -58,7 +59,6 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IDialogEngine _dialogsEngine;
     private bool _initialized;
     private bool _suppressAccountSelection;
-    private bool _suppressJavaSelection;
     private bool _suppressVersionReload;
     private IReadOnlyList<MinecraftGameVersion> _allVersions = [];
 
@@ -85,8 +85,6 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     public ObservableCollection<LaunchStepItemViewModel> LaunchSteps { get; } = [];
 
-    public ObservableCollection<JavaOptionViewModel> JavaOptions { get; } = [];
-
     public ObservableCollection<LoaderChoiceViewModel> LoaderChoices { get; } = [];
 
     public ObservableCollection<GameVersionTypeChoice> VersionTypes { get; } = [];
@@ -98,8 +96,6 @@ public sealed partial class InstancesViewModel : ObservableObject
     public ObservableCollection<VersionChoiceViewModel> FabricApiVersions { get; } = [];
 
     public ObservableCollection<VersionChoiceViewModel> OptiFineVersions { get; } = [];
-
-    public ObservableCollection<JvmPresetOptionViewModel> InstanceJvmPresetOptions { get; } = [];
 
     [ObservableProperty]
     private InstanceItemViewModel? _selectedInstance;
@@ -186,39 +182,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     private string _installStatus = string.Empty;
 
     [ObservableProperty]
-    private JavaOptionViewModel? _selectedJavaOption;
-
-    [ObservableProperty]
     private string _javaStatus = string.Empty;
-
-    [ObservableProperty]
-    private string _instanceJvmArguments = string.Empty;
-
-    [ObservableProperty]
-    private string _instanceJvmPreset = string.Empty;
-
-    [ObservableProperty]
-    private string _instanceMemoryMbText = string.Empty;
-
-    [ObservableProperty]
-    private bool _useGlobalMemory;
-
-    [ObservableProperty]
-    private string _globalMemoryText = string.Empty;
-
-    public bool IsInstanceMemoryEditable => !UseGlobalMemory;
-
-    [ObservableProperty]
-    private bool _isDownloadingJava;
-
-    [ObservableProperty]
-    private bool _javaDownloadIndeterminate;
-
-    [ObservableProperty]
-    private double _javaDownloadProgressValue;
-
-    [ObservableProperty]
-    private string _javaDownloadStatus = string.Empty;
 
     [ObservableProperty]
     private string _downloadSpeedText = string.Empty;
@@ -372,16 +336,6 @@ public sealed partial class InstancesViewModel : ObservableObject
             MinecraftVersionKind.AprilFools,
             _localizer.Get("instances.versionType.aprilFools")));
         _selectedVersionType = VersionTypes[0];
-
-        GlobalMemoryText = _localizer.Get(
-            "instance.detail.memoryGlobal",
-            _settings.Get<int>("java.defaultMemoryMb"));
-
-        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel(string.Empty, _localizer.Get("common.inherit")));
-        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel("default", _localizer.Get("option.java.jvmPreset.default")));
-        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel("g1", _localizer.Get("option.java.jvmPreset.g1")));
-        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel("zgc", _localizer.Get("option.java.jvmPreset.zgc")));
-        InstanceJvmPresetOptions.Add(new JvmPresetOptionViewModel("aikar", _localizer.Get("option.java.jvmPreset.aikar")));
     }
 
     public async Task InitializeAsync()
@@ -395,7 +349,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         await RefreshAuthServersAsync().ConfigureAwait(true);
         await RefreshAccountsAsync().ConfigureAwait(true);
         await RefreshInstancesAsync().ConfigureAwait(true);
-        await RefreshJavaAsync().ConfigureAwait(true);
+        await UpdateJavaStatusAsync().ConfigureAwait(true);
         await LoadVersionsAsync().ConfigureAwait(true);
     }
 
@@ -507,26 +461,13 @@ public sealed partial class InstancesViewModel : ObservableObject
         OnPropertyChanged(nameof(HasInstanceLoadError));
     }
 
-    partial void OnUseGlobalMemoryChanged(bool value)
-    {
-        OnPropertyChanged(nameof(IsInstanceMemoryEditable));
-
-        // 取消勾选时用全局值作为起点，避免用户面对一个空输入框。
-        if (!value && string.IsNullOrWhiteSpace(InstanceMemoryMbText))
-        {
-            InstanceMemoryMbText = _settings
-                .Get<int>("java.defaultMemoryMb")
-                .ToString(CultureInfo.InvariantCulture);
-        }
-    }
-
     [RelayCommand]
     private async Task RefreshAsync()
     {
         await RefreshAuthServersAsync().ConfigureAwait(true);
         await RefreshAccountsAsync().ConfigureAwait(true);
         await RefreshInstancesAsync().ConfigureAwait(true);
-        await RefreshJavaAsync().ConfigureAwait(true);
+        await UpdateJavaStatusAsync().ConfigureAwait(true);
         await RefreshSourceGroupsAsync().ConfigureAwait(true);
     }
 
@@ -673,39 +614,6 @@ public sealed partial class InstancesViewModel : ObservableObject
         {
             StatusMessage = $"实例来源扫描失败：{exception.Message}";
         }
-    }
-
-    [RelayCommand]
-    private async Task RefreshJavaAsync()
-    {
-        _suppressJavaSelection = true;
-        try
-        {
-            var runtimes = await _javaLocator.FindAllAsync().ConfigureAwait(true);
-            JavaOptions.Clear();
-            JavaOptions.Add(new JavaOptionViewModel(null, _localizer.Get("instances.java.auto")));
-
-            foreach (var runtime in runtimes)
-            {
-                JavaOptions.Add(new JavaOptionViewModel(runtime, FormatJava(runtime)));
-            }
-
-            if (SelectedInstance is not null)
-            {
-                var configured = _settings.Get<string?>("instance.java.executablePath", SelectedInstance.Model.Id);
-                SelectConfiguredJavaOption(configured);
-            }
-            else
-            {
-                SelectedJavaOption = JavaOptions[0];
-            }
-        }
-        finally
-        {
-            _suppressJavaSelection = false;
-        }
-
-        await UpdateJavaStatusAsync().ConfigureAwait(true);
     }
 
     [RelayCommand]
@@ -936,113 +844,6 @@ public sealed partial class InstancesViewModel : ObservableObject
         > 0 => $"{bytesPerSecond:F0} B/s",
         _ => string.Empty,
     };
-
-    [RelayCommand]
-    private async Task DownloadJavaAsync()
-    {
-        if (SelectedInstance is null)
-        {
-            StatusMessage = _localizer.Get("instances.selectFirst");
-            return;
-        }
-
-        if (IsBusy)
-        {
-            return;
-        }
-
-        var instance = SelectedInstance.Model;
-        var versionResult = await _versionResolver.ResolveAsync(instance.VersionId).ConfigureAwait(true);
-
-        // 新建 Forge/Cleanroom 实例时版本 JSON 可能尚未写入；此时按 GameVersion 推断
-        // Java 要求，避免“先有版本 JSON 才能下载 Java、先有 Java 才能安装加载器”的死循环。
-        var version = versionResult.IsSuccess ? versionResult.Value : null;
-        var requirements = await _javaSelection
-            .ResolveRequirementsAsync(instance, version)
-            .ConfigureAwait(true);
-        if (requirements.HasConflicts)
-        {
-            JavaDownloadStatus = _localizer.Get("instances.java.conflict", requirements.Explain());
-            StatusMessage = JavaDownloadStatus;
-            return;
-        }
-
-        if (requirements.IsUnknown)
-        {
-            JavaDownloadStatus = _localizer.Get("instances.java.unknownRequirement", instance.GameVersion);
-        }
-
-        var requirement = requirements.ToRequirement();
-        if (!versionResult.IsSuccess)
-        {
-            JavaDownloadStatus = _localizer.Get("instances.java.usingGameVersion", instance.GameVersion);
-        }
-
-        IsBusy = true;
-        IsDownloadingJava = true;
-        JavaDownloadIndeterminate = true;
-        JavaDownloadProgressValue = 0;
-        JavaDownloadStatus = _localizer.Get("instances.java.downloading");
-        BeginDownloadUi();
-
-        var progress = new Progress<JavaInstallProgress>(update =>
-        {
-            JavaDownloadIndeterminate = update.IsIndeterminate;
-            JavaDownloadProgressValue = update.Percent;
-            JavaDownloadStatus = update.TotalFiles > 0
-                ? $"{update.Message} ({update.CompletedFiles}/{update.TotalFiles})"
-                : update.Message;
-            if (update.BytesPerSecond > 0)
-            {
-                DownloadSpeedText = FormatSpeed(update.BytesPerSecond);
-            }
-        });
-
-        try
-        {
-            var result = await _javaInstall
-                .EnsureAsync(requirement, progress)
-                .ConfigureAwait(true);
-
-            if (!result.IsSuccess)
-            {
-                JavaDownloadStatus = result.Error?.Message ?? _localizer.Get("instances.java.downloadFailed");
-                StatusMessage = JavaDownloadStatus;
-                return;
-            }
-
-            JavaDownloadStatus = _localizer.Get("instances.java.downloadSucceeded");
-            await RefreshJavaAsync().ConfigureAwait(true);
-
-            if (result.Value is not null)
-            {
-                var option = JavaOptions.FirstOrDefault(item =>
-                    item.Runtime is not null &&
-                    string.Equals(item.Runtime.ExecutablePath, result.Value.ExecutablePath, StringComparison.OrdinalIgnoreCase));
-
-                if (option is not null)
-                {
-                    _suppressJavaSelection = true;
-                    SelectedJavaOption = option;
-                    _suppressJavaSelection = false;
-                    _settings.TrySetRaw("instance.java.executablePath", result.Value.ExecutablePath, instance.Id, out _);
-                }
-            }
-
-            await UpdateJavaStatusAsync().ConfigureAwait(true);
-        }
-        catch (Exception exception)
-        {
-            JavaDownloadStatus = _localizer.Get("instances.java.downloadFailed");
-            StatusMessage = exception.Message;
-        }
-        finally
-        {
-            IsDownloadingJava = false;
-            IsBusy = false;
-            EndDownloadUi();
-        }
-    }
 
     [RelayCommand]
     private async Task CreateInstanceAsync()
@@ -1693,112 +1494,6 @@ public sealed partial class InstancesViewModel : ObservableObject
         _ = RefreshComponentsAsync();
     }
 
-    [RelayCommand]
-    private void BrowseJava()
-    {
-        if (SelectedInstance is null)
-        {
-            return;
-        }
-
-        var path = _dialogs.PickOpenFile(
-            "选择此实例使用的 Java",
-            "Java 可执行文件 (java.exe)|java.exe|可执行文件 (*.exe)|*.exe|所有文件 (*.*)|*.*");
-        if (path is null)
-        {
-            return;
-        }
-
-        var runtime = _javaLocator.FromPath(path);
-        if (runtime is null)
-        {
-            StatusMessage = "所选文件无法识别为有效的 Java 运行时。";
-            return;
-        }
-
-        var option = JavaOptions.FirstOrDefault(item =>
-            string.Equals(item.Runtime?.ExecutablePath, runtime.ExecutablePath, StringComparison.OrdinalIgnoreCase));
-        if (option is null)
-        {
-            option = new JavaOptionViewModel(runtime, FormatJava(runtime));
-            JavaOptions.Add(option);
-        }
-
-        SelectedJavaOption = option;
-        StatusMessage = $"已为当前实例选择 {runtime.DisplayName}。";
-    }
-
-    [RelayCommand]
-    private void SaveInstanceRuntimeSettings()
-    {
-        if (SelectedInstance is null)
-        {
-            return;
-        }
-
-        var memoryText = InstanceMemoryMbText.Trim();
-        if (!UseGlobalMemory &&
-            (memoryText.Length == 0 ||
-             !int.TryParse(memoryText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var memoryMb) ||
-             memoryMb is < 1024 or > 65536))
-        {
-            StatusMessage = _localizer.Get("instances.memory.invalid");
-            return;
-        }
-
-        var instanceId = SelectedInstance.Model.Id;
-        if (!_settings.TrySetRaw("instance.java.extraArguments", InstanceJvmArguments, instanceId, out var jvmError))
-        {
-            StatusMessage = jvmError ?? "保存实例 JVM 参数失败。";
-            return;
-        }
-
-        if (!_settings.TrySetRaw("instance.java.jvmPreset", InstanceJvmPreset, instanceId, out var presetError))
-        {
-            StatusMessage = presetError ?? "保存实例 JVM 预设失败。";
-            return;
-        }
-
-        var memorySaved = UseGlobalMemory
-            ? _settings.TryClear("instance.java.memoryMb", instanceId, out var memoryError)
-            : _settings.TrySetRaw("instance.java.memoryMb", memoryText, instanceId, out memoryError);
-        if (!memorySaved)
-        {
-            StatusMessage = memoryError ?? "保存实例内存设置失败。";
-            return;
-        }
-
-        GlobalMemoryText = _localizer.Get(
-            "instance.detail.memoryGlobal",
-            _settings.Get<int>("java.defaultMemoryMb"));
-        StatusMessage = UseGlobalMemory
-            ? _localizer.Get("instances.memory.savedGlobal")
-            : _localizer.Get("instances.memory.saved");
-    }
-
-    private void LoadInstanceRuntimeSettings()
-    {
-        GlobalMemoryText = _localizer.Get(
-            "instance.detail.memoryGlobal",
-            _settings.Get<int>("java.defaultMemoryMb"));
-
-        if (SelectedInstance is null)
-        {
-            InstanceJvmArguments = string.Empty;
-            InstanceJvmPreset = string.Empty;
-            InstanceMemoryMbText = string.Empty;
-            UseGlobalMemory = true;
-            return;
-        }
-
-        var instanceId = SelectedInstance.Model.Id;
-        InstanceJvmArguments = _settings.Get<string?>("instance.java.extraArguments", instanceId) ?? string.Empty;
-        InstanceJvmPreset = _settings.Get<string?>("instance.java.jvmPreset", instanceId) ?? string.Empty;
-        var instanceMemory = _settings.Get<int?>("instance.java.memoryMb", instanceId);
-        UseGlobalMemory = instanceMemory is null;
-        InstanceMemoryMbText = instanceMemory?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
-    }
-
     /// <summary>实例库只负责展示；打开工作区时才进入运行设置、模组、日志与诊断。</summary>
     [RelayCommand]
     private void OpenWorkspace(InstanceItemViewModel? instance)
@@ -1815,25 +1510,6 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     [RelayCommand]
     private void BackToInstances() => NavigateBackFromDetails?.Invoke();
-
-    [RelayCommand]
-    private void OpenWorldWorkbench()
-    {
-        if (SelectedInstance is null)
-        {
-            return;
-        }
-
-        var window = new WorldWorkbenchWindow(
-            _worldWorkbench,
-            _dialogs,
-            SelectedInstance.Model.Id,
-            SelectedInstance.Name)
-        {
-            Owner = Application.Current.MainWindow,
-        };
-        window.ShowDialog();
-    }
 
     [RelayCommand]
     private void OpenInstanceFolder() => OpenSelectedDirectory(
@@ -1919,32 +1595,9 @@ public sealed partial class InstancesViewModel : ObservableObject
         InstallStatus = string.Empty;
         InstallProgressValue = 0;
         InstallIndeterminate = false;
-        JavaDownloadStatus = string.Empty;
 
-        LoadInstanceRuntimeSettings();
-        if (JavaOptions.Count > 0)
-        {
-            _ = RefreshJavaSelectionAsync();
-        }
+        _ = RefreshJavaSelectionAsync();
     }
-
-    partial void OnSelectedJavaOptionChanged(JavaOptionViewModel? value)
-    {
-        if (_suppressJavaSelection || SelectedInstance is null)
-        {
-            return;
-        }
-
-        var path = value?.Runtime?.ExecutablePath ?? string.Empty;
-        if (!_settings.TrySetRaw("instance.java.executablePath", path, SelectedInstance.Model.Id, out var error))
-        {
-            StatusMessage = error ?? string.Empty;
-            return;
-        }
-
-        _ = UpdateJavaStatusAsync();
-    }
-
 
     partial void OnSelectedAccountChanged(AccountItemViewModel? value)
     {
@@ -2030,7 +1683,7 @@ public sealed partial class InstancesViewModel : ObservableObject
 
             if (shouldDownload)
             {
-                await DownloadJavaAsync().ConfigureAwait(true);
+                await DownloadJavaForLaunchAsync().ConfigureAwait(true);
             }
 
             return false;
@@ -2071,49 +1724,113 @@ public sealed partial class InstancesViewModel : ObservableObject
             selection.CompatibilityAcknowledgementToken);
     }
 
-    private void SelectConfiguredJavaOption(string? configuredPath)
+    /// <summary>
+    /// 启动前的 Java 补装：把当前实例需要的运行时安装到本机并写回该实例的覆盖路径。
+    /// 页面上的“下载 Java”按钮属于实例工作区自有的运行设置（B2 步骤 1c），这里只服务启动流程。
+    /// </summary>
+    private async Task DownloadJavaForLaunchAsync()
     {
-        var option = JavaOptions.FirstOrDefault(item =>
-            item.Runtime is not null &&
-            string.Equals(item.Runtime.ExecutablePath, configuredPath, StringComparison.OrdinalIgnoreCase));
-
-        if (option is null && !string.IsNullOrWhiteSpace(configuredPath))
+        if (SelectedInstance is null || IsBusy)
         {
-            var runtime = _javaLocator.FromPath(configuredPath);
-            if (runtime is not null)
-            {
-                option = new JavaOptionViewModel(runtime, FormatJava(runtime));
-                JavaOptions.Add(option);
-            }
-        }
-
-        SelectedJavaOption = option ?? JavaOptions.FirstOrDefault();
-    }
-
-    private async Task RefreshJavaSelectionAsync()
-    {
-        if (SelectedInstance is null)
-        {
-            JavaStatus = string.Empty;
             return;
         }
 
+        IsBusy = true;
+        StatusMessage = _localizer.Get("instances.java.downloading");
+        BeginDownloadUi();
         try
         {
-            var instance = SelectedInstance.Model;
-            _suppressJavaSelection = true;
-            var configured = _settings.Get<string?>("instance.java.executablePath", instance.Id);
-            SelectConfiguredJavaOption(configured);
-            _suppressJavaSelection = false;
-
-
+            var progress = new Progress<JavaInstallProgress>(update =>
+            {
+                if (update.BytesPerSecond > 0)
+                {
+                    DownloadSpeedText = FormatSpeed(update.BytesPerSecond);
+                }
+            });
+            StatusMessage = await ProvisionJavaAsync(SelectedInstance.Model, progress).ConfigureAwait(true);
             await UpdateJavaStatusAsync().ConfigureAwait(true);
         }
         catch (Exception exception)
         {
-            JavaStatus = exception.Message;
+            StatusMessage = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+            EndDownloadUi();
         }
     }
+
+    /// <summary>
+    /// 为指定实例准备 Java 运行时并返回结果文案（内容下载页复用）。
+    /// 目标实例由调用方显式给出，不读取共享的选择状态。
+    /// </summary>
+    public async Task<string> EnsureJavaForInstanceAsync(string instanceId)
+    {
+        var instance = Instances.FirstOrDefault(item =>
+            string.Equals(item.Model.Id, instanceId, StringComparison.Ordinal));
+        if (instance is null)
+        {
+            return _localizer.Get("instances.selectFirst");
+        }
+
+        try
+        {
+            var status = await ProvisionJavaAsync(instance.Model, progress: null).ConfigureAwait(true);
+            await UpdateJavaStatusAsync().ConfigureAwait(true);
+            return status;
+        }
+        catch (Exception exception)
+        {
+            return exception.Message;
+        }
+    }
+
+    private async Task<string> ProvisionJavaAsync(GameInstance instance, IProgress<JavaInstallProgress>? progress)
+    {
+        var versionResult = await _versionResolver.ResolveAsync(instance.VersionId).ConfigureAwait(true);
+        var version = versionResult.IsSuccess ? versionResult.Value : null;
+        var requirements = await _javaSelection
+            .ResolveRequirementsAsync(instance, version)
+            .ConfigureAwait(true);
+        if (requirements.HasConflicts)
+        {
+            return _localizer.Get("instances.java.conflict", requirements.Explain());
+        }
+
+        var result = await _javaInstall
+            .EnsureAsync(requirements.ToRequirement(), progress)
+            .ConfigureAwait(true);
+        if (!result.IsSuccess)
+        {
+            return result.Error?.Message ?? _localizer.Get("instances.java.downloadFailed");
+        }
+
+        if (result.Value is not null)
+        {
+            _settings.TrySetRaw("instance.java.executablePath", result.Value.ExecutablePath, instance.Id, out _);
+        }
+
+        return _localizer.Get("instances.java.downloadSucceeded");
+    }
+
+    /// <summary>
+    /// 按工作区作用域创建该实例自有的 Java/内存/JVM 编辑状态（B2 步骤 1c）：
+    /// 页面编辑不再写共享的 <see cref="SelectedInstance"/> 字段。
+    /// </summary>
+    internal InstanceRuntimeSettingsViewModel CreateRuntimeSettings(GameInstance instance) =>
+        new(
+            instance,
+            _settings,
+            _javaLocator,
+            _javaSelection,
+            _javaInstall,
+            _versionResolver,
+            _downloads,
+            _dialogs,
+            _localizer);
+
+    private async Task RefreshJavaSelectionAsync() => await UpdateJavaStatusAsync().ConfigureAwait(true);
 
     private async Task UpdateJavaStatusAsync()
     {
@@ -2136,117 +1853,12 @@ public sealed partial class InstancesViewModel : ObservableObject
             var selection = await _javaSelection
                 .ResolveAsync(instance, versionResult.Value)
                 .ConfigureAwait(true);
-
-
-            if (selection.IsBlocked)
-            {
-                var blockedMessage = selection.Compatibility?.Status switch
-                {
-                    JavaCompatibilityStatus.UnsupportedArchitecture => _localizer.Get(
-                        "instances.java.unsupported32",
-                        selection.Runtime?.DisplayName ?? "Java"),
-                    JavaCompatibilityStatus.RequirementsConflict => _localizer.Get(
-                        "instances.java.conflict",
-                        selection.Decision?.Requirements?.Explain() ?? string.Empty),
-                    _ => selection.BlockReason ?? _localizer.Get("instances.java.blocked"),
-                };
-                JavaStatus = WithWarnings(blockedMessage);
-                return;
-            }
-
-            if (selection.Runtime is null)
-            {
-                var message = selection.Decision?.Failure switch
-                {
-                    JavaSelectionFailure.RequirementsConflict => _localizer.Get(
-                        "instances.java.conflict",
-                        selection.Decision.Requirements?.Explain() ?? string.Empty),
-                    JavaSelectionFailure.NoCompatibleCandidate => _localizer.Get(
-                        "instances.java.noCompatibleReasons",
-                        selection.Requirement?.Describe() ?? "Java",
-                        DescribeRejectedCandidates(selection.Decision)),
-                    _ => _localizer.Get("instances.java.notFound"),
-                };
-                JavaStatus = WithWarnings(message);
-                return;
-            }
-
-
-            if (selection.Compatibility is null || selection.Compatibility.IsCompatible)
-            {
-                JavaStatus = WithWarnings(
-                    _localizer.Get("instances.java.compatible", selection.Runtime.DisplayName));
-                return;
-            }
-
-            if (selection.Compatibility.Status == JavaCompatibilityStatus.Unknown)
-            {
-                JavaStatus = WithWarnings(
-                    _localizer.Get("instances.java.unknownVersion", selection.Runtime.DisplayName));
-                return;
-            }
-
-            if (selection.Compatibility.Status == JavaCompatibilityStatus.UnknownRequirement)
-            {
-                JavaStatus = WithWarnings(
-                    _localizer.Get("instances.java.unknownRequirement", selection.Runtime.DisplayName));
-                return;
-            }
-
-            if (selection.Compatibility.Status == JavaCompatibilityStatus.UnsupportedArchitecture)
-            {
-                JavaStatus = WithWarnings(
-                    _localizer.Get("instances.java.unsupported32", selection.Runtime.DisplayName));
-                return;
-            }
-
-            var actual = selection.Runtime.Version?.Raw ?? selection.Runtime.DisplayName;
-            var required = selection.Requirement?.Describe() ?? "Java";
-            JavaStatus = WithWarnings(selection.IsCompatibilityWarningAcknowledged
-                ? _localizer.Get("instances.java.incompatibleAcknowledged", actual, required)
-                : _localizer.Get("instances.java.incompatible", actual, required));
-
-            string WithWarnings(string text) => selection.Warnings.Count == 0
-                ? text
-                : $"{text} {string.Join(' ', selection.Warnings)}";
+            JavaStatus = JavaSelectionPresentation.Describe(selection, _localizer);
         }
         catch (Exception exception)
         {
             JavaStatus = exception.Message;
         }
-    }
-
-    private string DescribeRejectedCandidates(JavaSelectionDecision? decision)
-    {
-        if (decision is null || decision.RejectedCandidates.Count == 0)
-        {
-            return _localizer.Get("instances.java.notFound");
-        }
-
-        return string.Join(
-            "，",
-            decision.RejectedCandidates
-                .GroupBy(candidate => candidate.Status)
-                .Select(group => $"{DescribeCandidateStatus(group.Key)} ×{group.Count()}"));
-    }
-
-    private string DescribeCandidateStatus(JavaCandidateStatus status) => _localizer.Get(status switch
-    {
-        JavaCandidateStatus.TooOld => "instances.java.candidate.tooOld",
-        JavaCandidateStatus.TooNew => "instances.java.candidate.tooNew",
-        JavaCandidateStatus.Unsupported32Bit => "instances.java.candidate.unsupported32Bit",
-        JavaCandidateStatus.UnknownVersion => "instances.java.candidate.unknownVersion",
-        JavaCandidateStatus.CompatibleButNotPreferred => "instances.java.candidate.compatibleButNotPreferred",
-        JavaCandidateStatus.RequirementsConflict => "instances.java.candidate.requirementsConflict",
-        _ => "instances.java.candidate.unknownVersion",
-    });
-
-    private static string FormatJava(JavaRuntime runtime)
-    {
-        var version = runtime.Version?.Raw ?? "?";
-        var vendor = runtime.Vendor ?? "Java";
-        var folder = Path.GetFileName(runtime.HomePath);
-        return $"{version} · {vendor} · {folder}";
     }
 
     private async Task RunLaunchAsync(bool dryRun)

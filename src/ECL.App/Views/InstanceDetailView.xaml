@@ -103,13 +103,13 @@
                         <TextBlock Text="{loc:Loc Key=instance.detail.javaDesc}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,5,0,10" TextWrapping="Wrap" />
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <ComboBox ItemsSource="{Binding Instances.JavaOptions}" SelectedItem="{Binding Instances.SelectedJavaOption, Mode=TwoWay}" ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
-                            <Button Grid.Column="2" Content="{loc:Loc Key=instance.detail.selectJava}" Command="{Binding Instances.BrowseJavaCommand}" Style="{StaticResource GhostButton}" />
+                            <ComboBox ItemsSource="{Binding Runtime.JavaOptions}" SelectedItem="{Binding Runtime.SelectedJavaOption, Mode=TwoWay}" ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
+                            <Button Grid.Column="2" Content="{loc:Loc Key=instance.detail.selectJava}" Command="{Binding Runtime.BrowseJavaCommand}" Style="{StaticResource GhostButton}" />
                         </Grid>
-                        <TextBlock Text="{Binding Instances.JavaStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Runtime.JavaStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
                         <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <Button Content="{loc:Loc Key=instances.java.download}" Command="{Binding Instances.DownloadJavaCommand}" Style="{StaticResource PrimaryButton}" />
-                            <Button Content="{loc:Loc Key=instances.java.refresh}" Command="{Binding Instances.RefreshJavaCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
+                            <Button Content="{loc:Loc Key=instances.java.download}" Command="{Binding Runtime.DownloadJavaCommand}" Style="{StaticResource PrimaryButton}" />
+                            <Button Content="{loc:Loc Key=instances.java.refresh}" Command="{Binding Runtime.RefreshJavaCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -123,18 +123,18 @@
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="{loc:Loc Key=instance.detail.jvmPreset}" Style="{StaticResource LabelText}" />
-                            <ComboBox ItemsSource="{Binding Instances.InstanceJvmPresetOptions}" SelectedValue="{Binding Instances.InstanceJvmPreset, Mode=TwoWay}" SelectedValuePath="Value" ItemTemplate="{StaticResource DisplayNameItemTemplate}" Margin="0,6,0,0" />
+                            <ComboBox ItemsSource="{Binding Runtime.PresetOptions}" SelectedValue="{Binding Runtime.JvmPreset, Mode=TwoWay}" SelectedValuePath="Value" ItemTemplate="{StaticResource DisplayNameItemTemplate}" Margin="0,6,0,0" />
                         </StackPanel>
                         <StackPanel Grid.Column="2">
                             <TextBlock Text="{loc:Loc Key=instance.detail.memory}" Style="{StaticResource LabelText}" />
                             <CheckBox Content="{loc:Loc Key=instance.detail.memoryUseGlobal}"
-                                      IsChecked="{Binding Instances.UseGlobalMemory, Mode=TwoWay}"
+                                      IsChecked="{Binding Runtime.UseGlobalMemory, Mode=TwoWay}"
                                       Margin="0,0,0,6" />
-                            <TextBox Text="{Binding Instances.InstanceMemoryMbText, UpdateSourceTrigger=PropertyChanged}"
-                                     IsEnabled="{Binding Instances.IsInstanceMemoryEditable}"
-                                     Visibility="{Binding Instances.IsInstanceMemoryEditable, Converter={StaticResource BoolToVisibility}}"
+                            <TextBox Text="{Binding Runtime.MemoryMbText, UpdateSourceTrigger=PropertyChanged}"
+                                     IsEnabled="{Binding Runtime.IsMemoryEditable}"
+                                     Visibility="{Binding Runtime.IsMemoryEditable, Converter={StaticResource BoolToVisibility}}"
                                      ToolTip="{loc:Loc Key=instance.detail.memoryHint}" />
-                            <TextBlock Text="{Binding Instances.GlobalMemoryText}"
+                            <TextBlock Text="{Binding Runtime.GlobalMemoryText}"
                                        Foreground="{DynamicResource TextMutedBrush}"
                                        FontSize="9"
                                        Margin="0,5,0,0" />
@@ -145,9 +145,9 @@
                         </StackPanel>
                     </Grid>
                     <TextBlock Text="{loc:Loc Key=instance.detail.extraArgs}" Style="{StaticResource LabelText}" Margin="0,14,0,6" />
-                    <TextBox Text="{Binding Instances.InstanceJvmArguments, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MonoTextBox}" MinHeight="76" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                    <TextBox Text="{Binding Runtime.JvmArguments, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MonoTextBox}" MinHeight="76" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
                     <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                        <Button Content="{loc:Loc Key=instance.detail.save}" Command="{Binding Instances.SaveInstanceRuntimeSettingsCommand}" Style="{StaticResource PrimaryButton}" />
+                        <Button Content="{loc:Loc Key=instance.detail.save}" Command="{Binding Runtime.SaveCommand}" Style="{StaticResource PrimaryButton}" />
                         <TextBlock Text="{Binding Instances.StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
                     </StackPanel>
                 </StackPanel>
