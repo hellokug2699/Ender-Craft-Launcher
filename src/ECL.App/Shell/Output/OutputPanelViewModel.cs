@@ -19,6 +19,13 @@ namespace Ecl.App.Shell.Output;
 /// - UI 可见集合：<see cref="MaxVisibleEntries"/> 条，超限移除最旧并计入截断数。
 /// 丢弃数与可见截断数汇总为 <see cref="DroppedEntries"/>，在面板中显示，避免压力下静默丢日志。
 ///
+/// 清空语义（线性化）：
+/// 日志条目提交与通知投递之间有窗口，通知可能在清空之后才到达。为了让清空结果可判定，
+/// 每条通知携带它在日志锁内捕获的输出代次（<see cref="AppLogNotification.Generation"/>），
+/// 面板只接受代次不低于 <see cref="_generationFloor"/> 的通知与待刷新条目。
+/// 清空时先清空待刷新队列，再在日志锁内推进代次，最后发布新的代次下限：
+/// 之后提交的条目一定携带新代次且不会再被队列清空丢弃，之前提交的条目无论何时到达都会被拒绝。
+///
 /// 线程契约：本 ViewModel 及其集合只属于创建它的 UI Dispatcher。日志事件可能来自任意线程，
 /// 这里只把条目放入加锁的有界队列，并把一次刷新封送到 UI 线程；批量刷新，不逐条调度。
 /// </summary>
@@ -33,6 +40,7 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
     private readonly ILocalizer _localizer;
     private int _flushQueued;
     private int _visibleDropped;
+    private long _generationFloor;
     private bool _disposed;
 
     public OutputPanelViewModel(
@@ -93,8 +101,9 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
     private void Collapse() => IsOpen = false;
 
     /// <summary>
-    /// 清空输出。执行顺序：清空待刷新队列 → 清空可见集合 → 重置截断计数。
-    /// 清空提交后，此前 pending 的条目不可能再出现在界面上。
+    /// 清空输出。执行顺序：清空待刷新队列 → 在日志锁内推进输出代次并重置截断计数 → 发布新代次下限 →
+    /// 清空可见集合。清空提交后，此前提交的条目即使通知迟到也会被代次判定拒绝，不可能再出现在界面上；
+    /// 清空之后提交的条目携带新代次，不会被这里的队列清空误删。
     /// </summary>
     [RelayCommand]
     private void ClearOutput()
@@ -105,8 +114,13 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // 先清空队列，使“推进代次”成为清空的线性化点之后不再丢弃新条目。
         _pending.Clear();
-        _buffer.ResetDroppedCount();
+
+        // 推进代次与日志提交共用日志锁：此前提交的条目获得更小的代次。
+        var generation = _buffer.BeginOutputGeneration();
+        Volatile.Write(ref _generationFloor, generation);
+
         _visibleDropped = 0;
         OutputEntries.Clear();
         HasOutput = false;
@@ -142,14 +156,20 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void OnEntryWritten(object? sender, AppLogEntry entry)
+    private void OnEntryWritten(object? sender, AppLogNotification notification)
     {
         if (_disposed)
         {
             return;
         }
 
-        _pending.Enqueue(entry);
+        // 迟到通知可能属于已经被清空的代次；在这里拒绝，避免它占用待刷新队列。
+        if (notification.Generation < Volatile.Read(ref _generationFloor))
+        {
+            return;
+        }
+
+        _pending.Enqueue(notification.Entry, notification.Generation);
         ScheduleFlush();
     }
 
@@ -197,7 +217,8 @@ public sealed partial class OutputPanelViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var drained = _pending.Drain();
+        // 代次下限在刷新时再读一次：清空与队列清空之间进入队列的过期条目也在此丢弃。
+        var drained = _pending.Drain(Volatile.Read(ref _generationFloor));
         if (drained.Length == 0)
         {
             return;
