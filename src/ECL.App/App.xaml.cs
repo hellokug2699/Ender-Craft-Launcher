@@ -77,7 +77,7 @@ public partial class App : Application
             services.AddSingleton(new Ecl.Deployment.CodeSigningTrustService());
             services.AddSingleton<InstancesViewModel>();
             services.AddSingleton<StorageViewModel>();
-            services.AddSingleton<ModsViewModel>();
+            services.AddSingleton<ModsPageFactory>();
             services.AddSingleton<HomeViewModel>();
             services.AddSingleton<DownloadViewModel>();
             services.AddSingleton<SettingsViewModel>();

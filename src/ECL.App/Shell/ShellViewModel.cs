@@ -33,7 +33,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly HomeViewModel _home;
     private readonly DownloadViewModel _download;
     private readonly InstancesViewModel _instances;
-    private readonly ModsViewModel _mods;
+    private readonly ModsPageFactory _modsFactory;
     private readonly SettingsViewModel _settings;
     private readonly ToolsViewModel _tools;
     private readonly IReadOnlyList<string> _navigationKeys;
@@ -45,7 +45,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         DownloadViewModel download,
         InstancesViewModel instances,
         StorageViewModel storage,
-        ModsViewModel mods,
+        ModsPageFactory modsFactory,
         SettingsViewModel settings,
         JavaManagementViewModel javaManagement,
         LogSessionsViewModel logSessions,
@@ -63,7 +63,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _home = home;
         _download = download;
         _instances = instances;
-        _mods = mods;
+        _modsFactory = modsFactory;
         _settings = settings;
         _tools = tools;
         _localizer = localizer;
@@ -99,8 +99,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         _home.Navigate = key => ActivateDestination(key);
         _home.OpenInstanceWorkspace = OpenSelectedInstanceWorkspace;
-        instances.GetModHealthSummary = mods.GetHealthSummaryAsync;
-        mods.SearchDependency = OpenDependencySearch;
+        instances.GetModHealthSummary = modsFactory.DescribeHealthAsync;
+        modsFactory.SearchDependency = OpenDependencySearch;
         instances.NavigateToDetails = instanceId => OpenInstanceWorkspace(instanceId);
         instances.NavigateBackFromDetails = NavigateToInstances;
 
@@ -179,7 +179,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         await _home.InitializeAsync().ConfigureAwait(true);
         await _home.Launcher.InitializeAsync().ConfigureAwait(true);
         await _download.InitializeAsync().ConfigureAwait(true);
-        await _mods.InitializeAsync().ConfigureAwait(true);
         await _settings.InitializeAsync().ConfigureAwait(true);
         if (SelectedNavigationItem?.Page is ToolsViewModel tools)
         {
@@ -372,8 +371,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             _instances.SelectedInstance = instance;
         }
 
-        _ = _mods.ActivateAsync();
-
         // 标签标题来自该实例的快照，不依赖全局 SelectedInstance 的更新顺序。
         var title = instance?.Name is { Length: > 0 } name ? name : stableInstanceId;
         return OpenWorkspace("instance", WorkspaceTargetSerializer.Serialize(target), title);
@@ -459,7 +456,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             var detail = new InstanceDetailPageViewModel(
                 new InstanceWorkspaceState(instance),
                 _instances,
-                _mods,
+                _modsFactory.Create(instance.Model.Id, instance.Name),
                 _instances.CreateRuntimeSettings(instance.Model));
             _ = detail.InitializeAsync();
             page = detail;

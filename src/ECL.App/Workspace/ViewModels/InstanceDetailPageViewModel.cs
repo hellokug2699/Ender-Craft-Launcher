@@ -58,6 +58,7 @@ public sealed class InstanceDetailPageViewModel : IDisposable
 
     public void Dispose()
     {
+        Mods.Dispose();
         Runtime.Dispose();
         State.Dispose();
     }

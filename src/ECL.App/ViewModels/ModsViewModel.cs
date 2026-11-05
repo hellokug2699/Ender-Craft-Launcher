@@ -5,27 +5,27 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Services;
 using Ecl.Core.Localization;
-using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Mods;
 
 namespace Ecl.App.ViewModels;
 
-public sealed partial class ModsViewModel : ObservableObject
+/// <summary>
+/// 一个实例工作区自有的模组与资源包页面状态（B2 步骤 1c）。
+///
+/// 本对象在创建时绑定唯一稳定 <see cref="InstanceId"/>，所有命令只作用于该实例，
+/// 不再依赖共享的“当前选中实例”：两个实例工作区同时打开时，各自的模组列表、
+/// 搜索/筛选与状态文案互不影响。关闭工作区时由页面释放。
+/// </summary>
+public sealed partial class ModsViewModel : ObservableObject, IDisposable
 {
-    private readonly IInstanceService _instances;
     private readonly IModService _mods;
     private readonly IModpackService _modpacks;
     private readonly IModDependencyInstaller _dependencies;
     private readonly IContentPackService _contentPacks;
     private readonly IDialogService _dialogs;
     private readonly ILocalizer _localizer;
-    private bool _initialized;
-    private bool _suppressSelectionRefresh;
-    private string? _pendingInstanceId;
 
     public Action<string, string>? SearchDependency { get; set; }
-
-    public ObservableCollection<ModInstanceChoice> Instances { get; } = [];
 
     public ObservableCollection<ModItemViewModel> Mods { get; } = [];
 
@@ -36,9 +36,6 @@ public sealed partial class ModsViewModel : ObservableObject
     public ObservableCollection<PackTypeChoice> PackTypes { get; } = [];
 
     public ObservableCollection<ContentPackItemViewModel> Packs { get; } = [];
-
-    [ObservableProperty]
-    private ModInstanceChoice? _selectedInstance;
 
     [ObservableProperty]
     private ModItemViewModel? _selectedMod;
@@ -74,21 +71,24 @@ public sealed partial class ModsViewModel : ObservableObject
     private bool _isBusy;
 
     public ModsViewModel(
-        IInstanceService instances,
         IModService mods,
         IModpackService modpacks,
         IModDependencyInstaller dependencies,
         IContentPackService contentPacks,
         IDialogService dialogs,
-        ILocalizer localizer)
+        ILocalizer localizer,
+        string instanceId,
+        string instanceName)
     {
-        _instances = instances;
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
         _mods = mods;
         _modpacks = modpacks;
         _dependencies = dependencies;
         _contentPacks = contentPacks;
         _dialogs = dialogs;
         _localizer = localizer;
+        InstanceId = instanceId;
+        InstanceName = instanceName;
 
         ModFilters.Add(new ModFilterChoice("all", localizer.Get("mods.filter.all")));
         ModFilters.Add(new ModFilterChoice("enabled", localizer.Get("mods.filter.enabled")));
@@ -101,108 +101,40 @@ public sealed partial class ModsViewModel : ObservableObject
         _selectedPackType = PackTypes[0];
     }
 
-    public async Task InitializeAsync()
+    /// <summary>本页面绑定的稳定实例 ID；模组、资源包与整合包命令都只作用于它。</summary>
+    public string InstanceId { get; }
+
+    /// <summary>实例显示名只用于导出文件名，不参与身份判断。</summary>
+    public string InstanceName { get; }
+
+    public bool IsDisposed { get; private set; }
+
+    public Task InitializeAsync() => ReloadAsync();
+
+    [RelayCommand]
+    private async Task ReloadAsync()
     {
-        await ReloadInstancesAsync().ConfigureAwait(true);
-        _initialized = true;
-        if (SelectedInstance is not null)
-        {
-            await RefreshAsync().ConfigureAwait(true);
-            await RefreshPacksAsync().ConfigureAwait(true);
-        }
-    }
-
-    public async Task<string> GetHealthSummaryAsync(string instanceId)
-    {
-        var result = await _mods.ScanAsync(instanceId).ConfigureAwait(true);
-        if (!result.IsSuccess)
-        {
-            return _localizer.Get("instances.healthModsFailed", result.Error?.Message ?? string.Empty);
-        }
-
-        var report = result.Value!;
-        return report.IssueCount == 0
-            ? _localizer.Get("instances.healthModsOk", report.EnabledCount, report.DisabledCount)
-            : _localizer.Get("instances.healthModsIssues", report.EnabledCount, report.DisabledCount, report.IssueCount,
-                string.Join(Environment.NewLine, report.Issues.Take(12).Select(issue => $"{issue.FileName}: {issue.Kind} ({issue.RelatedModId ?? issue.Detail ?? issue.ModId ?? string.Empty})")));
-    }
-
-    public void SelectInstance(string instanceId)
-    {
-        var match = Instances.FirstOrDefault(item => string.Equals(item.Id, instanceId, StringComparison.Ordinal));
-        if (match is null)
-        {
-            _pendingInstanceId = instanceId;
-            return;
-        }
-
-        _pendingInstanceId = null;
-        SelectedInstance = match;
-    }
-
-    public async Task ActivateAsync()
-    {
-        if (!_initialized)
+        if (IsDisposed)
         {
             return;
         }
 
-        await ReloadInstancesAsync().ConfigureAwait(true);
-        if (SelectedInstance is not null)
-        {
-            await RefreshAsync().ConfigureAwait(true);
-            await RefreshPacksAsync().ConfigureAwait(true);
-        }
-    }
-
-    [RelayCommand]
-    private Task ReloadAsync() => ActivateAsync();
-
-    [RelayCommand]
-    private async Task ReloadInstancesAsync()
-    {
-        var selectedId = _pendingInstanceId ?? SelectedInstance?.Id;
-        var instances = await _instances.GetInstancesAsync().ConfigureAwait(true);
-
-        _suppressSelectionRefresh = true;
-        try
-        {
-            Instances.Clear();
-            foreach (var instance in instances)
-            {
-                Instances.Add(new ModInstanceChoice(
-                    instance.Id,
-                    instance.Name,
-                    instance.GameVersion,
-                    instance.Loader,
-                    instance.LoaderVersion));
-            }
-
-            SelectedInstance = Instances.FirstOrDefault(item => item.Id == selectedId)
-                               ?? Instances.FirstOrDefault();
-            _pendingInstanceId = null;
-        }
-        finally
-        {
-            _suppressSelectionRefresh = false;
-        }
+        await RefreshAsync().ConfigureAwait(true);
+        await RefreshPacksAsync().ConfigureAwait(true);
     }
 
     [RelayCommand]
     private async Task RefreshAsync()
     {
-        if (SelectedInstance is null)
+        if (IsDisposed)
         {
-            Mods.Clear();
-            RefreshFilteredMods();
-            Summary = _localizer.Get("mods.noInstance");
             return;
         }
 
         IsBusy = true;
         try
         {
-            var result = await _mods.ScanAsync(SelectedInstance.Id).ConfigureAwait(true);
+            var result = await _mods.ScanAsync(InstanceId).ConfigureAwait(true);
             if (!result.IsSuccess)
             {
                 StatusMessage = result.Error?.ToString() ?? _localizer.Get("mods.scanFailed");
@@ -237,7 +169,7 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task RefreshPacksAsync()
     {
-        if (SelectedInstance is null || SelectedPackType is null)
+        if (IsDisposed || SelectedPackType is null)
         {
             Packs.Clear();
             PackSummary = string.Empty;
@@ -249,7 +181,7 @@ public sealed partial class ModsViewModel : ObservableObject
         try
         {
             var result = await _contentPacks
-                .ListAsync(SelectedInstance.Id, SelectedPackType.Kind)
+                .ListAsync(InstanceId, SelectedPackType.Kind)
                 .ConfigureAwait(true);
             if (!result.IsSuccess)
             {
@@ -322,7 +254,7 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task TogglePackAsync()
     {
-        if (SelectedInstance is null || SelectedPackType is null || SelectedPack is null)
+        if (IsDisposed || SelectedPackType is null || SelectedPack is null)
         {
             StatusMessage = _localizer.Get("mods.selectPack");
             return;
@@ -330,7 +262,7 @@ public sealed partial class ModsViewModel : ObservableObject
 
         var enable = !SelectedPack.Enabled;
         var result = await _contentPacks
-            .SetEnabledAsync(SelectedInstance.Id, SelectedPackType.Kind, SelectedPack.FileName, enable)
+            .SetEnabledAsync(InstanceId, SelectedPackType.Kind, SelectedPack.FileName, enable)
             .ConfigureAwait(true);
 
         StatusMessage = result.IsSuccess
@@ -343,14 +275,14 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task ToggleSelectedAsync()
     {
-        if (SelectedInstance is null || SelectedMod is null)
+        if (IsDisposed || SelectedMod is null)
         {
             StatusMessage = _localizer.Get("mods.selectMod");
             return;
         }
 
         var result = await _mods
-            .SetEnabledAsync(SelectedInstance.Id, SelectedMod.FileName, !SelectedMod.Enabled)
+            .SetEnabledAsync(InstanceId, SelectedMod.FileName, !SelectedMod.Enabled)
             .ConfigureAwait(true);
 
         if (!result.IsSuccess)
@@ -368,9 +300,8 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task DownloadMissingDependenciesAsync()
     {
-        if (SelectedInstance is null)
+        if (IsDisposed)
         {
-            StatusMessage = _localizer.Get("mods.selectInstance");
             return;
         }
 
@@ -384,7 +315,7 @@ public sealed partial class ModsViewModel : ObservableObject
         {
             var progress = new Progress<ModDependencyProgress>(update => StatusMessage = update.Message);
             var result = await _dependencies
-                .InstallMissingAsync(SelectedInstance.Id, progress)
+                .InstallMissingAsync(InstanceId, progress)
                 .ConfigureAwait(true);
             if (!result.IsSuccess)
             {
@@ -409,7 +340,7 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task EnableSelectedDependenciesAsync()
     {
-        if (SelectedInstance is null || SelectedMod is null)
+        if (IsDisposed || SelectedMod is null)
         {
             StatusMessage = _localizer.Get("mods.selectMod");
             return;
@@ -444,7 +375,7 @@ public sealed partial class ModsViewModel : ObservableObject
         var errors = new List<string>();
         foreach (var dependency in dependencies)
         {
-            var result = await _mods.SetEnabledAsync(SelectedInstance.Id, dependency.FileName, true).ConfigureAwait(true);
+            var result = await _mods.SetEnabledAsync(InstanceId, dependency.FileName, true).ConfigureAwait(true);
             if (result.IsSuccess)
             {
                 enabled++;
@@ -464,7 +395,7 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private void SearchSelectedDependency()
     {
-        if (SelectedInstance is null || SelectedMod is null)
+        if (IsDisposed || SelectedMod is null)
         {
             StatusMessage = _localizer.Get("mods.selectMod");
             return;
@@ -480,13 +411,13 @@ public sealed partial class ModsViewModel : ObservableObject
             return;
         }
 
-        SearchDependency?.Invoke(dependencyId, SelectedInstance.Id);
+        SearchDependency?.Invoke(dependencyId, InstanceId);
     }
 
     [RelayCommand]
     private async Task DeleteSelectedAsync()
     {
-        if (SelectedInstance is null || SelectedMod is null)
+        if (IsDisposed || SelectedMod is null)
         {
             StatusMessage = _localizer.Get("mods.selectMod");
             return;
@@ -499,7 +430,7 @@ public sealed partial class ModsViewModel : ObservableObject
             return;
         }
 
-        var result = await _mods.DeleteAsync(SelectedInstance.Id, SelectedMod.FileName).ConfigureAwait(true);
+        var result = await _mods.DeleteAsync(InstanceId, SelectedMod.FileName).ConfigureAwait(true);
         if (!result.IsSuccess)
         {
             StatusMessage = result.Error?.ToString() ?? _localizer.Get("mods.deleteFailed");
@@ -513,12 +444,12 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task EnableAllAsync()
     {
-        if (SelectedInstance is null)
+        if (IsDisposed)
         {
             return;
         }
 
-        var result = await _mods.SetAllEnabledAsync(SelectedInstance.Id, true).ConfigureAwait(true);
+        var result = await _mods.SetAllEnabledAsync(InstanceId, true).ConfigureAwait(true);
         StatusMessage = result.IsSuccess
             ? _localizer.Get("mods.batchDone", result.Value!.Succeeded)
             : result.Error?.ToString() ?? _localizer.Get("mods.updateFailed");
@@ -528,12 +459,12 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task DisableAllAsync()
     {
-        if (SelectedInstance is null)
+        if (IsDisposed)
         {
             return;
         }
 
-        var result = await _mods.SetAllEnabledAsync(SelectedInstance.Id, false).ConfigureAwait(true);
+        var result = await _mods.SetAllEnabledAsync(InstanceId, false).ConfigureAwait(true);
         StatusMessage = result.IsSuccess
             ? _localizer.Get("mods.batchDone", result.Value!.Succeeded)
             : result.Error?.ToString() ?? _localizer.Get("mods.updateFailed");
@@ -543,7 +474,7 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task ImportModsAsync()
     {
-        if (SelectedInstance is null)
+        if (IsDisposed)
         {
             return;
         }
@@ -556,7 +487,7 @@ public sealed partial class ModsViewModel : ObservableObject
             return;
         }
 
-        var result = await _mods.ImportAsync(SelectedInstance.Id, files).ConfigureAwait(true);
+        var result = await _mods.ImportAsync(InstanceId, files).ConfigureAwait(true);
         StatusMessage = result.IsSuccess
             ? _localizer.Get("mods.importDone", result.Value!.Succeeded)
             : result.Error?.ToString() ?? _localizer.Get("mods.importFailed");
@@ -566,7 +497,7 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task ImportPackAsync()
     {
-        if (SelectedInstance is null || SelectedPackType is null)
+        if (IsDisposed || SelectedPackType is null)
         {
             return;
         }
@@ -580,7 +511,7 @@ public sealed partial class ModsViewModel : ObservableObject
         }
 
         var result = await _contentPacks
-            .ImportAsync(SelectedInstance.Id, SelectedPackType.Kind, file)
+            .ImportAsync(InstanceId, SelectedPackType.Kind, file)
             .ConfigureAwait(true);
         StatusMessage = result.IsSuccess
             ? _localizer.Get("mods.packImported", result.Value!.FileName)
@@ -591,7 +522,7 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task DeletePackAsync()
     {
-        if (SelectedInstance is null || SelectedPackType is null || SelectedPack is null)
+        if (IsDisposed || SelectedPackType is null || SelectedPack is null)
         {
             StatusMessage = _localizer.Get("mods.selectPack");
             return;
@@ -605,7 +536,7 @@ public sealed partial class ModsViewModel : ObservableObject
         }
 
         var result = await _contentPacks
-            .DeleteAsync(SelectedInstance.Id, SelectedPackType.Kind, SelectedPack.FileName)
+            .DeleteAsync(InstanceId, SelectedPackType.Kind, SelectedPack.FileName)
             .ConfigureAwait(true);
         StatusMessage = result.IsSuccess
             ? _localizer.Get("mods.packDeleted", SelectedPack.FileName)
@@ -616,7 +547,7 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task ImportModpackAsync()
     {
-        if (SelectedInstance is null)
+        if (IsDisposed)
         {
             return;
         }
@@ -634,7 +565,7 @@ public sealed partial class ModsViewModel : ObservableObject
         {
             var progress = new Progress<ModpackProgress>(update => StatusMessage = update.Message);
             var result = await _modpacks
-                .ImportAsync(SelectedInstance.Id, file, progress)
+                .ImportAsync(InstanceId, file, progress)
                 .ConfigureAwait(true);
             if (!result.IsSuccess)
             {
@@ -658,7 +589,7 @@ public sealed partial class ModsViewModel : ObservableObject
     [RelayCommand]
     private async Task ExportModpackAsync()
     {
-        if (SelectedInstance is null)
+        if (IsDisposed)
         {
             return;
         }
@@ -666,13 +597,13 @@ public sealed partial class ModsViewModel : ObservableObject
         var output = _dialogs.PickSaveFile(
             _localizer.Get("mods.exportTitle"),
             _localizer.Get("mods.modpackFilter"),
-            $"{SelectedInstance.Name}.mrpack");
+            $"{InstanceName}.mrpack");
         if (output is null)
         {
             return;
         }
 
-        var result = await _modpacks.ExportAsync(SelectedInstance.Id, output).ConfigureAwait(true);
+        var result = await _modpacks.ExportAsync(InstanceId, output).ConfigureAwait(true);
         StatusMessage = result.IsSuccess
             ? _localizer.Get("mods.exportDone", result.Value!.Files)
             : result.Error?.ToString() ?? _localizer.Get("mods.exportFailed");
@@ -713,42 +644,29 @@ public sealed partial class ModsViewModel : ObservableObject
         SelectedMod = FilteredMods.FirstOrDefault(mod => mod.FileName == selectedFileName);
     }
 
-    partial void OnSelectedInstanceChanged(ModInstanceChoice? value)
-    {
-
-        if (_initialized && !_suppressSelectionRefresh)
-        {
-            _ = RefreshAsync();
-            _ = RefreshPacksAsync();
-        }
-    }
-
     partial void OnSelectedPackTypeChanged(PackTypeChoice? value)
     {
-        if (_initialized)
+        if (!IsDisposed)
         {
             _ = RefreshPacksAsync();
         }
     }
-}
 
-public sealed record ModInstanceChoice(string Id, string Name, string GameVersion, string Loader, string? LoaderVersion)
-{
-    public string LoaderDisplay => Loader.ToLowerInvariant() switch
+    /// <summary>关闭工作区时释放本页面持有的列表与选择状态。</summary>
+    public void Dispose()
     {
-        "vanilla" => "Vanilla",
-        "fabric" => "Fabric",
-        "forge" => "Forge",
-        "neoforge" => "NeoForge",
-        "cleanroom" => "Cleanroom",
-        _ => Loader,
-    };
+        if (IsDisposed)
+        {
+            return;
+        }
 
-    public string LoaderVersionDisplay => string.IsNullOrWhiteSpace(LoaderVersion)
-        ? LoaderDisplay
-        : $"{LoaderDisplay} {LoaderVersion}";
-
-    public string GameVersionDisplay => $"Minecraft {GameVersion}";
+        IsDisposed = true;
+        Mods.Clear();
+        FilteredMods.Clear();
+        Packs.Clear();
+        SelectedMod = null;
+        SelectedPack = null;
+    }
 }
 
 public sealed record PackTypeChoice(ContentPackKind Kind, string Title);
