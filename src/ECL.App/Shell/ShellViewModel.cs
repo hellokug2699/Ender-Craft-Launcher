@@ -365,14 +365,17 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        if (_instances.Instances.FirstOrDefault(item => item.Model.Id == stableInstanceId) is { } instance)
+        var instance = _instances.Instances.FirstOrDefault(item =>
+            string.Equals(item.Model.Id, stableInstanceId, StringComparison.Ordinal));
+        if (instance is not null)
         {
             _instances.SelectedInstance = instance;
         }
 
         _ = _mods.ActivateAsync();
 
-        var title = string.IsNullOrWhiteSpace(_instances.SelectedInstanceName) ? stableInstanceId : _instances.SelectedInstanceName;
+        // 标签标题来自该实例的快照，不依赖全局 SelectedInstance 的更新顺序。
+        var title = instance?.Name is { Length: > 0 } name ? name : stableInstanceId;
         return OpenWorkspace("instance", WorkspaceTargetSerializer.Serialize(target), title);
     }
 
