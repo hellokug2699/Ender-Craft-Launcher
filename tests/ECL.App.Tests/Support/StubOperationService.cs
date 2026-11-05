@@ -4,10 +4,10 @@ using Ecl.Operations;
 
 namespace Ecl.App.Tests.Support;
 
-/// <summary>输出面板测试只需要任务中心的读取端；这里提供最小只读实现。</summary>
-internal sealed class StubOperationService : IOperationService
+/// <summary>只读取端的任务中心实现；可按需注入任务快照，用于验证冲突检测。</summary>
+internal sealed class StubOperationService(IReadOnlyList<OperationSnapshot>? snapshots = null) : IOperationService
 {
-    private readonly StubOperationStore _store = new();
+    private readonly StubOperationStore _store = new(snapshots ?? []);
 
     public IOperationStore Store => _store;
 
@@ -24,9 +24,9 @@ internal sealed class StubOperationService : IOperationService
 
     public int PruneCompleted(DateTimeOffset completedBefore) => 0;
 
-    private sealed class StubOperationStore : IOperationStore
+    private sealed class StubOperationStore(IReadOnlyList<OperationSnapshot> snapshots) : IOperationStore
     {
-        public IReadOnlyList<OperationSnapshot> Snapshots => [];
+        public IReadOnlyList<OperationSnapshot> Snapshots => snapshots;
 
         public event EventHandler<OperationSnapshot>? Changed
         {

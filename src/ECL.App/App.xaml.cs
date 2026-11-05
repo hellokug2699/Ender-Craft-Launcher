@@ -12,6 +12,7 @@ using Ecl.App.Shell.Inspector;
 using Ecl.App.Shell.Output;
 using Ecl.App.ViewModels;
 using Ecl.App.Views;
+using Ecl.App.Workspace.ViewModels;
 using Ecl.Auth;
 using Ecl.Configuration;
 using Ecl.Configuration.Settings;
@@ -78,6 +79,7 @@ public partial class App : Application
             services.AddSingleton<InstancesViewModel>();
             services.AddSingleton<StorageViewModel>();
             services.AddSingleton<ModsPageFactory>();
+            services.AddSingleton<InstanceModifyPageFactory>();
             services.AddSingleton<HomeViewModel>();
             services.AddSingleton<DownloadViewModel>();
             services.AddSingleton<SettingsViewModel>();

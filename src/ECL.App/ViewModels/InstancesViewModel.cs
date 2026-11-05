@@ -233,26 +233,11 @@ public sealed partial class InstancesViewModel : ObservableObject
         : GetInstanceComponents(SelectedInstance.Model);
 
     /// <summary>
-    /// 组件摘要的唯一格式化实现；实例工作区页面同样使用它，避免页面自己拼接文案。
+    /// 组件摘要的统一入口；格式化实现见 <see cref="InstanceComponentsPresentation"/>，
+    /// 实例列表、基本信息与修改页共用同一套文案。
     /// </summary>
-    public string GetInstanceComponents(GameInstance model)
-    {
-        ArgumentNullException.ThrowIfNull(model);
-        var parts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(model.FabricApiVersion))
-        {
-            parts.Add($"Fabric API {model.FabricApiVersion}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(model.OptiFineVersion))
-        {
-            parts.Add($"OptiFine {model.OptiFineVersion}");
-        }
-
-        return parts.Count == 0
-            ? string.Empty
-            : _localizer.Get("instances.components.summary", string.Join(" · ", parts));
-    }
+    public string GetInstanceComponents(GameInstance model) =>
+        InstanceComponentsPresentation.Describe(model, _localizer);
 
     public InstancesViewModel(
         IInstanceService instances,

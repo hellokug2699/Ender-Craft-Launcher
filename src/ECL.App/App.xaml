@@ -46,6 +46,9 @@
             <DataTemplate DataType="{x:Type wsvm:InstanceBasicInfoViewModel}">
                 <views:InstanceBasicInfoView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type wsvm:InstanceModifyViewModel}">
+                <views:InstanceModifyView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:ModsViewModel}">
                 <views:InstanceModsView />
             </DataTemplate>

@@ -121,6 +121,32 @@ public sealed class InstanceWorkspaceNavigationTests
     }
 
     [Fact]
+    public void ModifyPageBecomesAvailableWhenTheWorkspaceProvidesIt()
+    {
+        var modifyPage = new object();
+        var navigation = InstanceWorkspaceNavigationFactory.Create(
+            Localizer(),
+            new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                [InstanceWorkspacePageKeys.BasicInfo] = new object(),
+                [InstanceWorkspacePageKeys.Mods] = new object(),
+                [InstanceWorkspacePageKeys.Modify] = modifyPage,
+            });
+
+        var item = navigation.Find(InstanceWorkspacePageKeys.Modify);
+        Assert.NotNull(item);
+        Assert.True(item!.IsAvailable);
+        Assert.Same(modifyPage, item.Page);
+        Assert.Equal(string.Empty, item.UnavailableReason);
+        Assert.Equal("修改", item.Title);
+        Assert.Equal("配置", item.GroupTitle);
+
+        Assert.True(navigation.TryActivate(InstanceWorkspacePageKeys.Modify));
+        Assert.Equal(InstanceWorkspacePageKeys.Modify, navigation.CurrentPageKey);
+        Assert.Same(modifyPage, navigation.CurrentPage);
+    }
+
+    [Fact]
     public void TwoWorkspacesKeepIndependentNavigationState()
     {
         var first = CreateNavigation(out var firstBasic, out var firstMods);

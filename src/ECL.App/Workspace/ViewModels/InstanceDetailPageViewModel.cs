@@ -19,6 +19,7 @@ namespace Ecl.App.Workspace.ViewModels;
 ///
 /// B2 步骤 2：二级导航逐项对应 <c>instance-workspace.md</c> §10，默认「基本信息」；
 /// 尚未实现的页面只保留不可用导航项，不建空页（迁移规划 §5.4 B2 步骤 2）。
+/// B2 步骤 3b-4a：新增「修改」页，只生成只读变更计划与影响预览（受控执行属 3b-4b）。
 /// 关闭标签时 <see cref="Dispose"/> 释放这些状态与导航。
 /// </summary>
 public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDisposable
@@ -31,6 +32,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         StorageAnalysisService storageAnalysis,
         Action<string>? manageStorage,
         IMemoryPressureMonitor memory,
+        InstanceModifyPageFactory modifyFactory,
         ILocalizer localizer)
     {
         State = state;
@@ -51,6 +53,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
             Storage,
             memory,
             localizer);
+        Modify = modifyFactory.Create(state);
 
         Navigation = InstanceWorkspaceNavigationFactory.Create(
             localizer,
@@ -58,6 +61,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
             {
                 [InstanceWorkspacePageKeys.BasicInfo] = BasicInfo,
                 [InstanceWorkspacePageKeys.Mods] = mods,
+                [InstanceWorkspacePageKeys.Modify] = Modify,
             });
     }
 
@@ -75,6 +79,9 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
 
     /// <summary>默认二级页「基本信息」。</summary>
     public InstanceBasicInfoViewModel BasicInfo { get; }
+
+    /// <summary>「配置 · 修改」二级页（B2 步骤 3b-4a：只读变更计划与影响预览）。</summary>
+    public InstanceModifyViewModel Modify { get; }
 
     /// <summary>当前实例的存储占用卡状态（§5）；由基本信息页展示。</summary>
     public InstanceStorageViewModel Storage { get; }
@@ -106,6 +113,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
     public void Dispose()
     {
         Navigation.Dispose();
+        Modify.Dispose();
         BasicInfo.Dispose();
         Storage.Dispose();
         Operations.Dispose();

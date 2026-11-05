@@ -99,9 +99,10 @@
   逐项核对条目 Key、分组顺序、每组条目数与默认页，防止实现自行增删导航。
 - `InstanceDetailPageViewModel` 现在是实例工作区壳：左侧纵向二级导航 + 右侧当前二级页。切换二级页只改变
   `Navigation.CurrentPage`，不新开工作区、不改变工作区标题（迁移规划 §5.1）。已实现页面为
-  「基本信息」（`InstanceBasicInfoViewModel`，默认页）与「内容 · 模组」（`ModsViewModel`），
-  两者各自拥有唯一的滚动容器，由 `App.xaml` 的 DataTemplate 映射到视图。
-- 尚未实现的页面（修改、资源包、光影包、数据包、截图、投影、导出、日志）只保留不可用导航项：
+  「基本信息」（`InstanceBasicInfoViewModel`，默认页）、「配置 · 修改」
+  （`InstanceModifyViewModel`，B2 步骤 3b-4a 只读计划）与「内容 · 模组」（`ModsViewModel`），
+  三者各自拥有唯一的滚动容器，由 `App.xaml` 的 DataTemplate 映射到视图。
+- 尚未实现的页面（资源包、光影包、数据包、截图、投影、导出、日志）只保留不可用导航项：
   `IsEnabled=false`、UIA `HelpText` 与可见的「未实现」徽标共同说明原因，不创建空页、不提供可点击入口；
   日志项单独说明 G-01 页面规格尚未批准。不可用项不会被代码或键盘路径激活（`TryActivate` 与选中 setter 双重拒绝）。
 - 窄窗口收缩（ADR 0050）：工作区页面可用宽度小于 640 时，左侧二级导航折叠为内容区顶部的页面选择器；
@@ -144,8 +145,38 @@
 - 模组页旧区块已整理（B2 步骤 3b-3c）：依赖与修复、整合包导入/导出、资源包与光影移入表格下方的
   「高级与依赖」卡片并默认折叠，命令与能力保持不变；资源包/光影在 B2b 独立页落地前保留入口，
   并在区块内说明独立页面尚未开放。资源包行的名称/描述改为单行省略，避免畸形 `pack.mcmeta` 描述撑高列表。
-- 仍待 B2：实例级 Java 警告抑制（步骤 4，受 ADR 0014 门禁）、Modify 页面（3b-4）；
-  概览「应用」与实例改名仍为 BLOCKED（见交接文档 §6.1）。
+- 「修改」页已按 `instance-modify.md` 落地只读变更计划（B2 步骤 3b-4a）：导航项从不可用改为可用，
+  页面顶部固定显示当前实例与目录，中部逐行对照「当前配置 / 拟变更值」，底部提供「生成变更计划」。
+  - 目标实例由工作区打开时的稳定 InstanceId 固定绑定；页面不提供目录或实例切换入口，也不创建新实例。
+  - 目标版本只来自 `IVersionCatalog`（外部实例版本不在目录中时单独标注，不伪造日期）；加载器按目标版本
+    过滤（Cleanroom 仅 1.12.2，选择其它版本时从选项排除并说明）；加载器版本、Fabric API 与 OptiFine
+    由 `ILoaderCatalog` 提供。Fabric API 默认目标组合最新兼容版本并明确展示；OptiFine 只在用户显式选择时
+    安装，当前版本在目标版本下没有文件时不自动替换，只提示手动选择或移除。
+  - 计划条目只来自可证明的领域结论：身份/目录、当前→目标版本与加载器、组件、当前 Java
+    （`IJavaSelectionService` + `JavaStatusPresentation`/`JavaSelectionPresentation`）、目标 Java 要求
+    （目标版本文件尚未安装时只使用 `JavaRequirements.TryInferMinimumMajor` 的推断值并标注「推断」）、
+    模组影响（`ModService.ScanAsync` 的元数据 + `ModVersionRange`/`ModCompatibility`，三档：确定不兼容、
+    未知、元数据声明兼容；禁用模组不计）、资源包/光影与数据包（无可靠兼容声明时显示「未知」）、
+    需要下载的产物与实际来源（大小一律显示「大小未知」，不猜测字节数）、运行中的游戏进程
+    （`IGameSessionService` 会话 + 进程存活校验，过期会话不阻塞）、进行中的写入任务
+    （`IOperationService`，任务记录没有 InstanceId，因此明确写「无法证明属于哪个实例」）、
+    快照要求与范围、需要手动处理项（遗留 OptiFine / Fabric API 文件、确定不可用的模组）。
+  - 仅在目标版本或加载器真正变化时才扫描内容影响；只调整加载器小版本或 OptiFine 时，模组/资源包
+    显示「目标版本与加载器未变，兼容性不受本次变更影响」，不把当前已知问题包装成这次变更的影响。
+  - 状态机按 §7 实现未检查/检查中/可执行/需要处理/不可执行五种。可执行只在全部强制检查通过时出现；
+    失败读取、目标组合缺少加载器版本、缺少 Fabric API、目标加载器需要 processors 但没有可用 Java、
+    实例目录不存在时进入不可执行并逐条列出原因；游戏进程或写入任务存在、目标与当前一致时进入需要处理。
+  - 本步骤不写入实例、不创建快照、不下载产物：`InstanceModifyViewModel` 的构造依赖里没有任何安装、
+    事务或快照服务，提交/执行入口不存在，页面底部写明受控执行属后续步骤（3b-4b）。
+  - 生命周期：每工作区一个页面对象，由 `InstanceModifyPageFactory` 创建、`InstanceDetailPageViewModel`
+    持有并在关闭标签时释放；目标目录在首次显示页面时读取，选择变化会取消上一次读取，释放后不再回写。
+  - 测试：`tests/ECL.App.Tests/Workspace/InstanceModifyPageTests.cs`（当前值投影、版本目录与加载器过滤、
+    Cleanroom 限制、无变更、运行进程与过期会话、写入任务冲突、目录缺失、加载器版本/Fabric API 缺失、
+    模组三档影响与手动项、Java 推断与不可用、OptiFine 保留策略、下载清单与「大小未知」、快照与目录范围、
+    「不调用任何写 API」的结构断言、选择变化使计划失效、释放后异步回写保护、双工作区隔离）+
+    `InstanceWorkspaceNavigationTests.ModifyPageBecomesAvailableWhenTheWorkspaceProvidesIt`。
+- 仍待 B2：实例级 Java 警告抑制（步骤 4，受 ADR 0014 门禁）、Modify 受控执行（3b-4b：快照 +
+    `ReconfigureAsync` + 刷新）与可选组件行（3b-4c）；概览「应用」与实例改名仍为 BLOCKED（见交接文档 §6.1）。
 
 ## 3. 共享页面控件（B0）
 
