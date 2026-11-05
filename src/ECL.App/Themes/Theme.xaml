@@ -437,6 +437,11 @@
         <Setter Property="Padding" Value="12,10" />
     </Style>
 
+    <!-- 只读等宽文本（命令预览）与可编辑等宽输入（JVM 参数）。 -->
+    <Style x:Key="MonoInputTextBox" TargetType="TextBox" BasedOn="{StaticResource MonoTextBox}">
+        <Setter Property="IsReadOnly" Value="False" />
+    </Style>
+
     <!-- ============================ ComboBox ============================ -->
 
     <Style TargetType="ComboBox">

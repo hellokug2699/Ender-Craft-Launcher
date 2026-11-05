@@ -120,6 +120,21 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
     /// <summary>实例填写了专属内存时才能编辑数值；“使用全局”状态下输入框不参与编辑。</summary>
     public bool IsMemoryEditable => !UseGlobalMemory;
 
+    /// <summary>页面内存条使用的游戏分配值；输入非法时为 0，不把未知值画成有效分配。</summary>
+    public int EffectiveMemoryMb =>
+        UseGlobalMemory
+            ? _settings.Get<int>("java.defaultMemoryMb")
+            : TryParseMemory(out var memoryMb)
+                ? memoryMb
+                : 0;
+
+    public bool IsMemoryAllocationValid => UseGlobalMemory || TryParseMemory(out _);
+
+    /// <summary>JVM 参数或预设非空时显示「还原」。</summary>
+    public bool HasCustomJvmArguments =>
+        JvmArguments.Trim().Length > 0 ||
+        !string.IsNullOrWhiteSpace(JvmPreset);
+
     public bool IsDisposed { get; private set; }
 
     /// <summary>加载本实例已保存的 Java 选项与内存/JVM 值；不写入任何设置。</summary>
@@ -224,6 +239,32 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
             : _localizer.Get("instances.memory.saved");
     }
 
+    /// <summary>
+    /// 清除本实例专属 JVM 参数与预设，恢复「遵循全局设置」（§4.2「还原」）。
+    /// 只清理本 InstanceId 的三个 JVM 键，不触碰全局 JVM 设置。
+    /// </summary>
+    [RelayCommand]
+    private void RevertJvm()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (!_settings.TryClear("instance.java.extraArguments", InstanceId, out var argumentsError))
+        {
+            StatusMessage = argumentsError ?? _localizer.Get("instance.jvm.revertFailed");
+            return;
+        }
+
+        _settings.TryClear("instance.java.jvmPreset", InstanceId, out _);
+        _settings.TryClear("instance.java.customJvmPreset", InstanceId, out _);
+
+        JvmArguments = string.Empty;
+        JvmPreset = string.Empty;
+        StatusMessage = _localizer.Get("instance.jvm.reverted");
+    }
+
     /// <summary>下载适合本实例的 Java，并把该运行时固定为本实例的覆盖项。</summary>
     [RelayCommand]
     private async Task DownloadJavaAsync()
@@ -310,6 +351,8 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
     partial void OnUseGlobalMemoryChanged(bool value)
     {
         OnPropertyChanged(nameof(IsMemoryEditable));
+        OnPropertyChanged(nameof(EffectiveMemoryMb));
+        OnPropertyChanged(nameof(IsMemoryAllocationValid));
 
         // 取消勾选时用全局值作为起点，避免用户面对一个空输入框。
         if (!value && string.IsNullOrWhiteSpace(MemoryMbText))
@@ -319,6 +362,26 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
                 .ToString(CultureInfo.InvariantCulture);
         }
     }
+
+    partial void OnMemoryMbTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(EffectiveMemoryMb));
+        OnPropertyChanged(nameof(IsMemoryAllocationValid));
+    }
+
+    partial void OnJvmArgumentsChanged(string value) =>
+        OnPropertyChanged(nameof(HasCustomJvmArguments));
+
+    partial void OnJvmPresetChanged(string value) =>
+        OnPropertyChanged(nameof(HasCustomJvmArguments));
+
+    private bool TryParseMemory(out int memoryMb) =>
+        int.TryParse(
+            MemoryMbText.Trim(),
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out memoryMb) &&
+        memoryMb is >= 1024 and <= 65536;
 
     partial void OnSelectedJavaOptionChanged(JavaOptionViewModel? value)
     {

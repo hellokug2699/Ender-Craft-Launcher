@@ -16,6 +16,12 @@ public interface IMemoryPressureMonitor
     void Start();
 
     void Stop();
+
+    /// <summary>
+    /// 读取一次系统内存采样（总量/可用量）。页面用它展示内存条，
+    /// 与压力分级使用同一数据源，避免出现两套“系统内存”口径。
+    /// </summary>
+    MemoryPressureSample? ReadSample();
 }
 
 /// <summary>
@@ -42,6 +48,8 @@ public sealed class MemoryPressureMonitor : IMemoryPressureMonitor, IDisposable
     public void Start() => _timer.Start();
 
     public void Stop() => _timer.Stop();
+
+    public MemoryPressureSample? ReadSample() => TryReadSample();
 
     private void Sample()
     {

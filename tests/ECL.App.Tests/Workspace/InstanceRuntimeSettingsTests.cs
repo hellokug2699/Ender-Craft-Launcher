@@ -122,6 +122,47 @@ public sealed class InstanceRuntimeSettingsTests
         Assert.False(string.IsNullOrWhiteSpace(scope.StatusMessage));
     }
 
+    [Fact]
+    public void EffectiveMemoryFollowsCurrentDraftAndGlobalInheritance()
+    {
+        var settings = new InMemorySettingsService();
+        settings.TrySetRaw("java.defaultMemoryMb", "8192", null, out _);
+        using var scope = Create(settings, "instance-a");
+
+        Assert.True(scope.UseGlobalMemory);
+        Assert.Equal(8192, scope.EffectiveMemoryMb);
+        Assert.True(scope.IsMemoryAllocationValid);
+
+        scope.UseGlobalMemory = false;
+        scope.MemoryMbText = "4096";
+        Assert.Equal(4096, scope.EffectiveMemoryMb);
+
+        scope.MemoryMbText = "512";
+        Assert.Equal(0, scope.EffectiveMemoryMb);
+        Assert.False(scope.IsMemoryAllocationValid);
+    }
+
+    [Fact]
+    public void RevertJvmClearsOnlyThisInstancesArguments()
+    {
+        var settings = new InMemorySettingsService();
+        settings.TrySetRaw("instance.java.extraArguments", "-Xmx4G", "instance-a", out _);
+        settings.TrySetRaw("instance.java.jvmPreset", "g1", "instance-a", out _);
+        settings.TrySetRaw("instance.java.extraArguments", "-Xmx2G", "instance-b", out _);
+
+        using var scope = Create(settings, "instance-a");
+        Assert.True(scope.HasCustomJvmArguments);
+
+        scope.RevertJvmCommand.Execute(null);
+
+        Assert.Null(settings.Get<string?>("instance.java.extraArguments", "instance-a"));
+        Assert.Null(settings.Get<string?>("instance.java.jvmPreset", "instance-a"));
+        Assert.Equal("-Xmx2G", settings.Get<string?>("instance.java.extraArguments", "instance-b"));
+        Assert.Equal(string.Empty, scope.JvmArguments);
+        Assert.Equal(string.Empty, scope.JvmPreset);
+        Assert.False(scope.HasCustomJvmArguments);
+    }
+
     private sealed class InMemorySettingsService : ISettingsService
     {
         private readonly Dictionary<string, string?> _values = new(StringComparer.Ordinal);

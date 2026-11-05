@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Dialogs;
 using Ecl.App.Dialogs.ViewModels;
+using Ecl.App.Services;
 using Ecl.App.Shell.Inspector;
 using Ecl.App.Shell.Output;
 using Ecl.App.ViewModels;
@@ -36,6 +37,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly ModsPageFactory _modsFactory;
     private readonly SettingsViewModel _settings;
     private readonly ToolsViewModel _tools;
+    private readonly IMemoryPressureMonitor _memoryPressure;
     private readonly IReadOnlyList<string> _navigationKeys;
     private readonly IDisposable _workspaceChanges;
     private bool _suppressNavigation;
@@ -54,6 +56,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         InspectorViewModel inspector,
         OutputPanelViewModel output,
         DialogLayerViewModel dialogLayer,
+        IMemoryPressureMonitor memoryPressure,
         IWorkspaceHost workspaces,
         IDialogEngine dialogs,
         IAppPaths paths,
@@ -66,6 +69,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _modsFactory = modsFactory;
         _settings = settings;
         _tools = tools;
+        _memoryPressure = memoryPressure;
         _localizer = localizer;
         _logger = logger;
         _workspaces = workspaces;
@@ -456,6 +460,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 _instances,
                 _modsFactory.Create(instance.Model.Id, instance.Name),
                 _instances.CreateRuntimeSettings(instance.Model),
+                _memoryPressure,
                 _localizer);
             _ = InitializeInstancePageAsync(detail);
             page = detail;

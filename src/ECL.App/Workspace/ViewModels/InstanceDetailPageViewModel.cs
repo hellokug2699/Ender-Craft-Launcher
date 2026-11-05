@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using Ecl.App.Services;
 using Ecl.App.ViewModels;
 using Ecl.Core.Localization;
 
@@ -26,6 +27,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         InstancesViewModel instances,
         ModsViewModel mods,
         InstanceRuntimeSettingsViewModel runtime,
+        IMemoryPressureMonitor memory,
         ILocalizer localizer)
     {
         State = state;
@@ -33,7 +35,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         Mods = mods;
         Runtime = runtime;
         Operations = new InstanceOperationsViewModel(instances, state);
-        BasicInfo = new InstanceBasicInfoViewModel(state, instances, runtime, Operations);
+        BasicInfo = new InstanceBasicInfoViewModel(state, instances, runtime, Operations, memory, localizer);
 
         Navigation = InstanceWorkspaceNavigationFactory.Create(
             localizer,
@@ -86,6 +88,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
     public void Dispose()
     {
         Navigation.Dispose();
+        BasicInfo.Dispose();
         Operations.Dispose();
         Mods.Dispose();
         Runtime.Dispose();
