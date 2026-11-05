@@ -41,15 +41,16 @@
 
 | 类型 | 职责 |
 | --- | --- |
-| `WorkspaceTarget` | 强类型目标：`Kind`（`Destination` / `Legacy`）、`SchemaVersion`、规范化资源 |
+| `WorkspaceTarget` | 强类型目标：`Kind`（`Destination` / `Instance`）、`SchemaVersion`、稳定实例标识 |
 | `WorkspaceTargetSerializer` | 唯一的版本化序列化器：语法校验、规范化、旧值兼容；**不做**文件授权与路径边界校验 |
-| `WorkspaceTargetCompatibility` | 旧裸实例 ID 与 `instance:<id>` 的一次性规范化与等价判断 |
+| `WorkspaceTargetCompatibility` | 裸实例 ID 与 `instance:<id>` 的一次性规范化与等价判断 |
 | `WorkspaceToolId` | ToolId 语法：全小写 ASCII，`tool.<name>` 只允许一段 |
 | `WorkspaceDedupKey` | 去重键 `(ToolId, 规范化 TargetResource)`，Ordinal 比较 |
 
-- B0 只登记目的地与“旧裸资源”两种目标；`instance:v1:`、`file:`、`world:` 目标类型在各自消费者批次（B2 / File / World）引入，
-  当前构建遇到这些前缀会显式拒绝，而不是退化成任意字符串。
-- 旧 `instance:<id>` 与裸 `<id>` 规范化后是同一身份，同一会话不会同时存在两种等价标签。
+- 目的地目标序列化为 `null`；实例目标序列化为 `instance:v1:<stableInstanceId>`。
+- 裸实例 ID 与旧 `instance:<id>` 在解析时一次性规范化，同一会话不会同时存在两种等价标签。
+- `file:` / `world:` 目标在其消费者批次引入；当前构建遇到这些前缀会显式拒绝，而不是退化成任意字符串。
+- 版本号高于当前构建的实例目标（如 `instance:v2:`）被显式拒绝，不会退化为任意路径访问。
 - 路径越界、符号链接与重解析点校验属于受控资源访问服务（ADR 0018/0022/0042/0045），不进入通用 serializer。
 
 三个统一入口（页面不得直接操作 `Workspaces` 集合）：

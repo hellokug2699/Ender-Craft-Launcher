@@ -345,27 +345,27 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// 实例工作区入口（迁移规划 §5.8）：组合 <c>instance</c> + 规范化实例身份。
-    /// B0 仍接受裸实例 ID 与旧 <c>instance:&lt;id&gt;</c> 写法，两者规范化后视为同一工作区。
-    /// 状态隔离（C-01）与 <c>instance:v1:</c> 身份在 B2 实施，本批不改变现有页面行为。
+    /// 实例工作区入口（迁移规划 §5.8）：组合 <c>instance</c> + 规范化实例身份 <c>instance:v1:&lt;id&gt;</c>。
+    /// 裸实例 ID 与旧 <c>instance:&lt;id&gt;</c> 写法在解析时一次性规范化，等价身份不会打开两个标签。
+    /// 页面状态的实例作用域隔离在 B2 步骤 1 完成。
     /// </summary>
     public bool OpenInstanceWorkspace(string instanceId)
     {
         if (!WorkspaceTargetSerializer.TryParse(instanceId, out var target)
-            || target is not { Kind: WorkspaceTargetKind.Legacy })
+            || target is not { Kind: WorkspaceTargetKind.Instance, StableInstanceId: { } stableInstanceId })
         {
             _logger.LogWarning("实例 ID 无法作为工作区目标解析：{InstanceId}", instanceId);
             return false;
         }
 
-        if (_instances.Instances.FirstOrDefault(item => item.Model.Id == instanceId) is { } instance)
+        if (_instances.Instances.FirstOrDefault(item => item.Model.Id == stableInstanceId) is { } instance)
         {
             _instances.SelectedInstance = instance;
         }
 
         _ = _mods.ActivateAsync();
 
-        var title = string.IsNullOrWhiteSpace(_instances.SelectedInstanceName) ? instanceId : _instances.SelectedInstanceName;
+        var title = string.IsNullOrWhiteSpace(_instances.SelectedInstanceName) ? stableInstanceId : _instances.SelectedInstanceName;
         return OpenWorkspace("instance", WorkspaceTargetSerializer.Serialize(target), title);
     }
 
@@ -439,7 +439,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             page = new InstanceDetailPageViewModel(_instances, _mods);
             toolDisplayName = _localizer.Get("nav.instances");
-            workspaceTitle = string.IsNullOrWhiteSpace(title) ? target.Resource! : title;
+            workspaceTitle = string.IsNullOrWhiteSpace(title) ? target.StableInstanceId! : title;
             return true;
         }
 

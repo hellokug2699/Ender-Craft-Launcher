@@ -18,10 +18,13 @@ public enum WorkspaceTargetError
     /// <summary>包含目录分隔符；目标资源是身份引用，不是路径。</summary>
     PathSeparator,
 
-    /// <summary>协议本身可识别，但当前构建尚未实现对应目标类型（instance:v*、file:、world:）。</summary>
+    /// <summary>目标类型在当前构建尚未实现（file:、world:）。</summary>
     UnsupportedScheme,
 
-    /// <summary>协议声明缺少目标资源，或在资源内部再次声明协议。</summary>
+    /// <summary>目标类型存在，但 schema 版本高于当前构建支持的版本。</summary>
+    UnsupportedSchemaVersion,
+
+    /// <summary>声明缺少标识，或在标识内部再次声明协议。</summary>
     MalformedResource,
 }
 
@@ -41,27 +44,30 @@ public readonly record struct WorkspaceTargetParseResult(WorkspaceTarget? Target
 /// 职责边界：
 /// <list type="bullet">
 /// <item>身份表示、版本化、语法校验与规范化；</item>
-/// <item>旧值兼容：现存裸实例 ID 与旧 <c>instance:&lt;id&gt;</c> 引用被规范化为同一种身份。</item>
+/// <item>旧值兼容：现存裸实例 ID 与旧 <c>instance:&lt;id&gt;</c> 引用被规范化为 <c>instance:v1:&lt;id&gt;</c>。</item>
 /// </list>
 ///
 /// 它**不承担**文件授权、路径边界、符号链接/重解析点校验——那些属于受控资源解析与访问服务
 /// （ADR 0018/0022/0042/0045），不得塞进通用 serializer。
 ///
-/// B0 的编码规则：
+/// 编码规则：
 /// <list type="bullet">
 /// <item>目的地 → <c>null</c>；</item>
-/// <item>旧裸资源 → 规范化后的裸字符串（trim + Unicode NFC），保持大小写敏感；</item>
-/// <item><c>instance:v1:</c> / <c>file:</c> / <c>world:</c> 被显式拒绝（<see cref="WorkspaceTargetError.UnsupportedScheme"/>），
-/// 因为对应目标类型在 B2 / File / World 消费者批次才引入。</item>
+/// <item>实例 → <c>instance:v1:&lt;stableInstanceId&gt;</c>；标识规范化 = trim + Unicode NFC，大小写敏感；</item>
+/// <item><c>file:</c> / <c>world:</c> 被显式拒绝，因为对应目标类型在各自消费者批次才引入；</item>
+/// <item>版本号高于当前构建的实例目标被拒绝（<see cref="WorkspaceTargetError.UnsupportedSchemaVersion"/>），不退化为任意字符串。</item>
 /// </list>
 /// </summary>
 public static class WorkspaceTargetSerializer
 {
-    /// <summary>旧裸资源允许的最大长度（字符）。</summary>
+    /// <summary>目标资源允许的最大长度（字符）。</summary>
     public const int MaxResourceLength = 256;
 
-    /// <summary>目标身份当前使用的 schema 版本。</summary>
-    public const int CurrentSchemaVersion = WorkspaceTarget.DestinationSchemaVersion;
+    /// <summary>实例目标的协议前缀。</summary>
+    public const string InstanceScheme = "instance";
+
+    /// <summary>实例目标当前使用的版本标记。</summary>
+    public const string InstanceVersionTag = "v1";
 
     private static readonly string[] KnownSchemes = ["instance", "file", "world"];
 
@@ -70,7 +76,8 @@ public static class WorkspaceTargetSerializer
     {
         null => null,
         { Kind: WorkspaceTargetKind.Destination } => null,
-        { Kind: WorkspaceTargetKind.Legacy, Resource: { } resource } => resource,
+        { Kind: WorkspaceTargetKind.Instance, StableInstanceId: { } instanceId } =>
+            $"{InstanceScheme}:{InstanceVersionTag}:{instanceId}",
         _ => throw new ArgumentOutOfRangeException(nameof(target), target.Kind, "未知的工作区目标类型。"),
     };
 
@@ -88,36 +95,43 @@ public static class WorkspaceTargetSerializer
             return WorkspaceTargetParseResult.Fail(WorkspaceTargetError.TooLong);
         }
 
-        if (FindScheme(trimmed) is { } scheme)
+        if (FindScheme(trimmed) is not { } scheme)
         {
-            var payload = trimmed[(scheme.Length + 1)..];
-            if (payload.Length == 0)
-            {
-                return WorkspaceTargetParseResult.Fail(WorkspaceTargetError.MalformedResource);
-            }
+            // 旧裸实例 ID：一次性规范化为 instance:v1:<id>。
+            return NormalizeInstanceId(trimmed);
+        }
 
-            if (string.Equals(scheme, "instance", StringComparison.OrdinalIgnoreCase))
-            {
-                // instance:v1:<id> 尚未在此构建实现；B0 不得提前定义该编码。
-                if (IsVersionedPayload(payload))
-                {
-                    return WorkspaceTargetParseResult.Fail(WorkspaceTargetError.UnsupportedScheme);
-                }
+        var payload = trimmed[(scheme.Length + 1)..];
+        if (payload.Length == 0)
+        {
+            return WorkspaceTargetParseResult.Fail(WorkspaceTargetError.MalformedResource);
+        }
 
-                // 旧 instance:<id> 一次性规范化为裸实例 ID。
-                if (FindScheme(payload) is not null)
-                {
-                    return WorkspaceTargetParseResult.Fail(WorkspaceTargetError.MalformedResource);
-                }
-
-                return Normalize(payload);
-            }
-
+        if (!string.Equals(scheme, InstanceScheme, StringComparison.OrdinalIgnoreCase))
+        {
             // file: / world: 目标类型在其消费者批次才引入。
             return WorkspaceTargetParseResult.Fail(WorkspaceTargetError.UnsupportedScheme);
         }
 
-        return Normalize(trimmed);
+        if (TryReadVersion(payload, out var version, out var remainder))
+        {
+            if (!string.Equals(version, InstanceVersionTag, StringComparison.OrdinalIgnoreCase))
+            {
+                return WorkspaceTargetParseResult.Fail(WorkspaceTargetError.UnsupportedSchemaVersion);
+            }
+
+            return remainder.Length == 0
+                ? WorkspaceTargetParseResult.Fail(WorkspaceTargetError.MalformedResource)
+                : NormalizeInstanceId(remainder);
+        }
+
+        // 旧 instance:<id> 写法：一次性规范化。
+        if (FindScheme(payload) is not null)
+        {
+            return WorkspaceTargetParseResult.Fail(WorkspaceTargetError.MalformedResource);
+        }
+
+        return NormalizeInstanceId(payload);
     }
 
     /// <summary>解析目标资源；失败时返回 <c>false</c>。</summary>
@@ -137,33 +151,23 @@ public static class WorkspaceTargetSerializer
             : throw new FormatException($"工作区目标无法解析：{result.Error}。");
     }
 
-    /// <summary>仅做语法校验与规范化，不改变旧裸资源的含义。</summary>
-    public static bool TryNormalizeLegacyResource(
-        string raw,
-        out string normalized,
-        out WorkspaceTargetError error)
+    /// <summary>只校验并规范化实例标识，不要求调用方先构造目标。</summary>
+    public static bool TryNormalizeInstanceId(string raw, out string normalized, out WorkspaceTargetError error)
     {
-        var result = Parse(raw);
-        if (!result.Success || result.Target is not { Kind: WorkspaceTargetKind.Legacy } target)
-        {
-            normalized = string.Empty;
-            error = result.Success ? WorkspaceTargetError.MalformedResource : result.Error;
-            return false;
-        }
-
-        normalized = target.Resource!;
-        error = WorkspaceTargetError.None;
-        return true;
+        var result = NormalizeInstanceId(raw);
+        normalized = result.Target?.StableInstanceId ?? string.Empty;
+        error = result.Error;
+        return result.Success;
     }
 
-    private static WorkspaceTargetParseResult Normalize(string resource)
+    private static WorkspaceTargetParseResult NormalizeInstanceId(string instanceId)
     {
-        if (resource.Length > MaxResourceLength)
+        if (instanceId.Length > MaxResourceLength)
         {
             return WorkspaceTargetParseResult.Fail(WorkspaceTargetError.TooLong);
         }
 
-        foreach (var character in resource)
+        foreach (var character in instanceId)
         {
             if (char.IsControl(character))
             {
@@ -176,8 +180,8 @@ public static class WorkspaceTargetSerializer
             }
         }
 
-        var normalized = resource.Normalize(NormalizationForm.FormC);
-        return WorkspaceTargetParseResult.Ok(WorkspaceTarget.CreateLegacy(normalized));
+        var normalized = instanceId.Normalize(NormalizationForm.FormC);
+        return WorkspaceTargetParseResult.Ok(WorkspaceTarget.CreateInstance(normalized));
     }
 
     /// <summary>返回字符串开头的已知协议名（不含冒号）；不构成已知协议时返回 <c>null</c>。</summary>
@@ -202,9 +206,12 @@ public static class WorkspaceTargetSerializer
         return null;
     }
 
-    /// <summary>判断载荷是否为 <c>v&lt;数字&gt;:...</c> 形式的版本化身份。</summary>
-    private static bool IsVersionedPayload(string payload)
+    /// <summary>读取 <c>v&lt;数字&gt;:</c> 形式的前缀；不是版本前缀时返回 <c>false</c>。</summary>
+    private static bool TryReadVersion(string payload, out string version, out string remainder)
     {
+        version = string.Empty;
+        remainder = string.Empty;
+
         if (payload.Length < 3 || payload[0] is not ('v' or 'V') || !char.IsAsciiDigit(payload[1]))
         {
             return false;
@@ -216,6 +223,13 @@ public static class WorkspaceTargetSerializer
             index++;
         }
 
-        return index < payload.Length && payload[index] == ':';
+        if (index >= payload.Length || payload[index] != ':')
+        {
+            return false;
+        }
+
+        version = payload[..index];
+        remainder = payload[(index + 1)..];
+        return true;
     }
 }
