@@ -97,6 +97,106 @@ public sealed class OutputBufferTests
         Assert.False(buffer.HasPending);
     }
 
+    [Fact]
+    public void EnqueueRejectsOldGenerationWithoutConsumingCapacityOrCountingDropped()
+    {
+        var buffer = new OutputBuffer(capacity: 2);
+        buffer.Enqueue(Entry(0), generation: 0);
+        buffer.Enqueue(Entry(1), generation: 0);
+        buffer.AdvanceGenerationFloor(generation: 1);
+
+        // 生产者在清空前读取了旧下限、清空推进后才恢复：必须在队列锁内被拒绝。
+        buffer.Enqueue(Entry(2), generation: 0);
+
+        Assert.False(buffer.HasPending);
+        Assert.Equal(0, buffer.DroppedCount);
+        Assert.Equal(1, buffer.GenerationFloor);
+
+        // 拒绝没有占用容量：新代次仍可无丢弃地填满队列。
+        buffer.Enqueue(Entry(3), generation: 1);
+        buffer.Enqueue(Entry(4), generation: 1);
+
+        Assert.Equal(0, buffer.DroppedCount);
+        Assert.Equal(
+            ["line-3", "line-4"],
+            buffer.Drain(generationFloor: 1).Select(entry => entry.Message).ToArray());
+    }
+
+    [Fact]
+    public void RejectedOldEntryDoesNotTriggerCapacityDropOfNewEntries()
+    {
+        var buffer = new OutputBuffer(capacity: 2);
+        buffer.AdvanceGenerationFloor(generation: 1);
+        buffer.Enqueue(Entry(0), generation: 1);
+        buffer.Enqueue(Entry(1), generation: 1);
+
+        buffer.Enqueue(Entry(2), generation: 0);
+
+        Assert.Equal(0, buffer.DroppedCount);
+        Assert.Equal(
+            ["line-0", "line-1"],
+            buffer.Drain(generationFloor: 1).Select(entry => entry.Message).ToArray());
+    }
+
+    [Fact]
+    public void OldGenerationOverflowIsClearedWhenFloorAdvances()
+    {
+        var buffer = new OutputBuffer(capacity: 2);
+        buffer.Enqueue(Entry(0), generation: 0);
+        buffer.Enqueue(Entry(1), generation: 0);
+
+        // 清空推进代次之后、下限发布之前进入的新代次条目把旧条目挤出队列。
+        buffer.Enqueue(Entry(2), generation: 1);
+        Assert.Equal(1, buffer.DroppedCount);
+
+        buffer.AdvanceGenerationFloor(generation: 1);
+
+        // 旧条目及其丢弃数都是用户已清空的内容：既不出现在队列里，也不计入新代次。
+        Assert.Equal(0, buffer.DroppedCount);
+        Assert.Equal(
+            ["line-2"],
+            buffer.Drain(generationFloor: 1).Select(entry => entry.Message).ToArray());
+        Assert.False(buffer.HasPending);
+    }
+
+    [Fact]
+    public void NewGenerationOverflowIsRetainedAcrossIdempotentFloorAdvance()
+    {
+        var buffer = new OutputBuffer(capacity: 2);
+        buffer.AdvanceGenerationFloor(generation: 1);
+        buffer.Enqueue(Entry(0), generation: 1);
+        buffer.Enqueue(Entry(1), generation: 1);
+        buffer.Enqueue(Entry(2), generation: 1);
+
+        Assert.Equal(1, buffer.DroppedCount);
+
+        // 同一代次重复推进是幂等的；更小的下限不得回退。
+        buffer.AdvanceGenerationFloor(generation: 1);
+        buffer.AdvanceGenerationFloor(generation: 0);
+
+        Assert.Equal(1, buffer.GenerationFloor);
+        Assert.Equal(1, buffer.DroppedCount);
+        Assert.Equal(
+            ["line-1", "line-2"],
+            buffer.Drain(generationFloor: 1).Select(entry => entry.Message).ToArray());
+    }
+
+    [Fact]
+    public void FloorAdvanceKeepsNewerEntriesInOriginalOrder()
+    {
+        var buffer = new OutputBuffer(capacity: 4);
+        buffer.Enqueue(Entry(0), generation: 0);
+        buffer.Enqueue(Entry(1), generation: 2);
+        buffer.Enqueue(Entry(2), generation: 1);
+        buffer.Enqueue(Entry(3), generation: 2);
+
+        buffer.AdvanceGenerationFloor(generation: 2);
+
+        Assert.Equal(
+            ["line-1", "line-3"],
+            buffer.Drain(generationFloor: 2).Select(entry => entry.Message).ToArray());
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]

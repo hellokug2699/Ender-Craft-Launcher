@@ -132,7 +132,47 @@ public sealed class OutputGenerationTests : IDisposable
     }
 
     /// <summary>
-    /// 需求 4：代次推进不得破坏有界容量与丢弃计数；清空后各阶段的计数必须归零。
+    /// 需求 4：清空期间旧生产者迟到、新生产者继续写入。Drain 后只允许新代次条目显示，
+    /// 旧代次条目既不复活，也不污染清空后的丢弃计数。
+    /// </summary>
+    [Fact]
+    public async Task LateOldProducerCannotMixWithNewGenerationEntries()
+    {
+        using var oldNotificationInFlight = new ManualResetEventSlim(false);
+        using var resumeOldDelivery = new ManualResetEventSlim(false);
+
+        // 先于面板订阅：旧条目停在通知阶段，面板尚未看到它。
+        _buffer.EntryWritten += (_, notification) =>
+        {
+            if (notification.Entry.Message == "old")
+            {
+                oldNotificationInFlight.Set();
+                resumeOldDelivery.Wait(Timeout);
+            }
+        };
+
+        var viewModel = CreateViewModel();
+        var logger = _buffer.CreateLogger("Test");
+
+        var oldProducer = Task.Run(() => logger.LogInformation("old"));
+        Assert.True(oldNotificationInFlight.Wait(Timeout), "旧生产者未进入通知阶段。");
+
+        _ui.Invoke(() => viewModel.ClearOutputCommand.Execute(null));
+
+        logger.LogInformation("new");
+        _ui.Drain();
+        Assert.Equal(["new"], _ui.Invoke(() => viewModel.OutputEntries.Select(entry => entry.Message).ToArray()));
+
+        resumeOldDelivery.Set();
+        await oldProducer.WaitAsync(Timeout);
+        _ui.Drain();
+
+        Assert.Equal(["new"], _ui.Invoke(() => viewModel.OutputEntries.Select(entry => entry.Message).ToArray()));
+        Assert.Equal(0, viewModel.DroppedEntries);
+    }
+
+    /// <summary>
+    /// 需求 5：代次推进不得破坏有界容量与丢弃计数；清空后各阶段的计数必须归零。
     /// </summary>
     [Fact]
     public async Task GenerationChangesKeepPendingBoundedAndAccountingConsistent()
@@ -174,7 +214,7 @@ public sealed class OutputGenerationTests : IDisposable
         Assert.True(_buffer.Snapshot().Count <= AppLogBuffer.Capacity);
     }
 
-    /// <summary>需求 5：释放后迟到的通知不得再改动面板状态。</summary>
+    /// <summary>需求 6：释放后迟到的通知不得再改动面板状态。</summary>
     [Fact]
     public async Task DisposeStopsDelayedNotificationFromReachingThePanel()
     {
