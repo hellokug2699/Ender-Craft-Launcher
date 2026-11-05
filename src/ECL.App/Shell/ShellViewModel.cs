@@ -14,6 +14,7 @@ using Ecl.App.Workspace.ViewModels;
 using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Core.Workspace;
+using Microsoft.Extensions.Logging;
 
 namespace Ecl.App.Shell;
 
@@ -27,12 +28,14 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly IWorkspaceHost _workspaces;
     private readonly IDialogEngine _dialogs;
     private readonly ILocalizer _localizer;
+    private readonly ILogger<ShellViewModel> _logger;
     private readonly HomeViewModel _home;
     private readonly DownloadViewModel _download;
     private readonly InstancesViewModel _instances;
     private readonly ModsViewModel _mods;
     private readonly SettingsViewModel _settings;
     private readonly ToolsViewModel _tools;
+    private readonly IReadOnlyList<string> _navigationKeys;
     private readonly IDisposable _workspaceChanges;
     private bool _suppressNavigation;
 
@@ -53,7 +56,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         IWorkspaceHost workspaces,
         IDialogEngine dialogs,
         IAppPaths paths,
-        ILocalizer localizer)
+        ILocalizer localizer,
+        ILogger<ShellViewModel> logger)
     {
         _home = home;
         _download = download;
@@ -62,6 +66,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _settings = settings;
         _tools = tools;
         _localizer = localizer;
+        _logger = logger;
         _workspaces = workspaces;
         _dialogs = dialogs;
 
@@ -87,13 +92,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         NavigationView = CollectionViewSource.GetDefaultView(NavigationItems);
         NavigationView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ShellNavigationItem.Group)));
 
+        _navigationKeys = NavigationItems.Select(item => item.Key).ToArray();
+
         Inspector.CloseWorkspaceCommand = CloseActiveWorkspaceCommand;
 
-        _home.Navigate = NavigateTo;
+        _home.Navigate = key => ActivateDestination(key);
         _home.OpenInstanceWorkspace = OpenSelectedInstanceWorkspace;
         instances.GetModHealthSummary = mods.GetHealthSummaryAsync;
         mods.SearchDependency = OpenDependencySearch;
-        instances.NavigateToDetails = OpenInstanceWorkspace;
+        instances.NavigateToDetails = instanceId => OpenInstanceWorkspace(instanceId);
         instances.NavigateBackFromDetails = NavigateToInstances;
 
         VersionText = $"ECL {BuildInfo.Version}";
@@ -103,9 +110,19 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         DataDirectory = paths.Root;
         GameDirectory = paths.GameRoot;
 
-        _selectedNavigationItem = NavigationItems.FirstOrDefault(item =>
-                                    string.Equals(item.Key, Environment.GetEnvironmentVariable("ECL_START_PAGE"), StringComparison.OrdinalIgnoreCase))
-                                ?? NavigationItems[0];
+        // ECL_START_PAGE 同时接受导航 Key、ToolId 与旧别名；无法解析时回退首个目的地并记录日志。
+        var rawStartPage = Environment.GetEnvironmentVariable("ECL_START_PAGE");
+        var startPage = NavigationAliases.ResolveStartPage(rawStartPage, _navigationKeys, out var usedFallback);
+        if (usedFallback)
+        {
+            _logger.LogWarning(
+                "ECL_START_PAGE 无法解析，已回退到 {Fallback}：{RawValue}",
+                startPage,
+                rawStartPage);
+        }
+
+        _selectedNavigationItem = NavigationItems.First(item =>
+            string.Equals(item.Key, startPage, StringComparison.Ordinal));
         _workspaceChanges = workspaces.Subscribe(OnWorkspaceChanged);
         OpenDestination(_selectedNavigationItem);
     }
@@ -254,13 +271,22 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         ActiveWorkspace = Workspaces[next];
     }
 
-    /// <summary>导航入口：选中目的地后由其工作区承载内容；重复进入同一目的地只激活已有标签。</summary>
-    private void NavigateTo(string key)
+    /// <summary>
+    /// 统一目的地入口（迁移规划 §5.8）：解析导航 Key / ToolId / 旧别名，选中导航项，
+    /// 由其工作区承载内容；重复进入同一目的地只激活已有标签。
+    /// </summary>
+    public bool ActivateDestination(string key)
     {
-        if (NavigationItems.FirstOrDefault(item => item.Key == key) is { } target)
+        if (!NavigationAliases.TryResolve(key, _navigationKeys, out var resolved))
         {
-            SelectedNavigationItem = target;
+            _logger.LogWarning("无法激活未知导航目的地：{Key}", key);
+            return false;
         }
+
+        var destination = NavigationItems.First(item =>
+            string.Equals(item.Key, resolved, StringComparison.Ordinal));
+        SelectedNavigationItem = destination;
+        return true;
     }
 
     /// <summary>只同步导航高亮，不触发打开/切换（活动工作区已经决定内容）。</summary>
@@ -273,7 +299,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _suppressNavigation = false;
     }
 
-    private void NavigateToInstances() => NavigateTo("instances");
+    private void NavigateToInstances() => ActivateDestination("instances");
 
     private void OpenSelectedInstanceWorkspace()
     {
@@ -283,7 +309,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             return;
         }
 
-        NavigateTo("instances");
+        ActivateDestination("instances");
     }
 
     private void OpenDependencySearch(string dependencyId, string instanceId) =>
@@ -292,12 +318,23 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private async Task OpenDependencySearchAsync(string dependencyId, string instanceId)
     {
         await _download.SearchDependencyAsync(dependencyId, instanceId).ConfigureAwait(true);
-        NavigateTo("download");
+        ActivateDestination("download");
     }
 
-    /// <summary>实例工作区按实例 ID 复用标签；重复打开不会创建第二个工作区。</summary>
-    private void OpenInstanceWorkspace(string instanceId)
+    /// <summary>
+    /// 实例工作区入口（迁移规划 §5.8）：组合 <c>instance</c> + 规范化实例身份。
+    /// B0 仍接受裸实例 ID 与旧 <c>instance:&lt;id&gt;</c> 写法，两者规范化后视为同一工作区。
+    /// 状态隔离（C-01）与 <c>instance:v1:</c> 身份在 B2 实施，本批不改变现有页面行为。
+    /// </summary>
+    public bool OpenInstanceWorkspace(string instanceId)
     {
+        if (!WorkspaceTargetSerializer.TryParse(instanceId, out var target)
+            || target is not { Kind: WorkspaceTargetKind.Legacy })
+        {
+            _logger.LogWarning("实例 ID 无法作为工作区目标解析：{InstanceId}", instanceId);
+            return false;
+        }
+
         if (_instances.Instances.FirstOrDefault(item => item.Model.Id == instanceId) is { } instance)
         {
             _instances.SelectedInstance = instance;
@@ -305,41 +342,127 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         _ = _mods.ActivateAsync();
 
-        var existing = Workspaces.FirstOrDefault(workspace =>
-            workspace.ToolId == "instance" && string.Equals(workspace.TargetResource, instanceId, StringComparison.Ordinal));
-        if (existing is not null)
+        var title = string.IsNullOrWhiteSpace(_instances.SelectedInstanceName) ? instanceId : _instances.SelectedInstanceName;
+        return OpenWorkspace("instance", WorkspaceTargetSerializer.Serialize(target), title);
+    }
+
+    /// <summary>
+    /// 通用工作区入口（迁移规划 §5.8）：去重键为 <c>(ToolId, 规范化 TargetResource)</c>；
+    /// 语法错误、未知 ToolId 或没有页面工厂时返回 <c>false</c> 并记录原因，不创建空壳工作区。
+    /// </summary>
+    public bool OpenWorkspace(string toolId, string? targetResource, string title)
+    {
+        if (!WorkspaceToolId.TryNormalize(toolId, out var normalizedToolId))
         {
-            ActiveWorkspace = existing;
-            return;
+            _logger.LogWarning("ToolId 不合法，无法打开工作区：{ToolId}", toolId);
+            return false;
         }
 
-        var page = new InstanceDetailPageViewModel(_instances, _mods);
-        var title = string.IsNullOrWhiteSpace(_instances.SelectedInstanceName) ? instanceId : _instances.SelectedInstanceName;
-        OpenWorkspace("instance", title, instanceId, page, _localizer.Get("nav.instances"));
+        var parsed = WorkspaceTargetSerializer.Parse(targetResource);
+        if (!parsed.Success)
+        {
+            _logger.LogWarning(
+                "工作区目标无法解析（{Error}），不打开工作区：{ToolId} / {TargetResource}",
+                parsed.Error,
+                normalizedToolId,
+                targetResource);
+            return false;
+        }
+
+        var key = WorkspaceDedupKey.Create(normalizedToolId, parsed.Target);
+        if (FindWorkspace(key) is { } existing)
+        {
+            ActiveWorkspace = existing;
+            return true;
+        }
+
+        if (!TryResolvePage(normalizedToolId, parsed.Target!, title, out var page, out var workspaceTitle, out var toolDisplayName))
+        {
+            _logger.LogWarning("没有可用的页面工厂，不打开工作区：{ToolId}", normalizedToolId);
+            return false;
+        }
+
+        return OpenWorkspaceCore(key, normalizedToolId, parsed.Target!, workspaceTitle, toolDisplayName, page);
+    }
+
+    /// <summary>工作区页面由 Shell 统一解析；页面不得自行创建或缓存工作区。</summary>
+    private bool TryResolvePage(
+        string toolId,
+        WorkspaceTarget target,
+        string title,
+        out object page,
+        out string workspaceTitle,
+        out string toolDisplayName)
+    {
+        page = null!;
+        workspaceTitle = string.Empty;
+        toolDisplayName = string.Empty;
+
+        if (target.IsDestination)
+        {
+            if (NavigationItems.FirstOrDefault(item =>
+                    string.Equals(item.ToolId, toolId, StringComparison.Ordinal)) is not { } destination)
+            {
+                return false;
+            }
+
+            page = destination.Page;
+            toolDisplayName = destination.Title;
+            workspaceTitle = string.IsNullOrWhiteSpace(title) ? destination.Title : title;
+            return true;
+        }
+
+        if (string.Equals(toolId, "instance", StringComparison.Ordinal))
+        {
+            page = new InstanceDetailPageViewModel(_instances, _mods);
+            toolDisplayName = _localizer.Get("nav.instances");
+            workspaceTitle = string.IsNullOrWhiteSpace(title) ? target.Resource! : title;
+            return true;
+        }
+
+        return false;
     }
 
     private void OpenDestination(ShellNavigationItem destination)
     {
-        var existing = Workspaces.FirstOrDefault(workspace =>
-            workspace.ToolId == destination.ToolId && workspace.TargetResource is null);
-        if (existing is not null)
+        var key = WorkspaceDedupKey.Create(destination.ToolId, WorkspaceTarget.Destination);
+        if (FindWorkspace(key) is { } existing)
         {
             ActiveWorkspace = existing;
             return;
         }
 
-        OpenWorkspace(destination.ToolId, destination.Title, null, destination.Page, destination.Title);
+        OpenWorkspaceCore(key, destination.ToolId, WorkspaceTarget.Destination, destination.Title, destination.Title, destination.Page);
     }
 
-    private void OpenWorkspace(string toolId, string title, string? targetResource, object page, string toolDisplayName)
+    private WorkspaceTabViewModel? FindWorkspace(WorkspaceDedupKey key) =>
+        Workspaces.FirstOrDefault(tab =>
+            WorkspaceDedupKey.TryCreate(tab.ToolId, tab.TargetResource, out var candidate, out _)
+            && candidate == key);
+
+    private bool OpenWorkspaceCore(
+        WorkspaceDedupKey key,
+        string toolId,
+        WorkspaceTarget target,
+        string title,
+        string toolDisplayName,
+        object page)
     {
-        var entry = _workspaces.Open(WorkspaceDescriptor.Create(toolId, title, targetResource));
+        if (FindWorkspace(key) is { } existing)
+        {
+            ActiveWorkspace = existing;
+            return true;
+        }
+
+        var entry = _workspaces.Open(
+            WorkspaceDescriptor.Create(toolId, title, WorkspaceTargetSerializer.Serialize(target)));
         _workspaces.MarkReady(entry.Id);
 
         var tab = new WorkspaceTabViewModel(entry, page, toolDisplayName);
         Workspaces.Add(tab);
         OnPropertyChanged(nameof(HasWorkspaces));
         ActiveWorkspace = tab;
+        return true;
     }
 
     partial void OnSelectedNavigationItemChanged(ShellNavigationItem? value)
@@ -368,6 +491,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         value.SyncFromEntry();
         _workspaces.Activate(value.Id);
+
+        // 选择层属于页面上下文：切换工作区必须先清空，避免把上一工作区的选中对象显示到新工作区。
+        Inspector.ClearSelection();
         Inspector.Show(value.Entry, value.ToolDisplayName);
 
         // 导航高亮跟随活动工作区；实例工作区没有独立导航项，因此清空高亮。

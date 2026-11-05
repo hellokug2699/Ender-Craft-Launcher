@@ -31,11 +31,35 @@ public sealed partial class InspectorViewModel(ILocalizer localizer) : Observabl
 
     public string CloseText => localizer.Get("inspector.action.close");
 
+    public string SelectionHeading => localizer.Get("inspector.selection.heading");
+
     /// <summary>由 Shell 注入：关闭当前活动工作区仍走统一 Close Guard 流程。</summary>
     public ICommand? CloseWorkspaceCommand { get; set; }
 
     [ObservableProperty]
     private bool _hasContext;
+
+    /// <summary>选择层：当前选中对象的只读摘要；null 表示没有选择上下文。</summary>
+    [ObservableProperty]
+    private InspectorSelectionContext? _selection;
+
+    public bool HasSelection => Selection is not null;
+
+    /// <summary>由 Shell 下发选择层内容；不改变工作区层元数据。</summary>
+    public void ShowSelection(InspectorSelectionContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        Selection = context;
+    }
+
+    /// <summary>清空选择层；切换工作区、关闭工作区与工作区进入异常状态时必须调用。</summary>
+    public void ClearSelection()
+    {
+        if (Selection is not null)
+        {
+            Selection = null;
+        }
+    }
 
     [ObservableProperty]
     private string _title = string.Empty;
@@ -80,5 +104,6 @@ public sealed partial class InspectorViewModel(ILocalizer localizer) : Observabl
         HasTarget = false;
         CreatedText = string.Empty;
         IsDirty = false;
+        ClearSelection();
     }
 }

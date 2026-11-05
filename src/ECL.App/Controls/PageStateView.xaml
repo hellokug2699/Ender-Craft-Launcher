@@ -1,0 +1,48 @@
+<UserControl x:Class="Ecl.App.Controls.PageStateView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Name="Root">
+    <!--
+        共享四态视图（迁移规划 §5.3、§5.11）：加载中 / 空 / 错误 / 不可用。
+        状态同时用文字标签与颜色表达，不依赖颜色单独传达语义。
+        页面不得自行发明第四套空态样式，也不得用空态冒充“已完成”。
+        间距与行宽来自主题令牌；本控件不添加页面外围外边距。
+    -->
+    <Grid>
+        <StackPanel HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    MaxWidth="{StaticResource PageMaxContentWidth}">
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <Ellipse x:Name="StateDot"
+                         Width="7"
+                         Height="7"
+                         Margin="0,0,7,0"
+                         VerticalAlignment="Center"
+                         Fill="{DynamicResource TextMutedBrush}" />
+                <TextBlock Text="{Binding StateLabel, ElementName=Root}"
+                           Style="{StaticResource LabelText}"
+                           Margin="0" />
+            </StackPanel>
+
+            <TextBlock Text="{Binding DisplayTitle, ElementName=Root}"
+                       Style="{StaticResource SectionText}"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       Margin="0,8,0,0" />
+
+            <TextBlock Text="{Binding DisplayDescription, ElementName=Root}"
+                       Style="{StaticResource SubtitleText}"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       Margin="0,6,0,0"
+                       Visibility="{Binding DescriptionVisibility, ElementName=Root}" />
+
+            <!-- 空态与错误态必须提供可执行入口；没有动作时该槽位不占位。 -->
+            <ContentPresenter Content="{Binding ActionContent, ElementName=Root}"
+                              HorizontalAlignment="Center"
+                              Margin="0,16,0,0"
+                              Visibility="{Binding ActionVisibility, ElementName=Root}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

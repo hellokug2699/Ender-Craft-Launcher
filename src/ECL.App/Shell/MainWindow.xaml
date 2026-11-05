@@ -142,7 +142,7 @@
 
                 <!-- 左侧：全局导航 -->
                 <Border Grid.Column="0"
-                        Width="248"
+                        Width="{StaticResource SidebarWidth}"
                         Background="{DynamicResource SidebarBrush}"
                         BorderBrush="{DynamicResource BorderSoftBrush}"
                         BorderThickness="0,0,1,0"
@@ -294,7 +294,7 @@
                             <ContentControl x:Name="PageHost"
                                             Content="{Binding ActiveWorkspace.Page, NotifyOnTargetUpdated=True}"
                                             TargetUpdated="OnPageTargetUpdated"
-                                            Margin="28,22,28,18" />
+                                            Margin="{StaticResource PageInset}" />
 
                             <!-- 空工作区：不是伪工具入口，只提示从导航打开页面 -->
                             <StackPanel HorizontalAlignment="Center"
@@ -319,7 +319,7 @@
 
                 <!-- 右侧：Inspector -->
                 <Border Grid.Column="2"
-                        Width="296"
+                        Width="{StaticResource InspectorWidth}"
                         BorderBrush="{DynamicResource BorderSoftBrush}"
                         BorderThickness="1,0,0,0"
                         Visibility="{Binding IsInspectorOpen, Converter={StaticResource BoolToVisibility}}">

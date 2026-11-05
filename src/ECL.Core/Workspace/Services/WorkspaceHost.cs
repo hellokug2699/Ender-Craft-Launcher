@@ -66,10 +66,13 @@ public sealed class WorkspaceHost : IWorkspaceHost
 
     public WorkspaceEntry? Find(WorkspaceId id) => _entries.FirstOrDefault(entry => entry.Id == id);
 
+    /// <summary>
+    /// 按去重键（规范化 ToolId + 规范化目标资源）查找；比较语义只在
+    /// <see cref="WorkspaceDedupKey"/> 中实现一次。非法身份不会被匹配。
+    /// </summary>
     public WorkspaceEntry? FindByTarget(string toolId, string? targetResource) =>
         _entries.FirstOrDefault(entry =>
-            string.Equals(entry.ToolId, toolId, StringComparison.Ordinal)
-            && string.Equals(entry.TargetResource, targetResource, StringComparison.Ordinal));
+            WorkspaceDedupKey.AreEqual(entry.ToolId, entry.TargetResource, toolId, targetResource));
 
     public bool Activate(WorkspaceId id)
     {

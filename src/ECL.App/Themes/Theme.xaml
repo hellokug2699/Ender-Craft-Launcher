@@ -51,6 +51,19 @@
     <sys:TimeSpan x:Key="MotionNormal">0:0:0.18</sys:TimeSpan>
     <sys:TimeSpan x:Key="MotionSlow">0:0:0.28</sys:TimeSpan>
 
+    <!--
+        布局令牌（迁移规划 §5.11）：替代散落的固定宽高与页面外边距。
+          - PageInset 只由宿主（PageHost）使用；页面根元素不得再叠加外边距；
+          - SidebarWidth / InspectorWidth 由 Shell 使用，替代硬编码 248 / 296；
+          - PageMaxContentWidth 供文本型页面与状态说明限制行宽；
+          - SectionSpacing 为页面内区块之间的统一间距。
+    -->
+    <Thickness x:Key="PageInset">28,22,28,18</Thickness>
+    <sys:Double x:Key="SidebarWidth">248</sys:Double>
+    <sys:Double x:Key="InspectorWidth">296</sys:Double>
+    <sys:Double x:Key="PageMaxContentWidth">960</sys:Double>
+    <Thickness x:Key="SectionSpacing">0,0,0,16</Thickness>
+
     <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}" />
     <SolidColorBrush x:Key="SidebarBrush" Color="{StaticResource SidebarColor}" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
@@ -307,8 +320,51 @@
         </Setter>
     </Style>
 
-    <!-- ============================ Text input ============================ -->
+    <!--
+        页面标题行与工具条上的次级操作：比主按钮更紧凑，但仍保留最小触摸高度、
+        键盘焦点环与禁用态；按钮宽度不固定，避免 +30% 文本扩张时被截断。
+    -->
+    <Style x:Key="ToolbarButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="9"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfacePressedBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.4" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 
+    <!-- ============================ Text input ============================ -->
     <Style TargetType="TextBox">
         <Setter Property="Background" Value="{DynamicResource InputBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
