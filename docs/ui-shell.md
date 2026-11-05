@@ -32,6 +32,7 @@
 - 全局导航只选择高层目的地，不再承担标签或布局职责。
 - 每个目的地对应一个工具标识（`ShellNavigationItem.ToolId`），点击后在中央 Workspace Host 打开或复用该工作区。
 - 页面 ViewModel 仍由 `App.xaml` 的 `DataTemplate` 映射为视图；工作区只切换内容，不直接构造视图。
+- 实例工作区的页面对象持有 `InstanceWorkspaceState`（打开时捕获的实例快照）；工作区关闭时由 Shell 释放。
 - 切换标签只改变活动工作区，不销毁页面 ViewModel；关闭标签才会移除工作区。
 - 导航高亮跟随活动工作区；实例工作区没有独立导航项，因此导航不显示选中态。
 
@@ -200,7 +201,11 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
 - 无活动工作区时中央区域显示空状态；关闭全部标签后需要从导航重新打开。
 - 页面内部布局尚未按 ADR 0050 逐页重构；窄窗口下需要折叠导航或 Inspector 才能获得更宽内容区。
 - B0 只提供 `PageHeader`、`PageStateView` 与 `ToolbarButton`；页面在 B1 起逐步接入，尚未接入的页面仍使用各自布局。
-- 实例工作区仍共享全局 `SelectedInstance`（C-01）；状态隔离与 `instance:v1:` 身份在 B2 实施。
+- 实例工作区拥有自己的身份快照（`InstanceWorkspaceState`）：打开时捕获实例条目，标签标题、
+  页面身份区块与 Inspector 目标都来自该快照，不再依赖全局 `SelectedInstance` 的更新顺序；
+  关闭标签时释放该状态（`IDisposable`），释放后再参与页面状态。
+- 仍待完成（C-01 出口）：实例编辑表单字段与模组列表仍由共享的 `InstancesViewModel` / `ModsViewModel`
+  持有，两个实例工作区同时打开时这部分编辑状态仍未完全隔离；迁移与验收在进行中。
 - 右侧仍是单一 Inspector 面板；ADR 0056 的 Right Auxiliary Rail（Inspector / Tools 双模式）尚未实现。
 - 工作区页面在切换标签时会重新创建视图（ViewModel 状态保留，滚动位置等视图状态不保留）。
 - Split、Detached、Snapshot 恢复与运行时隔离仍未实现，相关能力不会以按钮或菜单形式出现。
