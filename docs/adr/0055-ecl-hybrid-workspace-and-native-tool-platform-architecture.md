@@ -333,7 +333,7 @@ ADR 0053 和 ADR 0054 当前为 Proposed。本 ADR 与其建立职责关系，�
 - 窗口空间不足时拒绝创建不可用分割，并提供标签页替代路径。
 - Workspace、Runtime、Session、Document 和 Task 生命周期可以独立操作和测试。
 - 关闭未保存文档时，Close Guard 阻止静默丢弃；Addition 无法绕过宿主关闭保护。
-- 用户启动时可以选择恢复或进入默认首页；不恢复时不会启动上次 Addition Runtime 或恢复旧 Task。
+- 只有存在至少一个通过 Snapshot、版本、工具、目标资源、权限与 Session Schema 预检的可恢复工作区时，启动流程才询问用户恢复或进入默认目的地；无 Snapshot、Snapshot 无效或全部工作区不可恢复时直接进入默认目的地，不显示恢复询问。不恢复时不会启动上次 Addition Runtime 或恢复旧 Task。
 - 恢复失败的单个工作区不会阻塞其他工作区和主程序启动。
 - Addition UI 只能通过 Native UI SDK 描述受支持组件；任意 UI/XAML/脚本注入不能进入主进程。
 - ECL 与 Addition 使用独立进程及经过身份验证的 IPC；不兼容 API / Protocol 不会加载。
@@ -353,3 +353,4 @@ ADR 0053 和 ADR 0054 当前为 Proposed。本 ADR 与其建立职责关系，�
 
 - 2026-11-04：根据 ECL 混合工作区、Native UI SDK、Addition 独立进程、混合 Runtime 隔离、Event Bus 和受控资源访问讨论形成决策。Decision 为 Accepted，Implementation 为 Not Started；具体技术实现和平台隔离能力仍须在实施阶段验证。
 - 2026-11-05：根据 Accepted ADR 0056，右侧 Inspector 由统一 Right Auxiliary Rail 承载；本 ADR 对 Inspector 内容语义、工作区上下文隔离、生命周期与权限的规定不变。
+- 2026-11-05：明确启动恢复只在至少存在一个通过预检的可恢复工作区时询问；无有效恢复候选时直接进入默认目的地，避免每次启动无条件弹出恢复询问。
