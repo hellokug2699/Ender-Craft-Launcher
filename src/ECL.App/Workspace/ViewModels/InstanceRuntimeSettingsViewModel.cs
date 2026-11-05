@@ -76,6 +76,7 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
         _selectedJavaOption = JavaOptions[0];
 
         LoadSavedValues();
+        _javaTile = JavaTilePresentation.Unknown(_localizer);
     }
 
     public string InstanceId => _instance.Id;
@@ -89,6 +90,11 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
 
     [ObservableProperty]
     private string _javaStatus = string.Empty;
+
+    /// <summary>Java 方块的两行文本与兼容性状态；由领域层真实结果映射。</summary>
+    [ObservableProperty]
+    private JavaTilePresentation _javaTile =
+        new(string.Empty, string.Empty, JavaCompatibilityBadge.Unknown, string.Empty);
 
     [ObservableProperty]
     private string _javaDownloadStatus = string.Empty;
@@ -435,6 +441,7 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
 
             if (!versionResult.IsSuccess)
             {
+                JavaTile = JavaTilePresentation.Unknown(_localizer);
                 JavaStatus = _localizer.Get("instances.java.installFirst");
                 return;
             }
@@ -447,10 +454,15 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
                 return;
             }
 
+            JavaTile = JavaStatusPresentation.Describe(
+                selection,
+                suppressCompatibilityWarnings: false,
+                _localizer);
             JavaStatus = JavaSelectionPresentation.Describe(selection, _localizer);
         }
         catch (Exception exception)
         {
+            JavaTile = JavaTilePresentation.Unknown(_localizer);
             JavaStatus = exception.Message;
         }
     }

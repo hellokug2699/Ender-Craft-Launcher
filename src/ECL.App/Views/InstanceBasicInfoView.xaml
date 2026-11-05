@@ -2,29 +2,223 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:Ecl.App.Localization"
+             xmlns:wsvm="clr-namespace:Ecl.App.Workspace.ViewModels"
              xmlns:behaviors="clr-namespace:Ecl.App.Behaviors">
     <!-- 基本信息（§10 概览分组默认页）：本页只有一个滚动容器，外围边距由 PageHost 与实例导航提供。 -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                   behaviors:WheelScroll.IsEnabled="True">
         <StackPanel>
-            <Border Style="{StaticResource HeroCard}" Padding="24" Margin="0,0,0,18">
-                <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <!--
+                顶部实例信息区域（instance-workspace.md §2）：横向约 2:1。
+                左侧为实例信息与操作，右侧为可选择的 Java 方块；方块颜色与右下角标识共同表达兼容状态。
+            -->
+            <Grid Margin="0,0,0,18">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="1*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource HeroCard}" Padding="24">
                     <StackPanel>
-                        <TextBlock Text="{Binding InstanceName}" FontSize="27" Style="{StaticResource HeadingText}" />
-                        <TextBlock Text="{Binding InstanceMeta}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,6,0,0" />
-                        <TextBlock Text="{Binding InstanceComponents}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding InstancePath}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,8,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding InstancePath}" />
+                        <TextBlock Text="{Binding InstanceName}"
+                                   FontSize="27"
+                                   Style="{StaticResource HeadingText}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding InstanceMeta}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="12"
+                                   Margin="0,6,0,0" />
+                        <TextBlock Text="{Binding InstanceComponents}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   Margin="0,4,0,0"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding InstancePath}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   Margin="0,8,0,0"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding InstancePath}" />
+
+                        <Grid Margin="0,16,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="{loc:Loc Key=instance.detail.minecraft}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
+                                <TextBlock Text="{Binding InstanceMinecraftVersion}" FontSize="11" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding InstanceMinecraftVersion}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="{loc:Loc Key=instance.detail.loader}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
+                                <TextBlock Text="{Binding InstanceLoaderText}" FontSize="11" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding InstanceLoaderText}" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Margin="0,10,0,0">
+                                <TextBlock Text="{loc:Loc Key=instance.detail.created}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
+                                <TextBlock Text="{Binding InstanceCreated}" FontSize="11" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding InstanceCreated}" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,10,0,0">
+                                <TextBlock Text="{loc:Loc Key=instance.detail.lastPlayed}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
+                                <TextBlock Text="{Binding InstanceLastPlayed}" FontSize="11" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" ToolTip="{Binding InstanceLastPlayed}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <WrapPanel Margin="0,18,0,0">
+                            <Button Content="{loc:Loc Key=instance.detail.launch}"
+                                    Command="{Binding Operations.LaunchCommand}"
+                                    Style="{StaticResource PrimaryButton}"
+                                    MinWidth="120"
+                                    Height="38"
+                                    Margin="0,0,8,8"
+                                    IsEnabled="{Binding Operations.CanOperate}" />
+                            <Button Content="{loc:Loc Key=instance.detail.worlds}"
+                                    Command="{Binding Operations.OpenWorldWorkbenchCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    Margin="0,0,8,8"
+                                    IsEnabled="{Binding Operations.CanOperate}" />
+                            <Button Content="{loc:Loc Key=instances.healthCheck}"
+                                    Command="{Binding Operations.CheckHealthCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    Margin="0,0,8,8"
+                                    IsEnabled="{Binding Operations.CanOperate}" />
+                            <Button Content="{loc:Loc Key=instances.repairFiles}"
+                                    Command="{Binding Operations.RepairFilesCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    Margin="0,0,8,8"
+                                    IsEnabled="{Binding Operations.CanOperate}" />
+                            <Button Content="{loc:Loc Key=instance.detail.back}"
+                                    Command="{Binding Instances.BackToInstancesCommand}"
+                                    Style="{StaticResource ToolbarButton}"
+                                    Margin="0,0,8,8"
+                                    VerticalAlignment="Center" />
+                            <Button Content="{loc:Loc Key=instance.detail.delete}"
+                                    Command="{Binding Operations.DeleteCommand}"
+                                    Style="{StaticResource DangerButton}"
+                                    Margin="18,0,0,8" />
+                        </WrapPanel>
                     </StackPanel>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <Button Content="{loc:Loc Key=instance.detail.launch}" Command="{Binding Operations.LaunchCommand}" Style="{StaticResource PrimaryButton}" MinWidth="132" Height="42" IsEnabled="{Binding Operations.CanOperate}" />
-                        <Button Content="世界与服务器" Command="{Binding Operations.OpenWorldWorkbenchCommand}" Style="{StaticResource GhostButton}" Margin="0,8,0,0" IsEnabled="{Binding Operations.CanOperate}" />
-                        <Button Content="{loc:Loc Key=instances.healthCheck}" Command="{Binding Operations.CheckHealthCommand}" Style="{StaticResource GhostButton}" Margin="0,8,0,0" IsEnabled="{Binding Operations.CanOperate}" />
-                        <Button Content="{loc:Loc Key=instances.repairFiles}" Command="{Binding Operations.RepairFilesCommand}" Style="{StaticResource GhostButton}" Margin="0,8,0,0" IsEnabled="{Binding Operations.CanOperate}" />
-                        <Button Content="{loc:Loc Key=instance.detail.back}" Command="{Binding Instances.BackToInstancesCommand}" Style="{StaticResource ToolbarButton}" Margin="0,10,0,0" HorizontalAlignment="Center" />
-                    </StackPanel>
-                </Grid>
-            </Border>
+                </Border>
+
+                <!-- Java 方块：标题/发行版在左上方，右下角用颜色 + 符号双重表达兼容状态。 -->
+                <Border Grid.Column="2" Padding="16" MinHeight="220">
+                    <Border.Style>
+                        <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                            <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+                            <Setter Property="BorderBrush" Value="{DynamicResource BorderSoftBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Runtime.JavaTile.Badge}"
+                                             Value="{x:Static wsvm:JavaCompatibilityBadge.Compatible}">
+                                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Runtime.JavaTile.Badge}"
+                                             Value="{x:Static wsvm:JavaCompatibilityBadge.Incompatible}">
+                                    <Setter Property="Background" Value="{DynamicResource DangerSoftBrush}" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource DangerBorderBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Runtime.JavaTile.Badge}"
+                                             Value="{x:Static wsvm:JavaCompatibilityBadge.IncompatibleAcknowledged}">
+                                    <Setter Property="Background" Value="{DynamicResource WarningSoftBrush}" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource WarningBorderBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel>
+                            <TextBlock Text="{Binding Runtime.JavaTile.Title}"
+                                       FontSize="20"
+                                       Style="{StaticResource EmphasisText}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Runtime.JavaTile.Detail}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="12"
+                                       Margin="0,4,0,0"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Runtime.JavaTile.StateText}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       Margin="0,6,0,0"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Runtime.JavaStatus}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="9"
+                                       Margin="0,4,0,0"
+                                       TextWrapping="Wrap" />
+                            <ComboBox ItemsSource="{Binding Runtime.JavaOptions}"
+                                      SelectedItem="{Binding Runtime.SelectedJavaOption, Mode=TwoWay}"
+                                      ItemTemplate="{StaticResource DisplayNameItemTemplate}"
+                                      AutomationProperties.Name="{loc:Loc Key=instance.detail.java}"
+                                      ToolTip="{Binding Runtime.SelectedJavaOption.DisplayName}"
+                                      Margin="0,12,0,0" />
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button Content="{loc:Loc Key=instance.detail.selectJava}"
+                                        Command="{Binding Runtime.BrowseJavaCommand}"
+                                        Style="{StaticResource ToolbarButton}"
+                                        Margin="0,0,6,6" />
+                                <Button Content="{loc:Loc Key=instances.java.download}"
+                                        Command="{Binding Runtime.DownloadJavaCommand}"
+                                        Style="{StaticResource ToolbarButton}"
+                                        Margin="0,0,6,6" />
+                                <Button Content="{loc:Loc Key=instances.java.refresh}"
+                                        Command="{Binding Runtime.RefreshJavaCommand}"
+                                        Style="{StaticResource ToolbarButton}"
+                                        Margin="0,0,6,6" />
+                            </WrapPanel>
+                            <TextBlock Text="{Binding Runtime.JavaDownloadStatus}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="9"
+                                       Margin="0,2,0,0"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding Runtime.JavaDownloadStatus, Converter={StaticResource StringToVisibility}}" />
+                        </StackPanel>
+
+                        <!-- 状态标识固定在方块右下角（§2.3）。 -->
+                        <TextBlock Grid.Row="1"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Bottom"
+                                   FontSize="22"
+                                   FontWeight="Bold"
+                                   Margin="0,8,0,0"
+                                   IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="?" />
+                                    <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Runtime.JavaTile.Badge}"
+                                                     Value="{x:Static wsvm:JavaCompatibilityBadge.Compatible}">
+                                            <Setter Property="Text" Value="✓" />
+                                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Runtime.JavaTile.Badge}"
+                                                     Value="{x:Static wsvm:JavaCompatibilityBadge.Incompatible}">
+                                            <Setter Property="Text" Value="X" />
+                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Runtime.JavaTile.Badge}"
+                                                     Value="{x:Static wsvm:JavaCompatibilityBadge.IncompatibleAcknowledged}">
+                                            <Setter Property="Text" Value="⚠" />
+                                            <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                </Border>
+            </Grid>
 
             <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                 <StackPanel>
@@ -68,45 +262,6 @@
                     <TextBlock Text="{Binding Instances.StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
-
-            <Grid Margin="0,0,0,14">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                <Border Style="{StaticResource Card}">
-                    <StackPanel>
-                        <TextBlock Text="{loc:Loc Key=instance.detail.basic}" Style="{StaticResource SectionText}" />
-                        <Grid Margin="0,12,0,0">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="110" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                            <TextBlock Text="{loc:Loc Key=instance.detail.minecraft}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" />
-                            <TextBlock Grid.Column="1" Text="{Binding InstanceMinecraftVersion}" FontSize="11" />
-                            <TextBlock Grid.Row="1" Text="{loc:Loc Key=instance.detail.loader}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,8,0,0" />
-                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding InstanceLoaderText}" FontSize="11" Margin="0,8,0,0" />
-                            <TextBlock Grid.Row="2" Text="{loc:Loc Key=instance.detail.created}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,8,0,0" />
-                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding InstanceCreated}" FontSize="11" Margin="0,8,0,0" />
-                            <TextBlock Grid.Row="3" Text="{loc:Loc Key=instance.detail.lastPlayed}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,8,0,0" />
-                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding InstanceLastPlayed}" FontSize="11" Margin="0,8,0,0" />
-                        </Grid>
-                        <Button Content="{loc:Loc Key=instance.detail.delete}" Command="{Binding Operations.DeleteCommand}" Style="{StaticResource DangerButton}" HorizontalAlignment="Left" Margin="0,16,0,0" />
-                    </StackPanel>
-                </Border>
-
-                <Border Grid.Column="2" Style="{StaticResource Card}">
-                    <StackPanel>
-                        <TextBlock Text="{loc:Loc Key=instance.detail.java}" Style="{StaticResource SectionText}" />
-                        <TextBlock Text="{loc:Loc Key=instance.detail.javaDesc}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,5,0,10" TextWrapping="Wrap" />
-                        <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="8" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <ComboBox ItemsSource="{Binding Runtime.JavaOptions}" SelectedItem="{Binding Runtime.SelectedJavaOption, Mode=TwoWay}" ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
-                            <Button Grid.Column="2" Content="{loc:Loc Key=instance.detail.selectJava}" Command="{Binding Runtime.BrowseJavaCommand}" Style="{StaticResource GhostButton}" />
-                        </Grid>
-                        <TextBlock Text="{Binding Runtime.JavaStatus}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap" />
-                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                            <Button Content="{loc:Loc Key=instances.java.download}" Command="{Binding Runtime.DownloadJavaCommand}" Style="{StaticResource PrimaryButton}" />
-                            <Button Content="{loc:Loc Key=instances.java.refresh}" Command="{Binding Runtime.RefreshJavaCommand}" Style="{StaticResource GhostButton}" Margin="8,0,0,0" />
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-            </Grid>
 
             <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                 <StackPanel>
