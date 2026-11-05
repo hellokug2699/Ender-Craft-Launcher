@@ -4,7 +4,7 @@
 - Implementation: Not Started
 - Date: 2026-11-03
 - Scope: ECL 桌面应用的视觉设计系统、主窗口 Shell、主导航与工具入口、页面信息架构、排版、DPI/分辨率适配及所有原生页面的交互呈现
-- Related: [ADR 0021：WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md)、[ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0040：原版工具集作为独立官方 Addition](0040-vanilla-toolkit-addition.md)、[ADR 0045：原生 Instance Engine 架构与能力边界](0045-native-instance-engine-architecture.md)
+- Related: [ADR 0056: Right Auxiliary Rail and Inspector Integration](0056-right-auxiliary-rail-and-inspector-integration.md)、[ADR 0021：WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md)、[ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0040：原版工具集作为独立官方 Addition](0040-vanilla-toolkit-addition.md)、[ADR 0045：原生 Instance Engine 架构与能力边界](0045-native-instance-engine-architecture.md)
 
 ## 背景
 
