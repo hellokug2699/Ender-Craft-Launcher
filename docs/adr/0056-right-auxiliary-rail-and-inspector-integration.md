@@ -54,7 +54,7 @@ Inspector 模式分为两层：
 
 ### 4. 默认状态与交互
 
-- 首次启动默认进入 Inspector 模式；若没有可展示内容，显示轻量空状态。
+- 首次启动 Rail 默认折叠为窄图标栏（遵循 ADR 0050）；当前活动模式默认为 Inspector。用户展开 Rail 时显示 Inspector 内容；若没有可展示内容，显示轻量空状态。
 - 用户可折叠/展开 Rail，并在 Inspector 与 Tools 模式间切换。
 - Rail 的展开状态和当前模式可作为 Shell 偏好持久化；不得与 Workspace Snapshot 或业务 Session 状态混为一谈。
 - 键盘可访问：Rail 入口具有名称、焦点顺序和明确选中态；不能只依赖悬停 Tooltip。
