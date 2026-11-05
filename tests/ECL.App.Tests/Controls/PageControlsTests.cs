@@ -7,6 +7,7 @@ using System.Windows.Media;
 using Ecl.App.Controls;
 using Ecl.App.Converters;
 using Ecl.App.Localization;
+using Ecl.App.ViewModels;
 using Ecl.Core.Localization;
 using Xunit;
 
@@ -111,6 +112,44 @@ public sealed class PageControlsTests
         });
     }
 
+    [Fact]
+    public void ModStatusBadgePanelArrangesOneTwoThreeAndFourIcons()
+    {
+        using var ui = new UiThread();
+        ui.Invoke(() =>
+        {
+            lock (ApplicationGate)
+            {
+                EnsureApplication();
+
+                Assert.Equal(new[] { new Vector(8, 8) }, Arrange(1));
+                Assert.Equal(new[] { new Vector(0, 8), new Vector(16, 8) }, Arrange(2));
+                Assert.Equal(new[] { new Vector(8, 0), new Vector(0, 16), new Vector(16, 16) }, Arrange(3));
+                Assert.Equal(
+                    new[] { new Vector(0, 0), new Vector(16, 0), new Vector(0, 16), new Vector(16, 16) },
+                    Arrange(4));
+            }
+        });
+    }
+
+    /// <summary>在 30×30 单元格内测量/排列 1–4 个 14px 图标，返回每个图标的相对偏移。</summary>
+    private static Vector[] Arrange(int count)
+    {
+        var panel = new ModStatusBadgePanel { IconSize = 14, Gap = 2 };
+        for (var index = 0; index < count; index++)
+        {
+            panel.Children.Add(new ModStatusGlyph { Kind = ModStatusKind.Available });
+        }
+
+        panel.Measure(new Size(30, 30));
+        panel.Arrange(new Rect(0, 0, 30, 30));
+
+        return panel.Children
+            .Cast<UIElement>()
+            .Select(VisualTreeHelper.GetOffset)
+            .ToArray();
+    }
+
     private static void EnsureApplication()
     {
         LocalizationProvider.Current ??= new JsonLocalizer(CultureInfo.GetCultureInfo("zh-CN"));
@@ -139,3 +178,4 @@ public sealed class PageControlsTests
         application.Resources["LoaderKindBrush"] = new LoaderKindToBrushConverter();
     }
 }
+

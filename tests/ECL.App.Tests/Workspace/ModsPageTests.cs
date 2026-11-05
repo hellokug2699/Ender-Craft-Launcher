@@ -262,6 +262,26 @@ public sealed class ModsPageTests
     }
 
     [Fact]
+    public void PackNamesCollapseMultilineDescriptions()
+    {
+        var entry = new ContentPackEntry(
+            "fabric.jar",
+            @"C:\instance\resourcepacks\fabric.jar",
+            ContentPackKind.ResourcePack,
+            "{\"bold\":false,\r\n\"text\":\"fabric\"}",
+            null,
+            null,
+            Enabled: true,
+            Incompatible: false);
+
+        var item = new ContentPackItemViewModel(entry, Localizer());
+
+        Assert.DoesNotContain('\n', item.Name);
+        Assert.DoesNotContain('\r', item.Name);
+        Assert.Contains("fabric", item.Name);
+    }
+
+    [Fact]
     public async Task DisposeStopsFurtherScans()
     {
         var (viewModel, mods) = Create(Entry("alpha.jar", metadata: Metadata("alpha")));

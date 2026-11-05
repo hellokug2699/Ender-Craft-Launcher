@@ -24,7 +24,25 @@ public sealed class ContentPackItemViewModel
 
     public bool Enabled => _entry.Enabled;
 
-    public string Name => _entry.Name;
+    /// <summary>
+    /// 资源包名称来自 pack.mcmeta，可能是多行 JSON 片段或带格式码的长文本；
+    /// 列表行只显示单行摘要，完整内容留给 Tooltip，避免撑高表格。
+    /// </summary>
+    public string Name => Summarize(_entry.Name);
+
+    private static string Summarize(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "?";
+        }
+
+        var parts = value.Split(
+            ['\r', '\n'],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var singleLine = string.Join(" ", parts);
+        return singleLine.Length <= 160 ? singleLine : $"{singleLine[..157]}…";
+    }
 
     public string StatusText
     {
