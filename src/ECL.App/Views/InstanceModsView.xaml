@@ -348,9 +348,24 @@
                     </ScrollViewer>
 
                     <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,10,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
 
-                    <!-- 依赖处理：下载缺失依赖 / 启用已安装依赖 / 搜索依赖 / 批量启用禁用 -->
-                    <Expander Style="{StaticResource SectionExpander}" IsExpanded="True">
+            <!--
+                表外次要区（B2 步骤 3b-3c）：依赖/整合包/资源包能力整体保留在表格下方，
+                不因表格改版丢失；等 B2b 拆出独立内容页后再迁移资源包入口。
+            -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="{loc:Loc Key=mods.section.advanced}" Style="{StaticResource SectionText}" />
+                    <TextBlock Text="{loc:Loc Key=mods.section.advancedHint}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="10"
+                               Margin="0,5,0,2"
+                               TextWrapping="Wrap" />
+
+                    <!-- 依赖处理：下载缺失依赖 / 启用已安装依赖 / 搜索依赖 -->
+                    <Expander Style="{StaticResource SectionExpander}" IsExpanded="False">
                         <Expander.Header>
                             <TextBlock Text="{loc:Loc Key=mods.section.dependencies}"
                                        FontSize="12"
@@ -362,6 +377,11 @@
                                        FontSize="9"
                                        TextWrapping="Wrap"
                                        Margin="0,2,0,8" />
+                            <TextBlock Text="{loc:Loc Key=mods.dependenciesSelectedHint}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="9"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,8" />
                             <WrapPanel>
                                 <Button Content="{loc:Loc Key=mods.downloadDependencies}"
                                         Command="{Binding DownloadMissingDependenciesCommand}"
@@ -406,6 +426,11 @@
                                        Style="{StaticResource EmphasisText}" />
                         </Expander.Header>
                         <StackPanel>
+                            <TextBlock Text="{loc:Loc Key=mods.packsLegacyHint}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="9"
+                                       TextWrapping="Wrap"
+                                       Margin="0,2,0,8" />
                             <Grid Margin="0,4,0,0">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                 <StackPanel>
@@ -421,8 +446,8 @@
                                         <Grid Margin="5,3">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                             <StackPanel>
-                                                <TextBlock Text="{Binding Name}" FontSize="10" Style="{StaticResource EmphasisText}" />
-                                                <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" />
+                                                <TextBlock Text="{Binding Name}" FontSize="10" Style="{StaticResource EmphasisText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+                                                <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" TextTrimming="CharacterEllipsis" ToolTip="{Binding Meta}" />
                                             </StackPanel>
                                             <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="9" VerticalAlignment="Center" />
                                         </Grid>

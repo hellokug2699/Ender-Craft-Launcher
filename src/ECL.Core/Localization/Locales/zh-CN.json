@@ -472,6 +472,10 @@
   "nav.download": "下载",
   "mods.currentInstance": "当前实例",
   "mods.installedTitle": "已安装 Mod",
+  "mods.section.advanced": "高级与依赖",
+  "mods.section.advancedHint": "依赖、整合包与资源包管理保留在这里；模组表格改版不会移除这些入口。",
+  "mods.dependenciesSelectedHint": "「启用缺失的依赖模组」「搜索缺失依赖」作用于表格中当前选中的模组。",
+  "mods.packsLegacyHint": "资源包与光影包的独立页面尚未开放，当前入口暂时保留在这里。",
   "mods.section.dependencies": "依赖与修复",
   "mods.section.modpack": "整合包导入 / 导出",
   "mods.section.packs": "资源包与光影",
@@ -1006,6 +1010,7 @@
   "instanceDirectories.noManagedInstances": "该目录下没有由 ECL 托管的实例；外部只读版本不会被删除。",
   "instanceDirectories.footnote": "解绑只解除管理关系，不删除磁盘内容。"
 }
+
 
 
 
