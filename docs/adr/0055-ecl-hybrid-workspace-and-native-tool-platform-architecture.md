@@ -4,7 +4,7 @@
 - Implementation: Not Started
 - Date: 2026-11-04
 - Scope: ECL 主窗口工作区模型、分割布局、工具与工作区生命周期、Native UI SDK/Host、Addition Runtime 隔离、IPC、Event Bus、资源访问、文档会话及工作区恢复
-- Related: [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0045：原生 Instance Engine 架构与能力边界](0045-native-instance-engine-architecture.md)、[ADR 0047：实例变更事务与并发控制](0047-instance-transactions-and-concurrency-control.md)、[ADR 0048：实例快照与恢复架构](0048-instance-snapshots-and-recovery.md)、[ADR 0050：ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md)、[ADR 0052：统一 Dialog Engine 与渐进迁移](0052-unified-dialog-engine-and-incremental-migration.md)、[ADR 0053：Additions 能力权限模型与用户授权流程](0053-addition-capability-permission-and-user-consent.md)、[ADR 0054：Addition 注册表、清单与生命周期治理](0054-addition-registry-and-manifest-governance.md)
+- Related: [ADR 0056: Right Auxiliary Rail and Inspector Integration](0056-right-auxiliary-rail-and-inspector-integration.md)、 [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0045：原生 Instance Engine 架构与能力边界](0045-native-instance-engine-architecture.md)、[ADR 0047：实例变更事务与并发控制](0047-instance-transactions-and-concurrency-control.md)、[ADR 0048：实例快照与恢复架构](0048-instance-snapshots-and-recovery.md)、[ADR 0050：ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md)、[ADR 0052：统一 Dialog Engine 与渐进迁移](0052-unified-dialog-engine-and-incremental-migration.md)、[ADR 0053：Additions 能力权限模型与用户授权流程](0053-addition-capability-permission-and-user-consent.md)、[ADR 0054：Addition 注册表、清单与生命周期治理](0054-addition-registry-and-manifest-governance.md)
 
 ## 背景
 
@@ -27,7 +27,7 @@ ECL 主窗口采用统一 Application Shell 和 Workspace Host。主窗口的职
 - **顶部区域**：全局操作及当前工作区操作。
 - **左侧区域**：全局导航，可折叠。
 - **中央区域**：主工作区，承载页面或工具。
-- **右侧 Inspector**：当前对象的上下文信息和辅助操作，可隐藏。
+- **右侧 Inspector 模式**：由 ADR 0056 定义的 Right Auxiliary Rail 承载，呈现当前对象的上下文信息和辅助操作；可通过 Rail 隐藏/折叠。Inspector 的内容职责、Workspace/Selection Context 隔离和辅助操作边界仍由本 ADR 约束。
 - **底部 Output / Task 面板**：日志、任务进度和输出，可收起。
 
 Inspector 和 Output 是辅助区域，不是复杂工具的默认承载区域。需要完整空间的工具必须能够进入中央 Workspace。
@@ -350,3 +350,4 @@ ADR 0053 和 ADR 0054 当前为 Proposed。本 ADR 与其建立职责关系，�
 ## 修订记录
 
 - 2026-11-04：根据 ECL 混合工作区、Native UI SDK、Addition 独立进程、混合 Runtime 隔离、Event Bus 和受控资源访问讨论形成决策。Decision 为 Accepted，Implementation 为 Not Started；具体技术实现和平台隔离能力仍须在实施阶段验证。
+- 2026-11-05：根据 Accepted ADR 0056，右侧 Inspector 由统一 Right Auxiliary Rail 承载；本 ADR 对 Inspector 内容语义、工作区上下文隔离、生命周期与权限的规定不变。
