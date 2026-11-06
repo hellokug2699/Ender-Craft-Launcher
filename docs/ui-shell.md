@@ -101,15 +101,17 @@
   `Navigation.CurrentPage`，不新开工作区、不改变工作区标题（迁移规划 §5.1）。已实现页面为
   「基本信息」（`InstanceBasicInfoViewModel`，默认页）、「配置 · 修改」
   （`InstanceModifyViewModel`，B2 步骤 3b-4a 计划 + 3b-4b 受控执行）、「内容 · 模组」（`ModsViewModel`）、
-  「内容 · 资源包」与「内容 · 光影包」（B2b，共用 `ContentPackPageViewModel`），
+  「内容 · 资源包」与「内容 · 光影包」（B2b，共用 `ContentPackPageViewModel`）、
+  「世界与文件」下的「截图」「投影」「导出」（B2c，见 §2.5），
   各自拥有唯一的滚动容器，由 `App.xaml` 的 DataTemplate 映射到视图。
-- 尚未实现的页面（数据包、截图、投影、导出、日志）只保留不可用导航项：
+- 尚未实现的页面（数据包、日志）只保留不可用导航项：
   `IsEnabled=false`、UIA `HelpText` 与可见的「未实现」徽标共同说明原因，不创建空页、不提供可点击入口；
   日志项单独说明 G-01 页面规格尚未批准。不可用项不会被代码或键盘路径激活（`TryActivate` 与选中 setter 双重拒绝）。
 - 窄窗口收缩（ADR 0050）：工作区页面可用宽度小于 640 时，左侧二级导航折叠为内容区顶部的页面选择器；
   1080×720 且全局导航与 Inspector 同时展开时，内容区仍保持可用宽度，恢复宽度后回到纵向导航。
-- 打开工作区时同时初始化实例运行设置与模组内容。初始化失败由 Shell 记录警告，不产生未观察的后台任务；
-  模组扫描与 Java 状态更新在页面释放后不再回写已释放状态。
+- 打开工作区时初始化实例运行设置、模组、资源包/光影、截图与投影页面；导出页只在首次显示时扫描
+  （避免打开工作区就遍历整个实例目录）。初始化失败由 Shell 记录警告，不产生未观察的后台任务；
+  模组扫描、Java 状态与各页面扫描在页面释放后不再回写已释放状态。
 - 基本信息顶部已按 `instance-workspace.md` §2 改为 2:1 布局（B2 步骤 3a）：左侧实例信息与操作，
   右侧 Java 方块。方块标题/发行版/完整版本来自真实运行时，背景与右下角标识映射领域兼容性结论：
   紫色/✓ 兼容、红色/X 不兼容（含 32 位拒绝）、黄色/⚠ 仅在实例偏好抑制常规警告时为黄色
@@ -257,8 +259,54 @@
   光影包启用/切换后 `shaderPack` 始终只有一个；收起横幅后跨页切换显示灰色提示；
   清空全部光影包并刷新后横幅重新出现；「下载光影包」打开下载中心光影包页签并带入实例目标。
 
-## 3. 共享页面控件（B0）
+### 2.5 截图、投影与导出页（B2c）
 
+页面规格：`hints/ui/pages/screenshots.md`、`schematics.md`、`export.md`。三个页面分别拥有页面对象与视图
+（`ScreenshotPageViewModel` / `InstanceScreenshotsView`、`SchematicPageViewModel` / `InstanceSchematicsView`、
+`InstanceExportViewModel` / `InstanceExportView`），由 `InstanceDetailPageViewModel` 持有并在关闭标签时释放；
+导航项在页面对象存在时可用，不创建空页。
+
+- 截图（`IScreenshotService`）：只读取实例游戏目录 `screenshots/` 下的直接图片文件，扩展名之外还按 PNG/JPEG
+  签名确认；读取有字节上限，路径固定为 `screenshots/<文件名>`，UI 不拼接文件路径。
+  - 三种展示形式共享同一组条目与选择：列表（每行一张，缩略图/文件名/时间/大小/复选框）、
+    方格（每行五张，图片下方信息，右下角复选框）、极简（每行八张，无信息与复选框）。
+    切换形式不改变文件，也不丢失已选条目；支持时间正序/倒序。
+  - 缩略图在行真正显示时才按需读取并解码（`IScreenshotImageLoader`，320px 宽），同一行只请求一次；
+    文件签名不是图片时显示几何占位图，不伪造截图。解码失败显示失败状态而非空白成功图。
+  - 点击图片在当前页面内打开覆盖层预览，支持上一张/下一张、Esc 关闭与左右方向键，不新建工作区或独立页面。
+  - 删除按钮位于图片区域之外的标题行右侧：确认框显示张数与总大小，删除经
+    `InstanceTransactionCoordinator` 在一个实例事务中执行；失败时保留列表与选择，不显示部分成功。
+  - 1080×720 下工具条自动换行，列表在表格内部横向滚动（最小可读宽度 520），页面本身不横向溢出。
+- 投影（`ISchematicService` / `ISchematicSupportService`）：列表式管理 `schematics/`（Litematica/Create/MCEdit）、
+  `config/worldedit/schematics/` 与 `config/axiom/blueprints/` 中的已知格式；
+  `.litematic/.schem/.schematic/.nbt` 需匹配 gzip 或未压缩 NBT 容器签名，`.bp` 只按扩展名识别并标记
+  「格式未验证」，不解析或伪造内容。每行显示类型徽标、文件名、格式、时间、大小与选择；无三维缩略图。
+  - 支持检测按 `docs/schematic-support/`（`README.md` + `rules.json`）只用实例版本/加载器、已启用组件的真实
+    元数据与必需依赖判定，返回支持/缺失/不完整/不兼容/冲突/未知，并逐格式展示；多个兼容组件声称同一格式时
+    显示冲突，元数据不足显示未知，不猜测支持。检测不阻断文件管理。
+  - 「查看工具」明确显示不可用：NBT Explorer 需要独立 Addition（G-03 未提供安装/文件处理器入口），
+    三维预览需要投影渲染 Addition；不放置假按钮或伪造预览。
+  - 删除按钮在列表区域外，确认框显示文件数与总大小；删除经实例事务执行。1080×720 下列表内部横向滚动。
+- 导出（`IInstanceExportService`）：完整导出 / 自定义导出 / 诊断包三种方式共用页面。导出包固定写入实例
+  游戏目录的 `exports/`，不提供自定义保存位置；页面不直接写文件。
+  - 首次显示页面时才扫描实例内容（`PlanAsync`），按世界存档、截图、投影、日志与崩溃报告、配置、模组、
+    资源包、光影包、其他实例文件分类，显示真实文件数与未压缩体积估算；未知体积显示未知，不写 0。
+  - 自定义导出可勾选类别；风险提示跟随类别显示（截图、投影、日志、配置、世界存档），完整导出的确认框
+    汇总所选类别的风险。开始前通过 Dialog Engine 确认模式、文件数与估算大小。
+  - 永久排除登录状态、账号认证信息、访问/刷新令牌、API Key、私钥及等价凭据；排除项属于引擎硬边界，
+    不受类别勾选影响，并写入 `manifest.json` 的 `permanentExclusions`。ECL 身份标记 `.ecl/` 与 `exports/`
+    自身不进入包内（实例元数据以 `instance/instance.json`、`instance/settings.json` 单独携带）。
+  - 进度复用 `IOperationService`（Kind=Export）与统一进度条：扫描/打包/完成阶段，字节与文件数分开；
+    成功绿色、失败红色、部分跳过黄色。任务关闭页面后继续，页面只停止回写自身状态。
+  - 导出结果为 zip：`manifest.json` + `instance/` + `minecraft/`；逐文件报告跳过原因（不可读、读取期间变化、
+    元数据不可读），任何跳过都会使结果标记为不完整并在页面列出，不伪装成完整成功。成功后显示路径、
+    最终大小与「打开所在位置」；诊断包复用 `IDiagnosticPackageService`，默认排除存档、截图、投影与凭据。
+  - 测试：`tests/ECL.Tests/Minecraft/ScreenshotServiceTests.cs`、`SchematicServiceTests.cs`、
+    `SchematicSupportDetectorTests.cs`、`InstanceExportServiceTests.cs`；应用侧
+    `ScreenshotPageTests.cs`、`SchematicPageTests.cs`、`ExportPageTests.cs` 覆盖列表/选择/删除/预览/支持状态/
+    导出模式/风险确认/估算/跳过与释放。实机见交接文档 §4（1500×950、1080×720、zh-CN/en-US）。
+
+## 3. 共享页面控件（B0）
 B0 只提供 B1 立即需要的三个共享件，其余控件（`DataTable`、`StatusBanner`、`InlineProgress`、
 `SearchBox`、`FilterPill`、`SortSelector`、`SeverityBadge`、`MonoText`、扩展图标集）在第一个真实消费者批次实现，
 避免建立只有单一消费者的抽象。
@@ -370,8 +418,9 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
 - 无活动工作区时中央区域显示空状态；关闭全部标签后需要从导航重新打开。
 - 页面内部布局尚未按 ADR 0050 逐页重构；窄窗口下需要折叠导航或 Inspector 才能获得更宽内容区。
 - B0 只提供 `PageHeader`、`PageStateView` 与 `ToolbarButton`；页面在 B1 起逐步接入，尚未接入的页面仍使用各自布局。
-- 实例工作区二级导航已在 B2 步骤 2 接入（§2.3）：默认基本信息，模组页可用，其余条目为不可用状态；
-  基本信息顶部 2:1 与 Java 方块已在 B2 步骤 3a 重写，其余区块仍待后续步骤按 Approved 页面规格完成。
+- 实例工作区二级导航已在 B2 步骤 2 接入（§2.3）：默认基本信息；除数据包与日志外，概览、修改、模组、
+  资源包、光影包、截图、投影、导出均已有页面；数据包与日志保持不可用状态。基本信息顶部 2:1 与 Java
+  方块已在 B2 步骤 3a 重写，其余区块仍待后续步骤按 Approved 页面规格完成。
 - 实例工作区拥有自己的身份快照（`InstanceWorkspaceState`）：打开时捕获实例条目，标签标题、
   页面身份区块与 Inspector 目标都来自该快照，不再依赖全局 `SelectedInstance` 的更新顺序；
   关闭标签时释放该状态（`IDisposable`），释放后再参与页面状态。
@@ -412,6 +461,17 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
   更新版本引入的新格式显示「格式 N」，不按经验外推。对照表随版本发布需要维护。
 - 光影支持检测是**能力检测**，不是对单个光影包能否渲染的保证；OptiFine 缺少「构建 × Forge 兼容性」
   的可验证数据源，因此只判定为未知，不冒充支持；`docs/shader-support/` 规则更新时需同步检测实现。
+- 截图页只读取 `screenshots/` 的直接子文件；缩略图按需读取整张原图（单张上限 64 MB）后在 UI 线程解码，
+  没有持久化缩略图缓存。超大截图或大量截图时首次浏览会有 IO/解码开销。
+- 投影页只扫描三个已知工具目录，不提供目录切换；`.bp` 没有公开稳定的可验证签名，因此始终显示
+  「格式未验证」；NBT Explorer 与三维查看器依赖尚未实现的 Addition 能力，入口保持不可用。
+  支持检测是能力检测，不保证单个投影文件能在游戏内加载或渲染；`docs/schematic-support/` 规则更新时
+  需同步检测实现。
+- 导出包目前只有 zip（`manifest.json` + `instance/` + `minecraft/`），没有对应的实例包导入流程
+  （属 B10），也不包含共享 `libraries`/`assets`/版本目录；完整导出只覆盖实例游戏目录与实例元数据。
+  体积是未压缩估算，不预测压缩后大小；导出结束后若文件被跳过，结果会标记为不完整并列出原因。
+- 导出页首次打开会遍历实例游戏目录以计算分类与体积，没有增量缓存；大实例首次进入可能需要等待扫描。
+  导出任务固定在实例目录 `exports/`，不提供用户选择保存位置（按页面规格避免写入受保护目录）。
 - 数据包（`content.dataPacks`）页面尚未实现：它需要世界上下文（`WorldSaveService` 的世界目标与
   `level.dat` 数据包配置），本批不伪造实例级入口。
 - WPF 线程/Dispatcher、共享控件与输出管线测试位于仅 Windows 可运行的 `tests/ECL.App.Tests`；CI 在 Windows job 执行，
