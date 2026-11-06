@@ -239,8 +239,10 @@ public sealed class InstallServiceTests
             environment.Paths.LibrariesDirectory,
             "com/example/demo/1.0/demo-1.0.jar".Replace('/', Path.DirectorySeparatorChar))));
 
-        // 基础版本 JSON 不是本次安装新建的加载器版本，应保留。
-        Assert.True(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, "1.21.1")));
+        // 基础版本 JSON 现在也属于安装事务（§6.4 决策 a）：本次新建、安装失败时必须删除，
+        // 避免回滚后留下“半个共享版本目录”。原本已存在的同版本文件走恢复而不是删除（见下一个测试）。
+        Assert.False(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, "1.21.1")));
+        Assert.False(File.Exists(VersionFilePlanner.GetAssetIndexPath(environment.Paths, "1.21")));
 
         var diagnostics = Directory.GetFiles(
             Path.Combine(environment.Paths.LogsDirectory, "install"),
@@ -249,6 +251,78 @@ public sealed class InstallServiceTests
         var content = await File.ReadAllTextAsync(diagnostics[0]);
         Assert.Contains("install.download_failed", content, StringComparison.Ordinal);
         Assert.Contains(instance.Id, content, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// §6.4 决策 a：共享的 <c>versions/&lt;id&gt;/&lt;id&gt;.json</c> 与 <c>assets/indexes/&lt;id&gt;.json</c>
+    /// 被本次安装替换时必须在失败后恢复原始内容（可能是其它启动器写入的合并配置）。
+    /// </summary>
+    [Fact]
+    public async Task FailedInstallRestoresReplacedSharedVersionJsonAndAssetIndex()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService(failOnDisplayName: "client-1.12.xml");
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IDownloadService>(fake));
+
+        var versionJsonPath = VersionFilePlanner.GetVersionJsonPath(environment.Paths, "1.21.1");
+        var assetIndexPath = VersionFilePlanner.GetAssetIndexPath(environment.Paths, "1.21");
+        Directory.CreateDirectory(Path.GetDirectoryName(versionJsonPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(assetIndexPath)!);
+        const string sharedVersionJson =
+            """{"id":"1.21.1","mainClass":"net.fabricmc.loader.impl.launch.knot.KnotClient","libraries":[]}""";
+        const string sharedAssetIndex = """{"objects":{},"marker":"other-launcher"}""";
+        await File.WriteAllTextAsync(versionJsonPath, sharedVersionJson);
+        await File.WriteAllTextAsync(assetIndexPath, sharedAssetIndex);
+
+        var instance = (await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Shared Files", "1.21.1")).Value!;
+
+        var outcome = await provider.GetRequiredService<IVersionInstallService>()
+            .ReconfigureAsync(instance.Id, "1.21.1", "vanilla");
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal("install.download_failed", outcome.Error?.Code);
+        var failure = outcome.Failure!;
+        Assert.True(failure.Rollback.IsComplete);
+        Assert.False(failure.RecoveryRequired);
+
+        // 回滚必须写回原始字节，而不是留下官方 JSON。
+        Assert.Equal(sharedVersionJson, await File.ReadAllTextAsync(versionJsonPath));
+        Assert.Equal(sharedAssetIndex, await File.ReadAllTextAsync(assetIndexPath));
+        Assert.Contains(
+            failure.Rollback.Actions,
+            action => action.Contains(versionJsonPath, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            failure.Rollback.Actions,
+            action => action.Contains(assetIndexPath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// §6.4 决策 a 的成功路径：共享版本 JSON / 资产索引被校正为新内容，安装提交后保留（不回滚）。
+    /// </summary>
+    [Fact]
+    public async Task SuccessfulInstallKeepsReplacedSharedVersionJsonAndAssetIndex()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IDownloadService>(fake));
+
+        var versionJsonPath = VersionFilePlanner.GetVersionJsonPath(environment.Paths, "1.21.1");
+        var assetIndexPath = VersionFilePlanner.GetAssetIndexPath(environment.Paths, "1.21");
+        Directory.CreateDirectory(Path.GetDirectoryName(versionJsonPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(assetIndexPath)!);
+        await File.WriteAllTextAsync(versionJsonPath, """{"id":"1.21.1","mainClass":"stale.example.Main"}""");
+        await File.WriteAllTextAsync(assetIndexPath, """{"objects":{},"marker":"stale"}""");
+
+        var instance = (await provider.GetRequiredService<IInstanceService>().CreateAsync("Shared Ok", "1.21.1")).Value!;
+
+        var result = await provider.GetRequiredService<IVersionInstallService>().InstallAsync(instance.Id);
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        var installedJson = await File.ReadAllTextAsync(versionJsonPath);
+        Assert.DoesNotContain("stale.example.Main", installedJson, StringComparison.Ordinal);
+        Assert.Contains("net.minecraft.client.main.Main", installedJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("stale", await File.ReadAllTextAsync(assetIndexPath), StringComparison.Ordinal);
     }
 
     [Fact]

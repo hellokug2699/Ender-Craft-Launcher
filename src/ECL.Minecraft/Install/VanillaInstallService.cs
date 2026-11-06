@@ -543,7 +543,7 @@ public sealed class VanillaInstallService : IVersionInstallService
 
         Report(progress, InstallStage.Version, "install.stage.version", 0, 0, 0, 0, null);
 
-        var baseVersion = await ResolveVersionChainAsync(entry, manifest, cancellationToken).ConfigureAwait(false);
+        var baseVersion = await ResolveVersionChainAsync(entry, manifest, transaction, cancellationToken).ConfigureAwait(false);
         if (baseVersion is null)
         {
             return Result<MinecraftVersion>.Fail("install.version_invalid", _localizer.Get("install.error.versionInvalid"));
@@ -759,6 +759,7 @@ public sealed class VanillaInstallService : IVersionInstallService
     private async Task<MinecraftVersion?> ResolveVersionChainAsync(
         VersionManifestEntry entry,
         VersionManifest manifest,
+        InstallTransaction transaction,
         CancellationToken cancellationToken)
     {
         var chain = new List<MinecraftVersion>();
@@ -778,6 +779,7 @@ public sealed class VanillaInstallService : IVersionInstallService
                     destination,
                     current.Sha1,
                     current.Size,
+                    transaction,
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -906,6 +908,7 @@ public sealed class VanillaInstallService : IVersionInstallService
                 indexPath,
                 assetIndex.Sha1,
                 assetIndex.Size,
+                transaction,
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -1157,11 +1160,20 @@ public sealed class VanillaInstallService : IVersionInstallService
         File.Move(temporary, path, overwrite: true);
     }
 
+    /// <summary>
+    /// 读取并校正共享的基础版本 JSON、资产索引等文本文件（ADR 0045/0047，决策 §6.4 a）。
+    /// <para>
+    /// 这些文件位于共享的 <c>versions/&lt;id&gt;/</c> 与 <c>assets/indexes/</c>，可能由其它启动器写入并包含
+    /// 合并后的加载器配置。写入前把原文件纳入安装事务：失败时恢复原始内容，成功时按安装结果保留。
+    /// 这样回滚信号（<see cref="InstallFailure.Rollback"/>）覆盖本次真正发生的替换。
+    /// </para>
+    /// </summary>
     private async Task<string> EnsureTextFileAsync(
         IReadOnlyList<Uri> urls,
         string destination,
         string? expectedHash,
         long? expectedSize,
+        InstallTransaction transaction,
         CancellationToken cancellationToken)
     {
         if (File.Exists(destination) && MatchesHash(destination, expectedHash, expectedSize))
@@ -1174,8 +1186,20 @@ public sealed class VanillaInstallService : IVersionInstallService
             .ConfigureAwait(false);
 
         var directory = Path.GetDirectoryName(destination);
+        var existed = File.Exists(destination);
+        if (existed)
+        {
+            _logger.LogInformation(
+                "安装将替换已存在的共享文件 {Path}；原内容已纳入安装事务，失败时恢复。",
+                destination);
+        }
+
+        // TrackFileWithBackup 同时覆盖“已存在但内容不匹配（可能是其它启动器写入的合并配置）”与
+        // “本次新建”两种情况：前者失败时写回原始字节，后者失败时删除。
+        transaction.TrackFileWithBackup(destination);
         if (!string.IsNullOrEmpty(directory))
         {
+            transaction.TrackDirectory(directory);
             Directory.CreateDirectory(directory);
         }
 
