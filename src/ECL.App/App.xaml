@@ -61,6 +61,9 @@
             <DataTemplate DataType="{x:Type wsvm:SchematicPageViewModel}">
                 <views:InstanceSchematicsView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type wsvm:InstanceExportViewModel}">
+                <views:InstanceExportView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:JavaManagementViewModel}">
                 <views:JavaManagementView />
             </DataTemplate>

@@ -2,6 +2,8 @@
 
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
 using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -46,6 +48,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly ContentPackPageFactory _contentPackFactory;
     private readonly ScreenshotPageFactory _screenshotFactory;
     private readonly SchematicPageFactory _schematicFactory;
+    private readonly ExportPageFactory _exportFactory;
     private readonly IReadOnlyList<string> _navigationKeys;
     private readonly IDisposable _workspaceChanges;
     private bool _suppressNavigation;
@@ -61,6 +64,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         ContentPackPageFactory contentPackFactory,
         ScreenshotPageFactory screenshotFactory,
         SchematicPageFactory schematicFactory,
+        ExportPageFactory exportFactory,
         SettingsViewModel settings,
         JavaManagementViewModel javaManagement,
         LogSessionsViewModel logSessions,
@@ -84,6 +88,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _contentPackFactory = contentPackFactory;
         _screenshotFactory = screenshotFactory;
         _schematicFactory = schematicFactory;
+        _exportFactory = exportFactory;
         _settings = settings;
         _tools = tools;
         _storage = storage;
@@ -125,6 +130,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         instances.GetModHealthSummary = modsFactory.DescribeHealthAsync;
         modsFactory.OpenModBrowser = OpenModBrowser;
         contentPackFactory.OpenPackBrowser = OpenPackBrowser;
+        _exportFactory.OpenFolder = OpenExportFolder;
         instances.NavigateToDetails = instanceId => OpenInstanceWorkspace(instanceId);
         instances.NavigateBackFromDetails = NavigateToInstances;
 
@@ -353,6 +359,21 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private void OpenPackBrowser(string instanceId, ContentPackKind kind) =>
         _ = OpenPackBrowserAsync(instanceId, kind);
 
+    /// <summary>在系统文件管理器中打开导出所在目录；失败只记录日志，页面仍保留路径。</summary>
+    private void OpenExportFolder(string path)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidOperationException
+                or System.ComponentModel.Win32Exception)
+        {
+            _logger.LogWarning(exception, "无法打开导出目录：{Path}", path);
+        }
+    }
+
     private async Task OpenPackBrowserAsync(string instanceId, ContentPackKind kind)
     {
         // 页面使用资源包领域类型，下载中心使用内容类型；这里做唯一一次映射。
@@ -504,6 +525,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 _contentPackFactory,
                 _screenshotFactory,
                 _schematicFactory,
+                _exportFactory,
                 _localizer);
             _ = InitializeInstancePageAsync(detail);
             page = detail;

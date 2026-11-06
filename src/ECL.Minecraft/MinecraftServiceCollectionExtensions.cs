@@ -12,6 +12,7 @@ using Ecl.Minecraft.Engine.Inventory;
 using Ecl.Minecraft.Engine.Snapshots;
 using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Eula;
+using Ecl.Minecraft.Export;
 using Ecl.Minecraft.GitHub;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
@@ -82,6 +83,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IVersionNewsService, MojangVersionNewsService>();
         services.AddSingleton<ICrashReportService, CrashReportService>();
         services.AddSingleton<IDiagnosticPackageService, DiagnosticPackageService>();
+        services.AddSingleton<IInstanceExportService, InstanceExportService>();
         services.AddSingleton<IThreatProtectionService, ThreatProtectionService>();
         services.AddSingleton<IProcessMetricsProbe, ProcessMetricsProbe>();
         services.AddSingleton<IGameTelemetryProbe, JsonLinesGameTelemetryProbe>();

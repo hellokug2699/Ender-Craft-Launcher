@@ -235,6 +235,30 @@ public sealed class InstanceWorkspaceNavigationTests
     }
 
     [Fact]
+    public void ExportPageBecomesAvailableWhenTheWorkspaceProvidesIt()
+    {
+        var exportPage = new object();
+        var navigation = InstanceWorkspaceNavigationFactory.Create(
+            Localizer(),
+            new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                [InstanceWorkspacePageKeys.BasicInfo] = new object(),
+                [InstanceWorkspacePageKeys.Export] = exportPage,
+            });
+
+        var item = navigation.Find(InstanceWorkspacePageKeys.Export);
+        Assert.NotNull(item);
+        Assert.True(item!.IsAvailable);
+        Assert.Same(exportPage, item.Page);
+        Assert.Equal("导出", item.Title);
+        Assert.Equal("世界与文件", item.GroupTitle);
+
+        Assert.True(navigation.TryActivate(InstanceWorkspacePageKeys.Export));
+        Assert.Equal(InstanceWorkspacePageKeys.Export, navigation.CurrentPageKey);
+        Assert.Same(exportPage, navigation.CurrentPage);
+    }
+
+    [Fact]
     public void TwoWorkspacesKeepIndependentNavigationState()
     {
         var first = CreateNavigation(out var firstBasic, out var firstMods);

@@ -37,6 +37,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         ContentPackPageFactory contentPackFactory,
         ScreenshotPageFactory screenshotFactory,
         SchematicPageFactory schematicFactory,
+        ExportPageFactory exportFactory,
         ILocalizer localizer)
     {
         State = state;
@@ -63,6 +64,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         Shaders = contentPackFactory.Create(state.InstanceId, ContentPackKind.ShaderPack);
         Screenshots = screenshotFactory.Create(state.InstanceId);
         Schematics = schematicFactory.Create(state.InstanceId);
+        Export = exportFactory.Create(state.InstanceId);
 
         Navigation = InstanceWorkspaceNavigationFactory.Create(
             localizer,
@@ -75,6 +77,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
                 [InstanceWorkspacePageKeys.Modify] = Modify,
                 [InstanceWorkspacePageKeys.Screenshots] = Screenshots,
                 [InstanceWorkspacePageKeys.Schematics] = Schematics,
+                [InstanceWorkspacePageKeys.Export] = Export,
             });
     }
 
@@ -108,6 +111,9 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
     /// <summary>「世界与文件 · 投影」二级页（B2c：列表式文件管理与真实支持检测）。</summary>
     public SchematicPageViewModel Schematics { get; }
 
+    /// <summary>「世界与文件 · 导出」二级页（B2c：完整/自定义/诊断包，固定输出到实例 exports）。</summary>
+    public InstanceExportViewModel Export { get; }
+
     /// <summary>当前实例的存储占用卡状态（§5）；由基本信息页展示。</summary>
     public InstanceStorageViewModel Storage { get; }
 
@@ -140,7 +146,8 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
             ResourcePacks.InitializeAsync(),
             Shaders.InitializeAsync(),
             Screenshots.InitializeAsync(),
-            Schematics.InitializeAsync());
+            Schematics.InitializeAsync(),
+            Export.InitializeAsync());
 
     /// <summary>
     /// 受控变更成功后重新读取实例并刷新工作区身份（B2 步骤 3b-4b）：
@@ -177,6 +184,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         Shaders.Dispose();
         Screenshots.Dispose();
         Schematics.Dispose();
+        Export.Dispose();
         BasicInfo.Dispose();
         Storage.Dispose();
         Operations.Dispose();

@@ -1,0 +1,313 @@
+<UserControl x:Class="Ecl.App.Views.InstanceExportView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization"
+             xmlns:controls="clr-namespace:Ecl.App.Controls"
+             xmlns:behaviors="clr-namespace:Ecl.App.Behaviors">
+    <!--
+        实例工作区「世界与文件 · 导出」二级页（B2c，export.md）。
+        三种方式共用同一页面；导出包固定写入实例目录的 exports/，不提供自定义位置。
+        开始前显示真实分类体积与风险提示；结束后显示路径、大小与跳过项。
+    -->
+    <UserControl.Resources>
+        <Style x:Key="ModeFullButton" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsFullMode}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="ModeCustomButton" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsCustomMode}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="ModeDiagnosticsButton" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsDiagnosticsMode}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ExportProgressBar" TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
+            <Setter Property="Height" Value="6" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsCompleted}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsPartialResult}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <DataTemplate x:Key="ExportCategoryRow">
+            <Border BorderBrush="{DynamicResource BorderSoftBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="0,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                              IsEnabled="{Binding DataContext.IsCategorySelectionEnabled, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              Visibility="{Binding DataContext.IsCustomMode, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}}"
+                              VerticalAlignment="Top"
+                              Margin="0,3,10,0"
+                              AutomationProperties.Name="{Binding Title}" />
+
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="{Binding Title}"
+                                   FontSize="12"
+                                   FontFamily="{StaticResource UiMediumFontFamily}" />
+                        <TextBlock Text="{Binding Description}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,2,0,0" />
+                        <TextBlock Text="{Binding RiskText}"
+                                   Foreground="{DynamicResource WarningBrush}"
+                                   FontSize="9"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0"
+                                   Visibility="{Binding HasRisk, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding Summary}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="10"
+                               VerticalAlignment="Top"
+                               Margin="12,2,0,0" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <ScrollViewer x:Name="PageScroll"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  behaviors:WheelScroll.IsEnabled="True">
+        <StackPanel>
+            <controls:PageHeader Title="{Binding Title}" Subtitle="{Binding Subtitle}" />
+
+            <!-- 导出方式：三种方式共用页面，按当前方式展示对应内容。 -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="{loc:Loc Key=export.mode.title}" Style="{StaticResource SectionText}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="{Binding FullModeText}"
+                                Command="{Binding UseFullModeCommand}"
+                                Style="{StaticResource ModeFullButton}"
+                                Margin="0,0,6,0" />
+                        <Button Content="{Binding CustomModeText}"
+                                Command="{Binding UseCustomModeCommand}"
+                                Style="{StaticResource ModeCustomButton}"
+                                Margin="0,0,6,0" />
+                        <Button Content="{Binding DiagnosticsModeText}"
+                                Command="{Binding UseDiagnosticsModeCommand}"
+                                Style="{StaticResource ModeDiagnosticsButton}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding FullModeHint}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               Margin="0,10,0,0"
+                               Visibility="{Binding IsFullMode, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Text="{Binding CustomModeHint}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               Margin="0,10,0,0"
+                               Visibility="{Binding IsCustomMode, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Text="{Binding DiagnosticsModeHint}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               Margin="0,10,0,0"
+                               Visibility="{Binding IsDiagnosticsMode, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+            </Border>
+
+            <!-- 完整/自定义导出：真实分类、体积与风险提示。 -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,14"
+                    Visibility="{Binding ShowCategories, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{loc:Loc Key=export.categories.title}" Style="{StaticResource SectionText}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding SelectedFilesText}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding Categories}"
+                                  ItemTemplate="{StaticResource ExportCategoryRow}"
+                                  Margin="0,6,0,0" />
+
+                    <TextBlock Text="{Binding PermanentExclusionNote}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="9"
+                               TextWrapping="Wrap"
+                               Margin="0,10,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- 诊断包说明：不显示可勾选类别，避免误以为可以包含存档/截图/投影。 -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,14"
+                    Visibility="{Binding IsDiagnosticsMode, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <TextBlock Text="{loc:Loc Key=export.diagnostics.title}" Style="{StaticResource SectionText}" />
+                    <TextBlock Text="{Binding DiagnosticsNote}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               Margin="0,8,0,0" />
+                    <TextBlock Text="{Binding PermanentExclusionNote}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="9"
+                               TextWrapping="Wrap"
+                               Margin="0,8,0,0" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Text="{Binding PlanWarning}"
+                       Foreground="{DynamicResource WarningBrush}"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,10"
+                       Visibility="{Binding PlanWarning, Converter={StaticResource StringToVisibility}}" />
+            <TextBlock Text="{Binding ErrorMessage}"
+                       Foreground="{DynamicResource DangerBrush}"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,10"
+                       Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibility}}" />
+            <TextBlock Text="{Binding StatusMessage}"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,10"
+                       Visibility="{Binding StatusMessage, Converter={StaticResource StringToVisibility}}" />
+
+            <!-- 导出与进度：体积在开始按钮旁；进度条复用统一视觉与颜色规则。 -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{Binding EstimateText}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="11" />
+                            <TextBlock Text="{Binding ProgressStage}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       FontSize="11"
+                                       Margin="0,4,0,0"
+                                       Visibility="{Binding ProgressStage, Converter={StaticResource StringToVisibility}}" />
+                            <TextBlock Text="{Binding ProgressDetail}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="9"
+                                       Margin="0,2,0,0"
+                                       Visibility="{Binding ProgressDetail, Converter={StaticResource StringToVisibility}}" />
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Content="{Binding StartText}"
+                                Command="{Binding StartExportCommand}"
+                                Style="{StaticResource PrimaryButton}"
+                                MinWidth="120"
+                                VerticalAlignment="Center"
+                                AutomationProperties.Name="{Binding StartText}" />
+                    </Grid>
+
+                    <ProgressBar Style="{StaticResource ExportProgressBar}"
+                                 Minimum="0"
+                                 Maximum="100"
+                                 Value="{Binding ProgressValue}"
+                                 IsIndeterminate="{Binding ProgressIndeterminate}"
+                                 Margin="0,14,0,0"
+                                 Visibility="{Binding ShowProgress, Converter={StaticResource BoolToVisibility}}" />
+
+                    <!-- 结果：路径、大小、跳过项与打开位置。 -->
+                    <StackPanel Margin="0,14,0,0"
+                                Visibility="{Binding HasResult, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{Binding ResultTitle}" Style="{StaticResource SectionText}" />
+                        <TextBlock Text="{Binding ResultSummary}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0" />
+                        <TextBlock Text="{Binding ResultPath}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0" />
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <TextBlock Text="{Binding ResultSize}" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" />
+                            <TextBlock Text=" · " FontSize="10" Foreground="{DynamicResource TextMutedBrush}" />
+                            <TextBlock Text="{Binding ResultFiles}" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" />
+                        </StackPanel>
+                        <Button Content="{Binding OpenFolderText}"
+                                Command="{Binding OpenFolderCommand}"
+                                Style="{StaticResource ToolbarButton}"
+                                HorizontalAlignment="Left"
+                                Margin="0,8,0,0" />
+
+                        <StackPanel Margin="0,12,0,0"
+                                    Visibility="{Binding HasSkipped, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="{Binding SkippedTitle}"
+                                       Foreground="{DynamicResource WarningBrush}"
+                                       FontSize="10"
+                                       FontFamily="{StaticResource UiMediumFontFamily}" />
+                            <ItemsControl ItemsSource="{Binding Skipped}" Margin="0,4,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,2,0,0">
+                                            <TextBlock Text="{Binding RelativePath}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="10"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding ReasonText}"
+                                                       Foreground="{DynamicResource WarningBrush}"
+                                                       FontSize="9"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding DetailText}"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       FontSize="9"
+                                                       TextWrapping="Wrap"
+                                                       Visibility="{Binding HasDetail, Converter={StaticResource BoolToVisibility}}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -85,6 +85,7 @@ public partial class App : Application
             services.AddSingleton<ContentPackPageFactory>();
             services.AddSingleton<ScreenshotPageFactory>();
             services.AddSingleton<SchematicPageFactory>();
+            services.AddSingleton<ExportPageFactory>();
             services.AddSingleton<HomeViewModel>();
             services.AddSingleton<DownloadViewModel>();
             services.AddSingleton<SettingsViewModel>();
