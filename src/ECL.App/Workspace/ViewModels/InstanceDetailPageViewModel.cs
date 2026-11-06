@@ -146,8 +146,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
             ResourcePacks.InitializeAsync(),
             Shaders.InitializeAsync(),
             Screenshots.InitializeAsync(),
-            Schematics.InitializeAsync(),
-            Export.InitializeAsync());
+            Schematics.InitializeAsync());
 
     /// <summary>
     /// 受控变更成功后重新读取实例并刷新工作区身份（B2 步骤 3b-4b）：

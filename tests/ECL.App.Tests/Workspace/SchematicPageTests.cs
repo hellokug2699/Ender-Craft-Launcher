@@ -103,6 +103,9 @@ public sealed class SchematicPageTests
             batch.Select(path => path.Replace('\\', '/')));
         Assert.Empty(page.Items);
         Assert.Contains("已删除 2", page.StatusMessage);
+        Assert.Equal(0, page.SelectedCount);
+        Assert.False(page.DeleteSelectedCommand.CanExecute(null));
+        Assert.Equal("删除", page.DeleteButtonText);
     }
 
     [Fact]

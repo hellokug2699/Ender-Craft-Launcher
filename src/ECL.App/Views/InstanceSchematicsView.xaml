@@ -27,18 +27,18 @@
         <DataTemplate x:Key="SchematicRowTemplate">
             <Grid MinHeight="46" Margin="10,0" ToolTip="{Binding FullPathHint}">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="66" />
+                    <ColumnDefinition Width="54" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="150" />
-                    <ColumnDefinition Width="130" />
-                    <ColumnDefinition Width="90" />
-                    <ColumnDefinition Width="44" />
+                    <ColumnDefinition Width="110" />
+                    <ColumnDefinition Width="110" />
+                    <ColumnDefinition Width="76" />
+                    <ColumnDefinition Width="40" />
                 </Grid.ColumnDefinitions>
 
                 <!-- 文件类型徽标：没有真实三维缩略图时使用格式标识，不伪造预览图。 -->
                 <Border Grid.Column="0"
-                        Width="50"
-                        Height="28"
+                        Width="44"
+                        Height="26"
                         CornerRadius="6"
                         Background="{DynamicResource SurfaceAltBrush}"
                         BorderBrush="{DynamicResource BorderSoftBrush}"
@@ -338,28 +338,34 @@
                     </controls:PageStateView>
 
                     <StackPanel Visibility="{Binding HasItems, Converter={StaticResource BoolToVisibility}}">
-                        <Grid Margin="10,16,10,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="66" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="130" />
-                                <ColumnDefinition Width="90" />
-                                <ColumnDefinition Width="44" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="{loc:Loc Key=schematics.column.type}" Style="{StaticResource SchematicTableHeaderText}" />
-                            <TextBlock Grid.Column="1" Text="{loc:Loc Key=schematics.column.name}" Style="{StaticResource SchematicTableHeaderText}" Margin="6,0,12,0" />
-                            <TextBlock Grid.Column="2" Text="{loc:Loc Key=schematics.column.format}" Style="{StaticResource SchematicTableHeaderText}" />
-                            <TextBlock Grid.Column="3" Text="{loc:Loc Key=schematics.column.time}" Style="{StaticResource SchematicTableHeaderText}" />
-                            <TextBlock Grid.Column="4" Text="{loc:Loc Key=schematics.column.size}" Style="{StaticResource SchematicTableHeaderText}" />
-                            <TextBlock Grid.Column="5" Text="{loc:Loc Key=schematics.column.select}" Style="{StaticResource SchematicTableHeaderText}" HorizontalAlignment="Center" />
-                        </Grid>
-                        <ListBox ItemsSource="{Binding Items}"
-                                 ItemTemplate="{StaticResource SchematicRowTemplate}"
-                                 MaxHeight="560"
-                                 VirtualizingPanel.IsVirtualizing="True"
-                                 VirtualizingPanel.VirtualizationMode="Recycling"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Disabled"
+                                      Margin="0,16,0,0">
+                            <StackPanel MinWidth="560">
+                                <Grid Margin="10,0,10,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="54" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{loc:Loc Key=schematics.column.type}" Style="{StaticResource SchematicTableHeaderText}" />
+                                    <TextBlock Grid.Column="1" Text="{loc:Loc Key=schematics.column.name}" Style="{StaticResource SchematicTableHeaderText}" Margin="6,0,12,0" />
+                                    <TextBlock Grid.Column="2" Text="{loc:Loc Key=schematics.column.format}" Style="{StaticResource SchematicTableHeaderText}" />
+                                    <TextBlock Grid.Column="3" Text="{loc:Loc Key=schematics.column.time}" Style="{StaticResource SchematicTableHeaderText}" />
+                                    <TextBlock Grid.Column="4" Text="{loc:Loc Key=schematics.column.size}" Style="{StaticResource SchematicTableHeaderText}" />
+                                    <TextBlock Grid.Column="5" Text="{loc:Loc Key=schematics.column.select}" Style="{StaticResource SchematicTableHeaderText}" HorizontalAlignment="Center" />
+                                </Grid>
+                                <ListBox ItemsSource="{Binding Items}"
+                                         ItemTemplate="{StaticResource SchematicRowTemplate}"
+                                         MaxHeight="560"
+                                         VirtualizingPanel.IsVirtualizing="True"
+                                         VirtualizingPanel.VirtualizationMode="Recycling"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                            </StackPanel>
+                        </ScrollViewer>
                     </StackPanel>
                 </StackPanel>
             </Border>

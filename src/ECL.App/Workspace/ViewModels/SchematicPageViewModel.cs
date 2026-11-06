@@ -525,6 +525,12 @@ public sealed partial class SchematicPageViewModel : ObservableObject, IDisposab
         OnPropertyChanged(nameof(HasItems));
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(CountText));
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(HasSelection));
+        OnPropertyChanged(nameof(SelectedSizeText));
+        OnPropertyChanged(nameof(DeleteButtonText));
+        OnPropertyChanged(nameof(SelectionSummary));
+        DeleteSelectedCommand.NotifyCanExecuteChanged();
     }
 
     private static string FormatSupportViewModelStateKey(SchematicSupportState state) =>

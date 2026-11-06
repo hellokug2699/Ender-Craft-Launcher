@@ -578,9 +578,15 @@ public sealed partial class ScreenshotPageViewModel : ObservableObject, IDisposa
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(CountText));
         OnPropertyChanged(nameof(TotalSizeText));
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(HasSelection));
+        OnPropertyChanged(nameof(SelectedSizeText));
+        OnPropertyChanged(nameof(DeleteButtonText));
+        OnPropertyChanged(nameof(SelectionSummary));
         OnPropertyChanged(nameof(CanGoPrevious));
         OnPropertyChanged(nameof(CanGoNext));
         OnPropertyChanged(nameof(PreviewOfText));
+        DeleteSelectedCommand.NotifyCanExecuteChanged();
     }
 
     private void NotifyPreviewNavigation()

@@ -111,18 +111,18 @@
                   MouseLeftButtonUp="ScreenshotRow_MouseLeftButtonUp"
                   AutomationProperties.Name="{Binding FileName}">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="104" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="150" />
                     <ColumnDefinition Width="100" />
-                    <ColumnDefinition Width="44" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="118" />
+                    <ColumnDefinition Width="82" />
+                    <ColumnDefinition Width="40" />
                 </Grid.ColumnDefinitions>
 
                 <ContentControl Grid.Column="0"
                                 Content="{Binding}"
                                 ContentTemplate="{StaticResource ScreenshotThumbnail}"
-                                Width="92"
-                                Height="58"
+                                Width="88"
+                                Height="56"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Center" />
                 <TextBlock Grid.Column="1"
@@ -227,14 +227,8 @@
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <!-- 工具条：展示形式、排序、全选与计数；删除按钮不在这里（位于图片区域之外）。 -->
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-
-                            <StackPanel Orientation="Horizontal">
+                        <WrapPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
                                 <Button Content="{Binding ViewListText}"
                                         Command="{Binding UseListModeCommand}"
                                         Style="{StaticResource ListModeButton}"
@@ -248,9 +242,7 @@
                                         Style="{StaticResource MinimalModeButton}" />
                             </StackPanel>
 
-                            <StackPanel Grid.Column="1"
-                                        Orientation="Horizontal"
-                                        HorizontalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
                                 <Button Content="{Binding SortNewestText}"
                                         Command="{Binding SortNewestCommand}"
                                         Style="{StaticResource SortButton}"
@@ -260,7 +252,7 @@
                                         Style="{StaticResource SortOldButton}" />
                             </StackPanel>
 
-                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding CountText}"
                                            Foreground="{DynamicResource TextMutedBrush}"
                                            FontSize="10"
@@ -274,7 +266,7 @@
                                         Style="{StaticResource ToolbarButton}"
                                         Margin="6,0,0,0" />
                             </StackPanel>
-                        </Grid>
+                        </WrapPanel>
 
                         <TextBlock Text="{Binding SelectionSummary}"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
@@ -325,31 +317,37 @@
                             </controls:PageStateView.ActionContent>
                         </controls:PageStateView>
 
-                        <!-- 列表模式 -->
+                        <!-- 列表模式：窄窗口下表格内部横向滚动，页面本身不产生横向溢出。 -->
                         <StackPanel Visibility="{Binding IsListView, Converter={StaticResource BoolToVisibility}}">
-                            <Grid Margin="10,16,10,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="104" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="150" />
-                                    <ColumnDefinition Width="100" />
-                                    <ColumnDefinition Width="44" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="{loc:Loc Key=screenshots.column.thumbnail}" Style="{StaticResource ScreenshotTableHeaderText}" />
-                                <TextBlock Grid.Column="1" Text="{loc:Loc Key=screenshots.column.name}" Style="{StaticResource ScreenshotTableHeaderText}" Margin="8,0,12,0" />
-                                <TextBlock Grid.Column="2" Text="{loc:Loc Key=screenshots.column.time}" Style="{StaticResource ScreenshotTableHeaderText}" />
-                                <TextBlock Grid.Column="3" Text="{loc:Loc Key=screenshots.column.size}" Style="{StaticResource ScreenshotTableHeaderText}" />
-                                <TextBlock Grid.Column="4" Text="{loc:Loc Key=screenshots.column.select}" Style="{StaticResource ScreenshotTableHeaderText}" HorizontalAlignment="Center" />
-                            </Grid>
-                            <ListBox x:Name="ScreenshotList"
-                                     ItemsSource="{Binding Items}"
-                                     ItemTemplate="{StaticResource ScreenshotListRow}"
-                                     MaxHeight="560"
-                                     VirtualizingPanel.IsVirtualizing="True"
-                                     VirtualizingPanel.VirtualizationMode="Recycling"
-                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                     PreviewKeyDown="ScreenshotList_PreviewKeyDown"
-                                     Visibility="{Binding HasItems, Converter={StaticResource BoolToVisibility}}" />
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Disabled"
+                                          Margin="0,16,0,0">
+                                <StackPanel MinWidth="520">
+                                    <Grid Margin="10,0,10,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="100" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="118" />
+                                            <ColumnDefinition Width="82" />
+                                            <ColumnDefinition Width="40" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{loc:Loc Key=screenshots.column.thumbnail}" Style="{StaticResource ScreenshotTableHeaderText}" />
+                                        <TextBlock Grid.Column="1" Text="{loc:Loc Key=screenshots.column.name}" Style="{StaticResource ScreenshotTableHeaderText}" Margin="8,0,12,0" />
+                                        <TextBlock Grid.Column="2" Text="{loc:Loc Key=screenshots.column.time}" Style="{StaticResource ScreenshotTableHeaderText}" />
+                                        <TextBlock Grid.Column="3" Text="{loc:Loc Key=screenshots.column.size}" Style="{StaticResource ScreenshotTableHeaderText}" />
+                                        <TextBlock Grid.Column="4" Text="{loc:Loc Key=screenshots.column.select}" Style="{StaticResource ScreenshotTableHeaderText}" HorizontalAlignment="Center" />
+                                    </Grid>
+                                    <ListBox x:Name="ScreenshotList"
+                                             ItemsSource="{Binding Items}"
+                                             ItemTemplate="{StaticResource ScreenshotListRow}"
+                                             MaxHeight="560"
+                                             VirtualizingPanel.IsVirtualizing="True"
+                                             VirtualizingPanel.VirtualizationMode="Recycling"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             PreviewKeyDown="ScreenshotList_PreviewKeyDown"
+                                             Visibility="{Binding HasItems, Converter={StaticResource BoolToVisibility}}" />
+                                </StackPanel>
+                            </ScrollViewer>
                         </StackPanel>
 
                         <!-- 方格模式：每行五张。 -->

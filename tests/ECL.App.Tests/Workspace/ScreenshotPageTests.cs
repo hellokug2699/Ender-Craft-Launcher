@@ -98,6 +98,10 @@ public sealed class ScreenshotPageTests
             batch.Select(path => path.Replace('\\', '/')));
         Assert.Empty(page.Items);
         Assert.Contains("已删除 3", page.StatusMessage);
+        // 重新加载后选择状态必须与真实列表同步，不能保留已删除条目的计数。
+        Assert.Equal(0, page.SelectedCount);
+        Assert.False(page.DeleteSelectedCommand.CanExecute(null));
+        Assert.Equal("删除", page.DeleteButtonText);
     }
 
     [Fact]

@@ -113,6 +113,7 @@ public sealed partial class InstanceExportViewModel : ObservableObject, IDisposa
     private readonly ILocalizer _localizer;
     private readonly Action<string>? _openFolder;
     private InstanceExportPlan? _plan;
+    private bool _initialized;
 
     public InstanceExportViewModel(
         string instanceId,
@@ -304,11 +305,12 @@ public sealed partial class InstanceExportViewModel : ObservableObject, IDisposa
 
     public async Task InitializeAsync()
     {
-        if (IsDisposed)
+        if (IsDisposed || _initialized)
         {
             return;
         }
 
+        _initialized = true;
         await LoadPlanAsync().ConfigureAwait(true);
     }
 
@@ -514,7 +516,7 @@ public sealed partial class InstanceExportViewModel : ObservableObject, IDisposa
         State = ExportUiState.Completed;
         ProgressValue = 100;
         ProgressIndeterminate = false;
-        ProgressStage = _localizer.Get("export.stage.finish");
+        ProgressStage = string.Empty;
         ProgressDetail = string.Empty;
         NotifyState();
     }
@@ -557,10 +559,32 @@ public sealed partial class InstanceExportViewModel : ObservableObject, IDisposa
 
     private void RecomputeEstimate()
     {
+        // 上一次导出的结果只对应当时的模式与类别；配置变化后不得继续显示为“当前结果”。
+        if (Report is not null && !IsBusy)
+        {
+            ClearResult();
+        }
+
         OnPropertyChanged(nameof(EstimateText));
         OnPropertyChanged(nameof(SelectedFilesText));
         OnPropertyChanged(nameof(HasSelection));
         StartExportCommand.NotifyCanExecuteChanged();
+    }
+
+    private void ClearResult()
+    {
+        Report = null;
+        Skipped.Clear();
+        ResultPath = string.Empty;
+        ResultSize = string.Empty;
+        ResultFiles = string.Empty;
+        ResultSummary = string.Empty;
+        State = ExportUiState.Idle;
+        ProgressValue = 0;
+        ProgressIndeterminate = true;
+        ProgressStage = string.Empty;
+        ProgressDetail = string.Empty;
+        NotifyState();
     }
 
     private void NotifyState()

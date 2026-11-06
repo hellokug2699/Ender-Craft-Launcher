@@ -170,6 +170,23 @@ public sealed class ExportPageTests
     }
 
     [Fact]
+    public async Task ChangingModeAfterExportClearsTheStaleResult()
+    {
+        var service = new FakeExportService(Plan(), Report(complete: true, skipped: []));
+        var page = Create(service);
+        await page.InitializeAsync();
+        await page.StartExportCommand.ExecuteAsync(null);
+        Assert.True(page.HasResult);
+        Assert.True(page.IsCompleted);
+
+        page.UseCustomModeCommand.Execute(null);
+
+        Assert.False(page.HasResult);
+        Assert.Equal(ExportUiState.Idle, page.State);
+        Assert.False(page.IsCompleted);
+    }
+
+    [Fact]
     public async Task ConfirmCancelDoesNotStartTheExport()
     {
         var service = new FakeExportService(Plan());
