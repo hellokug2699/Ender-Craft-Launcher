@@ -312,6 +312,52 @@
     `ScreenshotPageTests.cs`、`SchematicPageTests.cs`、`ExportPageTests.cs` 覆盖列表/选择/删除/预览/支持状态/
     导出模式/风险确认/估算/跳过与释放。实机见交接文档 §4（1500×950、1080×720、zh-CN/en-US）。
 
+### 2.6 下载中心与实例版本页（B4a-1）
+
+页面规格：`hints/ui/pages/download-instance-versions.md`。下载中心仍是主导航的 `download` 目的地，
+横向二级目录的唯一构造点是 `DownloadCategories.Create`（`DownloadViewModel` 同一文件），顺序固定为
+**实例版本、模组、整合包、资源包、光影包、数据包**；「游戏实例」更名为「实例版本」。
+二级页切换只清空内容发现区的结果，不重置实例版本页已配置的选择。
+
+- **实例版本页**（`InstanceVersionPageViewModel` + `Views/InstanceVersionPageView.xaml`，
+  经 `App.xaml` 的 DataTemplate 嵌在 `DownloadView` 内）：
+  - 第一行：游戏版本（只能从版本清单选择，不提供手输）、类型（正式版/快照版/愚人节版）、
+    实例名称、安装位置。第二行为加载器（无/Forge/NeoForge/Fabric/Cleanroom，选择项显示当前加载器
+    版本号）与加载器版本（版本 · 发布日期，来自 `ILoaderCatalog`）。
+  - Fabric 目标显示必装的 Fabric API 行（版本来自目录，可展开选择历史版本）与灰色背景提示
+    “安装Fabric必须同时安装Fabric api才能正常加载模组”；Forge/Cleanroom 目标显示 OptiFine 行，
+    默认「不安装」，只有用户显式选择才安装；其他组合不显示这两行，不渲染空控件。
+  - 每个下载项（Minecraft 游戏文件 / 加载器 / Fabric API / OptiFine）在卡片下方有一条状态线：
+    已完成绿、正在下载白、正在排队灰、下载失败红；未开始不画线，未参与本次部署的项显示「未选择」
+    并灰化。状态只来自安装服务真实上报的 `InstallStage`（Manifest/Version → Loader/Processors →
+    Client/Libraries/Assets/Logging → FabricApi → OptiFine），不虚构阶段。
+  - 总进度使用线性进度条与阶段文本；只有 `InstallProgress.TotalFiles > 0` 时才显示百分比，
+    否则只显示阶段与已完成数量。文件大小只在领域提供时显示（Fabric API 目录带字节数），
+    其余显示「大小未知」，不估算、不写 0。
+  - 「开始下载」调用 `IInstanceService.CreateAsync` 后立即用 `IVersionInstallService.InstallAsync`
+    部署同一个新实例；创建失败不进入安装，失败时保留已创建的实例并显示红色「查看错误信息」
+    与「重试失败的下载项」（重试只重跑安装，靠领域哈希校验续传/重下，不重新创建实例）。
+  - 实例名称重复时输入框出现红色边框并在下方显示「实例已存在，请换一个名字或换一个目录」，
+    重复名称不可提交；名称留空时沿用既有行为，用游戏版本作为默认名称。
+  - 全部下载完成后页面只保留「重新布置」：保留安装位置，其余选项（版本、类型、名称、加载器、
+    组件与下载项状态）清空，回到可配置新实例的状态。部署中与成功后所有配置控件禁用，
+    因此不可能同时下载两个实例。
+  - 页面不因切换二级页或关闭工作区而刷新；`ShellViewModel` 在进入 `download` 目的地时调用
+    `DownloadViewModel.ActivateAsync`（迁移规划 C-03 的首次激活），只刷新目标实例与位置登记，
+    不重置已配置的选择。
+  - UIA/无障碍名称只使用本地化标题（`DownloadTabViewModel`、`LoaderKindOption`、
+    `VersionChoiceViewModel` 等改写了 `ToString()`），不暴露记录类型的默认字符串。
+- **安装位置**：新建实例固定创建在主工作区（`IAppPaths.GameRoot`）。展开区列出 `IWorkspaceService`
+  已登记的所有根目录，主工作区标「当前安装位置」，外部目录标「只读来源」，并明确说明外部 Minecraft
+  目录不会接收新实例（ADR 0018 / 0046）；「添加目录」复用实例页面的目录登记弹窗
+  （`InstanceDirectoryDialogViewModel`），不另写一套选择逻辑。
+- **过渡区**：`DownloadView` 在实例版本页下方保留旧的「安装 / 补全已有实例」卡片并标注
+  “待 B4b 迁移到正式归属”，避免在实例安装的新归属落地前丢失现有能力；B4b 完成后移除。
+- 测试：`tests/ECL.App.Tests/Download/InstanceVersionPageTests.cs`（分类顺序、默认选择、类型过滤、
+  Fabric/Forge/NeoForge 条件组件、Cleanroom 限制、同名提交拦截、创建+安装顺序、真实阶段映射、
+  失败重试不重复创建、创建失败不安装、成功后必须重新布置、Fabric API 参数、版本目录失败、
+  安装位置只读来源）。实机见交接文档 §4（1500×950、1080×720、zh-CN/en-US）。
+
 ## 3. 共享页面控件（B0）
 B0 只提供 B1 立即需要的三个共享件，其余控件（`DataTable`、`StatusBanner`、`InlineProgress`、
 `SearchBox`、`FilterPill`、`SortSelector`、`SeverityBadge`、`MonoText`、扩展图标集）在第一个真实消费者批次实现，
@@ -480,5 +526,15 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
   导出任务固定在实例目录 `exports/`，不提供用户选择保存位置（按页面规格避免写入受保护目录）。
 - 数据包（`content.dataPacks`）页面尚未实现：它需要世界上下文（`WorldSaveService` 的世界目标与
   `level.dat` 数据包配置），本批不伪造实例级入口。
+- 下载中心的实例版本页固定把新实例创建在主工作区：已登记的外部 Minecraft 目录只作为只读来源列出，
+  不提供“安装到该目录”的选择。要支持多安装位置需要领域层面的新决策（新建实例目录与身份登记的边界），
+  当前如实说明而不是放置会悄悄写到别处的选择器。
+- 实例版本的安装项文件大小只在领域提供时显示（Fabric API 目录带字节数）；Minecraft 客户端、库、
+  资源与加载器在安装前没有可靠的字节数来源，因此统一显示「大小未知」，不按版本 JSON 或经验估算。
+- 下载失败时只提供“重试失败的下载项”，它重跑同一实例的安装并依赖领域哈希校验续传；领域没有
+  按单个产物重试的接口，因此不提供逐项重试的假按钮。关闭页面不会取消已开始的任务。
+- 打包模式（整合包在线下载/本地导入后进入实例版本页的整合包模式）属于 B4b；本批不伪造该模式，
+  实例版本页不显示会误导的整合包表单。
 - WPF 线程/Dispatcher、共享控件与输出管线测试位于仅 Windows 可运行的 `tests/ECL.App.Tests`；CI 在 Windows job 执行，
   Linux job 不运行该测试项目。
+
