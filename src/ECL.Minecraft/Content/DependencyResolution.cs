@@ -265,7 +265,7 @@ public sealed class DependencyResolver(
         var mod = matches[0];
         var loader = CurseForgeLoaders.FromInstanceLoader(context.Loader);
         var files = await curseForge
-            .GetFilesForModAsync(mod.Id, context.GameVersion, loader, 50, cancellationToken)
+            .GetFilesForModAsync(mod.Id, context.GameVersion, loader, 50, 0, cancellationToken)
             .ConfigureAwait(false);
         if (!files.IsSuccess)
         {

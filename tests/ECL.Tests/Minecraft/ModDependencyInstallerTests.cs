@@ -287,5 +287,21 @@ public sealed class ModDependencyInstallerTests
             IProgress<ContentProgress>? progress = null,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<Result<ContentInstallReport>> InstallVersionAsync(
+            string instanceId,
+            ContentHit hit,
+            ContentVersion version,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<Result<ContentDownloadReport>> DownloadVersionAsync(
+            ContentHit hit,
+            ContentVersion version,
+            string directory,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }

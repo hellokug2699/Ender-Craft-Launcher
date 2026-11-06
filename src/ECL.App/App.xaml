@@ -23,6 +23,7 @@
             <conv:LogLevelToBrushConverter x:Key="LogLevelBrush" />
             <conv:LoaderKindToBrushConverter x:Key="LoaderKindBrush" />
             <conv:DeploymentStatusToBrushConverter x:Key="DeploymentStatusBrush" />
+            <conv:ContentVersionStatusToBrushConverter x:Key="ContentVersionStatusBrush" />
 
             <!-- 页面 ViewModel → 视图映射；工作区只切换 DataContext，不直接构造视图。 -->
             <DataTemplate DataType="{x:Type vm:ToolsViewModel}">
@@ -37,6 +38,9 @@
             </DataTemplate>
             <DataTemplate DataType="{x:Type vm:InstanceVersionPageViewModel}">
                 <views:InstanceVersionPageView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:ContentDiscoveryViewModel}">
+                <views:ContentDiscoveryView />
             </DataTemplate>
             <DataTemplate DataType="{x:Type vm:InstancesViewModel}">
                 <views:InstancesView />
@@ -90,6 +94,12 @@
             </DataTemplate>
             <DataTemplate DataType="{x:Type dialogs:ModifyConfirmDialogViewModel}">
                 <dviews:ModifyConfirmDialogView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type dialogs:ContentDetailDialogViewModel}">
+                <dviews:ContentDetailDialogView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type dialogs:ContentTargetDialogViewModel}">
+                <dviews:ContentTargetDialogView />
             </DataTemplate>
         </ResourceDictionary>
     </Application.Resources>

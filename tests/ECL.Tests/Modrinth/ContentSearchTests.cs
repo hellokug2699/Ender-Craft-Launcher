@@ -3,6 +3,7 @@
 using Ecl.Minecraft.Content;
 using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Modrinth;
+using Ecl.Tests.CurseForge;
 using Xunit;
 
 namespace Ecl.Tests.Modrinth;
@@ -23,7 +24,7 @@ public sealed class ContentSearchTests
         var modrinth = new FakeModrinthClient();
         modrinth.SearchHits.Add(CreateModrinthHit("aaa", "jei", "JEI"));
         modrinth.SearchHits.Add(CreateModrinthHit("bbb", "sodium", "Sodium"));
-        var service = new ContentSearchService(curseForge, modrinth);
+        var service = new ContentSearchService(curseForge, new FakeCurseForgeClient(), modrinth);
 
         var result = await service.SearchAsync(new ContentSearchQuery
         {
@@ -51,7 +52,7 @@ public sealed class ContentSearchTests
             SearchResult = new CurseForgeSearchResult([CreateCurseForgeMod(1, "jei", "JEI")], 1, 0, 40),
         };
         var modrinth = new FakeModrinthClient();
-        var service = new ContentSearchService(curseForge, modrinth);
+        var service = new ContentSearchService(curseForge, new FakeCurseForgeClient(), modrinth);
 
         var result = await service.SearchAsync(new ContentSearchQuery
         {
@@ -71,7 +72,7 @@ public sealed class ContentSearchTests
         var curseForge = new FakeCurseForgeService();
         var modrinth = new FakeModrinthClient();
         modrinth.SearchHits.Add(CreateModrinthHit("aaa", "sodium", "Sodium"));
-        var service = new ContentSearchService(curseForge, modrinth);
+        var service = new ContentSearchService(curseForge, new FakeCurseForgeClient(), modrinth);
 
         var result = await service.SearchAsync(new ContentSearchQuery
         {
@@ -94,7 +95,7 @@ public sealed class ContentSearchTests
     {
         var curseForge = new FakeCurseForgeService();
         var modrinth = new FakeModrinthClient();
-        var service = new ContentSearchService(curseForge, modrinth);
+        var service = new ContentSearchService(curseForge, new FakeCurseForgeClient(), modrinth);
 
         await service.SearchAsync(new ContentSearchQuery
         {
@@ -110,6 +111,99 @@ public sealed class ContentSearchTests
         Assert.Equal(1, curseForge.SearchCalls);
     }
 
+    [Fact]
+    public async Task CurseForgeHitsCarryTheAuthorNamesFromTheSearchResponse()
+    {
+        var curseForge = new FakeCurseForgeService
+        {
+            SearchResult = new CurseForgeSearchResult([CreateCurseForgeMod(7, "jei", "JEI")], 1, 0, 40),
+        };
+        var service = new ContentSearchService(
+            curseForge,
+            new FakeCurseForgeClient(),
+            new FakeModrinthClient());
+
+        var result = await service.SearchAsync(new ContentSearchQuery
+        {
+            Kind = ContentKind.Mod,
+            Source = ContentSourceFilter.CurseForge,
+        });
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        Assert.Equal("Author 7", Assert.Single(result.Value!.Hits).Author);
+    }
+
+    [Fact]
+    public async Task SearchEnrichesPrimaryFileSizesFromOneBatchPerSource()
+    {
+        var curseForge = new FakeCurseForgeService
+        {
+            SearchResult = new CurseForgeSearchResult(
+                [
+                    new CurseForgeMod
+                    {
+                        Id = 1,
+                        Slug = "jei",
+                        Name = "JEI",
+                        LatestFilesIndexes =
+                        [
+                            new CurseForgeFileIndex
+                            {
+                                FileId = 10,
+                                GameVersion = "1.21.1",
+                                ReleaseType = 1,
+                                ModLoader = (int)CurseForgeModLoader.Fabric,
+                            },
+                        ],
+                    },
+                ],
+                1,
+                0,
+                40),
+        };
+        var curseForgeClient = new FakeCurseForgeClient();
+        curseForgeClient.Files[10] = new CurseForgeFile
+        {
+            Id = 10,
+            ModId = 1,
+            FileName = "jei.jar",
+            FileLength = 4096,
+            GameVersions = ["1.21.1"],
+        };
+        var modrinth = new FakeModrinthClient();
+        modrinth.SearchHits.Add(CreateModrinthHit("aaa", "sodium", "Sodium") with { LatestVersion = "v1" });
+        modrinth.VersionsById["v1"] = new ModrinthVersion
+        {
+            Id = "v1",
+            ProjectId = "aaa",
+            VersionNumber = "1.0",
+            Files =
+            [
+                new ModrinthFile
+                {
+                    Filename = "sodium.jar",
+                    Url = "https://cdn.modrinth.com/data/aaa/versions/v1/sodium.jar",
+                    Primary = true,
+                    Size = 2048,
+                },
+            ],
+        };
+        var service = new ContentSearchService(curseForge, curseForgeClient, modrinth);
+
+        var result = await service.SearchAsync(new ContentSearchQuery
+        {
+            Kind = ContentKind.Mod,
+            Source = ContentSourceFilter.All,
+        });
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        var curseForgeHit = result.Value!.Hits.Single(hit => hit.Source == ContentSource.CurseForge);
+        var modrinthHit = result.Value.Hits.Single(hit => hit.Source == ContentSource.Modrinth);
+        Assert.Equal(4096, curseForgeHit.FileSize);
+        Assert.Equal(2048, modrinthHit.FileSize);
+        Assert.True(curseForgeClient.GetFilesCalls > 0);
+    }
+
     private static CurseForgeMod CreateCurseForgeMod(int id, string slug, string name) => new()
     {
         Id = id,
@@ -117,6 +211,7 @@ public sealed class ContentSearchTests
         Name = name,
         Summary = "CurseForge project",
         DownloadCount = 100,
+        Authors = [new CurseForgeModAuthor { Id = id, Name = $"Author {id}" }],
     };
 
     private static ModrinthSearchHit CreateModrinthHit(string id, string slug, string title) => new()

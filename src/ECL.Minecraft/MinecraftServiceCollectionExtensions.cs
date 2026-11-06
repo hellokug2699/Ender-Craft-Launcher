@@ -73,6 +73,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<ICurseForgeService, CurseForgeService>();
         services.AddSingleton<IModrinthClient, ModrinthClient>();
         services.AddSingleton<IContentSearchService, ContentSearchService>();
+        services.AddSingleton<IContentVersionCatalog, ContentVersionCatalog>();
         services.AddSingleton<IDependencyResolver, DependencyResolver>();
         services.AddSingleton<IContentInstallService, ContentInstallService>();
         services.AddSingleton<IContentPackService, ContentPackService>();

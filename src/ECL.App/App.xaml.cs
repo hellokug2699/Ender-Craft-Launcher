@@ -88,6 +88,7 @@ public partial class App : Application
             services.AddSingleton<ExportPageFactory>();
             services.AddSingleton<HomeViewModel>();
             services.AddSingleton<InstanceVersionPageViewModel>();
+            services.AddSingleton<ContentDiscoveryPageFactory>();
             services.AddSingleton<DownloadViewModel>();
             services.AddSingleton<SettingsViewModel>();
             services.AddSingleton<JavaManagementViewModel>();

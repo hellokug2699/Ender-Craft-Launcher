@@ -84,6 +84,16 @@ public sealed record CurseForgeModAsset
     public string? Url { get; init; }
 }
 
+/// <summary>CurseForge 项目作者（<c>/v1/mods/search</c> 的 authors 字段）。</summary>
+public sealed record CurseForgeModAuthor
+{
+    public int Id { get; init; }
+
+    public string Name { get; init; } = string.Empty;
+
+    public string? Url { get; init; }
+}
+
 public sealed record CurseForgeFileIndex
 {
     public string? GameVersion { get; init; }
@@ -119,6 +129,9 @@ public sealed record CurseForgeMod
     public CurseForgeModLinks? Links { get; init; }
 
     public CurseForgeModAsset? Logo { get; init; }
+
+    /// <summary>项目作者列表；搜索结果通常返回一个或多个作者，缺失时保持空列表。</summary>
+    public IReadOnlyList<CurseForgeModAuthor> Authors { get; init; } = [];
 
     public IReadOnlyList<CurseForgeFileIndex> LatestFilesIndexes { get; init; } = [];
 

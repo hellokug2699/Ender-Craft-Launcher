@@ -1,0 +1,75 @@
+<UserControl x:Class="Ecl.App.Dialogs.Views.ContentTargetDialogView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        「安装到其他位置」目标选择。已登记实例始终可选；只有模组允许再选择目录
+        （资源包/光影包/数据包必须安装到已登记实例）。
+    -->
+    <StackPanel Margin="20,0,20,18">
+        <TextBlock Text="{Binding InstanceSectionText}" Style="{StaticResource LabelText}" />
+        <ListBox ItemsSource="{Binding Instances}"
+                 SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
+                 BorderThickness="0"
+                 Background="Transparent"
+                 MaxHeight="200"
+                 MinHeight="60"
+                 Visibility="{Binding HasInstances, Converter={StaticResource BoolToVisibility}}">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Margin="0,4">
+                        <TextBlock Text="{Binding Name}"
+                                   FontSize="12"
+                                   Style="{StaticResource EmphasisText}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Meta}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+        <TextBlock Text="{Binding EmptyText}"
+                   FontSize="10"
+                   Foreground="{DynamicResource TextMutedBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,4,0,0"
+                   Visibility="{Binding HasInstances, Converter={StaticResource InverseBoolToVisibility}}" />
+
+        <StackPanel Margin="0,12,0,0"
+                    Visibility="{Binding AllowDirectory, Converter={StaticResource BoolToVisibility}}">
+            <TextBlock Text="{Binding DirectoryHintText}"
+                       FontSize="10"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       TextWrapping="Wrap" />
+            <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button Content="{Binding DirectoryButtonText}"
+                        Command="{Binding PickDirectoryCommand}"
+                        Style="{StaticResource GhostButton}" />
+                <TextBlock Grid.Column="2"
+                           Text="{Binding PickedDirectoryText}"
+                           FontSize="10"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding PickedDirectoryText}" />
+            </Grid>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="{Binding CancelText}"
+                    Command="{Binding CancelCommand}"
+                    Style="{StaticResource GhostButton}"
+                    Margin="0,0,8,0" />
+            <Button Content="{Binding ConfirmText}"
+                    Command="{Binding ConfirmCommand}"
+                    Style="{StaticResource PrimaryButton}"
+                    IsEnabled="{Binding CanConfirm}" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

@@ -3,10 +3,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Ecl.App.Services;
-using Ecl.Core;
 using Ecl.Core.Localization;
-using Ecl.Download;
 using Ecl.Minecraft.Content;
 using Ecl.Minecraft.Instances;
 
@@ -16,137 +13,57 @@ namespace Ecl.App.ViewModels;
 /// “下载”页（下载中心）：横向二级目录固定为实例版本、模组、整合包、资源包、光影包、数据包
 /// （`download-instance-versions.md` §1）。
 /// <para>
-/// 实例版本页由 <see cref="InstanceVersion"/> 独立持有页面状态；模组/整合包/资源包/光影包/数据包
-/// 共用内容发现区（搜索、来源、目标实例、条级结果）。切换二级页不重置实例版本页的已配置状态。
+/// 实例版本页由 <see cref="InstanceVersion"/> 独立持有页面状态；其余五个分类由各自的内容发现页
+/// （<see cref="ContentPages"/>）承载，切换二级页只清空该页的旧结果，不影响其它分类的已配置状态。
 /// </para>
 /// </summary>
 public sealed partial class DownloadViewModel : ObservableObject
 {
-    private readonly IContentSearchService _search;
-    private readonly IContentInstallService _install;
     private readonly IInstanceService _instances;
-    private readonly IDialogService _dialogs;
     private readonly ILocalizer _localizer;
-    private readonly IDownloadController _downloads;
     private bool _initialized;
     private bool _suppressInstanceFilter;
-    private bool _suppressTabSearch;
 
     public InstancesViewModel Game { get; }
 
     public InstanceVersionPageViewModel InstanceVersion { get; }
 
+    /// <summary>内容发现页按二级目录顺序持有：实例版本之外的五个分类。</summary>
+    public IReadOnlyList<ContentDiscoveryViewModel> ContentPages { get; }
+
     public ObservableCollection<DownloadTabViewModel> Tabs { get; } = [];
 
-    public ObservableCollection<ContentSourceChoice> Sources { get; } = [];
-
     public ObservableCollection<ContentInstanceChoice> TargetInstances { get; } = [];
-
-    public ObservableCollection<LoaderFilterChoice> LoaderFilters { get; } = [];
-
-    public ObservableCollection<ContentHitViewModel> Results { get; } = [];
 
     [ObservableProperty]
     private DownloadTabViewModel? _selectedTab;
 
     [ObservableProperty]
-    private ContentSourceChoice? _selectedSource;
-
-    [ObservableProperty]
     private ContentInstanceChoice? _selectedInstance;
-
-    [ObservableProperty]
-    private LoaderFilterChoice? _selectedLoaderFilter;
-
-    [ObservableProperty]
-    private ContentHitViewModel? _selectedResult;
-
-    [ObservableProperty]
-    private string _query = string.Empty;
-
-    [ObservableProperty]
-    private string _gameVersion = string.Empty;
-
-    [ObservableProperty]
-    private string _statusMessage = string.Empty;
-
-    [ObservableProperty]
-    private string _resultSummary = string.Empty;
-
-    [ObservableProperty]
-    private string _searchWarnings = string.Empty;
-
-    [ObservableProperty]
-    private string _reportText = string.Empty;
-
-    [ObservableProperty]
-    private bool _hasReport;
-
-    [ObservableProperty]
-    private bool _isSearching;
-
-    [ObservableProperty]
-    private bool _isBusy;
-
-    [ObservableProperty]
-    private bool _showProgress;
-
-    [ObservableProperty]
-    private bool _progressIndeterminate;
-
-    [ObservableProperty]
-    private double _progressValue;
-
-    [ObservableProperty]
-    private string _progressText = string.Empty;
-
-    [ObservableProperty]
-    private string _downloadSpeedText = string.Empty;
-
-    [ObservableProperty]
-    private bool _canPauseDownload;
-
-    [ObservableProperty]
-    private bool _isDownloadPaused;
-
-    [ObservableProperty]
-    private string _downloadPauseButtonText = string.Empty;
 
     public bool IsGameTab => SelectedTab?.Kind is null;
 
     public bool IsContentTab => !IsGameTab;
 
-    public bool IsModpackTab => SelectedTab?.Kind == ContentKind.ModPack;
-
-    public bool HasSelectedResult => SelectedResult is not null;
-
-    public bool CanInstallToInstance => SelectedResult is not null && SelectedInstance?.Id is not null;
+    public ContentDiscoveryViewModel? SelectedContentPage => SelectedTab?.Kind is { } kind
+        ? ContentPages.FirstOrDefault(page => page.Kind == kind)
+        : null;
 
     public bool HasTargetInstance => SelectedInstance?.Id is not null;
-
-    public bool CanCreateInstanceFromPack => IsModpackTab && SelectedResult is not null;
-
 
     public string TargetInstanceHint => SelectedInstance?.Id is null
         ? _localizer.Get("downloads.noInstanceHint")
         : _localizer.Get("downloads.instanceHint", SelectedInstance.Name);
 
     public DownloadViewModel(
-        IContentSearchService search,
-        IContentInstallService install,
         IInstanceService instances,
         InstancesViewModel game,
         InstanceVersionPageViewModel instanceVersion,
-        IDialogService dialogs,
-        ILocalizer localizer,
-        IDownloadController downloads)
+        ContentDiscoveryPageFactory pageFactory,
+        ILocalizer localizer)
     {
-        _search = search;
-        _install = install;
         _instances = instances;
-        _dialogs = dialogs;
         _localizer = localizer;
-        _downloads = downloads;
         Game = game;
         InstanceVersion = instanceVersion;
 
@@ -157,21 +74,7 @@ public sealed partial class DownloadViewModel : ObservableObject
         }
 
         _selectedTab = Tabs[0];
-
-        Sources.Add(new ContentSourceChoice(ContentSourceFilter.All, localizer.Get("downloads.source.all")));
-        Sources.Add(new ContentSourceChoice(ContentSourceFilter.CurseForge, localizer.Get("downloads.source.curseforge")));
-        Sources.Add(new ContentSourceChoice(ContentSourceFilter.Modrinth, localizer.Get("downloads.source.modrinth")));
-        _selectedSource = Sources[0];
-
-        LoaderFilters.Add(new LoaderFilterChoice(null, localizer.Get("downloads.loader.any")));
-        LoaderFilters.Add(new LoaderFilterChoice("vanilla", localizer.Get("instances.loader.vanilla")));
-        LoaderFilters.Add(new LoaderFilterChoice("fabric", localizer.Get("instances.loader.fabric")));
-        LoaderFilters.Add(new LoaderFilterChoice("forge", localizer.Get("instances.loader.forge")));
-        LoaderFilters.Add(new LoaderFilterChoice("neoforge", localizer.Get("instances.loader.neoforge")));
-        LoaderFilters.Add(new LoaderFilterChoice("quilt", "Quilt"));
-        _selectedLoaderFilter = LoaderFilters[0];
-
-        DownloadPauseButtonText = localizer.Get("instances.download.pause");
+        ContentPages = pageFactory.CreateAll();
     }
 
     public async Task InitializeAsync()
@@ -195,48 +98,36 @@ public sealed partial class DownloadViewModel : ObservableObject
         OpenContentBrowserAsync(instanceId, ContentKind.Mod, query);
 
     /// <summary>
-    /// 从实例工作区的资源包/光影包页打开本页（resource-library-template.md §2「下载 xxx」）：
+    /// 从实例工作区的资源包/光影包页打开本页（resource-library-template.md §5「下载 xxx」）：
     /// 切到对应内容页签，并按已有实例目标模式带入稳定 InstanceId 与该实例的版本/加载器。
-    /// 只负责上下文传递；下载页的“已有实例模式”可见开关与锁定界面属于 B4。
     /// </summary>
     public async Task OpenContentBrowserAsync(string instanceId, ContentKind kind, string? query)
     {
         await RefreshInstancesAsync().ConfigureAwait(true);
 
-        // 切换页签会触发现有搜索；这里先屏蔽，等实例与搜索词都就位后统一检索。
-        _suppressTabSearch = true;
-        try
+        var page = ContentPages.FirstOrDefault(item => item.Kind == kind);
+        if (page is null)
         {
-            SelectedTab = Tabs.FirstOrDefault(tab => tab.Kind == kind) ?? Tabs[0];
-        }
-        finally
-        {
-            _suppressTabSearch = false;
-        }
-
-        var target = TargetInstances.FirstOrDefault(item =>
-            string.Equals(item.Id, instanceId, StringComparison.Ordinal));
-        if (target is null)
-        {
-            SelectedInstance = TargetInstances[0];
-            Results.Clear();
-            ResultSummary = string.Empty;
-            SelectedResult = null;
-            StatusMessage = _localizer.Get("downloads.instanceMissing");
             return;
         }
 
-        Query = query ?? string.Empty;
-        SelectedInstance = target;
-        await SearchAsync().ConfigureAwait(true);
+        SelectedTab = Tabs.FirstOrDefault(tab => tab.Kind == kind) ?? Tabs[0];
+        await page.ActivateForInstanceAsync(instanceId, query).ConfigureAwait(true);
     }
 
+    /// <summary>每次进入下载目的地时刷新目标实例与当前分类的实例列表，不重置已配置的筛选。</summary>
     public async Task ActivateAsync()
     {
-        if (_initialized)
+        if (!_initialized)
         {
-            await RefreshInstancesAsync().ConfigureAwait(true);
-            await InstanceVersion.RefreshAsync().ConfigureAwait(true);
+            return;
+        }
+
+        await RefreshInstancesAsync().ConfigureAwait(true);
+        await InstanceVersion.RefreshAsync().ConfigureAwait(true);
+        if (SelectedContentPage is { } page)
+        {
+            await page.ActivateAsync().ConfigureAwait(true);
         }
     }
 
@@ -261,73 +152,14 @@ public sealed partial class DownloadViewModel : ObservableObject
             }
 
             SelectedInstance = TargetInstances.FirstOrDefault(item => item.Id == selectedId) ?? TargetInstances[0];
-            OnPropertyChanged(nameof(TargetInstanceHint));
         }
         finally
         {
             _suppressInstanceFilter = false;
         }
-    }
 
-    [RelayCommand]
-    private async Task SearchAsync()
-    {
-        if (SelectedTab?.Kind is not { } kind || IsSearching)
-        {
-            return;
-        }
-
-        IsSearching = true;
-        StatusMessage = _localizer.Get("downloads.searching");
-        SearchWarnings = string.Empty;
-        try
-        {
-            var result = await _search
-                .SearchAsync(new ContentSearchQuery
-                {
-                    Query = Query,
-                    Kind = kind,
-                    Source = SelectedSource?.Filter ?? ContentSourceFilter.All,
-                    GameVersion = string.IsNullOrWhiteSpace(GameVersion) ? null : GameVersion.Trim(),
-                    Loader = SelectedLoaderFilter?.Id,
-                    PageSize = 40,
-                })
-                .ConfigureAwait(true);
-
-            if (!result.IsSuccess)
-            {
-                Results.Clear();
-                ResultSummary = string.Empty;
-                StatusMessage = _localizer.Get("downloads.searchFailed", result.Error?.Message ?? string.Empty);
-                return;
-            }
-
-            Results.Clear();
-            foreach (var hit in result.Value!.Hits)
-            {
-                Results.Add(new ContentHitViewModel(hit, _localizer));
-            }
-
-            SelectedResult = Results.FirstOrDefault();
-            StatusMessage = _localizer.Get(
-                "downloads.searchDone",
-                result.Value.Hits.Count,
-                result.Value.SourceTotals.GetValueOrDefault(ContentSource.CurseForge),
-                result.Value.SourceTotals.GetValueOrDefault(ContentSource.Modrinth));
-
-            ResultSummary = string.IsNullOrWhiteSpace(Query)
-                ? _localizer.Get("downloads.popular")
-                : _localizer.Get("downloads.resultFor", Query.Trim());
-            SearchWarnings = string.Join(" ", result.Value.Warnings);
-        }
-        catch (Exception exception)
-        {
-            StatusMessage = _localizer.Get("downloads.searchFailed", exception.Message);
-        }
-        finally
-        {
-            IsSearching = false;
-        }
+        OnPropertyChanged(nameof(TargetInstanceHint));
+        OnPropertyChanged(nameof(HasTargetInstance));
     }
 
     [RelayCommand]
@@ -335,248 +167,20 @@ public sealed partial class DownloadViewModel : ObservableObject
     {
         if (SelectedInstance?.Id is not { } instanceId)
         {
-            StatusMessage = _localizer.Get("downloads.selectInstanceFirst");
             return;
         }
 
         Game.SelectedInstance = Game.Instances.FirstOrDefault(item => item.Model.Id == instanceId)
                                 ?? Game.SelectedInstance;
-        StatusMessage = _localizer.Get("downloads.installingGame");
         await Game.InstallCommand.ExecuteAsync(null).ConfigureAwait(true);
-        StatusMessage = Game.Operation.InstallStatus;
     }
 
     [RelayCommand]
     private async Task DownloadJavaAsync()
     {
-        if (SelectedInstance?.Id is not { } instanceId)
+        if (SelectedInstance?.Id is { } instanceId)
         {
-            StatusMessage = _localizer.Get("downloads.selectInstanceFirst");
-            return;
-        }
-
-        StatusMessage = await Game.EnsureJavaForInstanceAsync(instanceId).ConfigureAwait(true);
-    }
-
-    [RelayCommand]
-    private async Task InstallAsync()
-    {
-        if (SelectedResult is not { } item || IsBusy)
-        {
-            return;
-        }
-
-        if (SelectedInstance?.Id is not { } instanceId)
-        {
-            StatusMessage = _localizer.Get("downloads.selectInstanceFirst");
-            return;
-        }
-
-        await RunInstallAsync(
-                item,
-                progress => _install.InstallAsync(instanceId, item.Hit, progress),
-                _localizer.Get("downloads.installing", item.Name))
-            .ConfigureAwait(true);
-
-        if (item.Hit.Kind == ContentKind.ModPack)
-        {
-            await RefreshInstancesAsync().ConfigureAwait(true);
-        }
-    }
-
-    [RelayCommand]
-    private async Task DownloadAsync()
-    {
-        if (SelectedResult is not { } item || IsBusy)
-        {
-            return;
-        }
-
-        await RunInstallAsync(
-                item,
-                progress => _install.DownloadAsync(item.Hit, progress),
-                _localizer.Get("downloads.downloading", item.Name))
-            .ConfigureAwait(true);
-    }
-
-    [RelayCommand]
-    private async Task InstallAsNewInstanceAsync()
-    {
-        if (SelectedResult is not { } item || IsBusy)
-        {
-            return;
-        }
-
-        if (item.Hit.Kind != ContentKind.ModPack)
-        {
-            return;
-        }
-
-        await RunInstallAsync(
-                item,
-                progress => _install.CreateInstanceAndImportModpackAsync(item.Hit, progress),
-                _localizer.Get("downloads.installingPack", item.Name))
-            .ConfigureAwait(true);
-        await RefreshInstancesAsync().ConfigureAwait(true);
-    }
-
-    private async Task RunInstallAsync<T>(
-        ContentHitViewModel item,
-        Func<IProgress<ContentProgress>?, Task<Result<T>>> action,
-        string initialStatus)
-    {
-        IsBusy = true;
-        ShowProgress = true;
-        ProgressIndeterminate = true;
-        ProgressValue = 0;
-        ProgressText = initialStatus;
-        StatusMessage = initialStatus;
-        HasReport = false;
-        ReportText = string.Empty;
-        BeginDownloadUi();
-
-        var progress = new Progress<ContentProgress>(update =>
-        {
-            ProgressIndeterminate = update.TotalFiles == 0;
-            ProgressValue = update.TotalFiles == 0
-                ? 0
-                : update.CompletedFiles * 100.0 / update.TotalFiles;
-            ProgressText = update.TotalFiles > 0
-                ? $"{update.Message} ({update.CompletedFiles}/{update.TotalFiles})"
-                : update.Message;
-            if (update.BytesPerSecond > 0)
-            {
-                DownloadSpeedText = FormatSpeed(update.BytesPerSecond);
-            }
-        });
-
-        try
-        {
-            var result = await action(progress).ConfigureAwait(true);
-            if (!result.IsSuccess)
-            {
-                StatusMessage = result.Error?.ToString() ?? _localizer.Get("downloads.failed");
-                ProgressText = StatusMessage;
-                ReportText = StatusMessage;
-                HasReport = true;
-                return;
-            }
-
-            ProgressIndeterminate = false;
-            ProgressValue = 100;
-            ReportText = DescribeReport(item, result.Value!);
-            HasReport = true;
-            StatusMessage = _localizer.Get("downloads.done");
-            ProgressText = _localizer.Get("downloads.done");
-        }
-        catch (Exception exception)
-        {
-            StatusMessage = _localizer.Get("downloads.failedDetail", exception.Message);
-            ProgressText = StatusMessage;
-            ReportText = StatusMessage;
-            HasReport = true;
-        }
-        finally
-        {
-            IsBusy = false;
-            ShowProgress = false;
-            EndDownloadUi();
-        }
-    }
-
-    private string DescribeReport(ContentHitViewModel item, object report) => report switch
-    {
-        ModpackImportResult import => _localizer.Get(
-            "downloads.modpackReport",
-            import.Name,
-            import.DownloadedFiles,
-            import.SkippedFiles,
-            import.OverrideFiles,
-            import.ArchivePath)
-            + (string.IsNullOrWhiteSpace(import.InstanceId)
-                ? string.Empty
-                : Environment.NewLine + _localizer.Get("downloads.instanceCreated", import.InstanceId)
-                  + Environment.NewLine + _localizer.Get("downloads.instanceNeedsInstall"))
-            + FormatWarnings(import.Warnings),
-        ContentInstallReport install => _localizer.Get(
-            "downloads.installReport",
-            install.Name,
-            install.Files.Count,
-            install.Files.FirstOrDefault() ?? string.Empty)
-            + FormatWarnings(install.Warnings),
-        ContentDownloadReport download => _localizer.Get(
-            "downloads.downloadReport",
-            download.Name,
-            download.Path,
-            download.Size),
-        _ => item.Name,
-    };
-
-    private string FormatWarnings(IReadOnlyList<string> warnings) => warnings.Count == 0
-        ? string.Empty
-        : Environment.NewLine + _localizer.Get("downloads.reportWarnings", string.Join("；", warnings.Take(5)));
-
-    [RelayCommand]
-    private void ToggleDownloadPause()
-    {
-        if (!CanPauseDownload)
-        {
-            return;
-        }
-
-        if (IsDownloadPaused)
-        {
-            _downloads.Resume();
-            IsDownloadPaused = false;
-            DownloadPauseButtonText = _localizer.Get("instances.download.pause");
-        }
-        else
-        {
-            _downloads.Pause();
-            IsDownloadPaused = true;
-            DownloadPauseButtonText = _localizer.Get("instances.download.resume");
-            DownloadSpeedText = _localizer.Get("instances.download.paused");
-        }
-    }
-
-    private void BeginDownloadUi()
-    {
-        _downloads.Resume();
-        CanPauseDownload = true;
-        IsDownloadPaused = false;
-        DownloadSpeedText = string.Empty;
-        DownloadPauseButtonText = _localizer.Get("instances.download.pause");
-    }
-
-    private void EndDownloadUi()
-    {
-        _downloads.Resume();
-        CanPauseDownload = false;
-        IsDownloadPaused = false;
-        DownloadSpeedText = string.Empty;
-        DownloadPauseButtonText = _localizer.Get("instances.download.pause");
-    }
-
-    private static string FormatSpeed(double bytesPerSecond) => bytesPerSecond switch
-    {
-        >= 1024 * 1024 => $"{bytesPerSecond / 1024 / 1024:F1} MB/s",
-        >= 1024 => $"{bytesPerSecond / 1024:F0} KB/s",
-        > 0 => $"{bytesPerSecond:F0} B/s",
-        _ => string.Empty,
-    };
-
-    [RelayCommand]
-    private void OpenPage()
-    {
-        if (SelectedResult?.WebsiteUrl is not { Length: > 0 } url)
-        {
-            StatusMessage = _localizer.Get("downloads.selectResult");
-            return;
-        }
-
-        if (!_dialogs.OpenUrl(url))
-        {
-            StatusMessage = _localizer.Get("downloads.openFailed");
+            await Game.EnsureJavaForInstanceAsync(instanceId).ConfigureAwait(true);
         }
     }
 
@@ -584,60 +188,23 @@ public sealed partial class DownloadViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsGameTab));
         OnPropertyChanged(nameof(IsContentTab));
-        OnPropertyChanged(nameof(IsModpackTab));
-        OnPropertyChanged(nameof(CanCreateInstanceFromPack));
+        OnPropertyChanged(nameof(SelectedContentPage));
 
-        Results.Clear();
-        SelectedResult = null;
-        ResultSummary = string.Empty;
-        SearchWarnings = string.Empty;
-        StatusMessage = string.Empty;
-        HasReport = false;
-        ReportText = string.Empty;
-
-        if (_initialized && value?.Kind is not null && !_suppressTabSearch)
+        if (_initialized && SelectedContentPage is { } page)
         {
-            _ = SearchAsync();
-        }
-    }
-
-    partial void OnSelectedSourceChanged(ContentSourceChoice? value)
-    {
-        if (_initialized && IsContentTab)
-        {
-            _ = SearchAsync();
+            _ = page.ActivateAsync();
         }
     }
 
     partial void OnSelectedInstanceChanged(ContentInstanceChoice? value)
     {
-        OnPropertyChanged(nameof(CanInstallToInstance));
-        OnPropertyChanged(nameof(HasTargetInstance));
-        OnPropertyChanged(nameof(TargetInstanceHint));
-
         if (_suppressInstanceFilter)
         {
             return;
         }
 
-        if (value?.Id is not null)
-        {
-            GameVersion = value.GameVersion;
-            SelectedLoaderFilter = LoaderFilters.FirstOrDefault(item =>
-                string.Equals(item.Id, value.Loader, StringComparison.OrdinalIgnoreCase)) ?? LoaderFilters[0];
-        }
-        else
-        {
-            GameVersion = string.Empty;
-            SelectedLoaderFilter = LoaderFilters[0];
-        }
-    }
-
-    partial void OnSelectedResultChanged(ContentHitViewModel? value)
-    {
-        OnPropertyChanged(nameof(HasSelectedResult));
-        OnPropertyChanged(nameof(CanInstallToInstance));
-        OnPropertyChanged(nameof(CanCreateInstanceFromPack));
+        OnPropertyChanged(nameof(HasTargetInstance));
+        OnPropertyChanged(nameof(TargetInstanceHint));
     }
 }
 
@@ -663,50 +230,3 @@ public static class DownloadCategories
         new DownloadTabViewModel("datapack", ContentKind.DataPack, localizer.Get("downloads.kind.datapack")),
     ];
 }
-
-public sealed record ContentSourceChoice(ContentSourceFilter Filter, string Title);
-
-public sealed record ContentInstanceChoice(string? Id, string Name, string GameVersion, string Loader);
-
-public sealed record LoaderFilterChoice(string? Id, string Title);
-
-public sealed class ContentHitViewModel
-{
-    public ContentHitViewModel(ContentHit hit, ILocalizer localizer)
-    {
-        Hit = hit;
-        Name = hit.Name;
-        Summary = string.IsNullOrWhiteSpace(hit.Summary) ? "—" : hit.Summary;
-        AuthorText = string.IsNullOrWhiteSpace(hit.Author)
-            ? hit.SourceLabel
-            : $"{hit.Author} · {hit.SourceLabel}";
-        SourceLabel = hit.SourceLabel;
-        IsModrinth = hit.Source == ContentSource.Modrinth;
-        Meta = localizer.Get("downloads.downloadsCount", hit.DownloadCount) +
-               (hit.UpdatedAt is { } updated ? $" · {updated.ToLocalTime():yyyy-MM-dd}" : string.Empty);
-        WebsiteUrl = hit.WebsiteUrl;
-        IconUrl = hit.IconUrl;
-    }
-
-    public ContentHit Hit { get; }
-
-    public string Name { get; }
-
-    public string Summary { get; }
-
-    public string AuthorText { get; }
-
-    public string SourceLabel { get; }
-
-    public bool IsModrinth { get; }
-
-    public string Meta { get; }
-
-    public string? WebsiteUrl { get; }
-
-    public string? IconUrl { get; }
-}
-
-
-
-

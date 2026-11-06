@@ -51,6 +51,29 @@ public interface IContentInstallService
         ContentHit hit,
         IProgress<ContentProgress>? progress = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 把来源上某个具体版本安装到实例对应内容目录（模组 → <c>mods</c>、资源包 → <c>resourcepacks</c>、
+    /// 光影包 → <c>shaderpacks</c>）。文件由来源 API 重新解析，不信任页面传入的下载地址；
+    /// 整合包必须走实例版本页的整合包模式，数据包需要世界目标，两者在这里拒绝。
+    /// </summary>
+    Task<Result<ContentInstallReport>> InstallVersionAsync(
+        string instanceId,
+        ContentHit hit,
+        ContentVersion version,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 把某个具体版本下载到用户选择的目录（不写入实例）。目录必须已存在且是完整路径；
+    /// 用于“没有选择已有实例”时的下载目标。
+    /// </summary>
+    Task<Result<ContentDownloadReport>> DownloadVersionAsync(
+        ContentHit hit,
+        ContentVersion version,
+        string directory,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -213,6 +236,407 @@ public sealed class ContentInstallService(
             operation.Fail(OperationErrors.FromException("dependency.install_failed", exception));
             throw;
         }
+    }
+
+    public async Task<Result<ContentInstallReport>> InstallVersionAsync(
+        string instanceId,
+        ContentHit hit,
+        ContentVersion version,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var instance = await instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        if (instance is null)
+        {
+            return Result<ContentInstallReport>.Fail("instance.not_found", "实例不存在。");
+        }
+
+        if (hit.Kind == ContentKind.ModPack)
+        {
+            return Result<ContentInstallReport>.Fail(
+                "content.modpack_requires_deployment",
+                "整合包必须从下载中心的实例版本页部署为新实例，不能安装到已有实例。");
+        }
+
+        if (hit.Kind == ContentKind.DataPack)
+        {
+            return Result<ContentInstallReport>.Fail(
+                "content.datapack_requires_world",
+                "数据包必须指定目标世界，当前下载中心还没有接入世界目标。");
+        }
+
+        // CurseForge Mod 复用既有安装器：它已经处理必需依赖与安装记录，并自行登记安装任务。
+        // 这里不再套第二层任务，避免同一版本出现两条安装记录。
+        if (hit.Source == ContentSource.CurseForge && hit.Kind == ContentKind.Mod)
+        {
+            if (!int.TryParse(version.VersionId, out var fileId) || fileId <= 0)
+            {
+                return Result<ContentInstallReport>.Fail(
+                    "curseforge.invalid_file",
+                    "CurseForge 文件 ID 无效。");
+            }
+
+            var forwarding = new ForwardingProgress<CurseForgeProgress>(update =>
+                progress?.Report(new ContentProgress(update.Stage, update.Message, update.Completed, update.Total)
+                {
+                    CompletedBytes = update.CompletedBytes,
+                    TotalBytes = update.TotalBytes,
+                    BytesPerSecond = update.BytesPerSecond,
+                    CurrentFile = update.CurrentFile,
+                }));
+            var result = await curseForgeService
+                .InstallAsync(instance.Id, hit.Id, fileId, includeDependencies: true, forwarding, cancellationToken)
+                .ConfigureAwait(false);
+            return result.IsSuccess
+                ? Result<ContentInstallReport>.Ok(new ContentInstallReport(
+                    result.Value!.ModName,
+                    ContentSource.CurseForge,
+                    ContentKind.Mod,
+                    instance.Id,
+                    result.Value.FileName,
+                    result.Value.InstalledFiles,
+                    result.Value.Warnings))
+                : Result<ContentInstallReport>.Fail(result.Error!);
+        }
+
+        using var operation = new OperationProgressBridge<ContentProgress>(
+            operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Install,
+                Title = hit.Name,
+                StageId = "content",
+                Source = hit.SourceLabel,
+                CanCancel = true,
+                CanRetry = true,
+            },
+            progress,
+            MapContentProgress);
+
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = cancellation.Token;
+        operation.AttachControl(
+            cancellation,
+            retryToken => InstallVersionAsync(instanceId, hit, version, progress, retryToken));
+
+        try
+        {
+            var resolved = await ResolveVersionFilesAsync(
+                    hit,
+                    version,
+                    instance.GameVersion,
+                    ContentKinds.UsesLoader(hit.Kind) ? instance.Loader : null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!resolved.IsSuccess)
+            {
+                var failed = Result<ContentInstallReport>.Fail(resolved.Error!);
+                Finish(operation, failed);
+                return failed;
+            }
+
+            var targetDirectory = Path.Combine(
+                InstancePaths.GetGameDirectory(paths, instance),
+                ContentKinds.FolderName(hit.Kind));
+            var downloadResult = await DownloadFilesAsync(
+                    resolved.Value!,
+                    targetDirectory,
+                    operation,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!downloadResult.IsSuccess)
+            {
+                var failed = Result<ContentInstallReport>.Fail(downloadResult.Error!);
+                Finish(operation, failed);
+                return failed;
+            }
+
+            var installedFiles = downloadResult.Value!;
+            logger.LogInformation(
+                "已把 {Source} {Kind} {Name} 的版本 {Version} 安装到实例 {InstanceId}：{Files}",
+                hit.Source,
+                hit.Kind,
+                hit.Name,
+                version.VersionId,
+                instance.Id,
+                string.Join(", ", installedFiles));
+
+            var report = new ContentInstallReport(
+                hit.Name,
+                hit.Source,
+                hit.Kind,
+                instance.Id,
+                installedFiles.FirstOrDefault(),
+                installedFiles,
+                resolved.Value!.Warnings);
+            Finish(operation, Result<ContentInstallReport>.Ok(report));
+            return Result<ContentInstallReport>.Ok(report);
+        }
+        catch (OperationCanceledException)
+        {
+            operation.Cancel();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            operation.Fail(OperationErrors.FromException("content.install_failed", exception));
+            throw;
+        }
+    }
+
+    public async Task<Result<ContentDownloadReport>> DownloadVersionAsync(
+        ContentHit hit,
+        ContentVersion version,
+        string directory,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (hit.Kind == ContentKind.ModPack)
+        {
+            return Result<ContentDownloadReport>.Fail(
+                "content.modpack_requires_deployment",
+                "整合包必须从下载中心的实例版本页部署为新实例。");
+        }
+
+        if (hit.Kind == ContentKind.DataPack)
+        {
+            return Result<ContentDownloadReport>.Fail(
+                "content.datapack_requires_world",
+                "数据包必须指定目标世界，当前下载中心还没有接入世界目标。");
+        }
+
+        var target = NormalizeDownloadDirectory(directory);
+        if (!target.IsSuccess)
+        {
+            return Result<ContentDownloadReport>.Fail(target.Error!);
+        }
+
+        using var operation = new OperationProgressBridge<ContentProgress>(
+            operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Download,
+                Title = hit.Name,
+                StageId = "content",
+                Source = hit.SourceLabel,
+                CanCancel = true,
+                CanRetry = true,
+            },
+            progress,
+            MapContentProgress);
+
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = cancellation.Token;
+        operation.AttachControl(
+            cancellation,
+            retryToken => DownloadVersionAsync(hit, version, target.Value!, progress, retryToken));
+
+        try
+        {
+            // 没有实例时也把 Modrinth 的必需依赖一起取回，避免用户拿到一个缺依赖的 Mod。
+            var resolved = await ResolveVersionFilesAsync(hit, version, null, null, cancellationToken)
+                .ConfigureAwait(false);
+            if (!resolved.IsSuccess)
+            {
+                var failed = Result<ContentDownloadReport>.Fail(resolved.Error!);
+                Finish(operation, failed);
+                return failed;
+            }
+
+            var downloadResult = await DownloadFilesAsync(
+                    resolved.Value!,
+                    target.Value!,
+                    operation,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!downloadResult.IsSuccess)
+            {
+                var failed = Result<ContentDownloadReport>.Fail(downloadResult.Error!);
+                Finish(operation, failed);
+                return failed;
+            }
+
+            var primary = resolved.Value!.Files[0];
+            var destination = Path.Combine(target.Value!, primary.FileName);
+            var report = new ContentDownloadReport(
+                hit.Name,
+                hit.Kind,
+                destination,
+                primary.Size ?? (File.Exists(destination) ? new FileInfo(destination).Length : 0));
+            Finish(operation, Result<ContentDownloadReport>.Ok(report));
+            return Result<ContentDownloadReport>.Ok(report);
+        }
+        catch (OperationCanceledException)
+        {
+            operation.Cancel();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            operation.Fail(OperationErrors.FromException("content.download_failed", exception));
+            throw;
+        }
+    }
+
+    /// <summary>下载目标必须是已存在的完整目录；不接受相对路径或不存在的目录。</summary>
+    private static Result<string> NormalizeDownloadDirectory(string directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory) || !Path.IsPathFullyQualified(directory))
+        {
+            return Result<string>.Fail("content.invalid_target_directory", "下载目标必须是完整的目录路径。");
+        }
+
+        string full;
+        try
+        {
+            full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return Result<string>.Fail(
+                "content.invalid_target_directory",
+                $"下载目标无效：{exception.Message}");
+        }
+
+        return Directory.Exists(full)
+            ? Result<string>.Ok(full)
+            : Result<string>.Fail("content.target_directory_missing", "下载目标目录不存在。");
+    }
+
+    private async Task<Result<ResolvedDownload>> ResolveVersionFilesAsync(
+        ContentHit hit,
+        ContentVersion version,
+        string? gameVersion,
+        string? loader,
+        CancellationToken cancellationToken)
+    {
+        var primary = await ResolveVersionFileAsync(hit, version, cancellationToken).ConfigureAwait(false);
+        if (!primary.IsSuccess)
+        {
+            return Result<ResolvedDownload>.Fail(primary.Error!);
+        }
+
+        var files = new List<RemoteFile> { primary.Value! };
+        var warnings = new List<string>();
+        if (hit.Source == ContentSource.Modrinth && hit.Kind == ContentKind.Mod)
+        {
+            await AddModrinthDependenciesAsync(
+                    primary.Value!,
+                    gameVersion,
+                    loader,
+                    files,
+                    warnings,
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase) { hit.Id },
+                    depth: 0,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return Result<ResolvedDownload>.Ok(new ResolvedDownload(files, warnings));
+    }
+
+    /// <summary>
+    /// 按版本 ID 重新向来源解析文件。页面只传来源与 ID，下载地址与文件名以来源返回为准，
+    /// 不接受 UI 拼接的 URL，也不跨来源、跨项目复用版本。
+    /// </summary>
+    private async Task<Result<RemoteFile>> ResolveVersionFileAsync(
+        ContentHit hit,
+        ContentVersion version,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(version.ProjectId, hit.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<RemoteFile>.Fail("content.version_project_mismatch", "所选版本不属于当前项目。");
+        }
+
+        return hit.Source switch
+        {
+            ContentSource.Modrinth => await ResolveModrinthVersionFileAsync(hit, version, cancellationToken)
+                .ConfigureAwait(false),
+            ContentSource.CurseForge => await ResolveCurseForgeVersionFileAsync(hit, version, cancellationToken)
+                .ConfigureAwait(false),
+            _ => Result<RemoteFile>.Fail("content.invalid_source", "未知的下载来源。"),
+        };
+    }
+
+    private async Task<Result<RemoteFile>> ResolveModrinthVersionFileAsync(
+        ContentHit hit,
+        ContentVersion version,
+        CancellationToken cancellationToken)
+    {
+        var result = await modrinth.GetVersionAsync(version.VersionId, cancellationToken).ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return Result<RemoteFile>.Fail(result.Error!);
+        }
+
+        var resolved = result.Value!;
+        if (!string.IsNullOrWhiteSpace(resolved.ProjectId) &&
+            !string.Equals(resolved.ProjectId, hit.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<RemoteFile>.Fail("modrinth.project_mismatch", "所选版本不属于当前项目。");
+        }
+
+        return ToRemoteFile(hit, resolved);
+    }
+
+    private async Task<Result<RemoteFile>> ResolveCurseForgeVersionFileAsync(
+        ContentHit hit,
+        ContentVersion version,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(hit.Id, out var projectId) || projectId <= 0)
+        {
+            return Result<RemoteFile>.Fail("curseforge.invalid_project", "CurseForge 项目 ID 无效。");
+        }
+
+        if (!int.TryParse(version.VersionId, out var fileId) || fileId <= 0)
+        {
+            return Result<RemoteFile>.Fail("curseforge.invalid_file", "CurseForge 文件 ID 无效。");
+        }
+
+        var result = await curseForgeClient.GetFileAsync(projectId, fileId, cancellationToken)
+            .ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return Result<RemoteFile>.Fail(result.Error!);
+        }
+
+        var file = result.Value!;
+        if (file.ModId != 0 && file.ModId != projectId)
+        {
+            return Result<RemoteFile>.Fail("curseforge.file_project_mismatch", "所选文件不属于当前项目。");
+        }
+
+        var url = file.DownloadUrl;
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            var resolved = await curseForgeClient
+                .GetDownloadUrlAsync(projectId, fileId, cancellationToken)
+                .ConfigureAwait(false);
+            url = resolved.IsSuccess ? resolved.Value : null;
+        }
+
+        if (!CurseForgeDownloads.TryCreateUri(url, out var uri))
+        {
+            return Result<RemoteFile>.Fail(
+                "curseforge.distribution_restricted",
+                $"{hit.Name} 没有可用的 CurseForge CDN 地址；作者可能禁止第三方分发。");
+        }
+
+        if (!IsSafeFileName(file.FileName))
+        {
+            return Result<RemoteFile>.Fail("curseforge.invalid_file_name", "CurseForge 返回了不安全的文件名。");
+        }
+
+        return Result<RemoteFile>.Ok(new RemoteFile(
+            file.FileName,
+            uri,
+            file.Sha1,
+            file.FileLength > 0 ? file.FileLength : null,
+            file.Id.ToString(),
+            projectId.ToString()));
     }
 
     private async Task<Result<ContentInstallReport>> InstallContentCoreAsync(
@@ -804,7 +1228,7 @@ public sealed class ContentInstallService(
         if (chosen is null)
         {
             var files = await curseForgeClient
-                .GetFilesForModAsync(projectId, gameVersion, mappedLoader, 50, cancellationToken)
+                .GetFilesForModAsync(projectId, gameVersion, mappedLoader, 50, 0, cancellationToken)
                 .ConfigureAwait(false);
             if (!files.IsSuccess)
             {

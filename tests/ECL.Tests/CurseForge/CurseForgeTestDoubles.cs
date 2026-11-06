@@ -77,6 +77,7 @@ internal sealed class FakeCurseForgeClient : ICurseForgeClient
         string? gameVersion,
         CurseForgeModLoader? loader,
         int pageSize = 50,
+        int index = 0,
         CancellationToken cancellationToken = default)
     {
         var files = ListedFiles.Count > 0
