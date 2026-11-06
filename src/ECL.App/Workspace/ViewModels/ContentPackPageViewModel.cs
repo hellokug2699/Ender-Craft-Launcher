@@ -56,12 +56,14 @@ public sealed class ContentPackRowViewModel : ObservableObject
             _ => ContentPackStatusKind.Active,
         };
 
+        // 状态列表达“文件健康度”：绿色=正常（已启用时标注“已启用”），
+        // 黄色=游戏记录为不兼容，红色=损坏，灰色=未识别。
         StatusText = localizer.Get(StatusKind switch
         {
             ContentPackStatusKind.Corrupt => "packs.status.corrupt",
             ContentPackStatusKind.Unrecognized => "packs.status.unrecognized",
             ContentPackStatusKind.Warning => "packs.status.warning",
-            _ => "packs.status.active",
+            _ => entry.Enabled ? "packs.status.active" : "packs.status.normal",
         });
 
         StatusHint = StatusKind switch
@@ -72,7 +74,7 @@ public sealed class ContentPackRowViewModel : ObservableObject
                     ? "packs.status.unrecognizedShaderHint"
                     : "packs.status.unrecognizedHint"),
             ContentPackStatusKind.Warning => localizer.Get("packs.status.warningHint"),
-            _ => localizer.Get("packs.status.activeHint"),
+            _ => localizer.Get(entry.Enabled ? "packs.status.activeHint" : "packs.status.normalHint"),
         };
     }
 

@@ -93,7 +93,8 @@
         </DataTemplate>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+    <ScrollViewer x:Name="PageScroll"
+                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                   behaviors:WheelScroll.IsEnabled="True">
         <StackPanel>
             <!-- 光影包首次提示（shaders.md §3）：非模态页面横幅，不阻止任何管理操作。 -->

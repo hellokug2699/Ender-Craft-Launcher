@@ -22,6 +22,10 @@ public partial class InstanceContentPacksView : UserControl
     public InstanceContentPacksView()
     {
         InitializeComponent();
+
+        // 资源包与光影包共用同一个视图：切换二级页时 DataContext 变化，
+        // 需要把滚动位置复位到页面顶部，避免上一页的滚动偏移把新页面的横幅截断。
+        DataContextChanged += (_, _) => PageScroll?.ScrollToTop();
     }
 
     private void OnRowPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
