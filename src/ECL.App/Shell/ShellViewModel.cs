@@ -45,6 +45,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly InstanceModifyPageFactory _modifyFactory;
     private readonly ContentPackPageFactory _contentPackFactory;
     private readonly ScreenshotPageFactory _screenshotFactory;
+    private readonly SchematicPageFactory _schematicFactory;
     private readonly IReadOnlyList<string> _navigationKeys;
     private readonly IDisposable _workspaceChanges;
     private bool _suppressNavigation;
@@ -59,6 +60,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         InstanceModifyPageFactory modifyFactory,
         ContentPackPageFactory contentPackFactory,
         ScreenshotPageFactory screenshotFactory,
+        SchematicPageFactory schematicFactory,
         SettingsViewModel settings,
         JavaManagementViewModel javaManagement,
         LogSessionsViewModel logSessions,
@@ -81,6 +83,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _modifyFactory = modifyFactory;
         _contentPackFactory = contentPackFactory;
         _screenshotFactory = screenshotFactory;
+        _schematicFactory = schematicFactory;
         _settings = settings;
         _tools = tools;
         _storage = storage;
@@ -500,6 +503,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 _modifyFactory,
                 _contentPackFactory,
                 _screenshotFactory,
+                _schematicFactory,
                 _localizer);
             _ = InitializeInstancePageAsync(detail);
             page = detail;

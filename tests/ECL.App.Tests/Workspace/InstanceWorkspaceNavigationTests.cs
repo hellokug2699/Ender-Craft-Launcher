@@ -208,6 +208,33 @@ public sealed class InstanceWorkspaceNavigationTests
     }
 
     [Fact]
+    public void SchematicPageBecomesAvailableWhenTheWorkspaceProvidesIt()
+    {
+        var schematicsPage = new object();
+        var navigation = InstanceWorkspaceNavigationFactory.Create(
+            Localizer(),
+            new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                [InstanceWorkspacePageKeys.BasicInfo] = new object(),
+                [InstanceWorkspacePageKeys.Schematics] = schematicsPage,
+            });
+
+        var item = navigation.Find(InstanceWorkspacePageKeys.Schematics);
+        Assert.NotNull(item);
+        Assert.True(item!.IsAvailable);
+        Assert.Same(schematicsPage, item.Page);
+        Assert.Equal("投影", item.Title);
+        Assert.Equal("世界与文件", item.GroupTitle);
+
+        // 导出页仍未提供页面对象：保持不可用，不创建空页。
+        Assert.False(navigation.Find(InstanceWorkspacePageKeys.Export)!.IsAvailable);
+
+        Assert.True(navigation.TryActivate(InstanceWorkspacePageKeys.Schematics));
+        Assert.Equal(InstanceWorkspacePageKeys.Schematics, navigation.CurrentPageKey);
+        Assert.Same(schematicsPage, navigation.CurrentPage);
+    }
+
+    [Fact]
     public void TwoWorkspacesKeepIndependentNavigationState()
     {
         var first = CreateNavigation(out var firstBasic, out var firstMods);

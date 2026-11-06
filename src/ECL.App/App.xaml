@@ -58,6 +58,9 @@
             <DataTemplate DataType="{x:Type wsvm:ScreenshotPageViewModel}">
                 <views:InstanceScreenshotsView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type wsvm:SchematicPageViewModel}">
+                <views:InstanceSchematicsView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:JavaManagementViewModel}">
                 <views:JavaManagementView />
             </DataTemplate>

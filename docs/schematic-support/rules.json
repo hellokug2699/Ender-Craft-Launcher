@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "lastReviewed": "2026-11-06",
+  "purpose": "Detect whether a Minecraft Java client instance has a known schematic/projection provider and which file formats it handles.",
+  "resultStates": [
+    "supported",
+    "missing",
+    "incomplete",
+    "incompatible",
+    "conflict",
+    "unknown"
+  ],
+  "formatRecognition": {
+    "nbtContainerSignature": "gzip (1F 8B) or uncompressed TAG_Compound (0A)",
+    "formats": [
+      { "id": "litematica", "extensions": [".litematic"], "folders": ["schematics"] },
+      { "id": "sponge-schematic", "extensions": [".schem"], "folders": ["config/worldedit/schematics"] },
+      { "id": "mcedit-schematic", "extensions": [".schematic"], "folders": ["config/worldedit/schematics"] },
+      { "id": "nbt-structure", "extensions": [".nbt"], "folders": ["schematics"] },
+      { "id": "axiom-blueprint", "extensions": [".bp"], "folders": ["config/axiom/blueprints"], "signature": "not-publicly-verifiable" }
+    ]
+  },
+  "rules": [
+    {
+      "id": "litematica",
+      "provider": "litematica",
+      "formats": ["litematica"],
+      "modIds": ["litematica"],
+      "dependencies": [
+        {
+          "id": "malilib",
+          "required": "follow-exact-installed-artifact-metadata",
+          "notes": "MaLiLib is required by the Litematica builds covered by this rule; verify against the exact JAR metadata."
+        }
+      ],
+      "notes": [
+        "Litematica targets Fabric for Minecraft 1.14+; the original project also has a Forge build for 1.12.2.",
+        "Do not treat a differently named port as Litematica; third-party ports have separate mod ids."
+      ],
+      "sources": [
+        "https://modrinth.com/mod/litematica",
+        "https://modrinth.com/mod/malilib",
+        "https://github.com/maruohon/litematica/wiki"
+      ]
+    },
+    {
+      "id": "forgematica",
+      "provider": "forgematica",
+      "formats": ["litematica"],
+      "modIds": ["forgematica"],
+      "dependencies": [
+        {
+          "id": "mafglib",
+          "required": "follow-exact-installed-artifact-metadata"
+        }
+      ],
+      "notes": [
+        "Forgematica is an unofficial (Neo)Forge port of Litematica.",
+        "Validate loader and Minecraft compatibility from the exact installed artifact."
+      ],
+      "sources": ["https://modrinth.com/mod/forgematica"]
+    },
+    {
+      "id": "worldedit",
+      "provider": "worldedit",
+      "formats": ["sponge-schematic", "mcedit-schematic"],
+      "modIds": ["worldedit"],
+      "dependencies": [],
+      "notes": [
+        "WorldEdit reads and writes .schem (Sponge) and legacy .schematic (MCEdit) files.",
+        "For modded clients the schematic folder is config/worldedit/schematics.",
+        "Project-level loader lists do not prove every release supports every loader/Minecraft combination."
+      ],
+      "sources": [
+        "https://www.world-edit.com/schematics-folder/",
+        "https://modrinth.com/mod/worldedit"
+      ]
+    },
+    {
+      "id": "create",
+      "provider": "create",
+      "formats": ["nbt-structure"],
+      "modIds": ["create"],
+      "dependencies": [],
+      "notes": [
+        "Create loads .nbt structures from the instance's schematics folder through the Schematic Table.",
+        "The published Create project targets Forge/NeoForge; a separately published Fabric port exists. Validate the exact artifact.",
+        "Do not hard-code Flywheel as required when the exact Create artifact bundles it."
+      ],
+      "sources": [
+        "https://wiki.createmod.net/users/schematics/loading-and-positioning-schematics",
+        "https://modrinth.com/mod/create"
+      ]
+    },
+    {
+      "id": "axiom",
+      "provider": "axiom",
+      "formats": ["axiom-blueprint"],
+      "modIds": ["axiom"],
+      "dependencies": [
+        {
+          "id": "fabric-api",
+          "required": "follow-exact-installed-artifact-metadata"
+        }
+      ],
+      "notes": [
+        "Axiom blueprints are .bp files stored under config/axiom/blueprints.",
+        "The published Axiom project targets Fabric and requires Fabric API.",
+        "Blueprint structure is not publicly specified in a stable, verifiable form; ECL reports the format as unverified and must not parse or preview it as NBT."
+      ],
+      "sources": [
+        "https://axiomdocs.moulberry.com/editor/windows/blueprints.html",
+        "https://modrinth.com/mod/axiom"
+      ]
+    }
+  ]
+}

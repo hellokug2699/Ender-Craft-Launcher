@@ -1,0 +1,368 @@
+<UserControl x:Class="Ecl.App.Views.InstanceSchematicsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization"
+             xmlns:controls="clr-namespace:Ecl.App.Controls"
+             xmlns:behaviors="clr-namespace:Ecl.App.Behaviors">
+    <!--
+        实例工作区「世界与文件 · 投影」二级页（B2c，schematics.md）。
+        列表式文件管理 + 按格式的真实支持检测；删除按钮位于列表区域之外。
+        没有渲染 Addition 时不提供三维预览，NBT Explorer 不可用时明确禁用，
+        不以占位图或假入口冒充能力。
+    -->
+    <UserControl.Resources>
+        <Style x:Key="SchematicTableHeaderText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+            <Setter Property="FontFamily" Value="{StaticResource UiMediumFontFamily}" />
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="SchematicRowButton" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="FontSize" Value="10" />
+        </Style>
+
+        <DataTemplate x:Key="SchematicRowTemplate">
+            <Grid MinHeight="46" Margin="10,0" ToolTip="{Binding FullPathHint}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="66" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="130" />
+                    <ColumnDefinition Width="90" />
+                    <ColumnDefinition Width="44" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 文件类型徽标：没有真实三维缩略图时使用格式标识，不伪造预览图。 -->
+                <Border Grid.Column="0"
+                        Width="50"
+                        Height="28"
+                        CornerRadius="6"
+                        Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        ToolTip="{Binding FormatText}">
+                    <TextBlock Text="{Binding FormatBadge}"
+                               FontFamily="{StaticResource UiMediumFontFamily}"
+                               FontSize="9"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
+
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="6,4,12,4">
+                    <TextBlock Text="{Binding FileName}"
+                               FontSize="12"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding FullPathHint}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                        <TextBlock Text="{Binding SourceText}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="9" />
+                        <TextBlock Text=" · "
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="9" />
+                        <TextBlock Text="{Binding RecognitionText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="9"
+                                   ToolTip="{Binding RecognitionText}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <TextBlock Grid.Column="2"
+                           Text="{Binding FormatText}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           FontSize="10"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding FormatText}"
+                           Margin="0,0,8,0" />
+                <TextBlock Grid.Column="3"
+                           Text="{Binding TimeText}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           FontSize="10"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="4"
+                           Text="{Binding SizeText}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           FontSize="10"
+                           VerticalAlignment="Center" />
+                <CheckBox Grid.Column="5"
+                          IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          AutomationProperties.Name="{Binding FileName}" />
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <ScrollViewer x:Name="PageScroll"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  behaviors:WheelScroll.IsEnabled="True">
+        <StackPanel>
+            <controls:PageHeader Title="{Binding Title}" Subtitle="{Binding Subtitle}">
+                <controls:PageHeader.Actions>
+                    <Button Content="{Binding DeleteButtonText}"
+                            Command="{Binding DeleteSelectedCommand}"
+                            Style="{StaticResource DangerButton}"
+                            ToolTip="{Binding SelectedSizeText}"
+                            AutomationProperties.Name="{Binding DeleteButtonText}" />
+                </controls:PageHeader.Actions>
+            </controls:PageHeader>
+
+            <!-- 支持检测：状态、真实原因与逐格式明细；不阻断文件管理。 -->
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <controls:ContentPackStatusGlyph Kind="{Binding SupportGlyphKind}"
+                                                         IconSize="16"
+                                                         VerticalAlignment="Top"
+                                                         Margin="0,2,10,0" />
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="{Binding SupportTitle}" Style="{StaticResource SectionText}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                <TextBlock Text="{Binding SupportStateText}"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           FontSize="11"
+                                           FontFamily="{StaticResource UiMediumFontFamily}"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding SupportProvidersText}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="10"
+                                           VerticalAlignment="Center"
+                                           Margin="10,0,0,0" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding SupportReason}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,4,0,0"
+                                       Visibility="{Binding SupportReason, Converter={StaticResource StringToVisibility}}" />
+                            <TextBlock Text="{Binding SupportError}"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,4,0,0"
+                                       Visibility="{Binding SupportError, Converter={StaticResource StringToVisibility}}" />
+                            <TextBlock Text="{Binding SupportNote}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="9"
+                                       TextWrapping="Wrap"
+                                       Margin="0,6,0,0" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 逐格式支持：每个格式独立判断，不用“支持”覆盖未知/缺失。 -->
+                    <StackPanel Margin="0,14,0,0"
+                                Visibility="{Binding HasSupportDetail, Converter={StaticResource BoolToVisibility}}">
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{loc:Loc Key=schematics.support.column.format}" Style="{StaticResource SchematicTableHeaderText}" />
+                            <TextBlock Grid.Column="1" Text="{loc:Loc Key=schematics.support.column.state}" Style="{StaticResource SchematicTableHeaderText}" />
+                            <TextBlock Grid.Column="2" Text="{loc:Loc Key=schematics.support.column.detail}" Style="{StaticResource SchematicTableHeaderText}" />
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding FormatSupport}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid MinHeight="34" Margin="0,0,0,1">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="160" />
+                                            <ColumnDefinition Width="100" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding FormatText}"
+                                                   FontSize="10"
+                                                   VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <controls:ContentPackStatusGlyph Kind="{Binding StatusKind}"
+                                                                             IconSize="12"
+                                                                             Margin="0,0,5,0" />
+                                            <TextBlock Text="{Binding StateText}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="10"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="0,2">
+                                            <TextBlock Text="{Binding ProviderText}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="10"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding DetailText}"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       FontSize="9"
+                                                       TextWrapping="Wrap"
+                                                       Visibility="{Binding HasDetail, Converter={StaticResource BoolToVisibility}}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- 查看工具：未安装/未提供的 Addition 明确显示不可用；不提供假按钮。 -->
+                    <Border BorderBrush="{DynamicResource BorderSoftBrush}"
+                            BorderThickness="0,1,0,0"
+                            Margin="0,14,0,0"
+                            Padding="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="{Binding ToolsTitle}" Style="{StaticResource SectionText}" />
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding NbtExplorerTitle}" FontSize="11" />
+                                    <TextBlock Text="{Binding NbtExplorerHint}"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               FontSize="9"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        Content="{loc:Loc Key=schematics.tools.unavailable}"
+                                        IsEnabled="False"
+                                        Style="{StaticResource SchematicRowButton}"
+                                        ToolTip="{Binding NbtExplorerHint}"
+                                        ToolTipService.ShowOnDisabled="True"
+                                        VerticalAlignment="Center" />
+                            </Grid>
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding RendererTitle}" FontSize="11" />
+                                    <TextBlock Text="{Binding RendererHint}"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               FontSize="9"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button Grid.Column="1"
+                                        Content="{loc:Loc Key=schematics.tools.unavailable}"
+                                        IsEnabled="False"
+                                        Style="{StaticResource SchematicRowButton}"
+                                        ToolTip="{Binding RendererHint}"
+                                        ToolTipService.ShowOnDisabled="True"
+                                        VerticalAlignment="Center" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- 文件列表：每行一个文件，删除按钮不在列表内。 -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding Title}" Style="{StaticResource SectionText}" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding CountText}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="10"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,10,0" />
+                            <Button Content="{loc:Loc Key=schematics.selectAll}"
+                                    Command="{Binding ToggleSelectAllCommand}"
+                                    Style="{StaticResource ToolbarButton}" />
+                            <Button Content="{loc:Loc Key=common.refresh}"
+                                    Command="{Binding RefreshCommand}"
+                                    Style="{StaticResource ToolbarButton}"
+                                    Margin="6,0,0,0" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Text="{Binding SelectionSummary}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               Margin="0,10,0,0"
+                               Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}" />
+
+                    <TextBlock Text="{Binding WarningMessage}"
+                               Foreground="{DynamicResource WarningBrush}"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               Margin="0,10,0,0"
+                               Visibility="{Binding WarningMessage, Converter={StaticResource StringToVisibility}}" />
+
+                    <TextBlock Text="{Binding StatusMessage}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               Margin="0,10,0,0"
+                               Visibility="{Binding StatusMessage, Converter={StaticResource StringToVisibility}}" />
+
+                    <controls:PageStateView State="Loading"
+                                            MinHeight="220"
+                                            Margin="0,12,0,0"
+                                            Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
+                    <controls:PageStateView State="Empty"
+                                            Title="{Binding EmptyTitle}"
+                                            Description="{Binding EmptyDescription}"
+                                            MinHeight="220"
+                                            Margin="0,12,0,0"
+                                            Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}">
+                        <controls:PageStateView.ActionContent>
+                            <Button Content="{loc:Loc Key=common.refresh}"
+                                    Command="{Binding RefreshCommand}"
+                                    Style="{StaticResource PrimaryButton}" />
+                        </controls:PageStateView.ActionContent>
+                    </controls:PageStateView>
+                    <controls:PageStateView State="Error"
+                                            Description="{Binding ErrorMessage}"
+                                            MinHeight="220"
+                                            Margin="0,12,0,0"
+                                            Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibility}}">
+                        <controls:PageStateView.ActionContent>
+                            <Button Content="{loc:Loc Key=common.refresh}"
+                                    Command="{Binding RefreshCommand}"
+                                    Style="{StaticResource PrimaryButton}" />
+                        </controls:PageStateView.ActionContent>
+                    </controls:PageStateView>
+
+                    <StackPanel Visibility="{Binding HasItems, Converter={StaticResource BoolToVisibility}}">
+                        <Grid Margin="10,16,10,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="66" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="44" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{loc:Loc Key=schematics.column.type}" Style="{StaticResource SchematicTableHeaderText}" />
+                            <TextBlock Grid.Column="1" Text="{loc:Loc Key=schematics.column.name}" Style="{StaticResource SchematicTableHeaderText}" Margin="6,0,12,0" />
+                            <TextBlock Grid.Column="2" Text="{loc:Loc Key=schematics.column.format}" Style="{StaticResource SchematicTableHeaderText}" />
+                            <TextBlock Grid.Column="3" Text="{loc:Loc Key=schematics.column.time}" Style="{StaticResource SchematicTableHeaderText}" />
+                            <TextBlock Grid.Column="4" Text="{loc:Loc Key=schematics.column.size}" Style="{StaticResource SchematicTableHeaderText}" />
+                            <TextBlock Grid.Column="5" Text="{loc:Loc Key=schematics.column.select}" Style="{StaticResource SchematicTableHeaderText}" HorizontalAlignment="Center" />
+                        </Grid>
+                        <ListBox ItemsSource="{Binding Items}"
+                                 ItemTemplate="{StaticResource SchematicRowTemplate}"
+                                 MaxHeight="560"
+                                 VirtualizingPanel.IsVirtualizing="True"
+                                 VirtualizingPanel.VirtualizationMode="Recycling"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
