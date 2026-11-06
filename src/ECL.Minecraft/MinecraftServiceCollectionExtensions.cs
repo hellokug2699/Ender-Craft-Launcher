@@ -24,6 +24,7 @@ using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.Network;
 using Ecl.Minecraft.News;
 using Ecl.Minecraft.Performance;
+using Ecl.Minecraft.Screenshots;
 using Ecl.Minecraft.Security;
 using Ecl.Minecraft.Storage;
 using Ecl.Minecraft.Versions;
@@ -74,6 +75,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IContentInstallService, ContentInstallService>();
         services.AddSingleton<IContentPackService, ContentPackService>();
         services.AddSingleton<IShaderSupportService, ShaderSupportService>();
+        services.AddSingleton<IScreenshotService, ScreenshotService>();
         services.AddSingleton<IVersionNewsService, MojangVersionNewsService>();
         services.AddSingleton<ICrashReportService, CrashReportService>();
         services.AddSingleton<IDiagnosticPackageService, DiagnosticPackageService>();

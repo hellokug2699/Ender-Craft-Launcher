@@ -178,6 +178,36 @@ public sealed class InstanceWorkspaceNavigationTests
     }
 
     [Fact]
+    public void ScreenshotPageBecomesAvailableWhenTheWorkspaceProvidesIt()
+    {
+        var screenshotsPage = new object();
+        var navigation = InstanceWorkspaceNavigationFactory.Create(
+            Localizer(),
+            new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                [InstanceWorkspacePageKeys.BasicInfo] = new object(),
+                [InstanceWorkspacePageKeys.Mods] = new object(),
+                [InstanceWorkspacePageKeys.Screenshots] = screenshotsPage,
+            });
+
+        var item = navigation.Find(InstanceWorkspacePageKeys.Screenshots);
+        Assert.NotNull(item);
+        Assert.True(item!.IsAvailable);
+        Assert.Same(screenshotsPage, item.Page);
+        Assert.Equal(string.Empty, item.UnavailableReason);
+        Assert.Equal("截图", item.Title);
+        Assert.Equal("世界与文件", item.GroupTitle);
+
+        // 其余文件页仍未提供页面对象：保留准确的不可用状态。
+        Assert.False(navigation.Find(InstanceWorkspacePageKeys.Schematics)!.IsAvailable);
+        Assert.False(navigation.Find(InstanceWorkspacePageKeys.Export)!.IsAvailable);
+
+        Assert.True(navigation.TryActivate(InstanceWorkspacePageKeys.Screenshots));
+        Assert.Equal(InstanceWorkspacePageKeys.Screenshots, navigation.CurrentPageKey);
+        Assert.Same(screenshotsPage, navigation.CurrentPage);
+    }
+
+    [Fact]
     public void TwoWorkspacesKeepIndependentNavigationState()
     {
         var first = CreateNavigation(out var firstBasic, out var firstMods);

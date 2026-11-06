@@ -76,12 +76,14 @@ public partial class App : Application
 
             services.AddSingleton<IDialogService, DialogService>();
             services.AddSingleton<IShaderHintStore, ShaderHintStore>();
+            services.AddSingleton<IScreenshotImageLoader, ScreenshotImageLoader>();
             services.AddSingleton(new Ecl.Deployment.CodeSigningTrustService());
             services.AddSingleton<InstancesViewModel>();
             services.AddSingleton<StorageViewModel>();
             services.AddSingleton<ModsPageFactory>();
             services.AddSingleton<InstanceModifyPageFactory>();
             services.AddSingleton<ContentPackPageFactory>();
+            services.AddSingleton<ScreenshotPageFactory>();
             services.AddSingleton<HomeViewModel>();
             services.AddSingleton<DownloadViewModel>();
             services.AddSingleton<SettingsViewModel>();

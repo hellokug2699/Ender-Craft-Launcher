@@ -1,0 +1,439 @@
+<UserControl x:Class="Ecl.App.Views.InstanceScreenshotsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization"
+             xmlns:controls="clr-namespace:Ecl.App.Controls"
+             xmlns:behaviors="clr-namespace:Ecl.App.Behaviors">
+    <!--
+        实例工作区「世界与文件 · 截图」二级页（B2c，screenshots.md）。
+        三种展示形式共享同一组条目与选择状态；列表/方格提供复选框，极简模式只浏览图片。
+        删除按钮位于图片展示区域之外的标题行右侧；预览在当前页面内以覆盖层打开。
+        所有截图读取都经由页面 ViewModel 的领域服务，视图不拼接文件路径。
+    -->
+    <UserControl.InputBindings>
+        <KeyBinding Key="Escape" Command="{Binding ClosePreviewCommand}" />
+        <KeyBinding Key="Left" Command="{Binding PreviousPreviewCommand}" />
+        <KeyBinding Key="Right" Command="{Binding NextPreviewCommand}" />
+    </UserControl.InputBindings>
+
+    <UserControl.Resources>
+        <!-- 展示形式按钮：当前模式用强调色背景表达，同时保留文字标签，不只靠颜色。 -->
+        <Style x:Key="ListModeButton" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsListView}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="GridModeButton" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsGridView}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="MinimalModeButton" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMinimalView}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SortButton" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsNewestFirst}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="SortOldButton" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsNewestFirst}" Value="False">
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ScreenshotTableHeaderText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+            <Setter Property="FontFamily" Value="{StaticResource UiMediumFontFamily}" />
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- 缩略图占位：没有可解码图像时显示几何图标，不伪造截图内容。 -->
+        <DataTemplate x:Key="ScreenshotThumbnail">
+            <Grid>
+                <Border Background="{DynamicResource SurfaceAltBrush}"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <Grid>
+                        <Path Data="M4,4 H28 V24 H4 Z M7,20 L12,13 L16,17 L20,10 L28,24 H4 Z"
+                              Stretch="Uniform"
+                              Width="26"
+                              Height="20"
+                              Fill="{DynamicResource TextMutedBrush}"
+                              Opacity="0.7"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              Visibility="{Binding HasThumbnail, Converter={StaticResource InverseBoolToVisibility}}" />
+                        <Image Source="{Binding Thumbnail}"
+                               Stretch="UniformToFill"
+                               Loaded="Thumbnail_Loaded"
+                               Visibility="{Binding HasThumbnail, Converter={StaticResource BoolToVisibility}}" />
+                        <ProgressBar IsIndeterminate="True"
+                                     Height="3"
+                                     VerticalAlignment="Bottom"
+                                     Margin="8,0,8,6"
+                                     Visibility="{Binding IsThumbnailLoading, Converter={StaticResource BoolToVisibility}}" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </DataTemplate>
+
+        <!-- 列表模式：缩略图 / 文件名 / 时间 / 大小 / 复选框（screenshots.md §3.1）。 -->
+        <DataTemplate x:Key="ScreenshotListRow">
+            <Grid MinHeight="72"
+                  Margin="10,0"
+                  Background="Transparent"
+                  MouseLeftButtonUp="ScreenshotRow_MouseLeftButtonUp"
+                  AutomationProperties.Name="{Binding FileName}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="104" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="100" />
+                    <ColumnDefinition Width="44" />
+                </Grid.ColumnDefinitions>
+
+                <ContentControl Grid.Column="0"
+                                Content="{Binding}"
+                                ContentTemplate="{StaticResource ScreenshotThumbnail}"
+                                Width="92"
+                                Height="58"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1"
+                           Text="{Binding FileName}"
+                           FontSize="12"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding FileName}"
+                           Margin="8,0,12,0" />
+                <TextBlock Grid.Column="2"
+                           Text="{Binding TimeText}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           FontSize="10"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="3"
+                           Text="{Binding SizeText}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           FontSize="10"
+                           VerticalAlignment="Center" />
+                <CheckBox Grid.Column="4"
+                          IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          AutomationProperties.Name="{Binding FileName}" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- 方格模式：每行五张，图片下方显示文件名/时间/大小，右下角复选框（screenshots.md §3.2）。 -->
+        <DataTemplate x:Key="ScreenshotGridRow">
+            <Grid Margin="4"
+                  Background="Transparent"
+                  MouseLeftButtonUp="ScreenshotRow_MouseLeftButtonUp"
+                  AutomationProperties.Name="{Binding FileName}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="112" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <ContentControl Content="{Binding}"
+                                ContentTemplate="{StaticResource ScreenshotThumbnail}"
+                                Height="112" />
+
+                <StackPanel Grid.Row="1" Margin="2,6,2,0">
+                    <TextBlock Text="{Binding FileName}"
+                               FontSize="10"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding FileName}" />
+                    <TextBlock Text="{Binding TimeText}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="9"
+                               Margin="0,2,0,0" />
+                    <TextBlock Text="{Binding SizeText}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="9" />
+                </StackPanel>
+
+                <CheckBox Grid.Row="0"
+                          IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                          HorizontalAlignment="Right"
+                          VerticalAlignment="Bottom"
+                          Margin="0,0,8,8"
+                          Background="{DynamicResource SurfaceBrush}"
+                          AutomationProperties.Name="{Binding FileName}" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- 极简模式：每行八张，不显示信息与复选框（screenshots.md §3.3）。 -->
+        <DataTemplate x:Key="ScreenshotMinimalRow">
+            <Grid Height="78"
+                  Margin="4"
+                  Background="Transparent"
+                  MouseLeftButtonUp="ScreenshotRow_MouseLeftButtonUp"
+                  AutomationProperties.Name="{Binding FileName}">
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ScreenshotThumbnail}" />
+            </Grid>
+        </DataTemplate>
+
+        <ItemsPanelTemplate x:Key="ScreenshotGridPanel">
+            <UniformGrid Columns="5" />
+        </ItemsPanelTemplate>
+        <ItemsPanelTemplate x:Key="ScreenshotMinimalPanel">
+            <UniformGrid Columns="8" />
+        </ItemsPanelTemplate>
+    </UserControl.Resources>
+
+    <Grid>
+        <ScrollViewer x:Name="PageScroll"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      behaviors:WheelScroll.IsEnabled="True">
+            <StackPanel>
+                <controls:PageHeader Title="{Binding Title}" Subtitle="{Binding Subtitle}">
+                    <controls:PageHeader.Actions>
+                        <Button Content="{Binding DeleteButtonText}"
+                                Command="{Binding DeleteSelectedCommand}"
+                                Style="{StaticResource DangerButton}"
+                                ToolTip="{Binding SelectedSizeText}"
+                                AutomationProperties.Name="{Binding DeleteButtonText}" />
+                    </controls:PageHeader.Actions>
+                </controls:PageHeader>
+
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <!-- 工具条：展示形式、排序、全选与计数；删除按钮不在这里（位于图片区域之外）。 -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="{Binding ViewListText}"
+                                        Command="{Binding UseListModeCommand}"
+                                        Style="{StaticResource ListModeButton}"
+                                        Margin="0,0,6,0" />
+                                <Button Content="{Binding ViewGridText}"
+                                        Command="{Binding UseGridModeCommand}"
+                                        Style="{StaticResource GridModeButton}"
+                                        Margin="0,0,6,0" />
+                                <Button Content="{Binding ViewMinimalText}"
+                                        Command="{Binding UseMinimalModeCommand}"
+                                        Style="{StaticResource MinimalModeButton}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Center">
+                                <Button Content="{Binding SortNewestText}"
+                                        Command="{Binding SortNewestCommand}"
+                                        Style="{StaticResource SortButton}"
+                                        Margin="0,0,6,0" />
+                                <Button Content="{Binding SortOldestText}"
+                                        Command="{Binding SortOldestCommand}"
+                                        Style="{StaticResource SortOldButton}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding CountText}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="10"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,10,0" />
+                                <Button Content="{loc:Loc Key=screenshots.selectAll}"
+                                        Command="{Binding ToggleSelectAllCommand}"
+                                        Style="{StaticResource ToolbarButton}" />
+                                <Button Content="{loc:Loc Key=common.refresh}"
+                                        Command="{Binding RefreshCommand}"
+                                        Style="{StaticResource ToolbarButton}"
+                                        Margin="6,0,0,0" />
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="{Binding SelectionSummary}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   Margin="0,10,0,0"
+                                   Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisibility}}" />
+
+                        <TextBlock Text="{Binding WarningMessage}"
+                                   Foreground="{DynamicResource WarningBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,10,0,0"
+                                   Visibility="{Binding WarningMessage, Converter={StaticResource StringToVisibility}}" />
+
+                        <TextBlock Text="{Binding StatusMessage}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,10,0,0"
+                                   Visibility="{Binding StatusMessage, Converter={StaticResource StringToVisibility}}" />
+
+                        <!-- 加载中 / 空 / 错误：使用共享四态，不自行发明空页面。 -->
+                        <controls:PageStateView State="Loading"
+                                                MinHeight="220"
+                                                Margin="0,12,0,0"
+                                                Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
+                        <controls:PageStateView State="Empty"
+                                                Title="{Binding EmptyTitle}"
+                                                Description="{Binding EmptyDescription}"
+                                                MinHeight="220"
+                                                Margin="0,12,0,0"
+                                                Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}">
+                            <controls:PageStateView.ActionContent>
+                                <Button Content="{loc:Loc Key=common.refresh}"
+                                        Command="{Binding RefreshCommand}"
+                                        Style="{StaticResource PrimaryButton}" />
+                            </controls:PageStateView.ActionContent>
+                        </controls:PageStateView>
+                        <controls:PageStateView State="Error"
+                                                Description="{Binding ErrorMessage}"
+                                                MinHeight="220"
+                                                Margin="0,12,0,0"
+                                                Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibility}}">
+                            <controls:PageStateView.ActionContent>
+                                <Button Content="{loc:Loc Key=common.refresh}"
+                                        Command="{Binding RefreshCommand}"
+                                        Style="{StaticResource PrimaryButton}" />
+                            </controls:PageStateView.ActionContent>
+                        </controls:PageStateView>
+
+                        <!-- 列表模式 -->
+                        <StackPanel Visibility="{Binding IsListView, Converter={StaticResource BoolToVisibility}}">
+                            <Grid Margin="10,16,10,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="104" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="100" />
+                                    <ColumnDefinition Width="44" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{loc:Loc Key=screenshots.column.thumbnail}" Style="{StaticResource ScreenshotTableHeaderText}" />
+                                <TextBlock Grid.Column="1" Text="{loc:Loc Key=screenshots.column.name}" Style="{StaticResource ScreenshotTableHeaderText}" Margin="8,0,12,0" />
+                                <TextBlock Grid.Column="2" Text="{loc:Loc Key=screenshots.column.time}" Style="{StaticResource ScreenshotTableHeaderText}" />
+                                <TextBlock Grid.Column="3" Text="{loc:Loc Key=screenshots.column.size}" Style="{StaticResource ScreenshotTableHeaderText}" />
+                                <TextBlock Grid.Column="4" Text="{loc:Loc Key=screenshots.column.select}" Style="{StaticResource ScreenshotTableHeaderText}" HorizontalAlignment="Center" />
+                            </Grid>
+                            <ListBox x:Name="ScreenshotList"
+                                     ItemsSource="{Binding Items}"
+                                     ItemTemplate="{StaticResource ScreenshotListRow}"
+                                     MaxHeight="560"
+                                     VirtualizingPanel.IsVirtualizing="True"
+                                     VirtualizingPanel.VirtualizationMode="Recycling"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     PreviewKeyDown="ScreenshotList_PreviewKeyDown"
+                                     Visibility="{Binding HasItems, Converter={StaticResource BoolToVisibility}}" />
+                        </StackPanel>
+
+                        <!-- 方格模式：每行五张。 -->
+                        <ListBox ItemsSource="{Binding Items}"
+                                 ItemTemplate="{StaticResource ScreenshotGridRow}"
+                                 ItemsPanel="{StaticResource ScreenshotGridPanel}"
+                                 Margin="0,16,0,0"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 PreviewKeyDown="ScreenshotList_PreviewKeyDown"
+                                 Visibility="{Binding IsGridView, Converter={StaticResource BoolToVisibility}}" />
+
+                        <!-- 极简模式：每行八张，只强调图片本身。 -->
+                        <ListBox ItemsSource="{Binding Items}"
+                                 ItemTemplate="{StaticResource ScreenshotMinimalRow}"
+                                 ItemsPanel="{StaticResource ScreenshotMinimalPanel}"
+                                 Margin="0,16,0,0"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 PreviewKeyDown="ScreenshotList_PreviewKeyDown"
+                                 Visibility="{Binding IsMinimalView, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- 页面内大图预览覆盖层（不跳转到独立页面）。 -->
+        <Grid x:Name="PreviewOverlay"
+              Background="#D9101012"
+              Focusable="True"
+              IsVisibleChanged="PreviewOverlay_IsVisibleChanged"
+              Visibility="{Binding IsPreviewOpen, Converter={StaticResource BoolToVisibility}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid Margin="20,16,20,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding PreviewOfText}"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           FontSize="12"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="1"
+                        Content="{Binding CloseText}"
+                        Command="{Binding ClosePreviewCommand}"
+                        Style="{StaticResource ToolbarButton}" />
+            </Grid>
+
+            <Grid Grid.Row="1" Margin="20,0,20,8">
+                <Image Source="{Binding PreviewImage}"
+                       Stretch="Uniform"
+                       Visibility="{Binding PreviewImage, Converter={StaticResource NullToVisibility}}" />
+                <ProgressBar IsIndeterminate="True"
+                             Width="160"
+                             Height="4"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             Visibility="{Binding IsPreviewLoading, Converter={StaticResource BoolToVisibility}}" />
+                <TextBlock Text="{Binding PreviewError}"
+                           Foreground="{DynamicResource DangerBrush}"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Visibility="{Binding PreviewError, Converter={StaticResource StringToVisibility}}" />
+            </Grid>
+
+            <StackPanel Grid.Row="2"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Margin="0,0,0,18">
+                <Button Content="{Binding PreviousText}"
+                        Command="{Binding PreviousPreviewCommand}"
+                        IsEnabled="{Binding CanGoPrevious}"
+                        Style="{StaticResource ToolbarButton}"
+                        Margin="0,0,8,0" />
+                <Button Content="{Binding NextText}"
+                        Command="{Binding NextPreviewCommand}"
+                        IsEnabled="{Binding CanGoNext}"
+                        Style="{StaticResource ToolbarButton}" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -55,6 +55,9 @@
             <DataTemplate DataType="{x:Type wsvm:ContentPackPageViewModel}">
                 <views:InstanceContentPacksView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type wsvm:ScreenshotPageViewModel}">
+                <views:InstanceScreenshotsView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:JavaManagementViewModel}">
                 <views:JavaManagementView />
             </DataTemplate>
