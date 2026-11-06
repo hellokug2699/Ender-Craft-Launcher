@@ -1185,6 +1185,16 @@ public sealed class InstanceModifyPageTests
             WriteCalls++;
             throw new NotSupportedException();
         }
+
+        public Task<Result> ApplyAsync(
+            string instanceId,
+            ContentPackKind kind,
+            IReadOnlyList<string> orderedFileNames,
+            CancellationToken cancellationToken = default)
+        {
+            WriteCalls++;
+            throw new NotSupportedException();
+        }
     }
 
     /// <summary>安装服务的调用记录与可控结果；不访问真实下载或文件系统。</summary>

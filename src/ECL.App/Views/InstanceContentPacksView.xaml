@@ -1,0 +1,319 @@
+<UserControl x:Class="Ecl.App.Views.InstanceContentPacksView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization"
+             xmlns:controls="clr-namespace:Ecl.App.Controls"
+             xmlns:behaviors="clr-namespace:Ecl.App.Behaviors">
+    <!--
+        实例工作区「内容 · 资源包 / 光影包」二级页（B2b）。
+        布局按 `hints/ui/pages/resource-library-template.md`：
+        顶部刷新/添加/下载；「已启用 / 未启用」两张表格，各自在表格内部左下角显示计数；
+        行内字段固定为状态、名称及简介、版本范围、功能；拖动调整顺序或跨表启用/禁用；
+        「应用」在第一张表格右上、表格外，无待应用更改时为灰色，有待应用更改时为绿色。
+    -->
+    <UserControl.Resources>
+        <Style x:Key="PackRowToolButton" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+
+        <Style x:Key="PackRowItemStyle" TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding FileName}" />
+        </Style>
+
+        <Style x:Key="PackTableHeaderText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+            <Setter Property="FontFamily" Value="{StaticResource UiMediumFontFamily}" />
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- 行模板：状态 / 名称及简介 / 版本范围 / 功能（列宽与表头共用）。 -->
+        <DataTemplate x:Key="PackRowTemplate">
+            <Grid MinHeight="40" Margin="10,0" ToolTip="{Binding StatusHint}" ToolTipService.ShowDuration="60000">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="46" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="120" />
+                </Grid.ColumnDefinitions>
+
+                <controls:ContentPackStatusGlyph Kind="{Binding StatusKind}"
+                                                 IconSize="16"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center"
+                                                 AutomationProperties.Name="{Binding StatusText}" />
+
+                <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="8,4">
+                    <TextBlock Text="{Binding Title}"
+                               FontSize="14"
+                               FontFamily="{StaticResource UiMediumFontFamily}"
+                               TextAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Title}" />
+                    <TextBlock Text="{Binding Description}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               MaxHeight="30"
+                               Margin="0,2,0,0"
+                               Visibility="{Binding HasDescription, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+
+                <TextBlock Grid.Column="2"
+                           Text="{Binding VersionRangeText}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           FontSize="10"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding VersionRangeText}"
+                           Margin="0,0,8,0" />
+
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="{Binding ToggleLabel}"
+                            Command="{Binding DataContext.TogglePackCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                            CommandParameter="{Binding}"
+                            Style="{StaticResource PackRowToolButton}"
+                            ToolTip="{loc:Loc Key=packs.toggleHint}"
+                            AutomationProperties.Name="{Binding ToggleLabel}" />
+                    <Button Content="{loc:Loc Key=common.delete}"
+                            Command="{Binding DataContext.DeletePackCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                            CommandParameter="{Binding}"
+                            Style="{StaticResource PackRowToolButton}"
+                            Foreground="{DynamicResource DangerBrush}"
+                            Margin="0"
+                            AutomationProperties.Name="{loc:Loc Key=packs.deleteTitle}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                  behaviors:WheelScroll.IsEnabled="True">
+        <StackPanel>
+            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <StackPanel>
+                    <TextBlock Text="{Binding KindTitle}" Style="{StaticResource SectionText}" />
+
+                    <!-- 顶部操作栏（模板 §2）：刷新 / 添加 xxx / 下载 xxx。 -->
+                    <WrapPanel Margin="0,12,0,0">
+                        <Button Content="{loc:Loc Key=packs.action.refresh}"
+                                Command="{Binding RefreshCommand}"
+                                Style="{StaticResource ToolbarButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="{Binding AddButtonText}"
+                                Command="{Binding AddPackCommand}"
+                                Style="{StaticResource ToolbarButton}"
+                                Margin="0,0,8,0" />
+                        <Button Content="{Binding DownloadButtonText}"
+                                Command="{Binding DownloadPacksCommand}"
+                                IsEnabled="{Binding CanOpenBrowser}"
+                                Style="{StaticResource PrimaryButton}"
+                                ToolTip="{loc:Loc Key=packs.downloadHint}" />
+                    </WrapPanel>
+
+                    <TextBlock Text="{Binding DragHint}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="9"
+                               Margin="0,10,0,0"
+                               TextWrapping="Wrap" />
+
+                    <!-- 已启用表格（模板 §3/§5）：标题行右侧是表格外的「应用」。 -->
+                    <Grid Margin="0,18,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding EnabledSectionTitle}"
+                                   Style="{StaticResource SectionText}"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1"
+                                Content="{loc:Loc Key=packs.apply}"
+                                Command="{Binding ApplyCommand}"
+                                MinWidth="96"
+                                ToolTip="{Binding ApplyHint}"
+                                ToolTipService.ShowOnDisabled="True"
+                                AutomationProperties.Name="{loc:Loc Key=packs.apply}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource GhostButton}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasPendingChanges}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource SuccessBrush}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource SuccessBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource AccentTextBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </Grid>
+
+                    <Border BorderBrush="{DynamicResource BorderSoftBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Background="{DynamicResource SurfaceBrush}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{DynamicResource InputBrush}"
+                                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                                    BorderThickness="0,0,0,1"
+                                    CornerRadius="8,8,0,0"
+                                    Padding="10,7">
+                                <Grid Margin="0,0,9,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="46" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="120" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{loc:Loc Key=packs.column.status}" Style="{StaticResource PackTableHeaderText}" HorizontalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{loc:Loc Key=packs.column.name}" Style="{StaticResource PackTableHeaderText}" HorizontalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{loc:Loc Key=packs.column.version}" Style="{StaticResource PackTableHeaderText}" />
+                                    <TextBlock Grid.Column="3" Text="{loc:Loc Key=packs.column.tools}" Style="{StaticResource PackTableHeaderText}" />
+                                </Grid>
+                            </Border>
+
+                            <Grid Grid.Row="1" Height="210">
+                                <ListBox x:Name="EnabledList"
+                                         ItemsSource="{Binding EnabledPacks}"
+                                         ItemTemplate="{StaticResource PackRowTemplate}"
+                                         ItemContainerStyle="{StaticResource PackRowItemStyle}"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         AllowDrop="True"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                         PreviewMouseLeftButtonDown="OnRowPreviewMouseLeftButtonDown"
+                                         MouseMove="OnRowMouseMove"
+                                         DragOver="OnTableDragOver"
+                                         Drop="OnTableDrop"
+                                         AutomationProperties.Name="{Binding EnabledSectionTitle}">
+                                    <ListBox.Tag>enabled</ListBox.Tag>
+                                </ListBox>
+                                <TextBlock Text="{Binding EmptyEnabledMessage}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="11"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Center"
+                                           TextWrapping="Wrap"
+                                           Margin="24,0"
+                                           Visibility="{Binding HasEnabledPacks, Converter={StaticResource InverseBoolToVisibility}}" />
+                            </Grid>
+
+                            <Border Grid.Row="2"
+                                    Padding="10,6"
+                                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                                    BorderThickness="0,1,0,0">
+                                <TextBlock Text="{Binding EnabledCountText}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="10" />
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <!-- 未启用表格（模板 §3）：同样在表格内部左下角显示独立计数。 -->
+                    <TextBlock Text="{Binding DisabledSectionTitle}"
+                               Style="{StaticResource SectionText}"
+                               Margin="0,18,0,8" />
+                    <Border BorderBrush="{DynamicResource BorderSoftBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Background="{DynamicResource SurfaceBrush}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{DynamicResource InputBrush}"
+                                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                                    BorderThickness="0,0,0,1"
+                                    CornerRadius="8,8,0,0"
+                                    Padding="10,7">
+                                <Grid Margin="0,0,9,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="46" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="120" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{loc:Loc Key=packs.column.status}" Style="{StaticResource PackTableHeaderText}" HorizontalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{loc:Loc Key=packs.column.name}" Style="{StaticResource PackTableHeaderText}" HorizontalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{loc:Loc Key=packs.column.version}" Style="{StaticResource PackTableHeaderText}" />
+                                    <TextBlock Grid.Column="3" Text="{loc:Loc Key=packs.column.tools}" Style="{StaticResource PackTableHeaderText}" />
+                                </Grid>
+                            </Border>
+
+                            <Grid Grid.Row="1" Height="210">
+                                <ListBox x:Name="DisabledList"
+                                         ItemsSource="{Binding DisabledPacks}"
+                                         ItemTemplate="{StaticResource PackRowTemplate}"
+                                         ItemContainerStyle="{StaticResource PackRowItemStyle}"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         AllowDrop="True"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                         PreviewMouseLeftButtonDown="OnRowPreviewMouseLeftButtonDown"
+                                         MouseMove="OnRowMouseMove"
+                                         DragOver="OnTableDragOver"
+                                         Drop="OnTableDrop"
+                                         AutomationProperties.Name="{Binding DisabledSectionTitle}">
+                                    <ListBox.Tag>disabled</ListBox.Tag>
+                                </ListBox>
+                                <TextBlock Text="{Binding EmptyDisabledMessage}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="11"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextAlignment="Center"
+                                           TextWrapping="Wrap"
+                                           Margin="24,0"
+                                           Visibility="{Binding HasDisabledPacks, Converter={StaticResource InverseBoolToVisibility}}" />
+                            </Grid>
+
+                            <Border Grid.Row="2"
+                                    Padding="10,6"
+                                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                                    BorderThickness="0,1,0,0">
+                                <TextBlock Text="{Binding DisabledCountText}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="10" />
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Text="{Binding DisabledOrderHint}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="9"
+                               Margin="0,8,0,0"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="{Binding WarningText}"
+                               Foreground="{DynamicResource WarningBrush}"
+                               FontSize="9"
+                               Margin="0,10,0,0"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding WarningText, Converter={StaticResource StringToVisibility}}" />
+                    <TextBlock Text="{Binding StatusMessage}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               Margin="0,10,0,0"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

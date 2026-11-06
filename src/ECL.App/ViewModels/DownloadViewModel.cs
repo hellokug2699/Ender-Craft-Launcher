@@ -185,7 +185,15 @@ public sealed partial class DownloadViewModel : ObservableObject
     /// 自动填充实例的 Minecraft 版本与加载器，再用给定搜索词检索（空搜索词表示直接浏览）。
     /// 目标实例已被移除或失效时明确要求重新选择，不静默退回自定义筛选/任意目录。
     /// </summary>
-    public async Task OpenModBrowserAsync(string instanceId, string? query)
+    public Task OpenModBrowserAsync(string instanceId, string? query) =>
+        OpenContentBrowserAsync(instanceId, ContentKind.Mod, query);
+
+    /// <summary>
+    /// 从实例工作区的资源包/光影包页打开本页（resource-library-template.md §2「下载 xxx」）：
+    /// 切到对应内容页签，并按已有实例目标模式带入稳定 InstanceId 与该实例的版本/加载器。
+    /// 只负责上下文传递；下载页的“已有实例模式”可见开关与锁定界面属于 B4。
+    /// </summary>
+    public async Task OpenContentBrowserAsync(string instanceId, ContentKind kind, string? query)
     {
         await RefreshInstancesAsync().ConfigureAwait(true);
 
@@ -193,7 +201,7 @@ public sealed partial class DownloadViewModel : ObservableObject
         _suppressTabSearch = true;
         try
         {
-            SelectedTab = Tabs.FirstOrDefault(tab => tab.Kind == ContentKind.Mod) ?? Tabs[0];
+            SelectedTab = Tabs.FirstOrDefault(tab => tab.Kind == kind) ?? Tabs[0];
         }
         finally
         {

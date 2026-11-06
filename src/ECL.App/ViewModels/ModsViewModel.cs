@@ -10,18 +10,19 @@ using Ecl.Minecraft.Mods;
 namespace Ecl.App.ViewModels;
 
 /// <summary>
-/// 一个实例工作区自有的模组与资源包页面状态（B2 步骤 1c、3b-3）。
+/// 一个实例工作区自有的模组页面状态（B2 步骤 1c、3b-3）。
 ///
 /// 本对象在创建时绑定唯一稳定 <see cref="InstanceId"/>，所有命令只作用于该实例，
 /// 不再依赖共享的“当前选中实例”：两个实例工作区同时打开时，各自的模组列表、
 /// 搜索/筛选与状态文案互不影响。关闭工作区时由页面释放。
+/// B2b 起资源包/光影包由独立二级页（<see cref="Workspace.ViewModels.ContentPackPageViewModel"/>）承载，
+/// 本页面不再提供第二套资源包入口。
 /// </summary>
 public sealed partial class ModsViewModel : ObservableObject, IDisposable
 {
     private readonly IModService _mods;
     private readonly IModpackService _modpacks;
     private readonly IModDependencyInstaller _dependencies;
-    private readonly IContentPackService _contentPacks;
     private readonly IDialogService _dialogs;
     private readonly ILocalizer _localizer;
 
@@ -38,10 +39,6 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
     public ObservableCollection<ModStatusFilterChoice> StatusFilters { get; } = [];
 
     public ObservableCollection<ModSortChoice> SortOrders { get; } = [];
-
-    public ObservableCollection<PackTypeChoice> PackTypes { get; } = [];
-
-    public ObservableCollection<ContentPackItemViewModel> Packs { get; } = [];
 
     [ObservableProperty]
     private ModItemViewModel? _selectedMod;
@@ -60,12 +57,6 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private ModSortChoice? _selectedSortOrder;
-
-    [ObservableProperty]
-    private PackTypeChoice? _selectedPackType;
-
-    [ObservableProperty]
-    private ContentPackItemViewModel? _selectedPack;
 
     [ObservableProperty]
     private string _statusMessage = string.Empty;
@@ -89,22 +80,12 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
     private bool _isFilterActive;
 
     [ObservableProperty]
-    private string _packSummary = string.Empty;
-
-    [ObservableProperty]
-    private string _packWarning = string.Empty;
-
-    [ObservableProperty]
-    private bool _packHasWarning;
-
-    [ObservableProperty]
     private bool _isBusy;
 
     public ModsViewModel(
         IModService mods,
         IModpackService modpacks,
         IModDependencyInstaller dependencies,
-        IContentPackService contentPacks,
         IDialogService dialogs,
         ILocalizer localizer,
         string instanceId,
@@ -114,7 +95,6 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         _mods = mods;
         _modpacks = modpacks;
         _dependencies = dependencies;
-        _contentPacks = contentPacks;
         _dialogs = dialogs;
         _localizer = localizer;
         InstanceId = instanceId;
@@ -137,10 +117,6 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
             ModStatusFilter.Updatable,
             localizer.Get("mods.filter.updatable"),
             localizer.Get("mods.capability.updateFilter")));
-
-        PackTypes.Add(new PackTypeChoice(ContentPackKind.ResourcePack, localizer.Get("mods.resourcePacks")));
-        PackTypes.Add(new PackTypeChoice(ContentPackKind.ShaderPack, localizer.Get("mods.shaderPacks")));
-        _selectedPackType = PackTypes[0];
 
         EmptyMessage = localizer.Get("mods.empty.none");
         ResultSummary = localizer.Get("mods.count.total", 0);
@@ -167,7 +143,6 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         }
 
         await RefreshAsync().ConfigureAwait(true);
-        await RefreshPacksAsync().ConfigureAwait(true);
     }
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
@@ -235,117 +210,6 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         {
             StatusMessage = message;
         }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanRefresh))]
-    private async Task RefreshPacksAsync()
-    {
-        if (IsDisposed || SelectedPackType is null)
-        {
-            Packs.Clear();
-            PackSummary = string.Empty;
-            PackWarning = string.Empty;
-            PackHasWarning = false;
-            return;
-        }
-
-        try
-        {
-            var result = await _contentPacks
-                .ListAsync(InstanceId, SelectedPackType.Kind)
-                .ConfigureAwait(true);
-            if (IsDisposed)
-            {
-                return;
-            }
-
-            if (!result.IsSuccess)
-            {
-                StatusMessage = result.Error?.ToString() ?? _localizer.Get("mods.packScanFailed");
-                return;
-            }
-
-            var list = result.Value!;
-            var selectedFileName = SelectedPack?.FileName;
-            Packs.Clear();
-            foreach (var pack in list.Packs)
-            {
-                Packs.Add(new ContentPackItemViewModel(pack, _localizer));
-            }
-
-            SelectedPack = Packs.FirstOrDefault(pack => pack.FileName == selectedFileName);
-
-            PackSummary = _localizer.Get("mods.packSummary", list.EnabledCount, list.Packs.Count);
-            PackWarning = BuildPackWarning(list);
-            PackHasWarning = PackWarning.Length > 0;
-        }
-        catch (Exception exception)
-        {
-            StatusMessage = exception.Message;
-        }
-    }
-
-    private string BuildPackWarning(ContentPackList list)
-    {
-        var warnings = new List<string>();
-        if (list.Status == PackOptionsStatus.Unreadable)
-        {
-            warnings.Add(_localizer.Get("mods.packWarningCorrupt"));
-        }
-
-        if (list.MissingEntries.Count > 0)
-        {
-            warnings.Add(_localizer.Get(
-                "mods.packWarningMissing",
-                list.MissingEntries.Count,
-                SummarizeEntries(list.MissingEntries)));
-        }
-
-        if (list.UnmanagedEntries.Count > 0)
-        {
-            warnings.Add(_localizer.Get(
-                "mods.packWarningUnmanaged",
-                list.UnmanagedEntries.Count,
-                SummarizeEntries(list.UnmanagedEntries)));
-        }
-
-        if (list.DuplicateEntries.Count > 0)
-        {
-            warnings.Add(_localizer.Get(
-                "mods.packWarningDuplicate",
-                list.DuplicateEntries.Count,
-                SummarizeEntries(list.DuplicateEntries)));
-        }
-
-        return string.Join(" ", warnings);
-    }
-
-    private static string SummarizeEntries(IReadOnlyList<string> entries)
-    {
-        const int limit = 3;
-        var names = string.Join("、", entries.Take(limit));
-        return entries.Count > limit ? $"{names} …" : names;
-    }
-
-    [RelayCommand(CanExecute = nameof(CanRefresh))]
-    private async Task TogglePackAsync()
-    {
-        if (IsDisposed || SelectedPackType is null || SelectedPack is null)
-        {
-            StatusMessage = _localizer.Get("mods.selectPack");
-            return;
-        }
-
-        var enable = !SelectedPack.Enabled;
-        var result = await _contentPacks
-            .SetEnabledAsync(InstanceId, SelectedPackType.Kind, SelectedPack.FileName, enable)
-            .ConfigureAwait(true);
-
-        StatusMessage = result.IsSuccess
-            ? _localizer.Get(enable ? "mods.packEnabled" : "mods.packDisabled", SelectedPack.FileName)
-            : result.Error?.ToString() ?? _localizer.Get("mods.packToggleFailed");
-
-        await RefreshPacksAsync().ConfigureAwait(true);
     }
 
     /// <summary>行内切换单个模组的启用状态（mods.md §5.5「禁用」与启用复选框共用）。</summary>
@@ -664,56 +528,6 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
-    private async Task ImportPackAsync()
-    {
-        if (IsDisposed || SelectedPackType is null)
-        {
-            return;
-        }
-
-        var file = _dialogs.PickOpenFile(
-            _localizer.Get("mods.packImportTitle"),
-            _localizer.Get("mods.packFilter"));
-        if (file is null)
-        {
-            return;
-        }
-
-        var result = await _contentPacks
-            .ImportAsync(InstanceId, SelectedPackType.Kind, file)
-            .ConfigureAwait(true);
-        StatusMessage = result.IsSuccess
-            ? _localizer.Get("mods.packImported", result.Value!.FileName)
-            : result.Error?.ToString() ?? _localizer.Get("mods.packImportFailed");
-        await RefreshPacksAsync().ConfigureAwait(true);
-    }
-
-    [RelayCommand(CanExecute = nameof(CanRefresh))]
-    private async Task DeletePackAsync()
-    {
-        if (IsDisposed || SelectedPackType is null || SelectedPack is null)
-        {
-            StatusMessage = _localizer.Get("mods.selectPack");
-            return;
-        }
-
-        if (!_dialogs.Confirm(
-                _localizer.Get("mods.packDeleteTitle"),
-                _localizer.Get("mods.packDeleteConfirm", SelectedPack.FileName)))
-        {
-            return;
-        }
-
-        var result = await _contentPacks
-            .DeleteAsync(InstanceId, SelectedPackType.Kind, SelectedPack.FileName)
-            .ConfigureAwait(true);
-        StatusMessage = result.IsSuccess
-            ? _localizer.Get("mods.packDeleted", SelectedPack.FileName)
-            : result.Error?.ToString() ?? _localizer.Get("mods.packDeleteFailed");
-        await RefreshPacksAsync().ConfigureAwait(true);
-    }
-
-    [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task ImportModpackAsync()
     {
         if (IsDisposed)
@@ -747,7 +561,6 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
                 result.Value!.DownloadedFiles,
                 result.Value.OverrideFiles);
             await RefreshAndKeepStatusAsync().ConfigureAwait(true);
-            await RefreshPacksAsync().ConfigureAwait(true);
         }
         finally
         {
@@ -831,7 +644,6 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
     {
         ReloadCommand.NotifyCanExecuteChanged();
         RefreshCommand.NotifyCanExecuteChanged();
-        RefreshPacksCommand.NotifyCanExecuteChanged();
         ToggleModCommand.NotifyCanExecuteChanged();
         DeleteModCommand.NotifyCanExecuteChanged();
         EnableSelectedCommand.NotifyCanExecuteChanged();
@@ -840,8 +652,6 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
         ClearStatusFilterCommand.NotifyCanExecuteChanged();
         DownloadModsCommand.NotifyCanExecuteChanged();
         ImportModsCommand.NotifyCanExecuteChanged();
-        ImportPackCommand.NotifyCanExecuteChanged();
-        DeletePackCommand.NotifyCanExecuteChanged();
         ImportModpackCommand.NotifyCanExecuteChanged();
         ExportModpackCommand.NotifyCanExecuteChanged();
         DownloadMissingDependenciesCommand.NotifyCanExecuteChanged();
@@ -936,14 +746,6 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
                 .ThenBy(mod => mod.FileName, StringComparer.Ordinal),
         };
 
-    partial void OnSelectedPackTypeChanged(PackTypeChoice? value)
-    {
-        if (!IsDisposed)
-        {
-            _ = RefreshPacksAsync();
-        }
-    }
-
     /// <summary>关闭工作区时释放本页面持有的列表与选择状态。</summary>
     public void Dispose()
     {
@@ -960,12 +762,8 @@ public sealed partial class ModsViewModel : ObservableObject, IDisposable
 
         Mods.Clear();
         FilteredMods.Clear();
-        Packs.Clear();
         SelectedMod = null;
-        SelectedPack = null;
     }
 }
-
-public sealed record PackTypeChoice(ContentPackKind Kind, string Title);
 
 

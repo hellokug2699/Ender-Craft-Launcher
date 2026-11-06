@@ -52,6 +52,9 @@
             <DataTemplate DataType="{x:Type vm:ModsViewModel}">
                 <views:InstanceModsView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type wsvm:ContentPackPageViewModel}">
+                <views:InstanceContentPacksView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type vm:JavaManagementViewModel}">
                 <views:JavaManagementView />
             </DataTemplate>

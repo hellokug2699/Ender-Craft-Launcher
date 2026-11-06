@@ -147,6 +147,37 @@ public sealed class InstanceWorkspaceNavigationTests
     }
 
     [Fact]
+    public void ResourcePackPageBecomesAvailableWhenTheWorkspaceProvidesIt()
+    {
+        var packsPage = new object();
+        var navigation = InstanceWorkspaceNavigationFactory.Create(
+            Localizer(),
+            new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                [InstanceWorkspacePageKeys.BasicInfo] = new object(),
+                [InstanceWorkspacePageKeys.Mods] = new object(),
+                [InstanceWorkspacePageKeys.ResourcePacks] = packsPage,
+            });
+
+        var item = navigation.Find(InstanceWorkspacePageKeys.ResourcePacks);
+        Assert.NotNull(item);
+        Assert.True(item!.IsAvailable);
+        Assert.Same(packsPage, item.Page);
+        Assert.Equal(string.Empty, item.UnavailableReason);
+        Assert.Equal("资源包", item.Title);
+        Assert.Equal("内容", item.GroupTitle);
+
+        // 光影包页仍按 B2b 的后续步骤保持不可用，不创建空页。
+        var shaders = navigation.Find(InstanceWorkspacePageKeys.Shaders);
+        Assert.False(shaders!.IsAvailable);
+        Assert.NotEqual(string.Empty, shaders.UnavailableReason);
+
+        Assert.True(navigation.TryActivate(InstanceWorkspacePageKeys.ResourcePacks));
+        Assert.Equal(InstanceWorkspacePageKeys.ResourcePacks, navigation.CurrentPageKey);
+        Assert.Same(packsPage, navigation.CurrentPage);
+    }
+
+    [Fact]
     public void TwoWorkspacesKeepIndependentNavigationState()
     {
         var first = CreateNavigation(out var firstBasic, out var firstMods);

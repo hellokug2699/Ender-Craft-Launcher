@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Ecl.App.Services;
 using Ecl.App.ViewModels;
 using Ecl.Core.Localization;
+using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.Storage;
 
 namespace Ecl.App.Workspace.ViewModels;
@@ -33,6 +34,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         Action<string>? manageStorage,
         IMemoryPressureMonitor memory,
         InstanceModifyPageFactory modifyFactory,
+        ContentPackPageFactory contentPackFactory,
         ILocalizer localizer)
     {
         State = state;
@@ -55,6 +57,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
             localizer);
         Modify = modifyFactory.Create(state);
         Modify.WorkspaceRefresh = RefreshAfterModifyAsync;
+        ResourcePacks = contentPackFactory.Create(state.InstanceId, ContentPackKind.ResourcePack);
 
         Navigation = InstanceWorkspaceNavigationFactory.Create(
             localizer,
@@ -62,6 +65,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
             {
                 [InstanceWorkspacePageKeys.BasicInfo] = BasicInfo,
                 [InstanceWorkspacePageKeys.Mods] = mods,
+                [InstanceWorkspacePageKeys.ResourcePacks] = ResourcePacks,
                 [InstanceWorkspacePageKeys.Modify] = Modify,
             });
     }
@@ -83,6 +87,9 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
 
     /// <summary>「配置 · 修改」二级页（B2 步骤 3b-4a：只读变更计划与影响预览）。</summary>
     public InstanceModifyViewModel Modify { get; }
+
+    /// <summary>「内容 · 资源包」二级页（B2b：双表、拖动启用/禁用、应用）。</summary>
+    public ContentPackPageViewModel ResourcePacks { get; }
 
     /// <summary>当前实例的存储占用卡状态（§5）；由基本信息页展示。</summary>
     public InstanceStorageViewModel Storage { get; }
@@ -109,7 +116,11 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
     /// 失败只影响本页文案，不构造空白页面；调用方负责记录异常。
     /// </summary>
     public Task InitializeAsync() =>
-        Task.WhenAll(Runtime.InitializeAsync(), Mods.InitializeAsync(), Storage.RefreshAsync());
+        Task.WhenAll(
+            Runtime.InitializeAsync(),
+            Mods.InitializeAsync(),
+            Storage.RefreshAsync(),
+            ResourcePacks.InitializeAsync());
 
     /// <summary>
     /// 受控变更成功后重新读取实例并刷新工作区身份（B2 步骤 3b-4b）：
@@ -142,6 +153,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
     {
         Navigation.Dispose();
         Modify.Dispose();
+        ResourcePacks.Dispose();
         BasicInfo.Dispose();
         Storage.Dispose();
         Operations.Dispose();

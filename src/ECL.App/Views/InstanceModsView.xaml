@@ -417,50 +417,6 @@
                                     Margin="0,0,8,8" />
                         </WrapPanel>
                     </Expander>
-
-                    <!-- 资源包与光影（B2b 拆分为独立二级页；在此之前保留现有入口，避免能力回退） -->
-                    <Expander Style="{StaticResource SectionExpander}" IsExpanded="False">
-                        <Expander.Header>
-                            <TextBlock Text="{loc:Loc Key=mods.section.packs}"
-                                       FontSize="12"
-                                       Style="{StaticResource EmphasisText}" />
-                        </Expander.Header>
-                        <StackPanel>
-                            <TextBlock Text="{loc:Loc Key=mods.packsLegacyHint}"
-                                       Foreground="{DynamicResource TextMutedBrush}"
-                                       FontSize="9"
-                                       TextWrapping="Wrap"
-                                       Margin="0,2,0,8" />
-                            <Grid Margin="0,4,0,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="{loc:Loc Key=mods.packsTitle}" Style="{StaticResource LabelText}" />
-                                    <TextBlock Text="{Binding PackSummary}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="0,3,0,0" />
-                                </StackPanel>
-                                <ComboBox Grid.Column="1" ItemsSource="{Binding PackTypes}" SelectedItem="{Binding SelectedPackType, Mode=TwoWay}" ItemTemplate="{StaticResource TitleItemTemplate}" Width="150" />
-                            </Grid>
-                            <TextBlock Text="{Binding PackWarning}" Foreground="{DynamicResource WarningBrush}" FontSize="9" Margin="0,6,0,0" TextWrapping="Wrap" />
-                            <ListBox ItemsSource="{Binding Packs}" SelectedItem="{Binding SelectedPack, Mode=TwoWay}" Height="130" Margin="0,8,0,0" BorderBrush="{DynamicResource BorderSoftBrush}" Background="{DynamicResource SurfaceBrush}">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <Grid Margin="5,3">
-                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                            <StackPanel>
-                                                <TextBlock Text="{Binding Name}" FontSize="10" Style="{StaticResource EmphasisText}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
-                                                <TextBlock Text="{Binding Meta}" Foreground="{DynamicResource TextMutedBrush}" FontSize="9" TextTrimming="CharacterEllipsis" ToolTip="{Binding Meta}" />
-                                            </StackPanel>
-                                            <TextBlock Grid.Column="1" Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="9" VerticalAlignment="Center" />
-                                        </Grid>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                            <WrapPanel Margin="0,8,0,0">
-                                <Button Content="{loc:Loc Key=mods.packImport}" Command="{Binding ImportPackCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
-                                <Button Content="{loc:Loc Key=mods.packToggle}" Command="{Binding TogglePackCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
-                                <Button Content="{loc:Loc Key=common.delete}" Command="{Binding DeletePackCommand}" Style="{StaticResource DangerButton}" Margin="0,0,8,8" />
-                            </WrapPanel>
-                        </StackPanel>
-                    </Expander>
                 </StackPanel>
             </Border>
         </StackPanel>

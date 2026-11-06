@@ -16,6 +16,7 @@ using Ecl.App.Workspace.ViewModels;
 using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Core.Workspace;
+using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.Storage;
 using Microsoft.Extensions.Logging;
 
@@ -42,6 +43,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly StorageAnalysisService _storageAnalysis;
     private readonly IMemoryPressureMonitor _memoryPressure;
     private readonly InstanceModifyPageFactory _modifyFactory;
+    private readonly ContentPackPageFactory _contentPackFactory;
     private readonly IReadOnlyList<string> _navigationKeys;
     private readonly IDisposable _workspaceChanges;
     private bool _suppressNavigation;
@@ -54,6 +56,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         StorageAnalysisService storageAnalysis,
         ModsPageFactory modsFactory,
         InstanceModifyPageFactory modifyFactory,
+        ContentPackPageFactory contentPackFactory,
         SettingsViewModel settings,
         JavaManagementViewModel javaManagement,
         LogSessionsViewModel logSessions,
@@ -74,6 +77,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _instances = instances;
         _modsFactory = modsFactory;
         _modifyFactory = modifyFactory;
+        _contentPackFactory = contentPackFactory;
         _settings = settings;
         _tools = tools;
         _storage = storage;
@@ -114,6 +118,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _home.OpenInstanceWorkspace = OpenSelectedInstanceWorkspace;
         instances.GetModHealthSummary = modsFactory.DescribeHealthAsync;
         modsFactory.OpenModBrowser = OpenModBrowser;
+        contentPackFactory.OpenPackBrowser = OpenPackBrowser;
         instances.NavigateToDetails = instanceId => OpenInstanceWorkspace(instanceId);
         instances.NavigateBackFromDetails = NavigateToInstances;
 
@@ -336,6 +341,23 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _ = OpenModBrowserAsync(instanceId, query);
 
     /// <summary>
+    /// 资源包/光影包页面的「下载 xxx」（resource-library-template.md §2）：
+    /// 切到下载中心对应页签，并带入稳定实例 ID 作为已有实例目标。
+    /// </summary>
+    private void OpenPackBrowser(string instanceId, ContentPackKind kind) =>
+        _ = OpenPackBrowserAsync(instanceId, kind);
+
+    private async Task OpenPackBrowserAsync(string instanceId, ContentPackKind kind)
+    {
+        // 页面使用资源包领域类型，下载中心使用内容类型；这里做唯一一次映射。
+        var contentKind = kind == ContentPackKind.ShaderPack
+            ? Ecl.Minecraft.Content.ContentKind.ShaderPack
+            : Ecl.Minecraft.Content.ContentKind.ResourcePack;
+        await _download.OpenContentBrowserAsync(instanceId, contentKind, null).ConfigureAwait(true);
+        ActivateDestination("download");
+    }
+
+    /// <summary>
     /// 全局拖拽入口（instances.md §5.2）：只接收 .zip / .mrpack，并走与主动选择相同的解析流程。
     /// 其它文件类型不触发任何导入，也不改变当前页面。
     /// </summary>
@@ -473,6 +495,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 OpenStorageForInstance,
                 _memoryPressure,
                 _modifyFactory,
+                _contentPackFactory,
                 _localizer);
             _ = InitializeInstancePageAsync(detail);
             page = detail;

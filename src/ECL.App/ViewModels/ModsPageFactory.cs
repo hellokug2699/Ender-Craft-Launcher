@@ -17,7 +17,6 @@ public sealed class ModsPageFactory(
     IModService mods,
     IModpackService modpacks,
     IModDependencyInstaller dependencies,
-    IContentPackService contentPacks,
     IDialogService dialogs,
     ILocalizer localizer)
 {
@@ -32,7 +31,6 @@ public sealed class ModsPageFactory(
             mods,
             modpacks,
             dependencies,
-            contentPacks,
             dialogs,
             localizer,
             instanceId,

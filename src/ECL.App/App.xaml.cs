@@ -80,6 +80,7 @@ public partial class App : Application
             services.AddSingleton<StorageViewModel>();
             services.AddSingleton<ModsPageFactory>();
             services.AddSingleton<InstanceModifyPageFactory>();
+            services.AddSingleton<ContentPackPageFactory>();
             services.AddSingleton<HomeViewModel>();
             services.AddSingleton<DownloadViewModel>();
             services.AddSingleton<SettingsViewModel>();

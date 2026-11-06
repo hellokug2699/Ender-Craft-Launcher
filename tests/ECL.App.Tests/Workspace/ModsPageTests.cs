@@ -262,26 +262,6 @@ public sealed class ModsPageTests
     }
 
     [Fact]
-    public void PackNamesCollapseMultilineDescriptions()
-    {
-        var entry = new ContentPackEntry(
-            "fabric.jar",
-            @"C:\instance\resourcepacks\fabric.jar",
-            ContentPackKind.ResourcePack,
-            "{\"bold\":false,\r\n\"text\":\"fabric\"}",
-            null,
-            null,
-            Enabled: true,
-            Incompatible: false);
-
-        var item = new ContentPackItemViewModel(entry, Localizer());
-
-        Assert.DoesNotContain('\n', item.Name);
-        Assert.DoesNotContain('\r', item.Name);
-        Assert.Contains("fabric", item.Name);
-    }
-
-    [Fact]
     public async Task DisposeStopsFurtherScans()
     {
         var (viewModel, mods) = Create(Entry("alpha.jar", metadata: Metadata("alpha")));
@@ -306,7 +286,6 @@ public sealed class ModsPageTests
             mods,
             new FakeModpackService(),
             new FakeDependencyInstaller(),
-            new FakeContentPackService(),
             dialogs,
             Localizer(),
             "instance-a",
@@ -471,44 +450,6 @@ public sealed class ModsPageTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(Result<ModDependencyInstallReport>.Ok(
                 new ModDependencyInstallReport([], [], [], [])));
-    }
-
-    private sealed class FakeContentPackService : IContentPackService
-    {
-        public Task<Result<ContentPackList>> ListAsync(
-            string instanceId,
-            ContentPackKind kind,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(Result<ContentPackList>.Ok(new ContentPackList(
-                [],
-                [],
-                [],
-                [],
-                PackOptionsStatus.NotInitialized,
-                null)));
-
-        public Task<Result<ContentPackEntry>> ImportAsync(
-            string instanceId,
-            ContentPackKind kind,
-            string sourcePath,
-            bool overwrite = false,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public Task<Result> DeleteAsync(
-            string instanceId,
-            ContentPackKind kind,
-            string fileName,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(Result.Ok());
-
-        public Task<Result> SetEnabledAsync(
-            string instanceId,
-            ContentPackKind kind,
-            string fileName,
-            bool enabled,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(Result.Ok());
     }
 
     private sealed class FakeDialogService : IDialogService
