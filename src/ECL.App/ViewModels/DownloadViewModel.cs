@@ -13,8 +13,12 @@ using Ecl.Minecraft.Instances;
 namespace Ecl.App.ViewModels;
 
 /// <summary>
-/// “下载”页：实例下载（游戏/加载器）与 Mod、整合包、数据包、资源包、光影包下载都汇集在这里。
-/// 没有实例时仍可搜索并下载文件；有实例时可以直接安装到实例。
+/// “下载”页（下载中心）：横向二级目录固定为实例版本、模组、整合包、资源包、光影包、数据包
+/// （`download-instance-versions.md` §1）。
+/// <para>
+/// 实例版本页由 <see cref="InstanceVersion"/> 独立持有页面状态；模组/整合包/资源包/光影包/数据包
+/// 共用内容发现区（搜索、来源、目标实例、条级结果）。切换二级页不重置实例版本页的已配置状态。
+/// </para>
 /// </summary>
 public sealed partial class DownloadViewModel : ObservableObject
 {
@@ -29,6 +33,8 @@ public sealed partial class DownloadViewModel : ObservableObject
     private bool _suppressTabSearch;
 
     public InstancesViewModel Game { get; }
+
+    public InstanceVersionPageViewModel InstanceVersion { get; }
 
     public ObservableCollection<DownloadTabViewModel> Tabs { get; } = [];
 
@@ -120,7 +126,6 @@ public sealed partial class DownloadViewModel : ObservableObject
 
     public bool CanCreateInstanceFromPack => IsModpackTab && SelectedResult is not null;
 
-    public string GameRoot { get; }
 
     public string TargetInstanceHint => SelectedInstance?.Id is null
         ? _localizer.Get("downloads.noInstanceHint")
@@ -131,10 +136,10 @@ public sealed partial class DownloadViewModel : ObservableObject
         IContentInstallService install,
         IInstanceService instances,
         InstancesViewModel game,
+        InstanceVersionPageViewModel instanceVersion,
         IDialogService dialogs,
         ILocalizer localizer,
-        IDownloadController downloads,
-        IAppPaths paths)
+        IDownloadController downloads)
     {
         _search = search;
         _install = install;
@@ -143,14 +148,14 @@ public sealed partial class DownloadViewModel : ObservableObject
         _localizer = localizer;
         _downloads = downloads;
         Game = game;
-        GameRoot = paths.GameRoot;
+        InstanceVersion = instanceVersion;
 
-        Tabs.Add(new DownloadTabViewModel("game", null, localizer.Get("downloads.tab.game")));
-        Tabs.Add(new DownloadTabViewModel("mod", ContentKind.Mod, localizer.Get("downloads.kind.mod")));
-        Tabs.Add(new DownloadTabViewModel("modpack", ContentKind.ModPack, localizer.Get("downloads.kind.modpack")));
-        Tabs.Add(new DownloadTabViewModel("datapack", ContentKind.DataPack, localizer.Get("downloads.kind.datapack")));
-        Tabs.Add(new DownloadTabViewModel("resourcepack", ContentKind.ResourcePack, localizer.Get("downloads.kind.resourcepack")));
-        Tabs.Add(new DownloadTabViewModel("shader", ContentKind.ShaderPack, localizer.Get("downloads.kind.shaderpack")));
+        // 顺序固定（download-instance-versions.md §1）：实例版本、模组、整合包、资源包、光影包、数据包。
+        foreach (var tab in DownloadCategories.Create(localizer))
+        {
+            Tabs.Add(tab);
+        }
+
         _selectedTab = Tabs[0];
 
         Sources.Add(new ContentSourceChoice(ContentSourceFilter.All, localizer.Get("downloads.source.all")));
@@ -178,6 +183,7 @@ public sealed partial class DownloadViewModel : ObservableObject
 
         _initialized = true;
         await RefreshInstancesAsync().ConfigureAwait(true);
+        await InstanceVersion.EnsureLoadedAsync().ConfigureAwait(true);
     }
 
     /// <summary>
@@ -230,6 +236,7 @@ public sealed partial class DownloadViewModel : ObservableObject
         if (_initialized)
         {
             await RefreshInstancesAsync().ConfigureAwait(true);
+            await InstanceVersion.RefreshAsync().ConfigureAwait(true);
         }
     }
 
@@ -320,19 +327,6 @@ public sealed partial class DownloadViewModel : ObservableObject
         finally
         {
             IsSearching = false;
-        }
-    }
-
-    [RelayCommand]
-    private async Task CreateGameInstanceAsync()
-    {
-        await Game.CreateInstanceCommand.ExecuteAsync(null).ConfigureAwait(true);
-        await RefreshInstancesAsync().ConfigureAwait(true);
-        StatusMessage = Game.StatusMessage;
-
-        if (Game.SelectedInstance is { } created)
-        {
-            SelectedInstance = TargetInstances.FirstOrDefault(item => item.Id == created.Model.Id);
         }
     }
 
@@ -647,7 +641,28 @@ public sealed partial class DownloadViewModel : ObservableObject
     }
 }
 
-public sealed record DownloadTabViewModel(string Key, ContentKind? Kind, string Title);
+public sealed record DownloadTabViewModel(string Key, ContentKind? Kind, string Title)
+{
+    /// <summary>UIA/无障碍名称只使用本地化标题，不暴露记录类型的 ToString()。</summary>
+    public override string ToString() => Title;
+}
+
+/// <summary>
+/// 下载中心横向二级目录的唯一构造点（`download-instance-versions.md` §1）：
+/// 分类与顺序固定为实例版本、模组、整合包、资源包、光影包、数据包。
+/// </summary>
+public static class DownloadCategories
+{
+    public static IReadOnlyList<DownloadTabViewModel> Create(ILocalizer localizer) =>
+    [
+        new DownloadTabViewModel("version", null, localizer.Get("downloads.tab.version")),
+        new DownloadTabViewModel("mod", ContentKind.Mod, localizer.Get("downloads.tab.mod")),
+        new DownloadTabViewModel("modpack", ContentKind.ModPack, localizer.Get("downloads.kind.modpack")),
+        new DownloadTabViewModel("resourcepack", ContentKind.ResourcePack, localizer.Get("downloads.kind.resourcepack")),
+        new DownloadTabViewModel("shader", ContentKind.ShaderPack, localizer.Get("downloads.kind.shaderpack")),
+        new DownloadTabViewModel("datapack", ContentKind.DataPack, localizer.Get("downloads.kind.datapack")),
+    ];
+}
 
 public sealed record ContentSourceChoice(ContentSourceFilter Filter, string Title);
 
@@ -691,3 +706,7 @@ public sealed class ContentHitViewModel
 
     public string? IconUrl { get; }
 }
+
+
+
+

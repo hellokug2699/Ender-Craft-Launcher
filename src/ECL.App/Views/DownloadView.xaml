@@ -41,48 +41,23 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
-            <!-- ==================== 游戏实例下载 ==================== -->
+            <!-- ==================== 实例版本 ==================== -->
             <StackPanel Visibility="{Binding IsGameTab, Converter={StaticResource BoolToVisibility}}">
-                <Border Style="{StaticResource Card}" Margin="0,0,0,16">
-                    <StackPanel>
-                        <TextBlock Text="{loc:Loc Key=downloads.game.title}" Style="{StaticResource SectionText}" />
-                        <TextBlock Text="{loc:Loc Key=downloads.game.subtitle}"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   FontSize="11"
-                                   TextWrapping="Wrap"
-                                   Margin="0,6,0,0" />
-                        <Grid Margin="0,12,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="12" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="{loc:Loc Key=downloads.game.location}" Style="{StaticResource LabelText}" VerticalAlignment="Center" Margin="0" />
-                            <TextBlock Grid.Column="2"
-                                       Text="{Binding GameRoot}"
-                                       FontFamily="Consolas"
-                                       FontSize="11"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       TextTrimming="CharacterEllipsis"
-                                       ToolTip="{Binding GameRoot}"
-                                       VerticalAlignment="Center" />
-                        </Grid>
-                        <TextBlock Text="{loc:Loc Key=downloads.game.isolation}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10"
-                                   TextWrapping="Wrap"
-                                   Margin="0,6,0,0" />
-                        <TextBlock Text="{loc:Loc Key=downloads.game.locationHint}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10"
-                                   TextWrapping="Wrap"
-                                   Margin="0,4,0,0" />
-                    </StackPanel>
-                </Border>
+                <ContentControl Content="{Binding InstanceVersion}" />
 
-                <Border Style="{StaticResource Card}" Margin="0,0,0,16">
+                <!--
+                    过渡区（B4b 待迁移）：「安装 / 补全已有实例」属于实例安装流程，
+                    下载页重写的实例版本页面只负责新建实例；在实例安装的新归属落地前保留本卡片，
+                    避免删除现有可用入口。B4b 完成后移除。
+                -->
+                <Border Style="{StaticResource Card}" Margin="0,16,0,0">
                     <StackPanel>
                         <TextBlock Text="{loc:Loc Key=downloads.game.existing}" Style="{StaticResource SectionText}" />
+                        <TextBlock Text="{loc:Loc Key=downloads.game.existingHint}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,6,0,0" />
                         <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -124,106 +99,6 @@
                                    FontSize="10"
                                    Margin="0,6,0,0"
                                    TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-
-                <!-- 新建实例：按创建流程自上而下排列 -->
-                <Border Style="{StaticResource Card}" Margin="0,0,0,16">
-                    <StackPanel>
-                        <TextBlock Text="{loc:Loc Key=instances.createTitle}" Style="{StaticResource SectionText}" />
-                        <StackPanel Margin="0,12,0,0">
-                            <TextBlock Text="{loc:Loc Key=instances.name}" Style="{StaticResource LabelText}" />
-                            <TextBox Text="{Binding Game.NewInstanceName, UpdateSourceTrigger=PropertyChanged}"
-                                     ToolTip="{loc:Loc Key=instances.namePlaceholder}" />
-                        </StackPanel>
-                        <StackPanel Margin="0,12,0,0">
-                            <TextBlock Text="{loc:Loc Key=instances.version}" Style="{StaticResource LabelText}" />
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="150" />
-                                    <ColumnDefinition Width="10" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <ComboBox ItemsSource="{Binding Game.VersionTypes}"
-                                          SelectedItem="{Binding Game.SelectedVersionType, Mode=TwoWay}"
-                                          ItemTemplate="{StaticResource TitleItemTemplate}" />
-                                <ComboBox Grid.Column="2"
-                                          ItemsSource="{Binding Game.GameVersions}"
-                                          SelectedItem="{Binding Game.SelectedGameVersion, Mode=TwoWay}"
-                                          ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
-                                <Button Grid.Column="3"
-                                        Content="{loc:Loc Key=instances.version.refresh}"
-                                        Command="{Binding Game.RefreshVersionsCommand}"
-                                        Style="{StaticResource GhostButton}"
-                                        Margin="10,0,0,0" />
-                            </Grid>
-                            <ProgressBar Height="3" Margin="0,8,0,0" IsIndeterminate="True"
-                                         Visibility="{Binding Game.IsLoadingVersions, Converter={StaticResource BoolToVisibility}}" />
-                            <TextBlock Text="{Binding Game.VersionStatus}"
-                                       Foreground="{DynamicResource TextMutedBrush}"
-                                       FontSize="10"
-                                       Margin="0,6,0,0"
-                                       TextWrapping="Wrap" />
-                        </StackPanel>
-                        <StackPanel Margin="0,12,0,0">
-                            <TextBlock Text="{loc:Loc Key=instances.loader.title}" Style="{StaticResource LabelText}" />
-                            <ComboBox ItemsSource="{Binding Game.LoaderChoices}"
-                                      SelectedItem="{Binding Game.SelectedNewLoader, Mode=TwoWay}"
-                                      ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
-                        </StackPanel>
-                        <Grid Margin="0,12,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="{loc:Loc Key=instances.loader.version}" Style="{StaticResource LabelText}" />
-                                <ComboBox ItemsSource="{Binding Game.LoaderVersions}"
-                                          SelectedItem="{Binding Game.SelectedLoaderVersion, Mode=TwoWay}"
-                                          ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
-                            </StackPanel>
-                            <Button Grid.Column="1" Content="{loc:Loc Key=instances.loader.refresh}"
-                                    Command="{Binding Game.RefreshComponentsCommand}"
-                                    Style="{StaticResource GhostButton}" VerticalAlignment="Bottom"
-                                    Margin="10,0,0,0" />
-                        </Grid>
-                        <TextBlock Text="{loc:Loc Key=instances.fabricApi.notice}"
-                                   Foreground="{DynamicResource AccentBrush}" FontSize="11" Style="{StaticResource EmphasisText}"
-                                   Margin="0,12,0,0" TextWrapping="Wrap"
-                                   Visibility="{Binding Game.ShowFabricApiNotice, Converter={StaticResource BoolToVisibility}}" />
-                        <StackPanel Margin="0,10,0,0"
-                                    Visibility="{Binding Game.ShowFabricApiNotice, Converter={StaticResource BoolToVisibility}}">
-                            <TextBlock Text="{loc:Loc Key=instances.fabricApi.title}" Style="{StaticResource LabelText}" />
-                            <ComboBox ItemsSource="{Binding Game.FabricApiVersions}"
-                                      SelectedItem="{Binding Game.SelectedFabricApiVersion, Mode=TwoWay}"
-                                      ItemTemplate="{StaticResource DisplayNameItemTemplate}" />
-                        </StackPanel>
-                        <StackPanel Margin="0,10,0,0"
-                                    Visibility="{Binding Game.ShowOptiFineSelector, Converter={StaticResource BoolToVisibility}}">
-                            <TextBlock Text="{loc:Loc Key=instances.optifine.title}" Style="{StaticResource LabelText}" />
-                            <ComboBox ItemsSource="{Binding Game.OptiFineVersions}"
-                                      SelectedItem="{Binding Game.SelectedOptiFineVersion, Mode=TwoWay}"
-                                      ItemTemplate="{StaticResource DisplayNameItemTemplate}"
-                                      IsEnabled="{Binding Game.OptiFineEnabled}" />
-                            <TextBlock Text="{loc:Loc Key=instances.optifine.disabled}"
-                                       Foreground="{DynamicResource TextMutedBrush}" FontSize="10"
-                                       Margin="0,6,0,0" TextWrapping="Wrap" />
-                        </StackPanel>
-                        <ProgressBar Height="4" Margin="0,10,0,0" IsIndeterminate="True"
-                                     Visibility="{Binding Game.IsLoadingComponents, Converter={StaticResource BoolToVisibility}}" />
-                        <TextBlock Text="{Binding Game.ComponentStatus}" Foreground="{DynamicResource TextSecondaryBrush}"
-                                   FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap" />
-                        <Grid Margin="0,14,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap" />
-                            <Button Grid.Column="1" Content="{loc:Loc Key=common.create}"
-                                    Command="{Binding CreateGameInstanceCommand}" Style="{StaticResource PrimaryButton}" />
-                        </Grid>
                     </StackPanel>
                 </Border>
             </StackPanel>

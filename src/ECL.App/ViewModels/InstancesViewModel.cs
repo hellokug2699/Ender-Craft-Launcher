@@ -47,9 +47,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IJavaSelectionService _javaSelection;
     private readonly IJavaInstallService _javaInstall;
     private readonly IVersionResolver _versionResolver;
-    private readonly IVersionCatalog _versionCatalog;
     private readonly IEulaService _eula;
-    private readonly ILoaderCatalog _loaderCatalog;
     private readonly IDownloadController _downloads;
     private readonly ICrashReportService _crashReports;
     private readonly IDiagnosticPackageService _diagnostics;
@@ -59,8 +57,6 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IDialogEngine _dialogsEngine;
     private bool _initialized;
     private bool _suppressAccountSelection;
-    private bool _suppressVersionReload;
-    private IReadOnlyList<MinecraftGameVersion> _allVersions = [];
 
     /// <summary>打开当前实例的独立工作区页面。</summary>
     public Action<string>? NavigateToDetails { get; set; }
@@ -91,66 +87,11 @@ public sealed partial class InstancesViewModel : ObservableObject
     /// </summary>
     public InstanceOperationState Operation { get; } = new();
 
-    public ObservableCollection<LoaderChoiceViewModel> LoaderChoices { get; } = [];
-
-    public ObservableCollection<GameVersionTypeChoice> VersionTypes { get; } = [];
-
-    public ObservableCollection<VersionChoiceViewModel> GameVersions { get; } = [];
-
-    public ObservableCollection<VersionChoiceViewModel> LoaderVersions { get; } = [];
-
-    public ObservableCollection<VersionChoiceViewModel> FabricApiVersions { get; } = [];
-
-    public ObservableCollection<VersionChoiceViewModel> OptiFineVersions { get; } = [];
-
     [ObservableProperty]
     private InstanceItemViewModel? _selectedInstance;
 
     [ObservableProperty]
     private AccountItemViewModel? _selectedAccount;
-
-
-    [ObservableProperty]
-    private string _newInstanceName = string.Empty;
-
-    [ObservableProperty]
-    private GameVersionTypeChoice? _selectedVersionType;
-
-    [ObservableProperty]
-    private VersionChoiceViewModel? _selectedGameVersion;
-
-    [ObservableProperty]
-    private bool _isLoadingVersions;
-
-    [ObservableProperty]
-    private string _versionStatus = string.Empty;
-
-    [ObservableProperty]
-    private LoaderChoiceViewModel? _selectedNewLoader;
-
-    [ObservableProperty]
-    private VersionChoiceViewModel? _selectedLoaderVersion;
-
-    [ObservableProperty]
-    private VersionChoiceViewModel? _selectedFabricApiVersion;
-
-    [ObservableProperty]
-    private VersionChoiceViewModel? _selectedOptiFineVersion;
-
-    [ObservableProperty]
-    private bool _isLoadingComponents;
-
-    [ObservableProperty]
-    private string _componentStatus = string.Empty;
-
-    [ObservableProperty]
-    private bool _showFabricApiNotice;
-
-    [ObservableProperty]
-    private bool _showOptiFineSelector;
-
-    [ObservableProperty]
-    private bool _optiFineEnabled;
 
     [ObservableProperty]
     private string _newAccountName = string.Empty;
@@ -254,9 +195,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         IJavaSelectionService javaSelection,
         IJavaInstallService javaInstall,
         IVersionResolver versionResolver,
-        IVersionCatalog versionCatalog,
         IEulaService eula,
-        ILoaderCatalog loaderCatalog,
         IDownloadController downloads,
         ICrashReportService crashReports,
         IDiagnosticPackageService diagnostics,
@@ -279,9 +218,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         _javaSelection = javaSelection;
         _javaInstall = javaInstall;
         _versionResolver = versionResolver;
-        _versionCatalog = versionCatalog;
         _eula = eula;
-        _loaderCatalog = loaderCatalog;
         _downloads = downloads;
         _crashReports = crashReports;
         _diagnostics = diagnostics;
@@ -291,24 +228,6 @@ public sealed partial class InstancesViewModel : ObservableObject
         _dialogsEngine = dialogsEngine;
 
         DownloadPauseButtonText = _localizer.Get("instances.download.pause");
-
-        LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Vanilla, _localizer.Get("instances.loader.vanilla")));
-        LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Fabric, _localizer.Get("instances.loader.fabric")));
-        LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Forge, _localizer.Get("instances.loader.forge")));
-        LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.NeoForge, _localizer.Get("instances.loader.neoforge")));
-        LoaderChoices.Add(new LoaderChoiceViewModel(LoaderKinds.Cleanroom, _localizer.Get("instances.loader.cleanroom")));
-        _selectedNewLoader = LoaderChoices[0];
-
-        VersionTypes.Add(new GameVersionTypeChoice(
-            MinecraftVersionKind.Release,
-            _localizer.Get("instances.versionType.release")));
-        VersionTypes.Add(new GameVersionTypeChoice(
-            MinecraftVersionKind.Snapshot,
-            _localizer.Get("instances.versionType.snapshot")));
-        VersionTypes.Add(new GameVersionTypeChoice(
-            MinecraftVersionKind.AprilFools,
-            _localizer.Get("instances.versionType.aprilFools")));
-        _selectedVersionType = VersionTypes[0];
     }
 
     public async Task InitializeAsync()
@@ -323,103 +242,6 @@ public sealed partial class InstancesViewModel : ObservableObject
         await RefreshAccountsAsync().ConfigureAwait(true);
         await RefreshInstancesAsync().ConfigureAwait(true);
         await UpdateJavaStatusAsync().ConfigureAwait(true);
-        await LoadVersionsAsync().ConfigureAwait(true);
-    }
-
-    [RelayCommand]
-    private Task RefreshVersionsAsync() => LoadVersionsAsync(refresh: true);
-
-    /// <summary>
-    /// 读取 Mojang 版本清单并按“正式版 / 快照版 / 愚人节版”过滤。
-    /// 清单较长，服务内部有缓存；刷新按钮才会强制重新读取。
-    /// </summary>
-    private async Task LoadVersionsAsync(bool refresh = false)
-    {
-        if (IsLoadingVersions)
-        {
-            return;
-        }
-
-        IsLoadingVersions = true;
-        VersionStatus = _localizer.Get("instances.version.loading");
-        try
-        {
-            var result = await _versionCatalog.GetVersionsAsync(refresh).ConfigureAwait(true);
-            if (!result.IsSuccess)
-            {
-                _allVersions = [];
-                GameVersions.Clear();
-                SelectedGameVersion = null;
-                VersionStatus = _localizer.Get("instances.version.failed", result.Error?.Message ?? string.Empty);
-                return;
-            }
-
-            _allVersions = result.Value!;
-            ApplyVersionFilter(keepSelection: false);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            _allVersions = [];
-            GameVersions.Clear();
-            SelectedGameVersion = null;
-            VersionStatus = _localizer.Get("instances.version.failed", exception.Message);
-        }
-        finally
-        {
-            IsLoadingVersions = false;
-        }
-    }
-
-    private void ApplyVersionFilter(bool keepSelection)
-    {
-        var kind = SelectedVersionType?.Kind ?? MinecraftVersionKind.Release;
-        var previous = keepSelection ? SelectedGameVersion?.Value : null;
-
-        _suppressVersionReload = true;
-        try
-        {
-            GameVersions.Clear();
-            foreach (var version in _allVersions.Where(version => version.Kind == kind))
-            {
-                GameVersions.Add(new VersionChoiceViewModel(
-                    version.Id,
-                    FormatVersionWithDate(version.Id, version.ReleasedAt)));
-            }
-
-            SelectedGameVersion = previous is null
-                ? GameVersions.FirstOrDefault()
-                : GameVersions.FirstOrDefault(version =>
-                      string.Equals(version.Value, previous, StringComparison.Ordinal))
-                  ?? GameVersions.FirstOrDefault();
-
-            VersionStatus = GameVersions.Count == 0
-                ? _localizer.Get("instances.version.empty")
-                : string.Empty;
-        }
-        finally
-        {
-            _suppressVersionReload = false;
-        }
-
-        _ = RefreshComponentsAsync();
-    }
-
-    partial void OnSelectedVersionTypeChanged(GameVersionTypeChoice? value)
-    {
-        if (!_initialized)
-        {
-            return;
-        }
-
-        ApplyVersionFilter(keepSelection: false);
-    }
-
-    partial void OnSelectedGameVersionChanged(VersionChoiceViewModel? value)
-    {
-        if (_initialized && !_suppressVersionReload)
-        {
-            _ = RefreshComponentsAsync();
-        }
     }
 
     partial void OnIsLoadingInstancesChanged(bool value) => RaiseInstanceStateChanged();
@@ -590,186 +412,6 @@ public sealed partial class InstancesViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task RefreshComponentsAsync()
-    {
-        ClearComponentChoices();
-        ComponentStatus = string.Empty;
-
-        var loader = SelectedNewLoader?.Id ?? LoaderKinds.Vanilla;
-        if (loader == LoaderKinds.Vanilla)
-        {
-            return;
-        }
-
-        var version = SelectedGameVersion?.Value;
-        if (string.IsNullOrWhiteSpace(version))
-        {
-            ComponentStatus = _localizer.Get("instances.version.select");
-            return;
-        }
-
-        if (loader == LoaderKinds.Cleanroom &&
-            !string.Equals(version, "1.12.2", StringComparison.OrdinalIgnoreCase))
-        {
-            ComponentStatus = _localizer.Get("instances.loader.cleanroomOnly");
-            return;
-        }
-
-        IsLoadingComponents = true;
-        ComponentStatus = _localizer.Get("instances.components.loading");
-
-        try
-        {
-            if (loader == LoaderKinds.Fabric)
-            {
-                var loaders = await _loaderCatalog.GetFabricLoadersAsync(version).ConfigureAwait(true);
-                if (!loaders.IsSuccess)
-                {
-                    ComponentStatus = _localizer.Get("instances.components.failed", loaders.Error?.Message ?? string.Empty);
-                    return;
-                }
-
-                foreach (var item in loaders.Value!)
-                {
-                    LoaderVersions.Add(FormatLoaderVersion(item));
-                }
-
-                SelectedLoaderVersion = LoaderVersions.FirstOrDefault();
-
-                var apiVersions = await _loaderCatalog.GetFabricApiVersionsAsync(version).ConfigureAwait(true);
-                if (!apiVersions.IsSuccess)
-                {
-                    ComponentStatus = _localizer.Get("instances.components.failed", apiVersions.Error?.Message ?? string.Empty);
-                    return;
-                }
-
-                foreach (var item in apiVersions.Value!)
-                {
-                    FabricApiVersions.Add(new VersionChoiceViewModel(
-                        item.Version,
-                        FormatVersionWithDate(item.Version, item.ReleasedAt)));
-                }
-
-                SelectedFabricApiVersion = FabricApiVersions.FirstOrDefault();
-                ComponentStatus = LoaderVersions.Count == 0
-                    ? _localizer.Get("instances.loader.noVersions")
-                    : FabricApiVersions.Count == 0
-                        ? _localizer.Get("instances.fabricApi.none")
-                        : string.Empty;
-                return;
-            }
-
-            if ((loader == LoaderKinds.Forge || loader == LoaderKinds.NeoForge) &&
-                LoaderKinds.TryParse(loader, out var installerKind))
-            {
-                var loaders = installerKind == LoaderKind.Forge
-                    ? await _loaderCatalog.GetForgeVersionsAsync(version).ConfigureAwait(true)
-                    : await _loaderCatalog.GetNeoForgeVersionsAsync(version).ConfigureAwait(true);
-
-                if (!loaders.IsSuccess)
-                {
-                    ComponentStatus = _localizer.Get("instances.components.failed", loaders.Error?.Message ?? string.Empty);
-                    return;
-                }
-
-                foreach (var item in loaders.Value!)
-                {
-                    LoaderVersions.Add(FormatLoaderVersion(item));
-                }
-
-                SelectedLoaderVersion = LoaderVersions.FirstOrDefault();
-
-                if (installerKind == LoaderKind.Forge)
-                {
-                    var forgeOptiFineVersions = await _loaderCatalog.GetOptiFineVersionsAsync(version).ConfigureAwait(true);
-                    if (!forgeOptiFineVersions.IsSuccess)
-                    {
-                        ComponentStatus = _localizer.Get("instances.components.failed", forgeOptiFineVersions.Error?.Message ?? string.Empty);
-                        return;
-                    }
-
-                    OptiFineVersions.Add(new VersionChoiceViewModel(null, _localizer.Get("instances.optifine.none")));
-                    foreach (var item in forgeOptiFineVersions.Value!)
-                    {
-                        OptiFineVersions.Add(new VersionChoiceViewModel(
-                            item.Key,
-                            FormatVersionWithDate(item.FileName, item.ReleasedAt)));
-                    }
-
-                    SelectedOptiFineVersion = OptiFineVersions[0];
-                }
-
-                ComponentStatus = LoaderVersions.Count == 0
-                    ? _localizer.Get("instances.loader.noVersions")
-                    : string.Empty;
-                return;
-            }
-
-            var cleanroomVersions = await _loaderCatalog.GetCleanroomVersionsAsync(version).ConfigureAwait(true);
-            if (!cleanroomVersions.IsSuccess)
-            {
-                ComponentStatus = _localizer.Get("instances.components.failed", cleanroomVersions.Error?.Message ?? string.Empty);
-                return;
-            }
-
-            foreach (var item in cleanroomVersions.Value!)
-            {
-                LoaderVersions.Add(FormatLoaderVersion(item));
-            }
-
-            SelectedLoaderVersion = LoaderVersions.FirstOrDefault();
-
-            var optiFineVersions = await _loaderCatalog.GetOptiFineVersionsAsync(version).ConfigureAwait(true);
-            if (!optiFineVersions.IsSuccess)
-            {
-                ComponentStatus = _localizer.Get("instances.components.failed", optiFineVersions.Error?.Message ?? string.Empty);
-                return;
-            }
-
-            OptiFineVersions.Add(new VersionChoiceViewModel(null, _localizer.Get("instances.optifine.none")));
-            foreach (var item in optiFineVersions.Value!)
-            {
-                OptiFineVersions.Add(new VersionChoiceViewModel(
-                    item.Key,
-                    FormatVersionWithDate(item.FileName, item.ReleasedAt)));
-            }
-
-            SelectedOptiFineVersion = OptiFineVersions[0];
-            ComponentStatus = LoaderVersions.Count == 0
-                ? _localizer.Get("instances.loader.noVersions")
-                : string.Empty;
-        }
-        catch (Exception exception)
-        {
-            ComponentStatus = _localizer.Get("instances.components.failed", exception.Message);
-        }
-        finally
-        {
-            IsLoadingComponents = false;
-        }
-    }
-
-    private void ClearComponentChoices()
-    {
-        LoaderVersions.Clear();
-        FabricApiVersions.Clear();
-        OptiFineVersions.Clear();
-        SelectedLoaderVersion = null;
-        SelectedFabricApiVersion = null;
-        SelectedOptiFineVersion = null;
-    }
-
-    private VersionChoiceViewModel FormatLoaderVersion(LoaderVersionInfo version) =>
-        new(version.Version, FormatVersionWithDate(version.Version, version.ReleasedAt));
-
-    private string FormatVersionWithDate(string version, DateTimeOffset? releasedAt)
-    {
-        var date = releasedAt?.ToLocalTime().ToString("yyyy-MM-dd")
-                   ?? _localizer.Get("instances.versionDateUnknown");
-        return _localizer.Get("instances.versionWithDate", version, date);
-    }
-
-    [RelayCommand]
     private void ToggleDownloadPause()
     {
         if (!CanPauseDownload)
@@ -817,89 +459,6 @@ public sealed partial class InstancesViewModel : ObservableObject
         > 0 => $"{bytesPerSecond:F0} B/s",
         _ => string.Empty,
     };
-
-    [RelayCommand]
-    private async Task CreateInstanceAsync()
-    {
-        if (IsBusy)
-        {
-            return;
-        }
-
-        var version = SelectedGameVersion?.Value;
-        var name = NewInstanceName.Trim();
-        if (string.IsNullOrWhiteSpace(version))
-        {
-            StatusMessage = _localizer.Get("instances.version.select");
-            return;
-        }
-
-        // 实例名可选；留空时使用游戏版本作为默认名称。
-        if (name.Length == 0)
-        {
-            name = version;
-        }
-
-        var loader = SelectedNewLoader?.Id ?? LoaderKinds.Vanilla;
-        if (loader == LoaderKinds.Cleanroom &&
-            !string.Equals(version, "1.12.2", StringComparison.OrdinalIgnoreCase))
-        {
-            StatusMessage = _localizer.Get("instances.loader.cleanroomOnly");
-            return;
-        }
-
-        string? loaderVersion = null;
-        string? fabricApiVersion = null;
-        string? optiFineVersion = null;
-
-        if (loader != LoaderKinds.Vanilla)
-        {
-            loaderVersion = SelectedLoaderVersion?.Value;
-            if (string.IsNullOrWhiteSpace(loaderVersion))
-            {
-                StatusMessage = _localizer.Get("instances.loader.versionRequired");
-                return;
-            }
-        }
-
-        if (loader == LoaderKinds.Fabric)
-        {
-            fabricApiVersion = SelectedFabricApiVersion?.Value;
-            if (string.IsNullOrWhiteSpace(fabricApiVersion))
-            {
-                StatusMessage = _localizer.Get("instances.fabricApi.none");
-                return;
-            }
-        }
-
-        if (loader == LoaderKinds.Cleanroom || loader == LoaderKinds.Forge)
-        {
-            optiFineVersion = SelectedOptiFineVersion?.Value;
-        }
-
-        IsBusy = true;
-        try
-        {
-            var result = await _instances
-                .CreateAsync(name, version, loader, loaderVersion, fabricApiVersion, optiFineVersion)
-                .ConfigureAwait(true);
-
-            if (!result.IsSuccess)
-            {
-                StatusMessage = result.Error?.Message ?? string.Empty;
-                return;
-            }
-
-            NewInstanceName = string.Empty;
-            await RefreshInstancesAsync().ConfigureAwait(true);
-            SelectedInstance = Instances.FirstOrDefault(item => item.Model.Id == result.Value!.Id) ?? Instances.FirstOrDefault();
-            StatusMessage = _localizer.Get("instances.created", result.Value!.Name);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
 
     [RelayCommand]
     private async Task DeleteInstanceAsync(InstanceItemViewModel? instance)
@@ -1471,22 +1030,6 @@ public sealed partial class InstancesViewModel : ObservableObject
     {
         Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
         return Task.CompletedTask;
-    }
-
-    partial void OnSelectedNewLoaderChanged(LoaderChoiceViewModel? value)
-    {
-        ShowFabricApiNotice = string.Equals(value?.Id, LoaderKinds.Fabric, StringComparison.OrdinalIgnoreCase);
-        ShowOptiFineSelector = string.Equals(value?.Id, LoaderKinds.Cleanroom, StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(value?.Id, LoaderKinds.Forge, StringComparison.OrdinalIgnoreCase);
-        OptiFineEnabled = ShowOptiFineSelector;
-
-        if (!_initialized)
-        {
-            ClearComponentChoices();
-            return;
-        }
-
-        _ = RefreshComponentsAsync();
     }
 
     /// <summary>实例库只负责展示；打开工作区时才进入运行设置、模组、日志与诊断。</summary>
@@ -2234,11 +1777,21 @@ public sealed record JavaOptionViewModel(JavaRuntime? Runtime, string DisplayNam
 
 public sealed record JvmPresetOptionViewModel(string Value, string DisplayName);
 
-public sealed record LoaderChoiceViewModel(string Id, string DisplayName);
+public sealed record LoaderChoiceViewModel(string Id, string DisplayName)
+{
+    public override string ToString() => DisplayName;
+}
 
-public sealed record GameVersionTypeChoice(MinecraftVersionKind Kind, string Title);
+public sealed record GameVersionTypeChoice(MinecraftVersionKind Kind, string Title)
+{
+    public override string ToString() => Title;
+}
 
-public sealed record VersionChoiceViewModel(string? Value, string DisplayName);
+public sealed record VersionChoiceViewModel(string? Value, string DisplayName)
+{
+    /// <summary>UIA/无障碍名称只使用本地化显示名，不暴露记录类型的 ToString()（B2 3b-4a 约定）。</summary>
+    public override string ToString() => DisplayName;
+}
 
 public sealed class LaunchStepItemViewModel
 {
@@ -2261,3 +1814,4 @@ public sealed class LaunchStepItemViewModel
 
     public string DurationText { get; }
 }
+

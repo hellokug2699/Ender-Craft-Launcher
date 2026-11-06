@@ -582,10 +582,35 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         if (FindWorkspace(key) is { } existing)
         {
             ActiveWorkspace = existing;
+            ActivateDestinationPage(destination.Page);
             return;
         }
 
         OpenWorkspaceCore(key, destination.ToolId, WorkspaceTarget.Destination, destination.Title, destination.Title, destination.Page);
+    }
+
+    /// <summary>
+    /// 进入目的地时的首次激活（迁移规划 C-03）：页面级的惰性加载只在这里触发，
+    /// 不改变页面已配置的选择，也不在离开页面时做任何刷新。
+    /// </summary>
+    private void ActivateDestinationPage(object page)
+    {
+        if (page is DownloadViewModel download)
+        {
+            _ = ActivateDownloadAsync(download);
+        }
+    }
+
+    private async Task ActivateDownloadAsync(DownloadViewModel download)
+    {
+        try
+        {
+            await download.ActivateAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "下载中心激活失败。");
+        }
     }
 
     private WorkspaceTabViewModel? FindWorkspace(WorkspaceDedupKey key) =>
@@ -615,6 +640,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Workspaces.Add(tab);
         OnPropertyChanged(nameof(HasWorkspaces));
         ActiveWorkspace = tab;
+        if (target == WorkspaceTarget.Destination)
+        {
+            ActivateDestinationPage(page);
+        }
+
         return true;
     }
 

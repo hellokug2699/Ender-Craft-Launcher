@@ -22,6 +22,7 @@
             <conv:NullToVisibilityConverter x:Key="NullToVisibility" />
             <conv:LogLevelToBrushConverter x:Key="LogLevelBrush" />
             <conv:LoaderKindToBrushConverter x:Key="LoaderKindBrush" />
+            <conv:DeploymentStatusToBrushConverter x:Key="DeploymentStatusBrush" />
 
             <!-- 页面 ViewModel → 视图映射；工作区只切换 DataContext，不直接构造视图。 -->
             <DataTemplate DataType="{x:Type vm:ToolsViewModel}">
@@ -33,6 +34,9 @@
             </DataTemplate>
             <DataTemplate DataType="{x:Type vm:DownloadViewModel}">
                 <views:DownloadView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:InstanceVersionPageViewModel}">
+                <views:InstanceVersionPageView />
             </DataTemplate>
             <DataTemplate DataType="{x:Type vm:InstancesViewModel}">
                 <views:InstancesView />
