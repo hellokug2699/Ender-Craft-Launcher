@@ -100,9 +100,10 @@
 - `InstanceDetailPageViewModel` 现在是实例工作区壳：左侧纵向二级导航 + 右侧当前二级页。切换二级页只改变
   `Navigation.CurrentPage`，不新开工作区、不改变工作区标题（迁移规划 §5.1）。已实现页面为
   「基本信息」（`InstanceBasicInfoViewModel`，默认页）、「配置 · 修改」
-  （`InstanceModifyViewModel`，B2 步骤 3b-4a 计划 + 3b-4b 受控执行）与「内容 · 模组」（`ModsViewModel`），
-  三者各自拥有唯一的滚动容器，由 `App.xaml` 的 DataTemplate 映射到视图。
-- 尚未实现的页面（资源包、光影包、数据包、截图、投影、导出、日志）只保留不可用导航项：
+  （`InstanceModifyViewModel`，B2 步骤 3b-4a 计划 + 3b-4b 受控执行）、「内容 · 模组」（`ModsViewModel`）、
+  「内容 · 资源包」与「内容 · 光影包」（B2b，共用 `ContentPackPageViewModel`），
+  各自拥有唯一的滚动容器，由 `App.xaml` 的 DataTemplate 映射到视图。
+- 尚未实现的页面（数据包、截图、投影、导出、日志）只保留不可用导航项：
   `IsEnabled=false`、UIA `HelpText` 与可见的「未实现」徽标共同说明原因，不创建空页、不提供可点击入口；
   日志项单独说明 G-01 页面规格尚未批准。不可用项不会被代码或键盘路径激活（`TryActivate` 与选中 setter 双重拒绝）。
 - 窄窗口收缩（ADR 0050）：工作区页面可用宽度小于 640 时，左侧二级导航折叠为内容区顶部的页面选择器；
@@ -143,8 +144,8 @@
   再按实例加载器检查适用性，未通过的文件不复制且逐条返回原因。ADR 0043 的逐文件威胁扫描尚无单文件入口，
   本批不做安全判定、也不显示“已检查”；导入后的模组仍受实例级启动安全门控覆盖。
 - 模组页旧区块已整理（B2 步骤 3b-3c）：依赖与修复、整合包导入/导出、资源包与光影移入表格下方的
-  「高级与依赖」卡片并默认折叠，命令与能力保持不变；资源包/光影在 B2b 独立页落地前保留入口，
-  并在区块内说明独立页面尚未开放。资源包行的名称/描述改为单行省略，避免畸形 `pack.mcmeta` 描述撑高列表。
+  「高级与依赖」卡片并默认折叠，命令与能力保持不变；B2b 独立页落地后，资源包/光影区块已从模组页移除，
+  避免第二套入口（其余依赖与整合包区块保留）。
 - 「修改」页已按 `instance-modify.md` 落地只读变更计划（B2 步骤 3b-4a）：导航项从不可用改为可用，
   页面顶部固定显示当前实例与目录，中部逐行对照「当前配置 / 拟变更值」，底部提供「生成变更计划」。
   - 目标实例由工作区打开时的稳定 InstanceId 固定绑定；页面不提供目录或实例切换入口，也不创建新实例。
@@ -208,6 +209,53 @@
     变更影响」。失败/恢复路径只由自动化测试覆盖（未能可靠制造一次真实的后写入失败），实机标记 NOT RUN。
 - 仍待 B2：实例级 Java 警告抑制（步骤 4，受 ADR 0014 门禁）与可选组件行（3b-4c）；
   概览「应用」与实例改名仍为 BLOCKED（见交接文档 §6.1）。
+
+### 2.4 资源包与光影包页（B2b）
+
+页面规格：`hints/ui/pages/resource-library-template.md`（模板）与 `hints/ui/pages/shaders.md`（光影补充）。
+资源包与光影包共用一个页面对象与视图（`ContentPackPageViewModel` / `InstanceContentPacksView`），
+按资源类型替换标题、数据与配置目标；不复制领域规则。
+
+- 顶部操作：刷新 / 添加 xxx / 下载 xxx。「添加」走文件选择器（`*.zip`）与 `IContentPackService.ImportAsync`；
+  「下载」经 `ContentPackPageFactory.OpenPackBrowser` → `ShellViewModel` → `DownloadViewModel.OpenContentBrowserAsync`
+  切到下载中心的资源包/光影包页签并带入稳定 InstanceId（下载页的“已有实例模式”可见开关仍属 B4）。
+- 双表与计数：已启用 / 未启用两张表格，各自在表格内部左下角显示「共 x 个」，
+  不合并为总数；空表显示各自的空状态，不显示 0 条占位。
+- 行字段固定为状态、名称及简介、版本范围、功能：名称取文件名（包内没有独立名称字段），
+  简介只显示 `pack.mcmeta` 的真实描述（缺失时不显示占位）；版本范围只显示包内声明的
+  `supported_formats` 或 `ResourcePackFormats` 官方对照表中的事实，未知时显示「未知」，不按经验外推。
+- 状态语义（图标 + 颜色，沿用模组页的矢量图标风格，`ContentPackStatusGlyph`）：绿色=正常/已启用、
+  黄色=游戏记录为不兼容（`incompatibleResourcePacks`）、红色=压缩包损坏、
+  灰色=未识别（资源包缺 `pack.mcmeta`，光影包缺 `shaders/`）。
+- 拖动与启用：同表拖动调整顺序，跨表拖动启用/禁用；拖动只修改页面工作副本，不写盘。
+  每行另有「启用/禁用」按钮作为等价的键盘可达操作；光影包一次只能启用一个，
+  启用新条目时原条目自动退回未启用表。
+- 「应用」位于已启用表格右上、表格外：无待应用更改时为灰色，有待应用更改时为绿色；
+  点击后调用 `IContentPackService.ApplyAsync` 一次写入启用状态与已启用顺序
+  （资源包重写 `resourcePacks` 的受管条目，保留 `vanilla` 与其它启动器写入的裸值位置；
+  光影包写入单个 `shaderPack`）。应用失败时保留用户的待应用更改，不静默丢弃。
+- 删除按自身流程执行（确认后立即删除并同步清理选项引用），不进入待应用状态。
+- 未启用条目的顺序在 Minecraft 配置中没有表示，因此只作为本页面的整理顺序，
+  页面在表格下方明确说明「不写入游戏配置」；只有已启用条目的顺序会被应用。
+- 光影支持检测（`ShaderSupportDetector`）只依据实例的 Minecraft 版本/加载器、已启用模组的真实元数据
+  （平台、`minecraft` 版本范围、必需依赖）与实例记录的 OptiFine 构建，按
+  `docs/shader-support/rules.json` 返回支持/缺失/不完整/不兼容/冲突/未知；Iris 在 Forge 上判为不兼容、
+  Oculus 只接受其离散版本集合、Iris 自带 Sodium 时不额外要求 Sodium、无法证明时返回未知。
+  检测失败显示失败说明，不降级为「支持」。
+- 无支持组件时的提示（`shaders.md` §3–§5）：首次进入显示非模态页面横幅（标题/说明/具体原因/
+  「仍可导入或下载光影包」），用户收起后按实例保存（`config/shader-hints.json`），
+  后续进入显示一行灰色弱提示；删除全部光影包后重置该实例状态，下一次进入且仍不支持时重新显示横幅；
+  检测恢复为支持时两种提示立即隐藏。提示状态不写入实例目录。
+- 测试：`tests/ECL.Tests/Minecraft/ContentPackServiceTests.cs` 覆盖 `ApplyAsync` 的顺序重写、
+  保留未受管条目、光影单选、缺失文件/不可解析 options 拒绝、损坏/未识别状态与声明式格式范围；
+  `tests/ECL.Tests/Minecraft/ShaderSupportDetectorTests.cs` 覆盖六种检测状态与「未知不算支持」；
+  `tests/ECL.App.Tests/Workspace/ContentPacksPageTests.cs` 覆盖双表与计数、拖动后的待应用状态、
+  按钮等价操作、光影单选、删除确认、状态映射、版本范围文案、不可读配置、释放后停止扫描，
+  以及光影横幅/灰色提示/清空重置/检测失败。
+- 实机（1500×950、1080×720，zh-CN/en-US）：临时实例（`instance create` 新建、验收后删除）上
+  拖动/按钮启用 → 应用写入 `resourcePacks:["vanilla","file/B2b Demo Pack.zip"]` 且 `.bak` 保留旧文件；
+  光影包启用/切换后 `shaderPack` 始终只有一个；收起横幅后跨页切换显示灰色提示；
+  清空全部光影包并刷新后横幅重新出现；「下载光影包」打开下载中心光影包页签并带入实例目标。
 
 ## 3. 共享页面控件（B0）
 
@@ -350,14 +398,21 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
   本批实机验证未覆盖，因此「失败且已回滚」「失败且需要恢复」与受控恢复在实机上是 NOT RUN。
 - 回滚完整性的口径：`InstallTransaction` 只记录本次新建/带备份覆盖的文件；共享 `libraries`/`assets` 中
   原本存在、被重新下载覆盖且没有备份的文件不会被还原（也不会被报告为回滚失败），因为它们不是数据丢失。
-- **已知风险（既有安装行为，非本批引入）**：`VanillaInstallService.ResolveVersionChainAsync` 通过
-  `EnsureTextFileAsync` 校正基础版本的 `versions/<gameVersion>/<gameVersion>.json` 与
-  `assets/indexes/<index>.json`；这两个写入**不进入 `InstallTransaction`**，因此不受回滚信号覆盖，
-  且会替换其它启动器（PCL/HMCL）留下的同版本 JSON。实机验证中临时实例安装 1.20.1 时就替换了
-  用户 `versions/1.20.1/1.20.1.json`（PCL 合并的 Fabric 0.20.0 配置），已按游戏日志中的
-  Fabric Loader 0.20.0 重建并 dry-run 通过，但无法保证与原文件逐字节一致。
-  后续批次（Modify 安全边界或独立的安装事务补强）必须先决定：把这两个文件纳入事务备份，
-  或拒绝覆盖不属于 ECL 的基础版本文件。
+- **已按维护者决策修复（§6.4 决策 a，`ff2b622`）**：`EnsureTextFileAsync` 现在把被它替换或新建的
+  `versions/<id>/<id>.json` 与 `assets/indexes/<id>.json` 纳入 `InstallTransaction.TrackFileWithBackup`。
+  安装失败时写回原始字节（包括其它启动器写入的合并版本 JSON），成功时按安装结果保留；
+  本次新建的基础版本 JSON 在失败回滚时会被删除。诊断文件与回滚信号因此覆盖这两个共享写入。
+  「是否允许覆盖不属于 ECL 的基础版本文件」仍沿用决策 a 的选择（允许覆盖，但失败可恢复）；
+  如需改为拒绝覆盖，属于后续独立决策，不在本批自行改变。
 - Split、Detached、Snapshot 恢复与运行时隔离仍未实现，相关能力不会以按钮或菜单形式出现。
+- 资源包与光影包的写入仍由 `IContentPackService` 直接保存 `options.txt`（临时文件 + `.bak` + 原子替换），
+  尚未接入 ADR 0047 要求的 `InstanceTransactionCoordinator`；这是与模组/整合包写操作一致的既有实现，
+  页面不复制该逻辑，迁移属于后续独立工作项。
+- `ResourcePackFormats` 的 `pack_format → Minecraft 版本` 对照只收录已核实的 1.6.1–1.21.4；
+  更新版本引入的新格式显示「格式 N」，不按经验外推。对照表随版本发布需要维护。
+- 光影支持检测是**能力检测**，不是对单个光影包能否渲染的保证；OptiFine 缺少「构建 × Forge 兼容性」
+  的可验证数据源，因此只判定为未知，不冒充支持；`docs/shader-support/` 规则更新时需同步检测实现。
+- 数据包（`content.dataPacks`）页面尚未实现：它需要世界上下文（`WorldSaveService` 的世界目标与
+  `level.dat` 数据包配置），本批不伪造实例级入口。
 - WPF 线程/Dispatcher、共享控件与输出管线测试位于仅 Windows 可运行的 `tests/ECL.App.Tests`；CI 在 Windows job 执行，
   Linux job 不运行该测试项目。
