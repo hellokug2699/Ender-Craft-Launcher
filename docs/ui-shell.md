@@ -358,6 +358,51 @@
   失败重试不重复创建、创建失败不安装、成功后必须重新布置、Fabric API 参数、版本目录失败、
   安装位置只读来源）。实机见交接文档 §4（1500×950、1080×720、zh-CN/en-US）。
 
+### 2.7 下载中心内容发现页（B4a-2）
+
+页面规格：`download-mods.md`、`download-modpacks.md`、`download-resource-template.md`。
+模组、整合包、资源包、光影包与数据包共用页面对象 `ContentDiscoveryViewModel`
+（`ViewModels/ContentDiscoveryViewModel.cs`）与视图 `Views/ContentDiscoveryView.xaml`；
+`ContentDiscoveryPageFactory` 为每个分类创建独立页面对象，`DownloadViewModel` 以 `ContentPages`
+持有并按二级页切换。数据包分类显示准确的能力阻断说明，不渲染伪搜索表单。
+
+- **第一行**：英文搜索与来源（全部 / CurseForge / Modrinth）。非 ASCII 输入立即标红并显示
+  “搜索只支持英文输入”，且不提交；来源切换立即按新来源重新检索，不合并跨来源条目。
+- **第二行**：模组页提供“为已有实例下载模组”复选框。勾选后只显示已登记实例选择框，实例的
+  Minecraft 版本与加载器成为锁定筛选条件；未勾选时显示 Minecraft 版本与加载器筛选
+  （无 / Forge·Cleanroom / Fabric / NeoForge，“无”表示不限制加载器）。整合包页只有版本与
+  加载器筛选，并明确说明整合包始终创建新实例；资源包 / 光影包固定要求目标实例。光影页显示
+  实例当前光影组件检测结果，并说明单个光影包能否渲染无法从来源元数据确认。
+- **列表一行**：图标、名称（3 号文字）、简介（2 号文字）、版本范围、加载器或分类适用信息、
+  来源徽标与文件大小；整行是可键盘聚焦的按钮，点击打开该来源的详情弹窗。
+- **详情弹窗**（`ContentDetailDialogViewModel` + `ContentDetailDialogView`）：名称、作者、来源链接、
+  简介（高度固定、内部滚动）、下载次数与更新时间。有筛选项时上表“筛选的版本”、下表“全部版本”，
+  同一版本允许同时出现；无筛选时只显示全部版本。每个版本行显示版本号、文件名、Minecraft 版本
+  范围、加载器/适用信息、真实文件大小、发布时间与浅紫色圆形下载按钮；进度在行内以线性进度条
+  呈现（白=进行中、绿=完成、红=失败），不使用圆周按钮或卡片边缘动画。来源只返回部分版本时
+  （CurseForge 分页上限）明确标注列表不完整。
+- **文件大小**：CurseForge / Modrinth 的搜索响应本身不带文件大小。ECL 在搜索后额外做一次批量
+  查询（CurseForge `mods/files`、Modrinth `versions?ids=[...]`）取回主要文件真实字节数；查询失败、
+  来源未声明或文件被作者禁止分发时保持“大小未知”，不以 0 或估值代替。CurseForge 的
+  `Client` / `Server` 环境标签不是 Minecraft 版本，展示适用版本时排除。
+- **安装流程**：已有实例目标 → 三按钮确认弹窗（安装 / 安装到其他位置 / 取消）；未选择实例的
+  模组 → 先调用 ECL 已有的目录选择能力，再按“即将安装到位置 xxx”确认；“安装到其他位置”打开
+  目标选择弹窗（已登记实例；只有模组可再选目录），不会静默改变本次安装目标。所有确认都经
+  Dialog Engine，宿主不可用时拒绝开始。
+- **领域**：新增 `IContentVersionCatalog`（版本清单）与 `IContentInstallService.InstallVersionAsync` /
+  `DownloadVersionAsync`。页面只传来源与版本 ID，文件由来源 API 重新解析（Modrinth 校验
+  ProjectId、CurseForge 校验 ModId 与官方 CDN），不接受 UI 拼接的 URL；整合包与数据包在领域
+  直接被拒绝并给出准确原因。
+- **条级进度**：页面只有版本行内进度，全局任务状态仍由 `IOperationService` 进入 Output / Task
+  面板。多个版本行可同时下载，页面按 `network.maxConcurrentDownloads` 排队并显示“正在排队”。
+- **能力边界**：整合包部署属于 B4b（实例版本页的整合包模式），当前版本行下载按钮不可用并显示
+  原因；数据包需要世界目标（ADR 0026 / 0031），分类页只显示阻断说明；CurseForge 作者禁止
+  第三方分发时下载失败会显示领域原因，不伪造成功。
+- 测试：核心 `ContentVersionCatalogTests`（7）与 `ContentSearchTests`（作者、文件大小补全）；
+  应用 `ContentDiscoveryPageTests`（17：目标模式与锁定、英文输入、来源切换、列表字段、详情两表、
+  确认 / 取消 / 改目标、目录下载、资源包与光影包目标、失效实例、整合包与数据包边界）。
+  实机结果见交接文档 §4。
+
 ## 3. 共享页面控件（B0）
 B0 只提供 B1 立即需要的三个共享件，其余控件（`DataTable`、`StatusBanner`、`InlineProgress`、
 `SearchBox`、`FilterPill`、`SortSelector`、`SeverityBadge`、`MonoText`、扩展图标集）在第一个真实消费者批次实现，
@@ -373,6 +418,8 @@ B0 只提供 B1 立即需要的三个共享件，其余控件（`DataTable`、`S
 - 四态视图只呈现状态，不自行发起命令；可执行入口通过 `ActionContent` 由页面提供。
 - 两个控件都有 STA 冒烟测试（`tests/ECL.App.Tests/Controls/`），确保令牌与样式在页面接入前就能加载。
 - 页面根元素不得再叠加外围外边距；外围边距由 `PageHost` 统一提供。
+- `ResourceRowButton`（`Themes/Theme.xaml`）是下载中心内容发现列表的整行按钮样式：卡片外观、
+  悬停高亮与键盘焦点环，替代默认 Button 外观，不引入第二套列表控件。
 
 ## 4. Inspector
 
