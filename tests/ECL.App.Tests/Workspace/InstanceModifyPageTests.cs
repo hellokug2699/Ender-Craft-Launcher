@@ -379,6 +379,82 @@ public sealed class InstanceModifyPageTests
     }
 
     [Fact]
+    public async Task ComponentSectionOnlyExposesSupportedTargetComponents()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+
+        // 尚未选择目标版本时没有“目标组合”，组件区域不出现。
+        Assert.False(vm.ShowComponentsSection);
+
+        await vm.EnsureLoadedAsync();
+        Assert.True(vm.ShowComponentsSection);
+        Assert.True(vm.ShowFabricApiRow);
+        Assert.False(vm.ShowOptiFineRow);
+        Assert.False(vm.ShowOptiFineControl);
+        Assert.Equal("0.92.2", vm.TargetFabricApiText);
+
+        vm.SelectedTargetLoader = vm.LoaderChoices.First(choice => choice.Id == "forge");
+        await vm.PendingTargetRefresh;
+
+        Assert.True(vm.ShowComponentsSection);
+        Assert.False(vm.ShowFabricApiRow);
+        Assert.True(vm.ShowOptiFineRow);
+        Assert.True(vm.ShowOptiFineControl);
+        Assert.Equal("无", vm.TargetFabricApiText);
+
+        vm.SelectedTargetLoader = vm.LoaderChoices.First(choice => choice.Id == "neoforge");
+        await vm.PendingTargetRefresh;
+
+        // NeoForge 不在 ECL 的 OptiFine 支持范围内：不显示组件区域，也不显示空控件。
+        Assert.False(vm.ShowComponentsSection);
+        Assert.False(vm.ShowFabricApiRow);
+        Assert.False(vm.ShowOptiFineRow);
+        Assert.False(vm.ShowOptiFineControl);
+
+        vm.SelectedTargetLoader = vm.LoaderChoices.First(choice => choice.Id == "vanilla");
+        await vm.PendingTargetRefresh;
+        Assert.False(vm.ShowComponentsSection);
+    }
+
+    [Fact]
+    public async Task ForgeTargetWithoutOptiFineFilesShowsReadOnlyConclusion()
+    {
+        using var harness = new Harness(configure: it => it.Loaders.OptiFineByVersion.Remove("1.21"));
+        var vm = harness.ViewModel;
+        await vm.EnsureLoadedAsync();
+        vm.SelectedTargetVersion = vm.TargetVersions.First(choice => choice.Value == "1.21");
+        await vm.PendingTargetRefresh;
+        vm.SelectedTargetLoader = vm.LoaderChoices.First(choice => choice.Id == "forge");
+        await vm.PendingTargetRefresh;
+
+        Assert.True(vm.ShowOptiFineRow);
+        Assert.False(vm.ShowOptiFineControl);
+        Assert.Equal("不安装 OptiFine", vm.TargetOptiFineText);
+        Assert.Contains("没有可用的 OptiFine 文件", vm.OptiFineNote);
+    }
+
+    [Fact]
+    public async Task ExistingOptiFineOnUnsupportedTargetIsExplainedByThePlan()
+    {
+        using var harness = new Harness(
+            gameVersion: "1.20.1",
+            loader: "forge",
+            loaderVersion: "47.2.0",
+            optiFineVersion: "HD_U_I7:F1");
+        var vm = harness.ViewModel;
+        await vm.EnsureLoadedAsync();
+
+        vm.SelectedTargetLoader = vm.LoaderChoices.First(choice => choice.Id == "vanilla");
+        await vm.PendingTargetRefresh;
+
+        Assert.False(vm.ShowComponentsSection);
+        await vm.GeneratePlanCommand.ExecuteAsync(null);
+        Assert.Contains(vm.PlanItems, item =>
+            item.Kind == ModifyPlanItemKind.Manual && item.Detail.Contains("OptiFine"));
+    }
+
+    [Fact]
     public async Task DownloadsListRealArtifactsButNeverClaimsSizes()
     {
         using var harness = new Harness();

@@ -180,20 +180,38 @@
                                   Margin="0,0,0,8"
                                   Visibility="{Binding IsLoaderVersionRequired, Converter={StaticResource BoolToVisibility}}" />
 
-                        <!-- 附加组件（含 OptiFine 显式选择） -->
+                        <!-- 附加组件：只显示目标组合实际支持且 ECL 识别的组件。 -->
                         <TextBlock Grid.Row="4" Grid.Column="0"
                                    Text="{loc:Loc Key=instance.modify.item.components}"
                                    Style="{StaticResource ModifyRowLabel}"
-                                   Margin="0,0,10,0" />
-                        <TextBlock Grid.Row="4" Grid.Column="1"
-                                   Text="{Binding CurrentComponentsText}"
-                                   Style="{StaticResource ModifyValueText}" />
-                        <StackPanel Grid.Row="4" Grid.Column="3">
-                            <TextBlock Text="{Binding TargetComponentsText}"
+                                   Margin="0,0,10,0"
+                                   Visibility="{Binding ShowComponentsSection, Converter={StaticResource BoolToVisibility}}" />
+                        <StackPanel Grid.Row="4" Grid.Column="1"
+                                    Visibility="{Binding ShowComponentsSection, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="{Binding CurrentComponentsText}"
                                        Style="{StaticResource ModifyValueText}" />
+                            <TextBlock Text="{loc:Loc Key=instance.modify.components.hint}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="9"
+                                       TextWrapping="Wrap"
+                                       Margin="0,4,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="4" Grid.Column="3"
+                                    Visibility="{Binding ShowComponentsSection, Converter={StaticResource BoolToVisibility}}">
+                            <!-- Fabric API 是只读组件行：默认最新兼容版本，不提供无依据的版本输入。 -->
+                            <StackPanel Visibility="{Binding ShowFabricApiRow, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="{loc:Loc Key=instance.modify.components.fabricApi}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="9"
+                                           Margin="0,0,0,4" />
+                                <TextBlock Text="{Binding TargetFabricApiText}"
+                                           Style="{StaticResource ModifyValueText}" />
+                            </StackPanel>
+
+                            <!-- OptiFine 只有 Forge/Cleanroom 支持；目标版本没有文件时不显示可编辑选择器。 -->
                             <StackPanel Margin="0,6,0,0"
-                                        Visibility="{Binding IsOptiFineTarget, Converter={StaticResource BoolToVisibility}}">
-                                <TextBlock Text="{loc:Loc Key=instance.modify.target.optiFine}"
+                                        Visibility="{Binding ShowOptiFineRow, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="{loc:Loc Key=instance.modify.components.optiFine}"
                                            Foreground="{DynamicResource TextMutedBrush}"
                                            FontSize="9"
                                            Margin="0,0,0,4" />
@@ -202,7 +220,11 @@
                                           ItemTemplate="{StaticResource DisplayNameItemTemplate}"
                                           ItemContainerStyle="{StaticResource ModifyChoiceItemStyle}"
                                           AutomationProperties.Name="{loc:Loc Key=instance.modify.target.optiFine}"
-                                          IsEnabled="{Binding IsTargetEditable}" />
+                                          IsEnabled="{Binding IsTargetEditable}"
+                                          Visibility="{Binding ShowOptiFineControl, Converter={StaticResource BoolToVisibility}}" />
+                                <TextBlock Text="{Binding TargetOptiFineText}"
+                                           Style="{StaticResource ModifyValueText}"
+                                           Visibility="{Binding ShowOptiFineControl, Converter={StaticResource InverseBoolToVisibility}}" />
                                 <TextBlock Text="{Binding OptiFineNote}"
                                            Foreground="{DynamicResource WarningBrush}"
                                            FontSize="9"

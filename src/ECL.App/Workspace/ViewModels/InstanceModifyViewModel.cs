@@ -284,6 +284,36 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
     public bool IsOptiFineTarget =>
         SelectedTargetLoader?.Id is LoaderKinds.Forge or LoaderKinds.Cleanroom;
 
+    /// <summary>
+    /// 目标组合实际支持且 ECL 能识别的组件区域。原版、NeoForge 等没有可编辑附加组件的组合
+    /// 不显示该区域；已有组件的影响仍由变更计划的「需要处理」项说明。
+    /// </summary>
+    public bool ShowComponentsSection =>
+        SelectedTargetVersion is not null && (IsFabricTarget || IsOptiFineTarget);
+
+    /// <summary>Fabric 目标的 Fabric API 行（只读，默认最新兼容版本）。</summary>
+    public bool ShowFabricApiRow => SelectedTargetVersion is not null && IsFabricTarget;
+
+    /// <summary>Forge/Cleanroom 目标的 OptiFine 行（只有该加载器支持 OptiFine）。</summary>
+    public bool ShowOptiFineRow => SelectedTargetVersion is not null && IsOptiFineTarget;
+
+    /// <summary>目标版本确实有可选的 OptiFine 文件时才显示可编辑选择器；否则只显示只读结论与原因。</summary>
+    public bool ShowOptiFineControl =>
+        SelectedTargetVersion is not null && IsOptiFineTarget && OptiFineVersions.Count > 1;
+
+    /// <summary>目标组合的 Fabric API 版本；读取失败或无可用版本时显示只读结论，不伪造版本号。</summary>
+    public string TargetFabricApiText => !IsFabricTarget
+        ? _localizer.Get("instance.modify.componentsNone")
+        : !string.IsNullOrWhiteSpace(_targetFabricApiVersion)
+            ? _targetFabricApiVersion
+            : string.IsNullOrWhiteSpace(FabricApiText)
+                ? _localizer.Get("instance.modify.componentsNone")
+                : _localizer.Get("instance.modify.components.readFailed");
+
+    /// <summary>目标 OptiFine 选择的可读文本；没有可编辑控件时也用它说明目标状态。</summary>
+    public string TargetOptiFineText =>
+        SelectedTargetOptiFine?.DisplayName ?? _localizer.Get("instance.modify.target.optiFineNone");
+
     public bool HasLoaderFilterNote => LoaderFilterNote.Length > 0;
 
     public bool HasFabricApiNote => FabricApiText.Length > 0;
@@ -530,8 +560,7 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         IsLoaderVersionRequired = !string.Equals(loaderId, LoaderKinds.Vanilla, StringComparison.Ordinal);
         RequiresProcessorJava = LoaderKinds.TryParse(loaderId, out var kind) && LoaderKinds.UsesInstaller(kind);
         SetSelectedOptiFine(null);
-        OnPropertyChanged(nameof(IsFabricTarget));
-        OnPropertyChanged(nameof(IsOptiFineTarget));
+        NotifyComponentPresentation();
         OnPropertyChanged(nameof(HasFabricApiNote));
         OnPropertyChanged(nameof(HasOptiFineNote));
 
@@ -664,6 +693,8 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         if (!apiVersions.IsSuccess)
         {
             FabricApiText = _localizer.Get("instance.modify.target.fabricApiFailed", apiVersions.Error?.Message ?? string.Empty);
+            OnPropertyChanged(nameof(HasFabricApiNote));
+            NotifyComponentPresentation();
             return;
         }
 
@@ -671,6 +702,8 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         if (latest is null)
         {
             FabricApiText = _localizer.Get("instance.modify.target.fabricApiNone");
+            OnPropertyChanged(nameof(HasFabricApiNote));
+            NotifyComponentPresentation();
             return;
         }
 
@@ -684,6 +717,7 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
             ? _localizer.Get("instance.modify.target.fabricApiCurrent", selected.Version)
             : _localizer.Get("instance.modify.target.fabricApiLatest", selected.Version);
         OnPropertyChanged(nameof(HasFabricApiNote));
+        NotifyComponentPresentation();
     }
 
     private async Task LoadOptiFineAsync(string version, CancellationToken token)
@@ -702,6 +736,7 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
             OptiFineNote = _localizer.Get("instance.modify.target.optiFineFailed", optiFine.Error?.Message ?? string.Empty);
             SetSelectedOptiFine(none);
             OnPropertyChanged(nameof(HasOptiFineNote));
+            NotifyComponentPresentation();
             return;
         }
 
@@ -712,11 +747,18 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
                 FormatVersionWithDate(item.Key, item.ReleasedAt)));
         }
 
+        var hasOptiFineFiles = optiFine.Value!.Count > 0;
         var current = _state.Model.OptiFineVersion;
         if (string.IsNullOrWhiteSpace(current))
         {
             SetSelectedOptiFine(none);
+            if (!hasOptiFineFiles)
+            {
+                OptiFineNote = _localizer.Get("instance.modify.target.optiFineNoFiles");
+            }
+
             OnPropertyChanged(nameof(HasOptiFineNote));
+            NotifyComponentPresentation();
             return;
         }
 
@@ -735,6 +777,7 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         }
 
         OnPropertyChanged(nameof(HasOptiFineNote));
+        NotifyComponentPresentation();
     }
 
     private void SetSelectedOptiFine(VersionChoiceViewModel? choice)
@@ -841,6 +884,7 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
             _suppressTargetReload = false;
         }
 
+        NotifyComponentPresentation();
         PendingTargetRefresh = RefreshTargetAsync();
     }
 
@@ -853,6 +897,7 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
 
         OnPropertyChanged(nameof(IsFabricTarget));
         OnPropertyChanged(nameof(IsOptiFineTarget));
+        NotifyComponentPresentation();
         PendingTargetRefresh = RefreshTargetAsync();
     }
 
@@ -867,10 +912,27 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
     partial void OnSelectedTargetOptiFineChanged(VersionChoiceViewModel? value)
     {
         OnPropertyChanged(nameof(TargetComponentsText));
+        OnPropertyChanged(nameof(TargetOptiFineText));
         if (!_suppressTargetReload)
         {
             ResetPlan();
         }
+    }
+
+    /// <summary>
+    /// 组件区域的可见性只由“目标加载器是否支持该组件”和“目标版本是否有可选文件”决定；
+    /// 不支持的组合不显示可编辑控件，也不伪造版本号。
+    /// </summary>
+    private void NotifyComponentPresentation()
+    {
+        OnPropertyChanged(nameof(IsFabricTarget));
+        OnPropertyChanged(nameof(IsOptiFineTarget));
+        OnPropertyChanged(nameof(ShowComponentsSection));
+        OnPropertyChanged(nameof(ShowFabricApiRow));
+        OnPropertyChanged(nameof(ShowOptiFineRow));
+        OnPropertyChanged(nameof(ShowOptiFineControl));
+        OnPropertyChanged(nameof(TargetFabricApiText));
+        OnPropertyChanged(nameof(TargetOptiFineText));
     }
 
     partial void OnPlanStateChanged(InstanceModifyPlanState value)
