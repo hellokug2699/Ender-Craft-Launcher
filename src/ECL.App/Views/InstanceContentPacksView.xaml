@@ -96,6 +96,67 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                   behaviors:WheelScroll.IsEnabled="True">
         <StackPanel>
+            <!-- 光影包首次提示（shaders.md §3）：非模态页面横幅，不阻止任何管理操作。 -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,14"
+                    Visibility="{Binding IsShaderBannerVisible, Converter={StaticResource BoolToVisibility}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <controls:ContentPackStatusGlyph Kind="Note" IconSize="20" VerticalAlignment="Top" Margin="0,2,10,0" />
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="{Binding ShaderBannerTitle}" Style="{StaticResource SectionText}" />
+                        <TextBlock Text="{Binding ShaderBannerBody}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0" />
+                        <TextBlock Text="{Binding ShaderSupportReason}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0" />
+                        <TextBlock Text="{Binding ShaderBannerNote}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,6,0,0" />
+                    </StackPanel>
+                    <Button Grid.Column="2"
+                            Content="{Binding ShaderBannerDismissText}"
+                            Command="{Binding DismissShaderBannerCommand}"
+                            Style="{StaticResource ToolbarButton}"
+                            VerticalAlignment="Top"
+                            Margin="12,0,0,0" />
+                </Grid>
+            </Border>
+
+            <!-- 收起首次提示后的灰色弱提示（shaders.md §4）；检测恢复支持时立即隐藏。 -->
+            <Border Style="{StaticResource Card}"
+                    Padding="10,8"
+                    Margin="0,0,0,14"
+                    Visibility="{Binding IsShaderHintVisible, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Orientation="Horizontal">
+                    <controls:ContentPackStatusGlyph Kind="Note" IconSize="12" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBlock Text="{Binding ShaderSupportReason}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+
+            <!-- 检测本身失败时如实显示失败，不冒充“支持”。 -->
+            <TextBlock Text="{Binding ShaderSupportError}"
+                       Foreground="{DynamicResource DangerBrush}"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,12"
+                       Visibility="{Binding ShaderSupportError, Converter={StaticResource StringToVisibility}}" />
+
             <Border Style="{StaticResource Card}" Margin="0,0,0,14">
                 <StackPanel>
                     <TextBlock Text="{Binding KindTitle}" Style="{StaticResource SectionText}" />

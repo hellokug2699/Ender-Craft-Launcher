@@ -3,7 +3,6 @@
 using Ecl.App.Services;
 using Ecl.Core.Localization;
 using Ecl.Minecraft.Mods;
-
 namespace Ecl.App.Workspace.ViewModels;
 
 /// <summary>
@@ -16,7 +15,9 @@ namespace Ecl.App.Workspace.ViewModels;
 public sealed class ContentPackPageFactory(
     IContentPackService packs,
     IDialogService dialogs,
-    ILocalizer localizer)
+    ILocalizer localizer,
+    IShaderSupportService shaderSupport,
+    IShaderHintStore shaderHints)
 {
     /// <summary>
     /// 由 Shell 注入的下载入口：带入实例 ID 与资源类型，切到下载中心对应页签
@@ -25,7 +26,7 @@ public sealed class ContentPackPageFactory(
     public Action<string, ContentPackKind>? OpenPackBrowser { get; set; }
 
     public ContentPackPageViewModel Create(string instanceId, ContentPackKind kind) =>
-        new(instanceId, kind, packs, dialogs, localizer)
+        new(instanceId, kind, packs, dialogs, localizer, shaderSupport, shaderHints)
         {
             OpenPackBrowser = OpenPackBrowser,
         };

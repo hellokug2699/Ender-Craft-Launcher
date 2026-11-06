@@ -205,14 +205,145 @@ public sealed class ContentPacksPageTests
         Assert.Equal(0, packs.ListCount);
     }
 
+    [Fact]
+    public async Task ShaderBannerShowsUntilDismissedAndThenFallsBackToGrayHint()
+    {
+        var packs = new FakeContentPackService(Pack("alpha.zip", enabled: true, kind: ContentPackKind.ShaderPack));
+        var hints = new FakeShaderHintStore();
+        var shaderSupport = new FakeShaderSupportService(ShaderSupportState.Missing);
+        var page = Create(packs, ContentPackKind.ShaderPack, hints: hints, shaderSupport: shaderSupport);
+        await page.InitializeAsync();
+
+        Assert.True(page.IsShaderBannerVisible);
+        Assert.False(page.IsShaderHintVisible);
+        Assert.Contains("没有检测到", page.ShaderSupportReason);
+
+        page.DismissShaderBannerCommand.Execute(null);
+
+        Assert.True(hints.IsDismissed("instance-a"));
+        Assert.False(page.IsShaderBannerVisible);
+        Assert.True(page.IsShaderHintVisible);
+
+        // 重新进入页面时按已保存的提示状态显示灰色弱提示。
+        var reopened = Create(packs, ContentPackKind.ShaderPack, hints: hints, shaderSupport: shaderSupport);
+        await reopened.InitializeAsync();
+        Assert.False(reopened.IsShaderBannerVisible);
+        Assert.True(reopened.IsShaderHintVisible);
+    }
+
+    [Fact]
+    public async Task SupportedShaderComponentHidesBothPrompts()
+    {
+        var packs = new FakeContentPackService(Pack("alpha.zip", enabled: true, kind: ContentPackKind.ShaderPack));
+        var hints = new FakeShaderHintStore();
+        var page = Create(
+            packs,
+            ContentPackKind.ShaderPack,
+            hints: hints,
+            shaderSupport: new FakeShaderSupportService(ShaderSupportState.Supported));
+        await page.InitializeAsync();
+
+        Assert.Equal(ShaderSupportState.Supported, page.ShaderSupport);
+        Assert.False(page.IsShaderBannerVisible);
+        Assert.False(page.IsShaderHintVisible);
+        Assert.Empty(page.ShaderSupportReason);
+    }
+
+    [Fact]
+    public async Task ClearingAllShaderPacksResetsTheDismissedHint()
+    {
+        var packs = new FakeContentPackService(Pack("alpha.zip", enabled: true, kind: ContentPackKind.ShaderPack));
+        var hints = new FakeShaderHintStore();
+        hints.Dismiss("instance-a");
+        var page = Create(
+            packs,
+            ContentPackKind.ShaderPack,
+            hints: hints,
+            shaderSupport: new FakeShaderSupportService(ShaderSupportState.Missing));
+        await page.InitializeAsync();
+        Assert.True(page.IsShaderHintVisible);
+
+        // 删除最后一个光影包后，下一次进入页面重新显示首次提示（shaders.md §5）。
+        await page.DeletePackCommand.ExecuteAsync(page.EnabledPacks[0]);
+        Assert.Empty(page.EnabledPacks);
+        Assert.False(hints.IsDismissed("instance-a"));
+
+        var reopened = Create(
+            packs,
+            ContentPackKind.ShaderPack,
+            hints: hints,
+            shaderSupport: new FakeShaderSupportService(ShaderSupportState.Missing));
+        await reopened.InitializeAsync();
+        Assert.True(reopened.IsShaderBannerVisible);
+        Assert.False(reopened.IsShaderHintVisible);
+
+        // 首次检测到“数量为 0”本身不重置状态，只有从非零变为零才重置。
+        Assert.False(hints.IsDismissed("instance-a"));
+    }
+
+    [Fact]
+    public async Task FailedDetectionIsSurfacedInsteadOfClaimingSupport()
+    {
+        var packs = new FakeContentPackService(Pack("alpha.zip", enabled: true, kind: ContentPackKind.ShaderPack));
+        var page = Create(
+            packs,
+            ContentPackKind.ShaderPack,
+            hints: new FakeShaderHintStore(),
+            shaderSupport: new FakeShaderSupportService(null, fail: true));
+        await page.InitializeAsync();
+
+        Assert.Null(page.ShaderSupport);
+        Assert.False(page.IsShaderBannerVisible);
+        Assert.False(page.IsShaderHintVisible);
+        Assert.Contains("扫描失败", page.ShaderSupportError);
+    }
+
+    [Fact]
+    public async Task IncompleteAndConflictStatesExplainTheRealCondition()
+    {
+        var packs = new FakeContentPackService(Pack("alpha.zip", enabled: true, kind: ContentPackKind.ShaderPack));
+
+        var incomplete = Create(
+            packs,
+            ContentPackKind.ShaderPack,
+            hints: new FakeShaderHintStore(),
+            shaderSupport: new FakeShaderSupportService(
+                ShaderSupportState.Incomplete,
+                [ShaderSupportDetector.OculusModId],
+                "embeddium"));
+        await incomplete.InitializeAsync();
+        Assert.Contains("Oculus", incomplete.ShaderSupportReason);
+        Assert.Contains("embeddium", incomplete.ShaderSupportReason);
+
+        var conflict = Create(
+            packs,
+            ContentPackKind.ShaderPack,
+            hints: new FakeShaderHintStore(),
+            shaderSupport: new FakeShaderSupportService(
+                ShaderSupportState.Conflict,
+                [ShaderSupportDetector.IrisModId, ShaderSupportDetector.OptiFineProvider]));
+        await conflict.InitializeAsync();
+        Assert.Contains("Iris", conflict.ShaderSupportReason);
+        Assert.Contains("OptiFine", conflict.ShaderSupportReason);
+    }
+
     private static string[] RowNames(IEnumerable<ContentPackRowViewModel> rows) =>
         rows.Select(row => row.FileName).ToArray();
 
     private static ContentPackPageViewModel Create(
         FakeContentPackService packs,
         ContentPackKind kind = ContentPackKind.ResourcePack,
-        FakeDialogService? dialogs = null) =>
-        new("instance-a", kind, packs, dialogs ?? new FakeDialogService(), Localizer());
+        FakeDialogService? dialogs = null,
+        FakeShaderHintStore? hints = null,
+        FakeShaderSupportService? shaderSupport = null) =>
+        new(
+            "instance-a",
+            kind,
+            packs,
+            dialogs ?? new FakeDialogService(),
+            Localizer(),
+            shaderSupport,
+            hints);
 
     private static ContentPackEntry Pack(
         string fileName,
@@ -319,6 +450,34 @@ public sealed class ContentPacksPageTests
 
             return Task.FromResult(Result.Ok());
         }
+    }
+
+    private sealed class FakeShaderHintStore : IShaderHintStore
+    {
+        private readonly HashSet<string> _dismissed = new(StringComparer.Ordinal);
+
+        public bool IsDismissed(string instanceId) => _dismissed.Contains(instanceId);
+
+        public void Dismiss(string instanceId) => _dismissed.Add(instanceId);
+
+        public void Reset(string instanceId) => _dismissed.Remove(instanceId);
+    }
+
+    private sealed class FakeShaderSupportService(
+        ShaderSupportState? state,
+        IReadOnlyList<string>? providers = null,
+        string? detail = null,
+        bool fail = false) : IShaderSupportService
+    {
+        public Task<Result<ShaderSupportResult>> DetectAsync(
+            string instanceId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(fail
+                ? Result<ShaderSupportResult>.Fail("mods.scan_failed", "扫描失败")
+                : Result<ShaderSupportResult>.Ok(new ShaderSupportResult(
+                    state ?? ShaderSupportState.Missing,
+                    providers ?? [],
+                    detail)));
     }
 
     private sealed class FakeDialogService : IDialogService

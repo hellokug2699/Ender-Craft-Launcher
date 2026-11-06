@@ -75,6 +75,7 @@ public partial class App : Application
             services.AddEclMinecraft();
 
             services.AddSingleton<IDialogService, DialogService>();
+            services.AddSingleton<IShaderHintStore, ShaderHintStore>();
             services.AddSingleton(new Ecl.Deployment.CodeSigningTrustService());
             services.AddSingleton<InstancesViewModel>();
             services.AddSingleton<StorageViewModel>();

@@ -167,7 +167,7 @@ public sealed class InstanceWorkspaceNavigationTests
         Assert.Equal("资源包", item.Title);
         Assert.Equal("内容", item.GroupTitle);
 
-        // 光影包页仍按 B2b 的后续步骤保持不可用，不创建空页。
+        // 没有提供页面对象的条目（例如数据包）保持不可用，不创建空页。
         var shaders = navigation.Find(InstanceWorkspacePageKeys.Shaders);
         Assert.False(shaders!.IsAvailable);
         Assert.NotEqual(string.Empty, shaders.UnavailableReason);

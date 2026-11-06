@@ -80,6 +80,9 @@ public sealed class ContentPackStatusGlyph : FrameworkElement
             case ContentPackStatusKind.Unrecognized:
                 DrawCircleQuestion(drawingContext, size, Brush("TextMutedBrush", MutedFallback));
                 break;
+            case ContentPackStatusKind.Note:
+                DrawCircleMark(drawingContext, size, Brush("WarningBrush", WarningFallback), "!");
+                break;
         }
     }
 
@@ -111,7 +114,11 @@ public sealed class ContentPackStatusGlyph : FrameworkElement
     }
 
     /// <summary>圆环 + 问号（未识别）：灰色，不使用红色危险样式。</summary>
-    private void DrawCircleQuestion(DrawingContext context, double size, Brush brush)
+    private void DrawCircleQuestion(DrawingContext context, double size, Brush brush) =>
+        DrawCircleMark(context, size, brush, "?");
+
+    /// <summary>空心圆环 + 标记（页面提示）：不填充，避免与“危险”实心三角混淆。</summary>
+    private void DrawCircleMark(DrawingContext context, double size, Brush brush, string mark)
     {
         var center = new Point(size / 2, size / 2);
         context.DrawEllipse(null, StrokePen(brush, 1.3), center, size / 2 - 0.8, size / 2 - 0.8);
@@ -122,7 +129,7 @@ public sealed class ContentPackStatusGlyph : FrameworkElement
             FontWeights.SemiBold,
             FontStretches.Normal);
         var text = new FormattedText(
-            "?",
+            mark,
             CultureInfo.InvariantCulture,
             FlowDirection.LeftToRight,
             typeface,

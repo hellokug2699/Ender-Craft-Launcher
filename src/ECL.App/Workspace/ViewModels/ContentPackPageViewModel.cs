@@ -20,6 +20,9 @@ public enum ContentPackStatusKind
     Warning,
     Corrupt,
     Unrecognized,
+
+    /// <summary>页面级提示用的空心感叹号（不是条目状态）。</summary>
+    Note,
 }
 
 /// <summary>
@@ -169,15 +172,20 @@ public sealed partial class ContentPackPageViewModel : ObservableObject, IDispos
     private readonly IContentPackService _packs;
     private readonly IDialogService _dialogs;
     private readonly ILocalizer _localizer;
+    private readonly IShaderSupportService? _shaderSupport;
+    private readonly IShaderHintStore? _shaderHints;
     private List<string> _persistedEnabled = [];
     private bool _isLoading;
+    private int _lastPackCount = -1;
 
     public ContentPackPageViewModel(
         string instanceId,
         ContentPackKind kind,
         IContentPackService packs,
         IDialogService dialogs,
-        ILocalizer localizer)
+        ILocalizer localizer,
+        IShaderSupportService? shaderSupport = null,
+        IShaderHintStore? shaderHints = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
         ArgumentNullException.ThrowIfNull(packs);
@@ -189,6 +197,8 @@ public sealed partial class ContentPackPageViewModel : ObservableObject, IDispos
         _packs = packs;
         _dialogs = dialogs;
         _localizer = localizer;
+        _shaderSupport = shaderSupport;
+        _shaderHints = shaderHints;
 
         EnabledPacks.CollectionChanged += (_, _) => OnCollectionsChanged();
         DisabledPacks.CollectionChanged += (_, _) => OnCollectionsChanged();
@@ -266,6 +276,36 @@ public sealed partial class ContentPackPageViewModel : ObservableObject, IDispos
 
     public string DragHint => _localizer.Get("packs.dragHint");
 
+    /// <summary>
+    /// 光影支持检测结果（shaders.md §2）；<c>null</c> 表示尚未检测或检测失败。
+    /// 资源包页不使用。
+    /// </summary>
+    public ShaderSupportState? ShaderSupport { get; private set; }
+
+    /// <summary>首次提示横幅是否显示：不支持且用户尚未收起（shaders.md §3）。</summary>
+    public bool IsShaderBannerVisible =>
+        IsShaderPage && ShaderSupport is { } state && state != ShaderSupportState.Supported && !IsShaderHintDismissed;
+
+    /// <summary>收起首次提示后的一行灰色弱提示（shaders.md §4）。</summary>
+    public bool IsShaderHintVisible =>
+        IsShaderPage && ShaderSupport is { } state && state != ShaderSupportState.Supported && IsShaderHintDismissed;
+
+    public bool IsShaderHintDismissed { get; private set; }
+
+    /// <summary>按真实检测结果生成的原因文案，不使用固定的“没有安装 OptiFine”。</summary>
+    public string ShaderSupportReason { get; private set; } = string.Empty;
+
+    /// <summary>检测本身失败（读取实例或扫描模组失败）时的说明；非空时不冒充任何支持状态。</summary>
+    public string ShaderSupportError { get; private set; } = string.Empty;
+
+    public string ShaderBannerTitle => _localizer.Get("shaders.banner.title");
+
+    public string ShaderBannerBody => _localizer.Get("shaders.banner.body");
+
+    public string ShaderBannerNote => _localizer.Get("shaders.banner.note");
+
+    public string ShaderBannerDismissText => _localizer.Get("shaders.banner.dismiss");
+
 
     /// <summary>首次进入页面时加载；失败只改变本页文案，不抛给 Shell。</summary>
     public async Task InitializeAsync()
@@ -335,6 +375,20 @@ public sealed partial class ContentPackPageViewModel : ObservableObject, IDispos
         }
 
         OpenPackBrowser(_instanceId, _kind);
+    }
+
+    /// <summary>收起首次提示：按实例保存，之后只显示灰色弱提示（shaders.md §4/§5）。</summary>
+    [RelayCommand]
+    private void DismissShaderBanner()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        _shaderHints?.Dismiss(_instanceId);
+        IsShaderHintDismissed = true;
+        NotifyShaderPresentation();
     }
 
     /// <summary>提交待应用的启用状态与顺序；只有成功后才刷新为新的已保存状态。</summary>
@@ -545,6 +599,20 @@ public sealed partial class ContentPackPageViewModel : ObservableObject, IDispos
             _persistedEnabled = rows.Where(row => row.IsEnabled).Select(row => row.FileName).ToList();
             WarningText = BuildWarning(list);
             RecomputePending();
+
+            if (IsShaderPage)
+            {
+                var count = rows.Length;
+                // 全部光影包被清空时重置该实例的首次提示状态（shaders.md §5）。
+                if (_lastPackCount > 0 && count == 0)
+                {
+                    _shaderHints?.Reset(_instanceId);
+                    IsShaderHintDismissed = false;
+                }
+
+                _lastPackCount = count;
+                await RefreshShaderSupportAsync().ConfigureAwait(true);
+            }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -585,6 +653,96 @@ public sealed partial class ContentPackPageViewModel : ObservableObject, IDispos
         }
 
         return string.Join(Environment.NewLine, warnings);
+    }
+
+    /// <summary>
+    /// 光影支持检测（shaders.md §6）：每次刷新光影包列表后重新检测组件，
+    /// 安装/卸载模组后的下一次进入也会反映最新结果。
+    /// 检测失败只显示失败说明，不降级为“支持”。
+    /// </summary>
+    private async Task RefreshShaderSupportAsync()
+    {
+        IsShaderHintDismissed = _shaderHints?.IsDismissed(_instanceId) ?? false;
+
+        if (_shaderSupport is null)
+        {
+            ShaderSupport = null;
+            ShaderSupportError = _localizer.Get("shaders.detect.unavailable");
+            ShaderSupportReason = string.Empty;
+            NotifyShaderPresentation();
+            return;
+        }
+
+        var result = await _shaderSupport.DetectAsync(_instanceId).ConfigureAwait(true);
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (!result.IsSuccess)
+        {
+            ShaderSupport = null;
+            ShaderSupportError = result.Error?.ToString() ?? _localizer.Get("shaders.detect.failed");
+            ShaderSupportReason = string.Empty;
+            NotifyShaderPresentation();
+            return;
+        }
+
+        var detection = result.Value!;
+        ShaderSupport = detection.State;
+        ShaderSupportError = string.Empty;
+        ShaderSupportReason = DescribeShaderSupport(detection);
+        NotifyShaderPresentation();
+    }
+
+    /// <summary>按真实检测结果生成原因，不固定成“没有安装 OptiFine”。</summary>
+    private string DescribeShaderSupport(ShaderSupportResult result) => result.State switch
+    {
+        ShaderSupportState.Supported => string.Empty,
+        ShaderSupportState.Missing => _localizer.Get("shaders.reason.missing"),
+        ShaderSupportState.Incomplete => _localizer.Get(
+            "shaders.reason.incomplete",
+            ProviderLabel(result.Providers),
+            result.Detail ?? _localizer.Get("shaders.reason.dependencyUnknown")),
+        ShaderSupportState.Conflict => _localizer.Get(
+            "shaders.reason.conflict",
+            ProviderLabel(result.Providers)),
+        ShaderSupportState.Incompatible => _localizer.Get(
+            result.Detail switch
+            {
+                "iris-forge-unsupported" => "shaders.reason.irisForge",
+                "iris-version-unsupported" or "oculus-version-unsupported" => "shaders.reason.versionMismatch",
+                "oculus-loader-unsupported" => "shaders.reason.oculusFabric",
+                "iris-artifact-mismatch" or "oculus-artifact-mismatch" => "shaders.reason.artifactMismatch",
+                _ => "shaders.reason.incompatible",
+            },
+            ProviderLabel(result.Providers)),
+        _ => _localizer.Get(
+            "shaders.reason.unknown",
+            ProviderLabel(result.Providers)),
+    };
+
+    private string ProviderLabel(IReadOnlyList<string> providers)
+    {
+        var labels = providers.Select(provider => provider switch
+        {
+            ShaderSupportDetector.IrisModId => _localizer.Get("shaders.provider.iris"),
+            ShaderSupportDetector.OculusModId => _localizer.Get("shaders.provider.oculus"),
+            ShaderSupportDetector.OptiFineProvider => _localizer.Get("shaders.provider.optifine"),
+            _ => provider,
+        }).ToArray();
+
+        return labels.Length == 0 ? string.Empty : string.Join(" / ", labels);
+    }
+
+    private void NotifyShaderPresentation()
+    {
+        OnPropertyChanged(nameof(ShaderSupport));
+        OnPropertyChanged(nameof(IsShaderBannerVisible));
+        OnPropertyChanged(nameof(IsShaderHintVisible));
+        OnPropertyChanged(nameof(IsShaderHintDismissed));
+        OnPropertyChanged(nameof(ShaderSupportReason));
+        OnPropertyChanged(nameof(ShaderSupportError));
     }
 
     private void RecomputePending()

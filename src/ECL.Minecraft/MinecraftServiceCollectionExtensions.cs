@@ -73,6 +73,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IDependencyResolver, DependencyResolver>();
         services.AddSingleton<IContentInstallService, ContentInstallService>();
         services.AddSingleton<IContentPackService, ContentPackService>();
+        services.AddSingleton<IShaderSupportService, ShaderSupportService>();
         services.AddSingleton<IVersionNewsService, MojangVersionNewsService>();
         services.AddSingleton<ICrashReportService, CrashReportService>();
         services.AddSingleton<IDiagnosticPackageService, DiagnosticPackageService>();

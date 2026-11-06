@@ -58,6 +58,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         Modify = modifyFactory.Create(state);
         Modify.WorkspaceRefresh = RefreshAfterModifyAsync;
         ResourcePacks = contentPackFactory.Create(state.InstanceId, ContentPackKind.ResourcePack);
+        Shaders = contentPackFactory.Create(state.InstanceId, ContentPackKind.ShaderPack);
 
         Navigation = InstanceWorkspaceNavigationFactory.Create(
             localizer,
@@ -66,6 +67,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
                 [InstanceWorkspacePageKeys.BasicInfo] = BasicInfo,
                 [InstanceWorkspacePageKeys.Mods] = mods,
                 [InstanceWorkspacePageKeys.ResourcePacks] = ResourcePacks,
+                [InstanceWorkspacePageKeys.Shaders] = Shaders,
                 [InstanceWorkspacePageKeys.Modify] = Modify,
             });
     }
@@ -90,6 +92,9 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
 
     /// <summary>「内容 · 资源包」二级页（B2b：双表、拖动启用/禁用、应用）。</summary>
     public ContentPackPageViewModel ResourcePacks { get; }
+
+    /// <summary>「内容 · 光影包」二级页（B2b：同一模板 + 光影支持检测与首次提示）。</summary>
+    public ContentPackPageViewModel Shaders { get; }
 
     /// <summary>当前实例的存储占用卡状态（§5）；由基本信息页展示。</summary>
     public InstanceStorageViewModel Storage { get; }
@@ -120,7 +125,8 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
             Runtime.InitializeAsync(),
             Mods.InitializeAsync(),
             Storage.RefreshAsync(),
-            ResourcePacks.InitializeAsync());
+            ResourcePacks.InitializeAsync(),
+            Shaders.InitializeAsync());
 
     /// <summary>
     /// 受控变更成功后重新读取实例并刷新工作区身份（B2 步骤 3b-4b）：
@@ -154,6 +160,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         Navigation.Dispose();
         Modify.Dispose();
         ResourcePacks.Dispose();
+        Shaders.Dispose();
         BasicInfo.Dispose();
         Storage.Dispose();
         Operations.Dispose();
