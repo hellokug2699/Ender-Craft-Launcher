@@ -40,7 +40,7 @@ ECL 采用“原生功能入口、可选功能能力”的产品模型：页面�
 | Performance Monitor | [`ecl.performance-monitor`](ecl.performance-monitor/README.md) | In Development | 低开销性能健康监控 | [ADR 0041](../adr/0041-minecraft-performance-monitoring-and-profiling-architecture.md) |
 | Performance Profiler | [`ecl.performance-profiler`](ecl.performance-profiler/README.md) | In Development | 按需高级性能分析 | [ADR 0041](../adr/0041-minecraft-performance-monitoring-and-profiling-architecture.md) |
 | Network Diagnostics | [`ecl.network-diagnostics`](ecl.network-diagnostics/README.md) | In Development | 本地优先网络诊断 | [ADR 0044](../adr/0044-local-first-network-diagnostics-and-data-sovereignty.md) |
-| GitHub Project Center | [`ecl.github-project-center`](ecl.github-project-center/README.md) | In Development | ECL 原生 GitHub 项目协作中心 | [ADR 0049](../adr/0049-native-github-integration-and-repository-bounded-navigation.md) |
+| GitHub Project Center | [`ecl.github-project-center`](ecl.github-project-center/README.md) | In Development | ECL 原生 GitHub 项目协作中心 | [ADR 0049](../adr/0049-native-github-integration-and-repository-bounded-navigation.md) |\n| ECL Multiplayer | [`ecl.multiplayer`](ecl.multiplayer/README.md) | Planned | ECL 自研私人联机体验与会话管理；不提供公共大厅 | [ADR 0057](../adr/0057-ecl-multiplayer-session-architecture.md)（Proposed） |
 
 ### Data Additions
 
@@ -52,7 +52,7 @@ ECL 采用“原生功能入口、可选功能能力”的产品模型：页面�
 
 ## 待形成正式登记的候选
 
-以下方向已进入产品讨论，但尚缺少独立 Feature Spec/ADR，因此暂不分配稳定 Addition ID：
+以下方向仍处于产品讨论，尚未形成正式 Addition 登记：
 
 - **ECL Multiplayer**：自研联机体验与网络会话管理；EasyTier 是底层网络能力候选。联机环境兼容检查、模组差异分级和 UI 工作流属于该产品方向，安全判断仍由 Security Center 负责。
 - **World Generation Data**：是否需要从 World Generation Analysis 中拆出独立 Data Addition，待算法与数据分发边界明确后决定。
