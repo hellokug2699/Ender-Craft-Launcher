@@ -1,0 +1,49 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.ai-harness",
+  "name": "ECL AI Harness",
+  "type": "Feature",
+  "category": "AI & Assistance",
+  "summary": "为 ECL AI 提供受控模型请求、上下文组装、工具编排、执行预算、Core 权限集成和证据追踪。",
+  "registryStatus": "Proposed",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0062-ecl-ai-harness-and-controlled-execution-architecture.md",
+    "../../adr/0061-ecl-ai-conversation-and-capability-architecture.md",
+    "../../adr/0053-addition-capability-permission-and-user-consent.md",
+    "../../adr/0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-08",
+    "lastUpdated": "2026-11-08",
+    "deprecation": null,
+    "replacement": null
+  }
+}
