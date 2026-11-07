@@ -5,7 +5,7 @@
 - Date: 2026-11-03
 - Scope: ECL 管理的 Minecraft 文件、实例、整合包及由 ECL 启动的 Minecraft/Java 进程的本地安全分析与启动前风险提示
 - Related: [ADR 0012：整合包归档提取安全边界](0012-modpack-archive-extraction-boundary.md)、[ADR 0015：按进程隔离的游戏日志会话与诊断证据](0015-process-scoped-game-log-sessions-and-diagnostics.md)、[ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033：本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md)、[ADR 0034：ECL 自身完整性与可恢复安装架构](0034-ecl-self-integrity-and-recovery.md)、[ADR 0042：实例文件管理器与崩溃报告工作流](0042-instance-file-explorer-and-crash-report-workflow.md)
-- Additions: [Publisher Trust Database](../additions/ecl.publisher-trust-database/README.md)（辅助数据扩展；不替代原生 Security Center）
+- Additions: [Publisher Trust Database](../additions/ecl.publisher-trust-database/README.md)（辅助数据扩展；不替代原生 Security Center）、[ECL Multiplayer](../additions/ecl.multiplayer/README.md)（联机模组风险检查调用本 ADR 定义的安全分析能力）
 
 ## 背景
 
