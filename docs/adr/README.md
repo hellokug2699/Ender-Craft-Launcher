@@ -205,3 +205,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0058 Resource Pack Studio Architecture](0058-resource-pack-studio-architecture.md) | Proposed | Not Started | Resource Pack Studio Addition、资源发现、状态变体预览、按需渲染与安全能力复用 |
 | [0059 Shader Studio and Standard Scene Environment Architecture](0059-shader-studio-and-standard-scene-environment-architecture.md) | Proposed | Not Started | Shader Studio Addition、光影包分析与预览、固定标准场景、时间段取景及官方场景库治理 |
 | [0060 Multi-Addition Visual Preview Composition Architecture](0060-multi-addition-visual-preview-composition.md) | Proposed | Not Started | Schematic Preview、Resource Pack Studio、Shader Studio 的独立与组合预览模式、统一会话及跨 Addition 协作规范 |
+| [0061 ECL AI Conversation and Capability Architecture](0061-ecl-ai-conversation-and-capability-architecture.md) | Accepted | Not Started | ECL AI：Chat、Knowledge、Diagnostic、推理后端、受控搜索、对话/上下文、数据隐私与安全边界 |
