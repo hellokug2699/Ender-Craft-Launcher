@@ -203,3 +203,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0056 Right Auxiliary Rail and Inspector Integration](0056-right-auxiliary-rail-and-inspector-integration.md) | Accepted | Not Started | Right Auxiliary Rail：协调右侧 Tools 与 Inspector 两种模式 |
 | [0057 ECL Multiplayer Session Architecture](0057-ecl-multiplayer-session-architecture.md) | Accepted | Not Started | ECL Multiplayer Addition、私人会话、网络传输适配、环境兼容检查与模组安全边界 |
 | [0058 Resource Pack Studio Architecture](0058-resource-pack-studio-architecture.md) | Proposed | Not Started | Resource Pack Studio Addition、资源发现、状态变体预览、按需渲染与安全能力复用 |
+| [0059 Shader Studio and Standard Scene Environment Architecture](0059-shader-studio-and-standard-scene-environment-architecture.md) | Proposed | Not Started | Shader Studio Addition、光影包分析与预览、固定标准场景、时间段取景及官方场景库治理 |
