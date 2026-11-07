@@ -10,7 +10,7 @@
 
 ADR 0061 已确定 ECL AI 提供 Chat、Knowledge 和 Diagnostic 三种工作模式，并允许模型通过受控工具获取资料、读取日志与实例资源。随着 AI 能力从单轮问答扩展到多步骤任务，单纯依赖 Prompt 约束和分散的工具调用实现不足以形成一致、可审计的执行边界。
 
-ECL 需要独立的 AI Agent Runtime，统一承载目标管理、计划与任务调度、模型请求、上下文组装、工具调用分发、执行循环、变更集合管理、验证恢复、证据关联、预算控制和安全交互。Agent Runtime 按维护者决定作为独立 Feature Addition 交付，而不是隐藏在 ECL AI 内部，也不是 ECL Core 的推理组件。ECL AI 是面向用户的 AI 产品与工作模式；Agent Runtime 是其Agent 编排与受控执行运行时，二者拥有独立 Addition 身份和生命周期。
+ECL 需要独立的 AI Agent Runtime，统一承载目标管理、计划与任务调度、模型请求、上下文组装、工具调用分发、执行循环、变更集合管理、验证恢复、证据关联、预算控制和安全交互。Agent Runtime 按维护者决定作为独立 Feature Addition 交付，而不是隐藏在 ECL AI 内部，也不是 ECL Core 的推理组件。ECL AI 是面向用户的 AI 产品与工作模式；Agent Runtime 是其 Agent 编排与受控执行运行时，二者拥有独立 Addition 身份和生命周期。
 
 模型不是可信执行主体。模型输出可能忽略指令、受到提示注入影响、误判资源范围或提出危险操作。ECL 必须遵循自身安全规范：权限由 Core 强制执行，用户同意由 ECL 授权流程表达，资源访问由宿主中介，文件写入遵循 Instance Engine 的事务、并发与恢复约束。Agent Runtime 不得建立与这些机制竞争的第二套权限体系。
 
@@ -101,6 +101,17 @@ Agent Runtime 应支持可恢复的长任务执行，而不是只在单次模型
 - 对无法安全恢复的操作，应标记为结果不确定或需要用户介入，不得假装任务从未执行。
 - 暂停与恢复不得绕过预算、授权过期、用户取消或资源冲突检查。
 
+
+
+### 2.6 Agent Runtime 的职责边界与不应承担的能力
+
+Agent Runtime 管理任务编排和受控执行，但不取代 ECL AI 的产品层，也不取代 Core 的原生资源、安全和事务能力。
+
+- ECL AI 继续负责 Chat、Knowledge、Diagnostic 的产品语义、对话历史、Provider/Model 选择和用户交互入口。
+- Agent Runtime 负责任务执行生命周期、Target/Plan/Task、调度、工具执行、变更集合、验证反馈和恢复协调。
+- Core 继续拥有最终权限裁决、用户授权入口、Resource Broker、实例身份、事务、并发、快照和恢复能力。
+- Agent Runtime 不应把每个 Task、Target 或 Change Set 拆成独立 Addition；这些是同一运行时内部的协调对象。
+- 本 ADR 不要求采用特定 Agent 框架，也不要求实现多 Agent/子 Agent。并行任务是调度能力，不代表不同模型代理可以绕过共享权限与资源约束。
 
 ### 3. 所有模型工具调用必须经过 Agent Runtime 与 Core 双重边界
 
@@ -253,16 +264,6 @@ Agent Runtime 与 ECL AI、其他 Addition 之间遵循 ADR 0055 的隔离约束
 ### 10. 不在本 ADR 范围内
 
 本 ADR 定义 Target、Plan、Task Schedule 和 Changes 审查入口必须具备的产品语义，但不规定具体 UI 页面布局、弹窗视觉样式、工具协议字段、SDK、Provider/模型名单、数据库、目录结构、预算数值、具体 IPC/API 签名或进程部署拓扑。具体交互以经确认的 UI 页面规划为准；接口和执行细节由实现设计确定，但不得改变 Core 是最终授权权威、用户授权先于受保护操作、资源读取与远程传输分离、文件变更受 Core 事务与状态检查保护等约束。
-
-### 2.6 Agent Runtime 的职责边界与不应承担的能力
-
-Agent Runtime 管理任务编排和受控执行，但不取代 ECL AI 的产品层，也不取代 Core 的原生资源、安全和事务能力。
-
-- ECL AI 继续负责 Chat、Knowledge、Diagnostic 的产品语义、对话历史、Provider/Model 选择和用户交互入口。
-- Agent Runtime 负责任务执行生命周期、Target/Plan/Task、调度、工具执行、变更集合、验证反馈和恢复协调。
-- Core 继续拥有最终权限裁决、用户授权入口、Resource Broker、实例身份、事务、并发、快照和恢复能力。
-- Agent Runtime 不应把每个 Task、Target 或 Change Set 拆成独立 Addition；这些是同一运行时内部的协调对象。
-- 本 ADR 不要求采用特定 Agent 框架，也不要求实现多 Agent/子 Agent。并行任务是调度能力，不代表不同模型代理可以绕过共享权限与资源约束。
 
 ## 备选方案
 
