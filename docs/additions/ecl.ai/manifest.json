@@ -1,0 +1,51 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.ai",
+  "name": "ECL AI",
+  "type": "Feature",
+  "category": "AI & Assistance",
+  "summary": "统一 AI 功能扩展，提供通用 Chat、Minecraft Knowledge 和 Diagnostic 三种工作模式，支持可替换推理后端与受控联网搜索。",
+  "registryStatus": "Planned",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [
+      "ecl.diagnostic-engine",
+      "ecl.diagnostic-knowledge-base"
+    ],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0061-ecl-ai-conversation-and-capability-architecture.md",
+    "../../adr/0033-local-minecraft-diagnostic-and-knowledge-engine.md",
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-08",
+    "lastUpdated": "2026-11-08",
+    "deprecation": null,
+    "replacement": null
+  }
+}
