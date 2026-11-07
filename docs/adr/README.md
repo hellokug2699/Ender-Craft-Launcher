@@ -201,3 +201,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0054 Addition 注册表、清单与生命周期治理](0054-addition-registry-and-manifest-governance.md) | Accepted | Not Started | 官方 Addition 统一目录、Manifest、登记审核、生命周期与既有扩展 ADR 迁移 |
 | [0055 ECL 混合工作区与原生工具平台架构](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md) | Accepted | Not Started | Workspace、Native UI SDK、Addition Runtime、IPC、Event Bus、资源边界与条件式启动恢复 |
 | [0056 Right Auxiliary Rail and Inspector Integration](0056-right-auxiliary-rail-and-inspector-integration.md) | Accepted | Not Started | Right Auxiliary Rail：协调右侧 Tools 与 Inspector 两种模式 |\n| [0057 ECL Multiplayer Session Architecture](0057-ecl-multiplayer-session-architecture.md) | Accepted | Not Started | ECL Multiplayer Addition、私人会话、网络传输适配、环境兼容检查与模组安全边界 |
+| [0058 Resource Pack Studio Architecture](0058-resource-pack-studio-architecture.md) | Proposed | Not Started | Resource Pack Studio Addition、资源发现、状态变体预览、按需渲染与安全能力复用 |
