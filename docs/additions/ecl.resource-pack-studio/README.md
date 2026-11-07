@@ -63,6 +63,7 @@ Resource Pack Studio 是 ECL 的可选资源包浏览、视觉预览与结构分
 - [ADR 0043](../../adr/0043-minecraft-threat-protection-and-security-analysis.md)
 - [ADR 0054](../../adr/0054-addition-registry-and-manifest-governance.md)
 - [ADR 0055](../../adr/0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)
+- [ADR 0060](../../adr/0060-multi-addition-visual-preview-composition.md)
 - [ADR 0058](../../adr/0058-resource-pack-studio-architecture.md)
 
 ## 修订记录
