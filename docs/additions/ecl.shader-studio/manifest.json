@@ -1,0 +1,49 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.shader-studio",
+  "name": "Shader Studio",
+  "type": "Feature",
+  "category": "Shader Inspection and Preview",
+  "summary": "可选的 Minecraft 光影包浏览、结构分析、兼容性信息呈现与固定场景视觉预览工具。",
+  "registryStatus": "Proposed",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md",
+    "../../adr/0053-addition-capability-permission-and-user-consent.md",
+    "../../adr/0054-addition-registry-and-manifest-governance.md",
+    "../../adr/0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md",
+    "../../adr/0059-shader-studio-and-standard-scene-environment-architecture.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-08",
+    "lastUpdated": "2026-11-08",
+    "deprecation": null,
+    "replacement": null
+  }
+}
