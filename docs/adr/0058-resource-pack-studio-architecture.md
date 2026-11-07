@@ -4,7 +4,7 @@
 - Implementation: Not Started
 - Date: 2026-11-07
 - Scope: Resource Pack Studio Addition 的产品与架构边界、资源发现与解析、状态变体预览、渲染资源管理、安全能力复用及兼容性
-- Related: [ADR 0032](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0043](0043-minecraft-threat-protection-and-security-analysis.md)、[ADR 0054](0054-addition-registry-and-manifest-governance.md)、[ADR 0055](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)、[ADR 0012](0012-modpack-archive-extraction-boundary.md)
+- Related: [ADR 0032](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0043](0043-minecraft-threat-protection-and-security-analysis.md)、[ADR 0054](0054-addition-registry-and-manifest-governance.md)、[ADR 0055](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)、[ADR 0012](0012-modpack-archive-extraction-boundary.md)、[ADR 0060](0060-multi-addition-visual-preview-composition.md)
 
 ## 背景
 
@@ -159,26 +159,6 @@ Resource Pack Studio 的专业解析、模型构建和渲染代码不得加载�
 
 不得静默丢弃无法理解的资源，也不得把推断分类、部分解析或未知内容显示为已被完整识别。
 
-### 11. 支持与其他 Addition 的可选资源联动
-
-Resource Pack Studio 可以作为资源视觉数据提供方，与其他 Addition 协作。例如，在同时安装并启用 Resource Pack Studio 和 Schematic Preview 时，用户可以在投影预览中选择资源包，使投影中的方块模型与材质根据该资源包进行视觉替换。
-
-该能力属于可选的跨 Addition 集成，不构成两个 Addition 之间的硬依赖：
-
-- Resource Pack Studio 和 Schematic Preview 必须能够在对方未安装、未启用或不可用时独立运行。
-- 用户主动使用资源包联动时，宿主可以检查所需 Addition 是否可用；缺失时应说明依赖关系并提供扩展管理入口，不得静默安装或强制安装。
-- Schematic Preview 负责投影结构的读取、方块布局和场景展示；Resource Pack Studio 负责资源包解析以及提供其已支持的模型、材质和相关视觉资源信息。
-- Resource Pack Studio 不应把自身完整渲染器、GPU 上下文或渲染生命周期直接交给 Schematic Preview。资源提供方与资源消费者之间应交换受控、可版本化的资源描述或视觉资源访问能力；消费者仍负责自身场景的呈现。
-- Addition 之间不得建立绕过宿主的直接通信或任意内部对象引用。发现、授权和调用必须遵循 ADR 0055 的 Addition 协作边界，并经由 ECL 提供的受控 Service API / Event Bus 等宿主机制。
-- 跨 Addition 能力必须显式声明其提供/消费的能力、兼容性要求和权限需求。宿主应在调用前验证双方状态、能力版本和用户授权。
-- 集成失败、提供方退出、资源解析不支持或资源缺失时，消费者必须能够安全回退到原有默认外观或占位显示；不得使投影文件无法打开或导致消费者 Addition 崩溃。
-- 对部分可解析的资源包，应允许逐项应用可用的模型/材质，并对缺失或不支持的资源提供可解释的回退，而不是要求整个资源包全部成功解析。
-- 资源包切换、资源包内容变化或 Addition 生命周期结束时，相关缓存和视觉资源必须正确失效或释放，避免使用过期资源及跨工作区数据泄漏。
-- 联动应尊重目标 Minecraft 版本、资源包格式兼容性及资源包自身的覆盖关系。初期可以限制支持范围，不要求立即完整复刻游戏内多资源包堆叠与优先级语义。
-
-本节描述的是协作能力和职责边界，不规定具体 IPC 消息、服务接口、数据结构、渲染后端或 UI 布局。具体实现由 Core 与相关 Addition 在兼容性验证后确定。
-
-
 ## 备选方案
 
 ### 方案 A：将解析与渲染直接集成到 ECL Core
@@ -201,14 +181,6 @@ Resource Pack Studio 可以作为资源视觉数据提供方，与其他 Additio
 
 将专业能力独立交付；对标准格式提供版本化解析，对非标准结构保留原始资源并尽力发现；按需构建视觉预览和状态变体，并复用 Core 的资源、安全与 Runtime 能力。该方案符合 ECL 的轻量 Core 与可选专业扩展方向，作为当前提议。
 
-### 方案 F：将投影预览与资源包预览合并为单一 Addition
-
-可以在单一扩展内共享解析器和渲染器，但会把两个可独立使用的专业能力绑定在一起，扩大安装体积和功能依赖，也不利于其他 Addition 复用资源包解析能力。不采用。
-
-### 方案 G：由 Schematic Preview 直接依赖 Resource Pack Studio 的内部实现
-
-可以减少初期集成工作，但会形成紧耦合，并绕过 Addition 间受控协作边界；资源提供方的内部重构或运行时变化可能破坏消费者。不采用。应通过宿主管理的可选能力协作。
-
 ## 后果
 
 ### 正面影响
@@ -223,9 +195,6 @@ Resource Pack Studio 可以作为资源视觉数据提供方，与其他 Additio
 
 ### 代价与风险
 
-- 跨 Addition 联动需要 Core 提供可发现、可授权且版本化的能力协作机制，并增加兼容性与生命周期测试成本。
-- 资源提供方与消费者必须处理不同步更新、资源缺失、解析能力差异和提供方不可用等情况；回退路径需要纳入设计。
-- 不同 Addition 可能使用不同渲染技术，交换的资源描述与视觉资源访问能力需要避免暴露具体渲染器内部状态。
 - 需要维护版本化的资源格式解析器和测试样本。
 - 自定义资源格式无法保证自动获得完整语义预览；需要适配器或退回原始资源查看。
 - 模型继承、引用关系和状态组合可能复杂，需要限制解析深度和资源消耗。
@@ -255,14 +224,8 @@ Resource Pack Studio 可以作为资源视觉数据提供方，与其他 Additio
 - 需要原版资源时优先复用目标版本匹配的本地缓存；缺失或不匹配时明确说明。
 - 解析结果可追溯到原始文件路径，并区分完整解析、部分解析、仅原始可读、不支持和无效。
 - 对标准资源包与至少一组非标准组织结构样本进行测试；不支持内容能够安全回退到原始资源浏览。
-- 在 Resource Pack Studio 与 Schematic Preview 均可用时，用户可以主动启用资源包视觉联动；未安装或不可用时，两个 Addition 仍可独立使用。
-- Schematic Preview 不依赖 Resource Pack Studio 的内部渲染器或 GPU 上下文；资源协作通过 ECL 受控的 Addition 协作边界进行。
-- 资源包缺失、部分解析、不支持或提供方运行失败时，投影预览能够回退到默认外观或占位显示，不影响投影结构本身的打开和查看。
-- 资源切换及 Addition 关闭后，相关资源缓存和 GPU 资源能够正确更新或释放。
-- 联动能力声明、版本兼容性和用户授权由宿主验证；不存在绕过 ADR 0055 的 Addition 直接通信路径。
 - 兼容性、性能、安全和渲染回归有可复核的自动化测试或实验记录。
 
 ## 修订记录
 
 - 2026-11-07：根据资源包预览、状态变体、自定义资源结构、按需解析、Security Center 能力复用及 ECL Core 轻量化讨论形成提案。Decision 为 Proposed，Implementation 为 Not Started；尚未批准或实现。
-- 2026-11-07：补充 Resource Pack Studio 与 Schematic Preview 的可选资源联动约束，明确能力提供/消费职责、宿主中介、独立运行和失败回退；不建立 Addition 硬依赖。
