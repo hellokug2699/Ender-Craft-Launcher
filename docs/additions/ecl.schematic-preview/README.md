@@ -37,6 +37,7 @@
 - [ADR 0032](../../adr/0032-native-feature-interfaces-and-optional-additions.md)
 - [ADR 0042](../../adr/0042-instance-file-explorer-and-crash-report-workflow.md)
 - [ADR 0055](../../adr/0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)
+- [ADR 0060](../../adr/0060-multi-addition-visual-preview-composition.md)
 
 ## 修订记录
 
