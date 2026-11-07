@@ -1278,5 +1278,8 @@ public sealed record DatapackWorldChoice(
     DatapackTarget Target)
 {
     /// <summary>同名世界用存档目录名区分，UIA/读屏也只看到这两项真实信息。</summary>
-    public override string ToString() => $"{Name} ({FolderName})";
+    public override string ToString() => DisplayName;
+
+    /// <summary>世界名 + 存档目录名；作为下拉条目的无障碍名称，避免同名世界无法区分。</summary>
+    public string DisplayName => $"{Name} ({FolderName})";
 }

@@ -91,8 +91,10 @@ public sealed class InstanceWorkspaceNavigationTests
             Assert.Null(item.Page);
         }
 
-        // G-01：日志入口在页面规格批准前不得呈现为可用页面。
-        Assert.Contains("G-01", navigation.Find(InstanceWorkspacePageKeys.Logs)!.UnavailableReason);
+        // G-01 已由 Approved 的日志页面规格解除；日志页在 B6 实现前只保留准确的“尚未实现”原因。
+        var logs = navigation.Find(InstanceWorkspacePageKeys.Logs)!.UnavailableReason;
+        Assert.NotEmpty(logs);
+        Assert.DoesNotContain("G-01", logs);
     }
 
     [Fact]
@@ -256,6 +258,31 @@ public sealed class InstanceWorkspaceNavigationTests
         Assert.True(navigation.TryActivate(InstanceWorkspacePageKeys.Export));
         Assert.Equal(InstanceWorkspacePageKeys.Export, navigation.CurrentPageKey);
         Assert.Same(exportPage, navigation.CurrentPage);
+    }
+
+    [Fact]
+    public void DataPackPageBecomesAvailableWhenTheWorkspaceProvidesIt()
+    {
+        var dataPacksPage = new object();
+        var navigation = InstanceWorkspaceNavigationFactory.Create(
+            Localizer(),
+            new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                [InstanceWorkspacePageKeys.BasicInfo] = new object(),
+                [InstanceWorkspacePageKeys.DataPacks] = dataPacksPage,
+            });
+
+        var item = navigation.Find(InstanceWorkspacePageKeys.DataPacks);
+        Assert.NotNull(item);
+        Assert.True(item!.IsAvailable);
+        Assert.Same(dataPacksPage, item.Page);
+        Assert.Equal(string.Empty, item.UnavailableReason);
+        Assert.Equal("数据包", item.Title);
+        Assert.Equal("内容", item.GroupTitle);
+
+        Assert.True(navigation.TryActivate(InstanceWorkspacePageKeys.DataPacks));
+        Assert.Equal(InstanceWorkspacePageKeys.DataPacks, navigation.CurrentPageKey);
+        Assert.Same(dataPacksPage, navigation.CurrentPage);
     }
 
     [Fact]

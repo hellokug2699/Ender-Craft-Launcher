@@ -35,6 +35,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         IMemoryPressureMonitor memory,
         InstanceModifyPageFactory modifyFactory,
         ContentPackPageFactory contentPackFactory,
+        DataPackPageFactory dataPackFactory,
         ScreenshotPageFactory screenshotFactory,
         SchematicPageFactory schematicFactory,
         ExportPageFactory exportFactory,
@@ -62,6 +63,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         Modify.WorkspaceRefresh = RefreshAfterModifyAsync;
         ResourcePacks = contentPackFactory.Create(state.InstanceId, ContentPackKind.ResourcePack);
         Shaders = contentPackFactory.Create(state.InstanceId, ContentPackKind.ShaderPack);
+        DataPacks = dataPackFactory.Create(state.InstanceId);
         Screenshots = screenshotFactory.Create(state.InstanceId);
         Schematics = schematicFactory.Create(state.InstanceId);
         Export = exportFactory.Create(state.InstanceId);
@@ -74,6 +76,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
                 [InstanceWorkspacePageKeys.Mods] = mods,
                 [InstanceWorkspacePageKeys.ResourcePacks] = ResourcePacks,
                 [InstanceWorkspacePageKeys.Shaders] = Shaders,
+                [InstanceWorkspacePageKeys.DataPacks] = DataPacks,
                 [InstanceWorkspacePageKeys.Modify] = Modify,
                 [InstanceWorkspacePageKeys.Screenshots] = Screenshots,
                 [InstanceWorkspacePageKeys.Schematics] = Schematics,
@@ -104,6 +107,9 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
 
     /// <summary>「内容 · 光影包」二级页（B2b：同一模板 + 光影支持检测与首次提示）。</summary>
     public ContentPackPageViewModel Shaders { get; }
+
+    /// <summary>「内容 · 数据包」二级页（B2 收尾：世界目标 + 双表 + level.dat 应用）。</summary>
+    public InstanceDataPacksViewModel DataPacks { get; }
 
     /// <summary>「世界与文件 · 截图」二级页（B2c：三种展示形式、页面内预览与受控删除）。</summary>
     public ScreenshotPageViewModel Screenshots { get; }
@@ -145,6 +151,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
             Storage.RefreshAsync(),
             ResourcePacks.InitializeAsync(),
             Shaders.InitializeAsync(),
+            DataPacks.InitializeAsync(),
             Screenshots.InitializeAsync(),
             Schematics.InitializeAsync());
 
@@ -181,6 +188,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         Modify.Dispose();
         ResourcePacks.Dispose();
         Shaders.Dispose();
+        DataPacks.Dispose();
         Screenshots.Dispose();
         Schematics.Dispose();
         Export.Dispose();

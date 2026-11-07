@@ -63,6 +63,9 @@
             <DataTemplate DataType="{x:Type wsvm:ContentPackPageViewModel}">
                 <views:InstanceContentPacksView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type wsvm:InstanceDataPacksViewModel}">
+                <views:InstanceDataPacksView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type wsvm:ScreenshotPageViewModel}">
                 <views:InstanceScreenshotsView />
             </DataTemplate>

@@ -46,6 +46,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly IMemoryPressureMonitor _memoryPressure;
     private readonly InstanceModifyPageFactory _modifyFactory;
     private readonly ContentPackPageFactory _contentPackFactory;
+    private readonly DataPackPageFactory _dataPackFactory;
     private readonly ScreenshotPageFactory _screenshotFactory;
     private readonly SchematicPageFactory _schematicFactory;
     private readonly ExportPageFactory _exportFactory;
@@ -62,6 +63,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         ModsPageFactory modsFactory,
         InstanceModifyPageFactory modifyFactory,
         ContentPackPageFactory contentPackFactory,
+        DataPackPageFactory dataPackFactory,
         ScreenshotPageFactory screenshotFactory,
         SchematicPageFactory schematicFactory,
         ExportPageFactory exportFactory,
@@ -86,6 +88,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _modsFactory = modsFactory;
         _modifyFactory = modifyFactory;
         _contentPackFactory = contentPackFactory;
+        _dataPackFactory = dataPackFactory;
         _screenshotFactory = screenshotFactory;
         _schematicFactory = schematicFactory;
         _exportFactory = exportFactory;
@@ -130,6 +133,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         instances.GetModHealthSummary = modsFactory.DescribeHealthAsync;
         modsFactory.OpenModBrowser = OpenModBrowser;
         contentPackFactory.OpenPackBrowser = OpenPackBrowser;
+        dataPackFactory.OpenDatapackBrowser = OpenDatapackBrowser;
         instances.OpenModpackDeployment = OpenModpackDeploymentAsync;
         download.InstanceVersion.InstanceCreated = async instanceId =>
         {
@@ -365,6 +369,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private void OpenPackBrowser(string instanceId, ContentPackKind kind) =>
         _ = OpenPackBrowserAsync(instanceId, kind);
 
+    /// <summary>
+    /// 数据包页面的「下载数据包」（resource-library-template.md §2）：
+    /// 切到下载中心「数据包」页签；下载页自身要求再选择具体世界作为安装目标。
+    /// </summary>
+    private void OpenDatapackBrowser(string instanceId) =>
+        _ = OpenDatapackBrowserAsync(instanceId);
+
     /// <summary>在系统文件管理器中打开导出所在目录；失败只记录日志，页面仍保留路径。</summary>
     private void OpenExportFolder(string path)
     {
@@ -388,6 +399,17 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             : Ecl.Minecraft.Content.ContentKind.ResourcePack;
         await _download
             .OpenContentBrowserAsync(CreateSearchContext(contentKind, instanceId, query: null))
+            .ConfigureAwait(true);
+        ActivateDestination("download");
+    }
+
+    private async Task OpenDatapackBrowserAsync(string instanceId)
+    {
+        await _download
+            .OpenContentBrowserAsync(CreateSearchContext(
+                Ecl.Minecraft.Content.ContentKind.DataPack,
+                instanceId,
+                query: null))
             .ConfigureAwait(true);
         ActivateDestination("download");
     }
@@ -565,6 +587,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 _memoryPressure,
                 _modifyFactory,
                 _contentPackFactory,
+                _dataPackFactory,
                 _screenshotFactory,
                 _schematicFactory,
                 _exportFactory,

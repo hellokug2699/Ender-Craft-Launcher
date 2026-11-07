@@ -225,9 +225,7 @@ public static class InstanceWorkspaceNavigationFactory
             {
                 pages.TryGetValue(key, out var page);
                 var unavailableReason = page is null
-                    ? localizer.Get(string.Equals(key, InstanceWorkspacePageKeys.Logs, StringComparison.Ordinal)
-                        ? "instance.nav.unavailable.logsSpec"
-                        : "instance.nav.unavailable.notImplemented")
+                    ? localizer.Get("instance.nav.unavailable.notImplemented")
                     : string.Empty;
 
                 items.Add(new InstanceNavigationItemViewModel(

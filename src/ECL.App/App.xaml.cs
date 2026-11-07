@@ -83,6 +83,7 @@ public partial class App : Application
             services.AddSingleton<ModsPageFactory>();
             services.AddSingleton<InstanceModifyPageFactory>();
             services.AddSingleton<ContentPackPageFactory>();
+            services.AddSingleton<DataPackPageFactory>();
             services.AddSingleton<ScreenshotPageFactory>();
             services.AddSingleton<SchematicPageFactory>();
             services.AddSingleton<ExportPageFactory>();
