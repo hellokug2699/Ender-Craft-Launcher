@@ -1,6 +1,6 @@
 # ADR 0057: ECL Multiplayer Session Architecture
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-07
 - Scope: ECL Multiplayer Feature Addition、点对点/小规模私人联机、网络会话生命周期、联机环境兼容性检查、模组差异处理与安全边界
@@ -19,7 +19,7 @@ ECL 希望提供自有的联机产品体验，而不是把一个第三方联机�
 
 ## 决策
 
-> 本 ADR 当前为 Proposed。以下内容是拟采用的架构方向和约束，完成实现可行性、网络底层、许可及安全评审后，方可改为 Accepted。登记为 Planned 不代表本 ADR 已批准。
+> 本 ADR 已获批准，确定 ECL Multiplayer 的产品边界、Addition 定位、可替换网络层原则、兼容性与安全职责边界。批准不代表已经实施或发布；具体 UI、会话交互、网络协议、适配器接口及实现策略由本机开发阶段根据兼容性验证自主确定，不由本 ADR 预先限定。EasyTier 仍只是待验证的底层能力候选。
 
 ### 1. Multiplayer 作为独立 Feature Addition
 
@@ -188,7 +188,7 @@ ECL 希望提供自有的联机产品体验，而不是把一个第三方联机�
 
 ## 验收标准
 
-以下标准在 ADR 被 Accepted 后作为架构验收方向；具体数值、UI 文案和逐页交互由 Feature Spec 定义。
+以下标准作为架构验收方向；具体数值、UI 文案、逐页交互、协议字段和实现细节由后续 Feature Spec 与本机实现验证确定。
 
 1. Multiplayer 作为独立 Addition 安装/禁用/卸载；缺失或故障不影响普通启动和单人游戏。
 2. 不存在公共房间大厅、公开房间目录或自动匹配服务。
@@ -208,4 +208,4 @@ ECL 希望提供自有的联机产品体验，而不是把一个第三方联机�
 
 ## 修订记录
 
-- 2026-11-07：根据维护者确认的产品方向建立初稿；将 ECL 自有会话模型、私人邀请优先、可替换网络层、模组差异分级和 Security Center 职责边界纳入提案。Decision 保持 Proposed，Implementation 为 Not Started；EasyTier 仅为待验证候选。
+- 2026-11-07：根据维护者批准，将 ECL Multiplayer 的 Addition 定位、私人会话产品边界、可替换网络层原则、兼容性要求及 Security Center 职责边界确认为正式架构决策。Decision 更新为 Accepted，Implementation 保持 Not Started；EasyTier 仍仅为待验证候选。具体 UI、协议和实现策略留给后续 Feature Spec 与本机开发验证。
