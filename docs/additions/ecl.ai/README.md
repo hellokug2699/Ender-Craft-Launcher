@@ -67,7 +67,7 @@ ECL 不提供由 ECL 付费承担的公共 AI API。具体 Provider、模型能�
 
 ## 依赖与权限
 
-- Required Additions：无。
+- Required Additions：`ecl.ai-harness`（执行模型工具任务时必需；Harness 缺失时不得静默绕过安全执行层）。
 - Optional Additions：`ecl.diagnostic-engine`、`ecl.diagnostic-knowledge-base`。
 - Core API Compatibility：待定义。
 - Capability / Permission：待实现评审与登记；本条目不授予任何权限。
@@ -84,6 +84,8 @@ ECL 不提供由 ECL 付费承担的公共 AI API。具体 Provider、模型能�
 ## 相关文档
 
 - [ADR 0061：ECL AI Conversation and Capability Architecture](../../adr/0061-ecl-ai-conversation-and-capability-architecture.md)
+- [ECL AI Harness](../ecl.ai-harness/README.md)
+- [ADR 0062：ECL AI Harness and Controlled Execution Architecture](../../adr/0062-ecl-ai-harness-and-controlled-execution-architecture.md)
 - [ADR 0033：本地 Minecraft 全面诊断与知识引擎](../../adr/0033-local-minecraft-diagnostic-and-knowledge-engine.md)
 - [ADR 0032：原生功能入口与按需 Additions 扩展体系](../../adr/0032-native-feature-interfaces-and-optional-additions.md)
 - [ADR 0053：Additions 能力权限模型与用户授权流程](../../adr/0053-addition-capability-permission-and-user-consent.md)
@@ -93,3 +95,4 @@ ECL 不提供由 ECL 付费承担的公共 AI API。具体 Provider、模型能�
 ## 修订记录
 
 - 2026-11-08：依据 ADR 0061 建立 ECL AI 登记条目；状态为 Planned，尚无正式发布资产，不可安装。
+- 2026-11-08：依据 ADR 0062 增加 `ecl.ai-harness` 必需执行依赖；ECL AI 的产品入口与三种工作模式保持不变。
