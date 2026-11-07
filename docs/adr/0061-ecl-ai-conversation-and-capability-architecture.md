@@ -4,7 +4,7 @@
 - Implementation: Not Started
 - Date: 2026-11-08
 - Scope: ECL AI Addition 的产品模式、推理后端、Minecraft 知识搜索、诊断增强、对话与上下文生命周期、数据持久化、隐私及安全边界
-- Related: [ADR 0015](0015-process-scoped-game-log-sessions-and-diagnostics.md)、[ADR 0032](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033](0033-local-minecraft-diagnostic-and-knowledge-engine.md)、[ADR 0044](0044-local-first-network-diagnostics-and-data-sovereignty.md)、[ADR 0053](0053-addition-capability-permission-and-user-consent.md)、[ADR 0054](0054-addition-registry-and-manifest-governance.md)、[ADR 0055](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)、[ADR 0062](0062-ecl-ai-harness-and-controlled-execution-architecture.md)
+- Related: [ADR 0015](0015-process-scoped-game-log-sessions-and-diagnostics.md)、[ADR 0032](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033](0033-local-minecraft-diagnostic-and-knowledge-engine.md)、[ADR 0044](0044-local-first-network-diagnostics-and-data-sovereignty.md)、[ADR 0053](0053-addition-capability-permission-and-user-consent.md)、[ADR 0054](0054-addition-registry-and-manifest-governance.md)、[ADR 0055](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)、[ADR 0062](0062-ecl-ai-agent-runtime-and-orchestration-architecture.md)
 
 ## 背景
 
@@ -295,4 +295,4 @@ Diagnostic 的 AI 能力不可用时，ECL 既有原生诊断能力和独立 Dia
 ## 修订记录
 
 - 2026-11-08：经维护者授权形成正式架构决策并批准。确定统一 `ecl.ai` 产品 Addition，内部提供 Chat、Knowledge、Diagnostic 三种模式；明确可替换推理后端、受控联网搜索、Diagnostic 可选增强、多对话隔离、上下文生命周期、本地聊天记录、Prompt 透明度和远程数据授权。Implementation 保持 Not Started。
-- 2026-11-08：根据 ADR 0062 修订 AI 执行层边界。Model Manager、Search Broker 和 Conversation Manager 仍属于 ECL AI 内部基础设施；工具编排、执行循环、权限交互集成和证据追踪由独立 `ecl.ai-harness` Addition 承担。此修订仅取代原先将 Harness 视为 ECL AI 内部基础设施的部分，不改变本 ADR 对 ECL AI 产品模式与隐私边界的其他决策。
+- 2026-11-08：根据 ADR 0062 修订 AI 执行层边界。Model Manager、Search Broker 和 Conversation Manager 仍属于 ECL AI 内部基础设施；Target、Plan、任务调度、工具执行、Change Set、验证反馈和恢复协调由独立 `ecl.ai-agent-runtime` Addition 承担。此修订仅取代原先将 Harness 视为 ECL AI 内部基础设施的部分，不改变本 ADR 对 ECL AI 产品模式与隐私边界的其他决策。
