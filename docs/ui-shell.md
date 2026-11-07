@@ -458,6 +458,41 @@
   本地归档同模式、Quilt 拒绝、成功后必须重新布置、重新布置退出模式、预览列表、退出模式清名、
   真实大小、大小未知不阻塞、整合包大小来自清单、非 Fabric 大小未知、自身实例不算重名、字节百分比）。
 
+### 2.9 下载中心数据包世界目标（B4a 收尾）
+
+页面规格：`download-resource-template.md` §5.3、§8.3；领域边界：ADR 0026/0027/0047。
+
+- **领域（新增）**：`IDatapackService` / `DatapackService`（`src/ECL.Minecraft/World/DatapackService.cs`）：
+  - `DatapackTarget(InstanceId, FolderName)` 是由世界发现结果构造的不透明目标；每次读写前重新扫描该实例的
+    `saves` 并验证目标仍属于同一 InstanceId、位于 `saves` 内且不是重解析点，否则拒绝写入。
+  - `ListWorldsAsync` 只返回 `level.dat` 可读的世界（不可读的世界以扫描警告说明被排除）；同名世界靠存档目录区分。
+  - `ListAsync` 读取世界 `datapacks/*.zip` 与 `level.dat` 的 `DataPacks.Enabled/Disabled`，返回
+    未知/缺失/重复/未受管条目；不猜测数据包内容或版本兼容性。
+  - `ApplyAsync` 按目标顺序重写受管的 `file/<文件名>.zip` 条目，保留 `vanilla` 与加载器内置条目的原位置；
+    旧世界没有 `DataPacks` 时按游戏默认值 `vanilla` 起头；没有变化时不写盘。
+  - `ImportAsync` / `DeleteAsync` 经 ADR 0047 的 `InstanceTransactionCoordinator` 写入/删除该世界
+    `datapacks`；删除在同一次事务中清理 `level.dat` 引用，`level.dat` 无法解析时拒绝删除。
+  - `WorldLevelInfo` 新增 `DataPacksEnabled` / `DataPacksDisabled` / `HasDataPacks`，数据包状态与资源包的
+    `options.txt` 完全分离。
+- **受控安装**：`IContentInstallService.InstallVersionToWorldAsync` 按来源重新解析版本文件，先下载到启动器
+  缓存暂存目录，再经 `IDatapackService.ImportAsync` 事务写入所选世界；整合包与其它内容类型仍走原路径。
+  已存在同名文件时返回真实原因（`datapack.target_exists`），页面显示红色失败而不是覆盖。
+- **页面**：数据包分类不再是“能力未接入”的阻断页：
+  - 第一行英文搜索与来源切换保持不变；第二行固定要求实例与具体世界，未选世界时不提交搜索。
+  - 世界选择器只列出该实例的真实世界（显示世界名 + 存档目录名），切换实例会清空并重新加载世界；
+    扫描警告（例如被排除的不可读世界）在页面下方以弱提示显示。
+  - 目标确认弹窗同时写出实例名与世界名；「安装到其他位置」打开 `DatapackTargetDialogViewModel`：
+    先选已登记实例，再从该实例的世界清单选具体世界，不提供任意目录。
+  - 行内进度沿用统一状态线；成功文案为“已安装到实例「…」的世界「…」”。数据包安装**不会**自动启用数据包，
+    启用状态与顺序只由世界级配置决定。
+- **无障碍**：`ContentTargetInstanceRow.ToString()` 改为实例名称（此前 UIA 暴露记录类型的默认字符串）；
+  世界条目只暴露世界名与存档目录名。
+- 测试：核心 `DatapackServiceTests`（9：列表与启用状态、顺序重写与内置条目保留、旧世界默认 vanilla、
+  导入/删除与引用清理、重复导入拒绝、缺失/重复/未受管报告、跨实例/目标消失拒绝、level.dat 不可读拒写、
+  损坏压缩包只标记损坏）+ `ContentInstallTests`（2：按世界安装并落盘、目标实例不匹配拒绝）；
+  应用 `ContentDiscoveryPageTests` 新增 4 项（世界选择门槛、实例+世界确认与安装目标、更换目标走世界选择、
+  世界选择弹窗加载与返回目标），并移除旧的“阻断状态”断言。
+
 ## 3. 共享页面控件（B0）
 B0 只提供 B1 立即需要的三个共享件，其余控件（`DataTable`、`StatusBanner`、`InlineProgress`、
 `SearchBox`、`FilterPill`、`SortSelector`、`SeverityBadge`、`MonoText`、扩展图标集）在第一个真实消费者批次实现，
@@ -626,8 +661,9 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
   体积是未压缩估算，不预测压缩后大小；导出结束后若文件被跳过，结果会标记为不完整并列出原因。
 - 导出页首次打开会遍历实例游戏目录以计算分类与体积，没有增量缓存；大实例首次进入可能需要等待扫描。
   导出任务固定在实例目录 `exports/`，不提供用户选择保存位置（按页面规格避免写入受保护目录）。
-- 数据包（`content.dataPacks`）页面尚未实现：它需要世界上下文（`WorldSaveService` 的世界目标与
-  `level.dat` 数据包配置），本批不伪造实例级入口。
+- 数据包（`content.dataPacks`）实例工作区页面尚未实现：下载中心的数据包安装目标已在 §2.9 落地
+  （实例 + 世界 + 世界 `datapacks` 的事务安装），但实例内的双表/启用顺序/应用页面仍待后续批次；
+  在此之前不伪造实例级入口，也不把世界级状态显示为实例全局状态。
 - 下载中心的实例版本页固定把新实例创建在主工作区：已登记的外部 Minecraft 目录只作为只读来源列出，
   不提供“安装到该目录”的选择。要支持多安装位置需要领域层面的新决策（新建实例目录与身份登记的边界），
   当前如实说明而不是放置会悄悄写到别处的选择器。
