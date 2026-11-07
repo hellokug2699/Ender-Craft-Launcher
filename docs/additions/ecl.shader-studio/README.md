@@ -62,6 +62,7 @@ Shader Studio 是 ECL 的可选光影包浏览、结构分析、兼容性信息�
 - [ADR 0053](../../adr/0053-addition-capability-permission-and-user-consent.md)
 - [ADR 0054](../../adr/0054-addition-registry-and-manifest-governance.md)
 - [ADR 0055](../../adr/0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)
+- [ADR 0060](../../adr/0060-multi-addition-visual-preview-composition.md)
 - [ADR 0059](../../adr/0059-shader-studio-and-standard-scene-environment-architecture.md)
 
 ## 修订记录
