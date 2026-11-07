@@ -4,7 +4,7 @@
 - Implementation: Not Started
 - Date: 2026-11-08
 - Scope: Shader Studio Addition、光影包分析与预览、ECL 标准测试场景、场景资产交付、时间段取景及扩展协作边界
-- Related: [ADR 0032](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0053](0053-addition-capability-permission-and-user-consent.md)、[ADR 0054](0054-addition-registry-and-manifest-governance.md)、[ADR 0055](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)、[ADR 0058](0058-resource-pack-studio-architecture.md)
+- Related: [ADR 0032](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0053](0053-addition-capability-permission-and-user-consent.md)、[ADR 0054](0054-addition-registry-and-manifest-governance.md)、[ADR 0055](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)、[ADR 0058](0058-resource-pack-studio-architecture.md)、[ADR 0060](0060-multi-addition-visual-preview-composition.md)
 
 ## 背景
 
