@@ -43,6 +43,7 @@ ECL 采用“原生功能入口、可选功能能力”的产品模型：页面�
 | GitHub Project Center | [`ecl.github-project-center`](ecl.github-project-center/README.md) | In Development | ECL 原生 GitHub 项目协作中心 | [ADR 0049](../adr/0049-native-github-integration-and-repository-bounded-navigation.md) |
 | ECL Multiplayer | [`ecl.multiplayer`](ecl.multiplayer/README.md) | Planned | ECL 自研私人联机体验与会话管理；不提供公共大厅 | [ADR 0057](../adr/0057-ecl-multiplayer-session-architecture.md)（Accepted） |
 | Resource Pack Studio | [`ecl.resource-pack-studio`](ecl.resource-pack-studio/README.md) | Proposed | 资源包原始浏览、材质/模型/动画与状态变体预览；不模拟 Minecraft 世界 | [ADR 0058](../adr/0058-resource-pack-studio-architecture.md)（Proposed） |
+| Shader Studio | [`ecl.shader-studio`](ecl.shader-studio/README.md) | Proposed | 光影包浏览、结构与兼容性分析、固定场景视觉预览；官方标准与高级场景统一交付 | [ADR 0059](../adr/0059-shader-studio-and-standard-scene-environment-architecture.md)（Proposed） |
 
 ### Data Additions
 
