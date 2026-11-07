@@ -4,7 +4,7 @@
 - Implementation: Not Started
 - Date: 2026-11-08
 - Scope: ECL AI Addition 的产品模式、推理后端、Minecraft 知识搜索、诊断增强、对话与上下文生命周期、数据持久化、隐私及安全边界
-- Related: [ADR 0015](0015-process-scoped-game-log-sessions-and-diagnostics.md)、[ADR 0032](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033](0033-local-minecraft-diagnostic-and-knowledge-engine.md)、[ADR 0044](0044-local-first-network-diagnostics-and-data-sovereignty.md)、[ADR 0053](0053-addition-capability-permission-and-user-consent.md)、[ADR 0054](0054-addition-registry-and-manifest-governance.md)、[ADR 0055](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)
+- Related: [ADR 0015](0015-process-scoped-game-log-sessions-and-diagnostics.md)、[ADR 0032](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033](0033-local-minecraft-diagnostic-and-knowledge-engine.md)、[ADR 0044](0044-local-first-network-diagnostics-and-data-sovereignty.md)、[ADR 0053](0053-addition-capability-permission-and-user-consent.md)、[ADR 0054](0054-addition-registry-and-manifest-governance.md)、[ADR 0055](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)、[ADR 0062](0062-ecl-ai-harness-and-controlled-execution-architecture.md)
 
 ## 背景
 
