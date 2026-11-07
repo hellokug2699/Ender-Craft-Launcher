@@ -304,6 +304,15 @@ public sealed class ModDependencyInstallerTests
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<Result<ContentInstallReport>> InstallVersionToWorldAsync(
+            string instanceId,
+            Ecl.Minecraft.World.DatapackTarget target,
+            ContentHit hit,
+            ContentVersion version,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<Result<ModpackPreparation>> PrepareModpackAsync(
             ContentHit hit,
             ContentVersion version,

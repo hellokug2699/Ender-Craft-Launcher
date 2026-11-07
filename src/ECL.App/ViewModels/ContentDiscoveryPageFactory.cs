@@ -8,6 +8,7 @@ using Ecl.Minecraft.Content;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.Versions;
+using Ecl.Minecraft.World;
 
 namespace Ecl.App.ViewModels;
 
@@ -25,7 +26,8 @@ public sealed class ContentDiscoveryPageFactory(
     IDialogEngine dialogEngine,
     IDialogService dialogs,
     ILocalizer localizer,
-    IShaderSupportService shaderSupport)
+    IShaderSupportService shaderSupport,
+    IDatapackService datapacks)
 {
     public IReadOnlyList<ContentDiscoveryViewModel> CreateAll() =>
     [
@@ -47,5 +49,6 @@ public sealed class ContentDiscoveryPageFactory(
         dialogEngine,
         dialogs,
         localizer,
-        shaderSupport);
+        shaderSupport,
+        datapacks);
 }

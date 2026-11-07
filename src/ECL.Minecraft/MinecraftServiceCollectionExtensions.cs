@@ -78,6 +78,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IDependencyResolver, DependencyResolver>();
         services.AddSingleton<IContentInstallService, ContentInstallService>();
         services.AddSingleton<IContentPackService, ContentPackService>();
+        services.AddSingleton<IDatapackService, DatapackService>();
         services.AddSingleton<IShaderSupportService, ShaderSupportService>();
         services.AddSingleton<IScreenshotService, ScreenshotService>();
         services.AddSingleton<ISchematicService, SchematicService>();

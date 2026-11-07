@@ -14,6 +14,8 @@ using Ecl.Minecraft.Content;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.Versions;
+using Ecl.Minecraft.World;
+using Ecl.World.Worlds;
 using Xunit;
 
 namespace Ecl.App.Tests.Download;
@@ -365,16 +367,124 @@ public sealed class ContentDiscoveryPageTests
     }
 
     [Fact]
-    public async Task DatapacksShowTheirBlockedStateWithoutSearching()
+    public async Task DatapackPageRequiresAWorldTargetBeforeSearching()
     {
         using var harness = new Harness();
         var page = harness.Create(ContentKind.DataPack);
-        await page.EnsureLoadedAsync();
+        await page.ActivateAsync();
 
-        Assert.True(page.IsUnavailable);
-        Assert.Contains("世界", page.UnavailableReason);
+        Assert.True(page.ShowsWorldSelector);
+        Assert.True(page.IsTargetLocked);
+        Assert.True(page.HasTargetInstance);
+        Assert.False(page.HasWorldTarget);
+        Assert.Single(page.Worlds);
+        Assert.False(page.ShowNoWorlds);
+
         await page.SearchCommand.ExecuteAsync(null);
         Assert.Equal(0, harness.Search.Calls);
+        Assert.Equal("请先选择目标世界。", page.StatusMessage);
+
+        page.SelectedWorld = page.Worlds[0];
+        await page.SearchCommand.ExecuteAsync(null);
+        Assert.Equal(1, harness.Search.Calls);
+        Assert.Equal("1.20.1", harness.Search.LastQuery!.GameVersion);
+        Assert.Null(harness.Search.LastQuery.Loader);
+    }
+
+    [Fact]
+    public async Task DatapackConfirmationNamesTheInstanceAndWorldThenInstallsToTheWorld()
+    {
+        using var harness = new Harness();
+        var page = harness.Create(ContentKind.DataPack);
+        await page.ActivateAsync();
+        page.SelectedWorld = page.Worlds[0];
+        await page.SearchCommand.ExecuteAsync(null);
+        await page.OpenDetailCommand.ExecuteAsync(page.Results[0]);
+        var detail = harness.Dialogs.LastContent<ContentDetailDialogViewModel>();
+        await detail.LoadAsync();
+
+        harness.Dialogs.Fallback = new DialogResult(DialogOutcome.Primary);
+        await detail.DownloadVersionCommand.ExecuteAsync(detail.FilteredVersions.FirstOrDefault() ?? detail.AllVersions[0]);
+        await page.WhenDownloadsSettledAsync();
+
+        var confirm = Assert.IsType<MessageDialogViewModel>(harness.Dialogs.Requests[^1].Content);
+        Assert.Equal("即将把数据包安装到实例「Alpha」的世界「My World」，是否确定？", confirm.Message);
+        var call = Assert.Single(harness.Install.InstalledInWorlds);
+        Assert.Equal("alpha", call.InstanceId);
+        Assert.Equal("alpha", call.Target.InstanceId);
+        Assert.Equal("World1", call.Target.FolderName);
+    }
+
+    [Fact]
+    public async Task DatapackOtherTargetReselectsInstanceAndWorldInsteadOfAFolder()
+    {
+        using var harness = new Harness();
+        var page = harness.Create(ContentKind.DataPack);
+        await page.ActivateAsync();
+        page.SelectedWorld = page.Worlds[0];
+        await page.SearchCommand.ExecuteAsync(null);
+        await page.OpenDetailCommand.ExecuteAsync(page.Results[0]);
+        var detail = harness.Dialogs.LastContent<ContentDetailDialogViewModel>();
+        await detail.LoadAsync();
+
+        var chosenTarget = new DatapackTarget("beta", "BetaWorld");
+        harness.Dialogs.Results.Enqueue(new DialogResult(DialogOutcome.Secondary));
+        harness.Dialogs.Results.Enqueue(new DialogResult(
+            DialogOutcome.Primary,
+            new DatapackTargetChoice("beta", "Beta", chosenTarget, "Beta World")));
+
+        await detail.DownloadVersionCommand.ExecuteAsync(detail.AllVersions[0]);
+        await page.WhenDownloadsSettledAsync();
+
+        Assert.IsType<DatapackTargetDialogViewModel>(harness.Dialogs.Requests[^1].Content);
+        var call = Assert.Single(harness.Install.InstalledInWorlds);
+        Assert.Equal("beta", call.InstanceId);
+        Assert.Equal("BetaWorld", call.Target.FolderName);
+        Assert.Empty(harness.Install.DownloadedVersions);
+    }
+
+    [Fact]
+    public async Task DatapackTargetDialogLoadsWorldsForTheSelectedInstance()
+    {
+        using var harness = new Harness();
+        var dialog = new DatapackTargetDialogViewModel(
+            [new ContentTargetInstanceRow("alpha", "Alpha", "1.20.1")],
+            harness.Datapacks,
+            Localizer());
+        var session = new FakeDialogSession();
+        ((IDialogSessionAware)dialog).Attach(session);
+
+        await WaitUntilAsync(() => dialog.HasWorlds);
+        dialog.SelectedWorld = dialog.Worlds[0];
+        Assert.True(dialog.CanConfirm);
+        dialog.ConfirmCommand.Execute(null);
+
+        var choice = Assert.IsType<DatapackTargetChoice>(session.Result!.Value);
+        Assert.Equal("alpha", choice.InstanceId);
+        Assert.Equal("World1", choice.Target.FolderName);
+    }
+
+    private sealed class FakeDialogSession : IDialogSession
+    {
+        public bool IsOpen => true;
+
+        public bool IsBusy { get; private set; }
+
+        public DialogResult? Result { get; private set; }
+
+        public void SetBusy(bool isBusy) => IsBusy = isBusy;
+
+        public bool TryClose(DialogOutcome outcome, object? value = null)
+        {
+            Result = new DialogResult(outcome, value);
+            return true;
+        }
+
+        public event EventHandler? Closed
+        {
+            add { }
+            remove { }
+        }
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition)
@@ -427,6 +537,13 @@ public sealed class ContentDiscoveryPageTests
                 new MinecraftGameVersion("1.21.1", MinecraftVersionKind.Release, new DateTimeOffset(2024, 8, 8, 0, 0, 0, TimeSpan.Zero)),
                 new MinecraftGameVersion("1.20.1", MinecraftVersionKind.Release, new DateTimeOffset(2023, 6, 12, 0, 0, 0, TimeSpan.Zero)),
             ]);
+            Datapacks.Worlds.Add(new WorldSave(
+                "My World",
+                Path.Combine("game", "saves", "World1"),
+                Path.Combine("game", "saves", "World1", "level.dat"),
+                new WorldLevelInfo { LevelName = "My World" },
+                [],
+                null));
             Search.Hits.AddRange(
             [
                 new ContentHit(
@@ -502,6 +619,8 @@ public sealed class ContentDiscoveryPageTests
 
         public FakeShaderSupportService Shaders { get; } = new();
 
+        public FakeDatapackService Datapacks { get; } = new();
+
         public ContentDiscoveryViewModel Create(ContentKind kind, bool withInstances = true)
         {
             if (!withInstances)
@@ -519,7 +638,8 @@ public sealed class ContentDiscoveryPageTests
                 Dialogs,
                 FileDialogs,
                 Localizer(),
-                Shaders);
+                Shaders,
+                Datapacks);
             return factory.Create(kind);
         }
 
@@ -572,6 +692,8 @@ public sealed class ContentDiscoveryPageTests
     private sealed class FakeInstallService : IContentInstallService
     {
         public List<(string InstanceId, ContentVersion Version)> InstalledVersions { get; } = [];
+
+        public List<(string InstanceId, DatapackTarget Target, ContentVersion Version)> InstalledInWorlds { get; } = [];
 
         public List<(string Directory, ContentVersion Version)> DownloadedVersions { get; } = [];
 
@@ -628,6 +750,30 @@ public sealed class ContentDiscoveryPageTests
                 hit.Kind,
                 System.IO.Path.Combine(directory, version.FileName),
                 version.FileSize ?? 0));
+        }
+
+        public Task<Result<ContentInstallReport>> InstallVersionToWorldAsync(
+            string instanceId,
+            DatapackTarget target,
+            ContentHit hit,
+            ContentVersion version,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            InstalledInWorlds.Add((instanceId, target, version));
+            progress?.Report(new ContentProgress("download", "正在下载", 1, 1)
+            {
+                CompletedBytes = 1024,
+                TotalBytes = 1024,
+            });
+            return Task.FromResult(Result<ContentInstallReport>.Ok(new ContentInstallReport(
+                hit.Name,
+                hit.Source,
+                ContentKind.DataPack,
+                instanceId,
+                version.FileName,
+                [version.FileName],
+                [])));
         }
 
         public Task<Result<ContentInstallReport>> InstallAsync(
@@ -777,6 +923,51 @@ public sealed class ContentDiscoveryPageTests
             Task.FromResult(Result<ShaderSupportResult>.Ok(new ShaderSupportResult(
                 ShaderSupportState.Missing,
                 [])));
+    }
+
+    private sealed class FakeDatapackService : IDatapackService
+    {
+        public List<WorldSave> Worlds { get; } = [];
+
+        public bool IsAccessible { get; set; } = true;
+
+        public List<string> RequestedInstances { get; } = [];
+
+        public Task<Result<WorldScanResult>> ListWorldsAsync(
+            string instanceId,
+            CancellationToken cancellationToken = default)
+        {
+            RequestedInstances.Add(instanceId);
+            return Task.FromResult(Result<WorldScanResult>.Ok(new WorldScanResult(
+                Worlds.ToArray(),
+                [],
+                IsAccessible)));
+        }
+
+        public Task<Result<DatapackList>> ListAsync(
+            string instanceId,
+            DatapackTarget target,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<Result> ApplyAsync(
+            string instanceId,
+            DatapackTarget target,
+            IReadOnlyList<string> orderedFileNames,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<Result<DatapackEntry>> ImportAsync(
+            string instanceId,
+            DatapackTarget target,
+            string sourcePath,
+            bool overwrite = false,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<Result> DeleteAsync(
+            string instanceId,
+            DatapackTarget target,
+            string fileName,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class FakeInstanceService : IInstanceService

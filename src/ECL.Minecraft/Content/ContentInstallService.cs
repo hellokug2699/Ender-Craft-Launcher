@@ -9,6 +9,7 @@ using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Modrinth;
 using Ecl.Minecraft.Mods;
+using Ecl.Minecraft.World;
 using Ecl.Operations;
 using Microsoft.Extensions.Logging;
 
@@ -75,7 +76,8 @@ public interface IContentInstallService
     /// <summary>
     /// 把来源上某个具体版本安装到实例对应内容目录（模组 → <c>mods</c>、资源包 → <c>resourcepacks</c>、
     /// 光影包 → <c>shaderpacks</c>）。文件由来源 API 重新解析，不信任页面传入的下载地址；
-    /// 整合包必须走实例版本页的整合包模式，数据包需要世界目标，两者在这里拒绝。
+    /// 整合包必须走实例版本页的整合包模式，数据包必须使用方法
+    /// <see cref="InstallVersionToWorldAsync"/> 并给出世界目标，两者在这里拒绝。
     /// </summary>
     Task<Result<ContentInstallReport>> InstallVersionAsync(
         string instanceId,
@@ -83,6 +85,20 @@ public interface IContentInstallService
         ContentVersion version,
         IProgress<ContentProgress>? progress = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 把来源上某个具体版本安装到指定实例的指定世界（`download-resource-template.md` §5.3/§8.3）：
+    /// 文件由来源 API 重新解析，先下载到启动器暂存目录，再经实例事务写入该世界
+    /// <c>datapacks</c> 目录。世界目标在写入前由领域重新解析验证，不属于该实例时拒绝。
+    /// </summary>
+    Task<Result<ContentInstallReport>> InstallVersionToWorldAsync(
+        string instanceId,
+        DatapackTarget target,
+        ContentHit hit,
+        ContentVersion version,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
 
     /// <summary>
     /// 把某个具体版本下载到用户选择的目录（不写入实例）。目录必须已存在且是完整路径；
@@ -110,6 +126,7 @@ public sealed class ContentInstallService(
     IAppPaths paths,
     ILocalizer localizer,
     ILogger<ContentInstallService> logger,
+    IDatapackService datapacks,
     IOperationService? operations = null) : IContentInstallService
 {
     private const int MaxDependencyDepth = 4;
@@ -282,7 +299,7 @@ public sealed class ContentInstallService(
         {
             return Result<ContentInstallReport>.Fail(
                 "content.datapack_requires_world",
-                "数据包必须指定目标世界，当前下载中心还没有接入世界目标。");
+                "数据包必须指定目标世界；请使用带世界目标的数据包安装入口。");
         }
 
         // CurseForge Mod 复用既有安装器：它已经处理必需依赖与安装记录，并自行登记安装任务。
@@ -404,6 +421,145 @@ public sealed class ContentInstallService(
         }
     }
 
+    /// <summary>
+    /// 数据包版本 → 指定世界的 <c>datapacks</c>。下载在启动器暂存目录完成，
+    /// 写入经 <see cref="IDatapackService.ImportAsync"/> 的实例事务；失败不留下半个文件。
+    /// </summary>
+    public async Task<Result<ContentInstallReport>> InstallVersionToWorldAsync(
+        string instanceId,
+        DatapackTarget target,
+        ContentHit hit,
+        ContentVersion version,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+
+        if (hit.Kind != ContentKind.DataPack)
+        {
+            return Result<ContentInstallReport>.Fail(
+                "content.datapack_kind_mismatch",
+                "只有数据包可以安装到世界。");
+        }
+
+        if (!string.Equals(target.InstanceId, instanceId, StringComparison.Ordinal))
+        {
+            return Result<ContentInstallReport>.Fail(
+                "content.datapack_target_instance_mismatch",
+                "数据包目标世界不属于当前实例。");
+        }
+
+        var instance = await instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        if (instance is null)
+        {
+            return Result<ContentInstallReport>.Fail("instance.not_found", "实例不存在。");
+        }
+
+        using var operation = new OperationProgressBridge<ContentProgress>(
+            operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Install,
+                Title = hit.Name,
+                StageId = "content",
+                Source = hit.SourceLabel,
+                CanCancel = true,
+                CanRetry = true,
+            },
+            progress,
+            MapContentProgress);
+
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cancellationToken = cancellation.Token;
+        operation.AttachControl(
+            cancellation,
+            retryToken => InstallVersionToWorldAsync(instanceId, target, hit, version, progress, retryToken));
+
+        var staging = Path.Combine(
+            paths.CacheDirectory,
+            "content-staging",
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            var resolved = await ResolveVersionFilesAsync(
+                    hit,
+                    version,
+                    instance.GameVersion,
+                    loader: null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!resolved.IsSuccess)
+            {
+                var failed = Result<ContentInstallReport>.Fail(resolved.Error!);
+                Finish(operation, failed);
+                return failed;
+            }
+
+            var downloadResult = await DownloadFilesAsync(
+                    resolved.Value!,
+                    staging,
+                    operation,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!downloadResult.IsSuccess)
+            {
+                var failed = Result<ContentInstallReport>.Fail(downloadResult.Error!);
+                Finish(operation, failed);
+                return failed;
+            }
+
+            progress?.Report(new ContentProgress("install", localizer.Get("content.stage.install")));
+            var installedFiles = new List<string>();
+            foreach (var fileName in downloadResult.Value!)
+            {
+                var imported = await datapacks
+                    .ImportAsync(instanceId, target, Path.Combine(staging, fileName), overwrite: false, cancellationToken)
+                    .ConfigureAwait(false);
+                if (!imported.IsSuccess)
+                {
+                    var failed = Result<ContentInstallReport>.Fail(imported.Error!);
+                    Finish(operation, failed);
+                    return failed;
+                }
+
+                installedFiles.Add(imported.Value!.FileName);
+            }
+
+            var report = new ContentInstallReport(
+                hit.Name,
+                hit.Source,
+                ContentKind.DataPack,
+                instance.Id,
+                installedFiles.FirstOrDefault(),
+                installedFiles,
+                resolved.Value!.Warnings);
+            logger.LogInformation(
+                "已把 {Source} 数据包 {Name} 的版本 {Version} 安装到实例 {InstanceId} 的世界 {World}：{Files}",
+                hit.Source,
+                hit.Name,
+                version.VersionId,
+                instance.Id,
+                target.FolderName,
+                string.Join(", ", installedFiles));
+            Finish(operation, Result<ContentInstallReport>.Ok(report));
+            return Result<ContentInstallReport>.Ok(report);
+        }
+        catch (OperationCanceledException)
+        {
+            operation.Cancel();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            operation.Fail(OperationErrors.FromException("content.install_failed", exception));
+            throw;
+        }
+        finally
+        {
+            TryDeleteDirectory(staging);
+        }
+    }
+
     public async Task<Result<ContentDownloadReport>> DownloadVersionAsync(
         ContentHit hit,
         ContentVersion version,
@@ -422,7 +578,7 @@ public sealed class ContentInstallService(
         {
             return Result<ContentDownloadReport>.Fail(
                 "content.datapack_requires_world",
-                "数据包必须指定目标世界，当前下载中心还没有接入世界目标。");
+                "数据包必须指定目标世界；请使用带世界目标的数据包安装入口。");
         }
 
         var target = NormalizeDownloadDirectory(directory);
@@ -522,6 +678,22 @@ public sealed class ContentInstallService(
         return Directory.Exists(full)
             ? Result<string>.Ok(full)
             : Result<string>.Fail("content.target_directory_missing", "下载目标目录不存在。");
+    }
+
+    /// <summary>清理暂存目录；残留不改变已完成的安装结果。</summary>
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // 暂存残留无害，主结果已由调用方返回。
+        }
     }
 
     private async Task<Result<ResolvedDownload>> ResolveVersionFilesAsync(

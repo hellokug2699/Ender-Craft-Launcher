@@ -12,6 +12,7 @@ using Ecl.Minecraft.Modrinth;
 using Ecl.Minecraft.Mods;
 using Ecl.Operations;
 using Ecl.Tests.CurseForge;
+using Ecl.World.Nbt;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -311,6 +312,180 @@ public sealed class ContentInstallTests
             environment.Paths.GetInstanceGameDirectory(instance.Id),
             "config",
             "cf.txt")));
+    }
+
+    [Fact]
+    public async Task InstallsDatapackIntoTheSelectedWorld()
+    {
+        var payload = CreateDatapackZip();
+        using var environment = new TestEnvironment();
+        var modrinth = new FakeModrinthClient();
+        var version = new ModrinthVersion
+        {
+            Id = "dpv1",
+            ProjectId = "datapack-demo",
+            VersionNumber = "1.0",
+            VersionType = "release",
+            GameVersions = ["1.21.1"],
+            Loaders = [],
+            Files =
+            [
+                new ModrinthFile
+                {
+                    Url = "https://cdn.modrinth.com/data/datapack-demo/versions/dpv1/demo-datapack.zip",
+                    Filename = "demo-datapack.zip",
+                    Primary = true,
+                    Size = payload.Length,
+                },
+            ],
+        };
+        modrinth.Versions["datapack-demo"] = [version];
+        modrinth.VersionsById["dpv1"] = version;
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(new PayloadDownloadService(payload));
+            services.AddSingleton<IModrinthClient>(modrinth);
+        });
+
+        var instance = await CreateInstanceAsync(provider, "1.21.1", "vanilla", "");
+        var game = environment.Paths.GetInstanceGameDirectory(instance.Id);
+        var world = Path.Combine(game, "saves", "TestWorld");
+        Directory.CreateDirectory(Path.Combine(world, "datapacks"));
+        var data = NbtTag.Compound("Data").Add("LevelName", NbtTagType.String, "TestWorld");
+        var dataPacks = NbtTag.Compound("DataPacks");
+        dataPacks.Add(StringList("Enabled", ["vanilla"]));
+        data.Add(dataPacks);
+        NbtFile.WriteFile(
+            Path.Combine(world, "level.dat"),
+            NbtTag.Compound().Add(data),
+            NbtCompression.Gzip);
+
+        var hit = new ContentHit(
+            ContentSource.Modrinth,
+            "datapack-demo",
+            "datapack-demo",
+            "Demo Datapack",
+            "desc",
+            "author",
+            1,
+            null,
+            "https://modrinth.com/datapack/datapack-demo",
+            null,
+            ContentKind.DataPack);
+        var contentVersion = new ContentVersion(
+            ContentSource.Modrinth,
+            "datapack-demo",
+            "dpv1",
+            "1.0",
+            ["1.21.1"],
+            [],
+            "demo-datapack.zip",
+            payload.Length,
+            DateTimeOffset.UtcNow);
+
+        var result = await provider.GetRequiredService<IContentInstallService>()
+            .InstallVersionToWorldAsync(
+                instance.Id,
+                new Ecl.Minecraft.World.DatapackTarget(instance.Id, "TestWorld"),
+                hit,
+                contentVersion);
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        var installed = Path.Combine(world, "datapacks", "demo-datapack.zip");
+        Assert.True(File.Exists(installed));
+        Assert.Equal(payload.Length, new FileInfo(installed).Length);
+        Assert.Equal(
+            ["vanilla"],
+            ReadDataPackList(Path.Combine(world, "level.dat")));
+
+        var snapshot = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
+        Assert.Equal(OperationKind.Install, snapshot.Kind);
+        Assert.Equal(OperationState.Completed, snapshot.State);
+    }
+
+    [Fact]
+    public async Task DatapackWorldTargetMustBelongToTheSameInstance()
+    {
+        var payload = CreateDatapackZip();
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(new PayloadDownloadService(payload));
+            services.AddSingleton<IModrinthClient>(new FakeModrinthClient());
+        });
+
+        var instance = await CreateInstanceAsync(provider, "1.21.1", "vanilla", "");
+        var hit = new ContentHit(
+            ContentSource.Modrinth,
+            "datapack-demo",
+            "datapack-demo",
+            "Demo Datapack",
+            "desc",
+            "author",
+            1,
+            null,
+            "https://modrinth.com/datapack/datapack-demo",
+            null,
+            ContentKind.DataPack);
+        var contentVersion = new ContentVersion(
+            ContentSource.Modrinth,
+            "datapack-demo",
+            "dpv1",
+            "1.0",
+            ["1.21.1"],
+            [],
+            "demo-datapack.zip",
+            payload.Length,
+            DateTimeOffset.UtcNow);
+
+        var result = await provider.GetRequiredService<IContentInstallService>()
+            .InstallVersionToWorldAsync(
+                instance.Id,
+                new Ecl.Minecraft.World.DatapackTarget("other-instance", "TestWorld"),
+                hit,
+                contentVersion);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("content.datapack_target_instance_mismatch", result.Error!.Code);
+    }
+
+    private static byte[] CreateDatapackZip()
+    {
+        using var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            WriteEntry(archive, "pack.mcmeta", JsonSerializer.Serialize(new
+            {
+                pack = new
+                {
+                    pack_format = 15,
+                    description = "Demo datapack",
+                },
+            }));
+            WriteEntry(archive, "data/demo/functions/tick.mcfunction", "say hello");
+        }
+
+        return stream.ToArray();
+    }
+
+    private static NbtTag StringList(string name, IReadOnlyList<string> values)
+    {
+        var list = NbtTag.List(name, NbtTagType.String);
+        foreach (var value in values)
+        {
+            list.AddTo(new NbtTag(NbtTagType.String, string.Empty, value));
+        }
+
+        return list;
+    }
+
+    private static IReadOnlyList<string> ReadDataPackList(string levelDatPath)
+    {
+        var root = NbtFile.ReadFile(levelDatPath);
+        var list = root.Child("Data")?.Child("DataPacks")?.Child("Enabled");
+        return list is { Type: NbtTagType.List }
+            ? list.Children.Select(child => child.GetString() ?? string.Empty).ToArray()
+            : [];
     }
 
     private sealed class FailingModpackService : IModpackService

@@ -21,6 +21,12 @@ public sealed record ContentSearchContext(
     string? Query,
     bool ExistingInstance)
 {
+    /// <summary>
+    /// 数据包入口带入的世界存档目录名（来自 `WorldSaveService` 的发现结果，不是用户输入的路径）。
+    /// 页面仍会重新读取实例的世界清单并验证该目标；不存在时要求重新选择。
+    /// </summary>
+    public string? WorldFolder { get; init; }
+
     /// <summary>已有实例目标（模组/资源包/光影包）：版本与加载器来自该实例并锁定。</summary>
     public static ContentSearchContext ForExistingInstance(
         ContentKind kind,

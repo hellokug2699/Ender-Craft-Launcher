@@ -13,6 +13,7 @@ using Ecl.Minecraft.Content;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.Versions;
+using Ecl.Minecraft.World;
 
 namespace Ecl.App.ViewModels;
 
@@ -26,7 +27,8 @@ namespace Ecl.App.ViewModels;
 /// - 目标实例、版本与加载器筛选来自真实数据；已有实例模式下版本与加载器锁定。
 /// - 版本行由来源 API 重新解析后安装；页内只有条级进度，全局任务状态归 Output/Task。
 /// - 整合包版本只负责发现：选定后进入实例版本页的整合包模式（B4b），不在本页建立第二套安装表单；
-///   数据包需要世界目标，能力未接入前置灰真实原因。
+/// - 数据包必须先选择实例与具体世界，安装到该世界的 <c>datapacks</c>；世界清单与目标校验由
+///   <see cref="IDatapackService"/> 提供，页面不拼接世界路径。
 /// </para>
 /// </summary>
 public sealed partial class ContentDiscoveryViewModel : ObservableObject
@@ -40,12 +42,14 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
     private readonly IDialogService _dialogs;
     private readonly ILocalizer _localizer;
     private readonly IShaderSupportService _shaderSupport;
+    private readonly IDatapackService _datapacks;
     private readonly SemaphoreSlim _downloadGate;
     private readonly Dictionary<string, ContentVersionRowViewModel> _versionRows = new(StringComparer.Ordinal);
     private readonly List<Task> _downloadTasks = [];
     private Task? _initializeTask;
     private bool _suppressFilterReset;
     private bool _hasSearched;
+    private int _worldLoadGeneration;
     private ContentSearchContext? _context;
 
     public ContentDiscoveryViewModel(
@@ -59,7 +63,8 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
         IDialogEngine dialogEngine,
         IDialogService dialogs,
         ILocalizer localizer,
-        IShaderSupportService shaderSupport)
+        IShaderSupportService shaderSupport,
+        IDatapackService datapacks)
     {
         Kind = kind;
         _search = search;
@@ -71,6 +76,7 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
         _dialogs = dialogs;
         _localizer = localizer;
         _shaderSupport = shaderSupport;
+        _datapacks = datapacks;
 
         var concurrency = Math.Clamp(settings.Get<int>("network.maxConcurrentDownloads"), 1, 64);
         _downloadGate = new SemaphoreSlim(concurrency, concurrency);
@@ -123,7 +129,7 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
 
     public string PickFolderTitle => _localizer.Get("downloads.discovery.pickFolderTitle");
 
-    /// <summary>模组页提供“为已有实例下载模组”复选框；资源包/光影包固定要求已登记实例。</summary>
+    /// <summary>模组页提供“为已有实例下载模组”复选框；资源包/光影包/数据包固定要求已登记实例。</summary>
     public bool ShowsTargetModeCheckBox => Kind == ContentKind.Mod;
 
     /// <summary>整合包只能创建新实例，不提供已有实例目标模式（`download-modpacks.md` §5）。</summary>
@@ -131,24 +137,23 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
         Kind == ContentKind.ModPack || (Kind == ContentKind.Mod && !UseExistingInstance);
 
     public bool ShowsInstanceSelector =>
-        Kind is ContentKind.ResourcePack or ContentKind.ShaderPack ||
+        Kind is ContentKind.ResourcePack or ContentKind.ShaderPack or ContentKind.DataPack ||
         (Kind == ContentKind.Mod && UseExistingInstance);
 
     public bool IsTargetLocked =>
-        Kind is ContentKind.ResourcePack or ContentKind.ShaderPack ||
+        Kind is ContentKind.ResourcePack or ContentKind.ShaderPack or ContentKind.DataPack ||
         (Kind == ContentKind.Mod && UseExistingInstance);
 
-    public bool IsUnavailable => Kind == ContentKind.DataPack;
-
-    public string UnavailableReason => _localizer.Get("downloads.discovery.datapackBlocked");
+    /// <summary>数据包必须选择具体世界（`download-resource-template.md` §5.3）。</summary>
+    public bool ShowsWorldSelector => Kind == ContentKind.DataPack;
 
     public bool ShowsShaderSupport => Kind == ContentKind.ShaderPack;
 
     /// <summary>
-    /// 整合包版本行不再被能力缺口禁用：选定版本后进入实例版本页的整合包模式（`download-modpacks.md` §8）。
-    /// 数据包仍需要世界目标，保持不可用。
+    /// 资源包/光影包/数据包与整合包都有真实入口：数据包通过世界目标安装（本页），
+    /// 整合包进入实例版本页的整合包模式（`download-modpacks.md` §8）。
     /// </summary>
-    public bool CanRequestDownloads => !IsUnavailable;
+    public bool CanRequestDownloads => true;
 
     /// <summary>
     /// 整合包版本动作的导航出口，由 <see cref="DownloadViewModel"/> 接到实例版本页的整合包模式。
@@ -164,6 +169,9 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
 
     public ObservableCollection<ContentInstanceChoice> TargetInstances { get; } = [];
 
+    /// <summary>数据包页的目标世界；只来自该实例的 <see cref="IDatapackService"/> 世界发现结果。</summary>
+    public ObservableCollection<DatapackWorldChoice> Worlds { get; } = [];
+
     public ObservableCollection<ContentResultRowViewModel> Results { get; } = [];
 
     [ObservableProperty]
@@ -177,6 +185,16 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
 
     [ObservableProperty]
     private ContentInstanceChoice? _selectedInstance;
+
+    [ObservableProperty]
+    private DatapackWorldChoice? _selectedWorld;
+
+    [ObservableProperty]
+    private bool _isLoadingWorlds;
+
+    /// <summary>世界扫描警告（例如某些世界的 level.dat 无法读取而被排除）；只显示真实原因。</summary>
+    [ObservableProperty]
+    private string _worldWarnings = string.Empty;
 
     [ObservableProperty]
     private bool _useExistingInstance;
@@ -204,7 +222,7 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
 
     public bool IsSearchInputInvalid => ContentDiscoveryPresentation.HasNonAsciiInput(Query);
 
-    public bool CanSearch => !IsSearching && !IsUnavailable;
+    public bool CanSearch => !IsSearching;
 
     public bool HasResults => Results.Count > 0;
 
@@ -218,9 +236,29 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
 
     public bool HasTargetInstance => SelectedInstance?.Id is not null;
 
+    /// <summary>数据包页：是否已选择可验证的世界目标。</summary>
+    public bool HasWorldTarget => SelectedWorld is not null;
+
+    public bool HasWorlds => Worlds.Count > 0;
+
+    public bool ShowNoWorlds =>
+        ShowsWorldSelector && HasTargetInstance && !IsLoadingWorlds && !HasWorlds;
+
+    public string WorldLabel => _localizer.Get("downloads.discovery.target.world");
+
+    public string WorldHint => !IsTargetLocked
+        ? string.Empty
+        : !HasTargetInstance
+            ? _localizer.Get("downloads.discovery.target.none")
+            : HasWorldTarget
+                ? _localizer.Get("downloads.discovery.target.worldLocked")
+                : _localizer.Get("downloads.discovery.target.worldNone");
+
+    public string NoWorldsText => _localizer.Get("downloads.discovery.target.noWorlds");
+
     public string InstanceHint => IsTargetLocked
         ? HasTargetInstance
-            ? _localizer.Get(Kind is ContentKind.ResourcePack or ContentKind.ShaderPack
+            ? _localizer.Get(Kind is ContentKind.ResourcePack or ContentKind.ShaderPack or ContentKind.DataPack
                 ? "downloads.discovery.target.lockedContent"
                 : "downloads.discovery.target.locked")
             : _localizer.Get("downloads.discovery.target.none")
@@ -242,6 +280,7 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
     {
         await EnsureLoadedAsync().ConfigureAwait(true);
         await RefreshInstancesAsync().ConfigureAwait(true);
+        await RefreshWorldsAsync().ConfigureAwait(true);
         await RefreshShaderSupportAsync().ConfigureAwait(true);
     }
 
@@ -323,6 +362,7 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
         }
 
         Query = context.Query ?? string.Empty;
+        await RefreshWorldsAsync().ConfigureAwait(true);
         await RefreshShaderSupportAsync().ConfigureAwait(true);
         await SearchAsync().ConfigureAwait(true);
     }
@@ -403,10 +443,100 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
         OnPropertyChanged(nameof(InstanceHint));
     }
 
+    /// <summary>
+    /// 读取目标实例的世界清单（`download-resource-template.md` §5.3）：只列出
+    /// <see cref="IDatapackService"/> 发现的可访问世界；切换实例后旧世界选择不再有效。
+    /// </summary>
+    private async Task RefreshWorldsAsync()
+    {
+        if (!ShowsWorldSelector)
+        {
+            return;
+        }
+
+        // 并发刷新（实例切换 + 页面激活）只允许最后一次结果回写。
+        var generation = ++_worldLoadGeneration;
+        var requestedFolder = SelectedWorld?.FolderName ?? _context?.WorldFolder;
+        Worlds.Clear();
+        SelectedWorld = null;
+        WorldWarnings = string.Empty;
+        NotifyWorldState();
+
+        if (SelectedInstance?.Id is not { } instanceId)
+        {
+            return;
+        }
+
+        IsLoadingWorlds = true;
+        try
+        {
+            var result = await _datapacks.ListWorldsAsync(instanceId).ConfigureAwait(true);
+            if (generation != _worldLoadGeneration)
+            {
+                return;
+            }
+
+            if (!result.IsSuccess)
+            {
+                StatusMessage = _localizer.Get(
+                    "downloads.discovery.target.worldsFailed",
+                    result.Error?.Message ?? string.Empty);
+                return;
+            }
+
+            var scan = result.Value!;
+            WorldWarnings = string.Join(Environment.NewLine, scan.Warnings);
+            foreach (var world in scan.Worlds)
+            {
+                Worlds.Add(new DatapackWorldChoice(
+                    world.Name,
+                    world.FolderName,
+                    _localizer.Get("downloads.discovery.target.worldDetail", world.FolderName),
+                    new DatapackTarget(instanceId, world.FolderName)));
+            }
+
+            if (requestedFolder is { Length: > 0 })
+            {
+                SelectedWorld = Worlds.FirstOrDefault(item =>
+                    string.Equals(item.FolderName, requestedFolder, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!scan.IsAccessible)
+            {
+                StatusMessage = _localizer.Get(
+                    "downloads.discovery.target.worldsFailed",
+                    scan.Warnings.FirstOrDefault() ?? string.Empty);
+            }
+        }
+        catch (Exception exception)
+        {
+            if (generation == _worldLoadGeneration)
+            {
+                StatusMessage = _localizer.Get("downloads.discovery.target.worldsFailed", exception.Message);
+            }
+        }
+        finally
+        {
+            if (generation == _worldLoadGeneration)
+            {
+                IsLoadingWorlds = false;
+                NotifyWorldState();
+            }
+        }
+    }
+
+    private void NotifyWorldState()
+    {
+        OnPropertyChanged(nameof(HasWorlds));
+        OnPropertyChanged(nameof(HasWorldTarget));
+        OnPropertyChanged(nameof(ShowNoWorlds));
+        OnPropertyChanged(nameof(WorldHint));
+    }
+
     [RelayCommand]
     private async Task SearchAsync()
     {
-        if (IsSearching || IsUnavailable)
+        if (IsSearching)
         {
             return;
         }
@@ -421,6 +551,13 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
         {
             ClearResults();
             StatusMessage = _localizer.Get("downloads.discovery.target.none");
+            return;
+        }
+
+        if (ShowsWorldSelector && !HasWorldTarget)
+        {
+            ClearResults();
+            StatusMessage = _localizer.Get("downloads.discovery.target.worldNone");
             return;
         }
 
@@ -489,7 +626,7 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
     [RelayCommand]
     private async Task OpenDetailAsync(ContentResultRowViewModel? row)
     {
-        if (row is null || IsUnavailable)
+        if (row is null)
         {
             return;
         }
@@ -643,6 +780,30 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
 
         if (Target is { Id: { } instanceId } instance)
         {
+            if (ShowsWorldSelector)
+            {
+                if (!HasWorldTarget)
+                {
+                    StatusMessage = _localizer.Get("downloads.discovery.target.worldNone");
+                    return;
+                }
+
+                var world = SelectedWorld!;
+                var worldConfirm = await ShowConfirmAsync(
+                        _localizer.Get("downloads.discovery.confirmWorld", instance.Name, world.Name))
+                    .ConfigureAwait(true);
+                if (worldConfirm.IsPrimary)
+                {
+                    StartWorldInstall(row, instanceId, instance.Name, world.Target, world.Name);
+                }
+                else if (worldConfirm.Outcome == DialogOutcome.Secondary)
+                {
+                    await ChooseOtherTargetAsync(row).ConfigureAwait(true);
+                }
+
+                return;
+            }
+
             var confirm = await ShowConfirmAsync(
                     _localizer.Get("downloads.discovery.confirmInstance", instance.Name))
                 .ConfigureAwait(true);
@@ -692,6 +853,12 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
 
     private async Task ChooseOtherTargetAsync(ContentVersionRowViewModel row)
     {
+        if (ShowsWorldSelector)
+        {
+            await ChooseOtherWorldAsync(row).ConfigureAwait(true);
+            return;
+        }
+
         var dialog = new ContentTargetDialogViewModel(
             TargetInstances
                 .Where(item => item.Id is not null)
@@ -731,6 +898,42 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// 数据包「安装到其他位置」：先重新确认实例，再从该实例的世界清单重新选择具体世界；
+    /// 不退化为任意目录选择（`download-resource-template.md` §8.3）。
+    /// </summary>
+    private async Task ChooseOtherWorldAsync(ContentVersionRowViewModel row)
+    {
+        var dialog = new DatapackTargetDialogViewModel(
+            TargetInstances
+                .Where(item => item.Id is not null)
+                .Select(item => new ContentTargetInstanceRow(
+                    item.Id!,
+                    item.Name,
+                    ContentDiscoveryPresentation.FormatInstanceMeta(item.GameVersion, item.Loader, _localizer)))
+                .ToArray(),
+            _datapacks,
+            _localizer);
+
+        var result = await _dialogEngine.ShowAsync(
+                new DialogRequest
+                {
+                    Title = _localizer.Get("downloads.discovery.otherTitle"),
+                    Content = dialog,
+                    MinWidth = 480,
+                    MaxWidth = 640,
+                    MaxHeight = 560,
+                })
+            .ConfigureAwait(true);
+
+        if (result.Outcome != DialogOutcome.Primary || result.Value is not DatapackTargetChoice choice)
+        {
+            return;
+        }
+
+        StartWorldInstall(row, choice.InstanceId, choice.InstanceName, choice.Target, choice.WorldName);
+    }
+
     private Task<DialogResult> ShowConfirmAsync(string message) =>
         _dialogEngine.ShowAsync(new DialogRequest
         {
@@ -753,6 +956,22 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
             progress => _install.InstallVersionAsync(instanceId, row.Hit, row.Version, progress),
             successText);
     }
+
+    /// <summary>数据包按世界目标安装；成功文案同时写出实例名与世界名。</summary>
+    private void StartWorldInstall(
+        ContentVersionRowViewModel row,
+        string instanceId,
+        string instanceName,
+        DatapackTarget target,
+        string worldName)
+    {
+        var successText = _localizer.Get("downloads.discovery.completedToWorld", instanceName, worldName);
+        QueueRowAction(
+            row,
+            progress => _install.InstallVersionToWorldAsync(instanceId, target, row.Hit, row.Version, progress),
+            successText);
+    }
+
 
     private void StartDirectoryDownload(ContentVersionRowViewModel row, string directory)
     {
@@ -913,18 +1132,35 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(HasTargetInstance));
         OnPropertyChanged(nameof(InstanceHint));
+        NotifyWorldState();
 
+        if (_suppressFilterReset)
+        {
+            _ = RefreshWorldsAsync();
+            return;
+        }
+
+        // 手动切换目标实例后，旧上下文中的版本/加载器与世界选择不再适用。
+        _context = null;
+        ClearResults();
+        StatusMessage = string.Empty;
+        _ = RefreshWorldsAsync();
+        _ = RefreshShaderSupportAsync();
+    }
+
+    partial void OnSelectedWorldChanged(DatapackWorldChoice? value)
+    {
+        NotifyWorldState();
         if (_suppressFilterReset)
         {
             return;
         }
 
-        // 手动切换目标实例后，旧上下文中的版本/加载器不再适用。
-        _context = null;
-        ClearResults();
+        // 切换世界只影响安装目标，不改变搜索结果；旧版本行状态仍按项目保留。
         StatusMessage = string.Empty;
-        _ = RefreshShaderSupportAsync();
     }
+
+    partial void OnIsLoadingWorldsChanged(bool value) => NotifyWorldState();
 
     partial void OnSelectedGameVersionChanged(VersionChoiceViewModel? value)
     {
@@ -1029,4 +1265,18 @@ public sealed record ContentInstanceChoice(string? Id, string Name, string GameV
 public sealed record LoaderFilterChoice(string? Id, string Title)
 {
     public override string ToString() => Title;
+}
+
+/// <summary>
+/// 数据包页的目标世界：显示名称只用于呈现，安装与校验使用
+/// <see cref="Target"/>（由世界发现结果构造的不透明目标）与存档目录名。
+/// </summary>
+public sealed record DatapackWorldChoice(
+    string Name,
+    string FolderName,
+    string Detail,
+    DatapackTarget Target)
+{
+    /// <summary>同名世界用存档目录名区分，UIA/读屏也只看到这两项真实信息。</summary>
+    public override string ToString() => $"{Name} ({FolderName})";
 }

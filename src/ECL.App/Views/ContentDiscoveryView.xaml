@@ -17,20 +17,8 @@
                        Margin="0,6,0,0" />
         </StackPanel>
 
-        <!-- 能力未接入的分类（当前为数据包）如实显示原因，不放伪入口。 -->
-        <Border Style="{StaticResource Card}" Margin="0,12,0,0"
-                Visibility="{Binding IsUnavailable, Converter={StaticResource BoolToVisibility}}">
-            <StackPanel>
-                <TextBlock Text="{Binding Title}" FontSize="13" Style="{StaticResource EmphasisText}" />
-                <TextBlock Text="{Binding UnavailableReason}"
-                           FontSize="11"
-                           Foreground="{DynamicResource TextSecondaryBrush}"
-                           TextWrapping="Wrap"
-                           Margin="0,8,0,0" />
-            </StackPanel>
-        </Border>
-
-        <StackPanel Visibility="{Binding IsUnavailable, Converter={StaticResource InverseBoolToVisibility}}">
+        <!-- 能力未接入的分类如实显示原因，不放伪入口。当前五类均有真实入口。 -->
+        <StackPanel>
             <!-- ==================== 第一行：搜索 ==================== -->
             <Border Style="{StaticResource Card}" Margin="0,12,0,0">
                 <StackPanel>
@@ -141,6 +129,59 @@
                                TextWrapping="Wrap"
                                Margin="0,8,0,0"
                                Visibility="{Binding ShowNoInstances, Converter={StaticResource BoolToVisibility}}" />
+
+                    <!-- 数据包：必须先选择具体世界，安装目标为该世界的 datapacks（模板 §5.3）。 -->
+                    <Grid Margin="0,10,0,0"
+                          Visibility="{Binding ShowsWorldSelector, Converter={StaticResource BoolToVisibility}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="{Binding WorldLabel}" Style="{StaticResource LabelText}" />
+                            <ComboBox ItemsSource="{Binding Worlds}"
+                                      SelectedItem="{Binding SelectedWorld, Mode=TwoWay}"
+                                      AutomationProperties.Name="{Binding WorldLabel}"
+                                      IsEnabled="{Binding HasWorlds}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Detail}"
+                                                       FontSize="9"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding WorldHint}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   TextWrapping="Wrap"
+                                   MaxWidth="300"
+                                   VerticalAlignment="Bottom"
+                                   Margin="0,0,0,6" />
+                    </Grid>
+
+                    <ProgressBar Height="3" IsIndeterminate="True"
+                                 Margin="0,8,0,0"
+                                 Visibility="{Binding IsLoadingWorlds, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Text="{Binding NoWorldsText}"
+                               FontSize="10"
+                               Foreground="{DynamicResource WarningBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,8,0,0"
+                               Visibility="{Binding ShowNoWorlds, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Text="{Binding WorldWarnings}"
+                               FontSize="10"
+                               Foreground="{DynamicResource WarningBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,6,0,0"
+                               Visibility="{Binding WorldWarnings, Converter={StaticResource StringToVisibility}}" />
 
                     <Grid Margin="0,10,0,0"
                           Visibility="{Binding ShowsCustomFilters, Converter={StaticResource BoolToVisibility}}">

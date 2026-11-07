@@ -128,7 +128,11 @@ public sealed partial class ContentTargetDialogViewModel : ObservableObject, IDi
 }
 
 /// <summary>一个可选的已登记实例；<see cref="Meta"/> 只写真实版本与加载器。</summary>
-public sealed record ContentTargetInstanceRow(string Id, string Name, string Meta);
+public sealed record ContentTargetInstanceRow(string Id, string Name, string Meta)
+{
+    /// <summary>UIA/读屏只看到实例名称，不暴露记录类型的默认 ToString()。</summary>
+    public override string ToString() => Name;
+}
 
 /// <summary>目标选择结果：实例或目录二选一；两者都为 null 不属于成功结果。</summary>
 public sealed record ContentTargetChoice(string? InstanceId, string? InstanceName, string? Directory);
