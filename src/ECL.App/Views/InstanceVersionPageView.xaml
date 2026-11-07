@@ -5,8 +5,11 @@
     <!--
         下载中心 · 实例版本（download-instance-versions.md）。
         外层由下载中心提供滚动容器；本页只负责行结构与状态线。
-        每个下载项（游戏文件 / 加载器 / Fabric API / OptiFine）在卡片下方有一条状态线，
-        颜色来自真实的安装阶段，未开始或未选择时不画线。
+
+        普通模式：游戏版本/类型/加载器/Fabric API/OptiFine 可配置。
+        整合包模式（§5）：清单装填的版本/类型/加载器整体灰化只读，实例名称可改，安装位置可改；
+        模组数量选项只在整合包模式出现，进度来自清单文件的真实部署计数。
+        每个下载项的状态线颜色来自真实阶段，未开始或未选择时不画线。
     -->
     <StackPanel>
         <StackPanel Margin="0,0,0,4">
@@ -18,327 +21,529 @@
                        Margin="0,6,0,0" />
         </StackPanel>
 
-        <StackPanel IsEnabled="{Binding IsConfigEnabled}">
-            <!-- ==================== 第一行：游戏版本 / 类型 / 实例名称 / 安装位置 ==================== -->
-            <Border Style="{StaticResource Card}" Margin="0,12,0,0">
-                <StackPanel>
+        <!-- ==================== 第一块：版本/类型（普通）或清单锁定配置（整合包）+ 名称/位置 ==================== -->
+        <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+            <StackPanel>
+                <!-- 普通模式：游戏版本 / 类型 -->
+                <Grid Visibility="{Binding ShowNormalConfiguration, Converter={StaticResource BoolToVisibility}}"
+                      IsEnabled="{Binding IsConfigEnabled}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="1.2*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="{Binding GameVersionLabel}" Style="{StaticResource LabelText}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox ItemsSource="{Binding GameVersions}"
+                                      SelectedItem="{Binding SelectedGameVersion, Mode=TwoWay}"
+                                      ItemTemplate="{StaticResource DisplayNameItemTemplate}"
+                                      ToolTip="{Binding GameVersionLabel}"
+                                      AutomationProperties.Name="{Binding GameVersionLabel}" />
+                            <Button Grid.Column="1"
+                                    Content="{Binding RefreshVersionsText}"
+                                    Command="{Binding RefreshVersionsCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    Margin="8,0,0,0" />
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="{Binding VersionTypeLabel}" Style="{StaticResource LabelText}" />
+                        <ComboBox ItemsSource="{Binding VersionTypes}"
+                                  SelectedItem="{Binding SelectedVersionType, Mode=TwoWay}"
+                                  ItemTemplate="{StaticResource TitleItemTemplate}"
+                                  AutomationProperties.Name="{Binding VersionTypeLabel}" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- 整合包模式：清单提供的配置整体灰化且只读（§5.2） -->
+                <StackPanel Visibility="{Binding ShowModpackConfiguration, Converter={StaticResource BoolToVisibility}}">
                     <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="2*" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="1.2*" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="{Binding GameVersionLabel}" Style="{StaticResource LabelText}" />
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <ComboBox ItemsSource="{Binding GameVersions}"
-                                          SelectedItem="{Binding SelectedGameVersion, Mode=TwoWay}"
-                                          ItemTemplate="{StaticResource DisplayNameItemTemplate}"
-                                          ToolTip="{Binding GameVersionLabel}"
-                                          AutomationProperties.Name="{Binding GameVersionLabel}" />
-                                <Button Grid.Column="1"
-                                        Content="{Binding RefreshVersionsText}"
-                                        Command="{Binding RefreshVersionsCommand}"
-                                        Style="{StaticResource GhostButton}"
-                                        Margin="8,0,0,0" />
-                            </Grid>
-                        </StackPanel>
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="{Binding VersionTypeLabel}" Style="{StaticResource LabelText}" />
-                            <ComboBox ItemsSource="{Binding VersionTypes}"
-                                      SelectedItem="{Binding SelectedVersionType, Mode=TwoWay}"
-                                      ItemTemplate="{StaticResource TitleItemTemplate}"
-                                      AutomationProperties.Name="{Binding VersionTypeLabel}" />
-                        </StackPanel>
-                    </Grid>
-
-                    <Grid Margin="0,12,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="{Binding InstanceNameLabel}" Style="{StaticResource LabelText}" />
-                            <Border CornerRadius="11" BorderThickness="1" Padding="0">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="BorderBrush" Value="Transparent" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsNameDuplicate}" Value="True">
-                                                <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-                                <TextBox Text="{Binding InstanceName, UpdateSourceTrigger=PropertyChanged}"
-                                         ToolTip="{Binding InstanceNamePlaceholder}"
-                                         AutomationProperties.Name="{Binding InstanceNameLabel}" />
-                            </Border>
-                            <TextBlock Text="{Binding DuplicateNameMessage}"
-                                       Foreground="{DynamicResource DangerBrush}"
-                                       FontSize="10"
-                                       TextWrapping="Wrap"
-                                       Margin="0,6,0,0"
-                                       Visibility="{Binding IsNameDuplicate, Converter={StaticResource BoolToVisibility}}" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="{Binding InstallLocationLabel}" Style="{StaticResource LabelText}" />
-                            <Expander Style="{StaticResource SectionExpander}" Margin="0" IsExpanded="False">
-                                <Expander.Header>
-                                    <TextBlock Text="{Binding InstallLocationText}"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               FontSize="11"
-                                               TextTrimming="CharacterEllipsis"
-                                               ToolTip="{Binding InstallLocationText}" />
-                                </Expander.Header>
-                                <StackPanel Margin="0,8,0,0">
-                                    <ItemsControl ItemsSource="{Binding InstallLocations}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid Margin="0,0,0,6">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{Binding Name}"
-                                                               FontSize="11"
-                                                               Style="{StaticResource EmphasisText}"
-                                                               VerticalAlignment="Center" />
-                                                    <TextBlock Grid.Column="1"
-                                                               Text="{Binding Path}"
-                                                               Foreground="{DynamicResource TextMutedBrush}"
-                                                               FontSize="10"
-                                                               Margin="8,0,8,0"
-                                                               TextTrimming="CharacterEllipsis"
-                                                               ToolTip="{Binding Path}"
-                                                               VerticalAlignment="Center" />
-                                                    <Border Grid.Column="2" Style="{StaticResource Badge}">
-                                                        <TextBlock FontSize="9"
-                                                                   Text="{Binding PrimaryHint}"
-                                                                   Visibility="{Binding IsPrimary, Converter={StaticResource BoolToVisibility}}" />
-                                                    </Border>
-                                                    <Border Grid.Column="2" Style="{StaticResource Badge}">
-                                                        <TextBlock FontSize="9"
-                                                                   Text="{Binding SourceHint}"
-                                                                   Visibility="{Binding IsExternal, Converter={StaticResource BoolToVisibility}}" />
-                                                    </Border>
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                    <Button Content="{Binding AddDirectoryText}"
-                                            Command="{Binding AddDirectoryCommand}"
-                                            Style="{StaticResource GhostButton}"
-                                            HorizontalAlignment="Left"
-                                            Margin="0,4,0,0" />
-                                    <TextBlock Text="{Binding InstallLocationHint}"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               FontSize="10"
-                                               TextWrapping="Wrap"
-                                               Margin="0,8,0,0" />
-                                    <TextBlock Text="{Binding InstallLocationLimitText}"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               FontSize="10"
-                                               TextWrapping="Wrap"
-                                               Margin="0,4,0,0" />
-                                </StackPanel>
-                            </Expander>
-                        </StackPanel>
-                    </Grid>
-
-                    <Grid Margin="0,12,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="{Binding GameItem.Title}"
+                        <TextBlock Text="{Binding ModpackModeNotice}"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    FontSize="10"
-                                   VerticalAlignment="Center" />
-                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <TextBlock Text="{Binding GameItem.SizeText}"
-                                       Foreground="{DynamicResource TextMutedBrush}"
-                                       FontSize="10"
-                                       Margin="0,0,10,0"
-                                       VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding GameItem.StatusText}"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="10"
-                                       VerticalAlignment="Center"
-                                       Visibility="{Binding GameItem.ShowStatusText, Converter={StaticResource BoolToVisibility}}" />
-                        </StackPanel>
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,10,0" />
+                        <Button Grid.Column="1"
+                                Content="{Binding ModpackExitText}"
+                                Command="{Binding ExitModpackModeCommand}"
+                                Style="{StaticResource GhostButton}"
+                                VerticalAlignment="Top"
+                                Visibility="{Binding ShowModpackExit, Converter={StaticResource BoolToVisibility}}" />
                     </Grid>
-                </StackPanel>
-            </Border>
-            <Border Height="2" CornerRadius="1" Margin="16,0,16,0"
-                    Background="{Binding GameItem.Status, Converter={StaticResource DeploymentStatusBrush}}" />
 
-            <!-- ==================== 第二行：加载器 ==================== -->
-            <Border Style="{StaticResource Card}" Margin="0,12,0,0">
-                <StackPanel>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="{Binding LoaderLabel}" Style="{StaticResource LabelText}" Margin="0" VerticalAlignment="Center" />
-                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <TextBlock Text="{Binding LoaderItem.SizeText}"
-                                       Foreground="{DynamicResource TextMutedBrush}"
-                                       FontSize="10"
-                                       Margin="0,0,10,0"
-                                       VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding LoaderItem.StatusText}"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="10"
-                                       VerticalAlignment="Center"
-                                       Visibility="{Binding LoaderItem.ShowStatusText, Converter={StaticResource BoolToVisibility}}" />
-                        </StackPanel>
-                    </Grid>
-                    <Grid Margin="0,6,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="1.1*" />
-                            <ColumnDefinition Width="10" />
-                            <ColumnDefinition Width="1.4*" />
-                        </Grid.ColumnDefinitions>
-                        <ComboBox ItemsSource="{Binding LoaderChoices}"
-                                  SelectedItem="{Binding SelectedLoader, Mode=TwoWay}"
-                                  AutomationProperties.Name="{Binding LoaderLabel}">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="{Binding Title}" />
-                                        <TextBlock Text="{Binding VersionText}"
-                                                   Foreground="{DynamicResource TextMutedBrush}"
-                                                   Margin="8,0,0,0"
-                                                   Visibility="{Binding HasVersion, Converter={StaticResource BoolToVisibility}}" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
-                        <ComboBox Grid.Column="2"
-                                  ItemsSource="{Binding LoaderVersions}"
-                                  SelectedItem="{Binding SelectedLoaderVersion, Mode=TwoWay}"
-                                  ItemTemplate="{StaticResource DisplayNameItemTemplate}"
-                                  ToolTip="{Binding LoaderHistoryText}"
-                                  AutomationProperties.Name="{Binding LoaderHistoryText}"
-                                  Visibility="{Binding HasLoaderVersions, Converter={StaticResource BoolToVisibility}}" />
-                    </Grid>
-                    <TextBlock Text="{Binding ComponentStatus}"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               FontSize="10"
-                               TextWrapping="Wrap"
-                               Margin="0,8,0,0"
-                               Visibility="{Binding ComponentStatus, Converter={StaticResource StringToVisibility}}" />
-                    <ProgressBar Height="3" Margin="0,8,0,0" IsIndeterminate="True"
-                                 Visibility="{Binding IsLoadingComponents, Converter={StaticResource BoolToVisibility}}" />
-                </StackPanel>
-            </Border>
-            <Border Height="2" CornerRadius="1" Margin="16,0,16,0"
-                    Background="{Binding LoaderItem.Status, Converter={StaticResource DeploymentStatusBrush}}" />
-
-            <!-- ==================== 条件组件：Fabric API（仅 Fabric） ==================== -->
-            <Border Style="{StaticResource Card}" Margin="0,12,0,0"
-                    Visibility="{Binding ShowFabricApi, Converter={StaticResource BoolToVisibility}}">
-                <StackPanel>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="{loc:Loc Key=instances.fabricApi.title}"
-                                   Style="{StaticResource LabelText}"
-                                   Margin="0"
-                                   VerticalAlignment="Center" />
-                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <TextBlock Text="{Binding FabricApiItem.SizeText}"
-                                       Foreground="{DynamicResource TextMutedBrush}"
-                                       FontSize="10"
-                                       Margin="0,0,10,0"
-                                       VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding FabricApiItem.StatusText}"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="10"
-                                       VerticalAlignment="Center"
-                                       Visibility="{Binding FabricApiItem.ShowStatusText, Converter={StaticResource BoolToVisibility}}" />
-                        </StackPanel>
-                    </Grid>
-                    <ComboBox Margin="0,6,0,0"
-                              ItemsSource="{Binding FabricApiVersions}"
-                              SelectedItem="{Binding SelectedFabricApiVersion, Mode=TwoWay}"
-                              ItemTemplate="{StaticResource DisplayNameItemTemplate}"
-                              AutomationProperties.Name="Fabric API" />
                     <Border Background="{DynamicResource InputBrush}"
                             CornerRadius="8"
-                            Padding="10,7"
-                            Margin="0,8,0,0">
-                        <TextBlock Text="{Binding FabricApiNoticeText}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10"
-                                   TextWrapping="Wrap" />
+                            Padding="10"
+                            Margin="0,10,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel>
+                                <TextBlock Text="{Binding ModpackVersionLabel}" Style="{StaticResource LabelText}" />
+                                <TextBlock Text="{Binding ModpackVersion}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="11"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="{Binding ModpackArchiveSizeLabel}" Style="{StaticResource LabelText}" />
+                                <TextBlock Text="{Binding ModpackArchiveSize}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="11" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Margin="0,8,0,0">
+                                <TextBlock Text="{Binding ModpackGameVersionLabel}" Style="{StaticResource LabelText}" />
+                                <TextBlock Text="{Binding ModpackGameVersion}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="11" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,8,0,0">
+                                <TextBlock Text="{Binding ModpackGameTypeLabel}" Style="{StaticResource LabelText}" />
+                                <TextBlock Text="{Binding ModpackGameType}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="11" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="2" Margin="0,8,0,0">
+                                <TextBlock Text="{Binding ModpackLoaderLabel}" Style="{StaticResource LabelText}" />
+                                <TextBlock Text="{Binding ModpackLoader}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="11" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="2" Grid.Column="2" Margin="0,8,0,0">
+                                <TextBlock Text="{Binding ModpackLoaderVersionLabel}" Style="{StaticResource LabelText}" />
+                                <TextBlock Text="{Binding ModpackLoaderVersion}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="11" />
+                            </StackPanel>
+                        </Grid>
                     </Border>
                 </StackPanel>
-            </Border>
-            <Border Height="2" CornerRadius="1" Margin="16,0,16,0"
-                    Visibility="{Binding ShowFabricApi, Converter={StaticResource BoolToVisibility}}"
-                    Background="{Binding FabricApiItem.Status, Converter={StaticResource DeploymentStatusBrush}}" />
 
-            <!-- ==================== 条件组件：OptiFine（仅 Forge / Cleanroom） ==================== -->
-            <Border Style="{StaticResource Card}" Margin="0,12,0,0"
-                    Visibility="{Binding ShowOptiFine, Converter={StaticResource BoolToVisibility}}">
-                <StackPanel>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="{Binding OptiFineLabel}"
-                                   Style="{StaticResource LabelText}"
-                                   Margin="0"
+                <!-- 实例名称 / 安装位置：两种模式共用 -->
+                <Grid Margin="0,12,0,0" IsEnabled="{Binding IsConfigEnabled}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="{Binding InstanceNameLabel}" Style="{StaticResource LabelText}" />
+                        <Border CornerRadius="11" BorderThickness="1" Padding="0">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="BorderBrush" Value="Transparent" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsNameDuplicate}" Value="True">
+                                            <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBox Text="{Binding InstanceName, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="{Binding InstanceNamePlaceholder}"
+                                     AutomationProperties.Name="{Binding InstanceNameLabel}" />
+                        </Border>
+                        <TextBlock Text="{Binding DuplicateNameMessage}"
+                                   Foreground="{DynamicResource DangerBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,6,0,0"
+                                   Visibility="{Binding IsNameDuplicate, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="{Binding InstallLocationLabel}" Style="{StaticResource LabelText}" />
+                        <Expander Style="{StaticResource SectionExpander}" Margin="0" IsExpanded="False">
+                            <Expander.Header>
+                                <TextBlock Text="{Binding InstallLocationText}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           FontSize="11"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding InstallLocationText}" />
+                            </Expander.Header>
+                            <StackPanel Margin="0,8,0,0">
+                                <ItemsControl ItemsSource="{Binding InstallLocations}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Name}"
+                                                           FontSize="11"
+                                                           Style="{StaticResource EmphasisText}"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding Path}"
+                                                           Foreground="{DynamicResource TextMutedBrush}"
+                                                           FontSize="10"
+                                                           Margin="8,0,8,0"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           ToolTip="{Binding Path}"
+                                                           VerticalAlignment="Center" />
+                                                <Border Grid.Column="2" Style="{StaticResource Badge}">
+                                                    <TextBlock FontSize="9"
+                                                               Text="{Binding PrimaryHint}"
+                                                               Visibility="{Binding IsPrimary, Converter={StaticResource BoolToVisibility}}" />
+                                                </Border>
+                                                <Border Grid.Column="2" Style="{StaticResource Badge}">
+                                                    <TextBlock FontSize="9"
+                                                               Text="{Binding SourceHint}"
+                                                               Visibility="{Binding IsExternal, Converter={StaticResource BoolToVisibility}}" />
+                                                </Border>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Content="{Binding AddDirectoryText}"
+                                        Command="{Binding AddDirectoryCommand}"
+                                        Style="{StaticResource GhostButton}"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,4,0,0" />
+                                <TextBlock Text="{Binding InstallLocationHint}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="10"
+                                           TextWrapping="Wrap"
+                                           Margin="0,8,0,0" />
+                                <TextBlock Text="{Binding InstallLocationLimitText}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="10"
+                                           TextWrapping="Wrap"
+                                           Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 普通模式：游戏文件状态行 -->
+                <Grid Margin="0,12,0,0"
+                      Visibility="{Binding ShowNormalConfiguration, Converter={StaticResource BoolToVisibility}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding GameItem.Title}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <TextBlock Text="{Binding GameItem.SizeText}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   Margin="0,0,10,0"
                                    VerticalAlignment="Center" />
-                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <TextBlock Text="{Binding OptiFineItem.SizeText}"
-                                       Foreground="{DynamicResource TextMutedBrush}"
-                                       FontSize="10"
-                                       Margin="0,0,10,0"
-                                       VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding OptiFineItem.StatusText}"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="10"
-                                       VerticalAlignment="Center"
-                                       Visibility="{Binding OptiFineItem.ShowStatusText, Converter={StaticResource BoolToVisibility}}" />
-                        </StackPanel>
-                    </Grid>
-                    <ComboBox Margin="0,6,0,0"
-                              ItemsSource="{Binding OptiFineVersions}"
-                              SelectedItem="{Binding SelectedOptiFineVersion, Mode=TwoWay}"
+                        <TextBlock Text="{Binding GameItem.StatusText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding GameItem.ShowStatusText, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+        <Border Height="2" CornerRadius="1" Margin="16,0,16,0"
+                Visibility="{Binding ShowNormalConfiguration, Converter={StaticResource BoolToVisibility}}"
+                Background="{Binding GameItem.Status, Converter={StaticResource DeploymentStatusBrush}}" />
+
+        <!-- ==================== 普通模式：加载器 ==================== -->
+        <Border Style="{StaticResource Card}" Margin="0,12,0,0"
+                Visibility="{Binding ShowNormalConfiguration, Converter={StaticResource BoolToVisibility}}"
+                IsEnabled="{Binding IsConfigEnabled}">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding LoaderLabel}" Style="{StaticResource LabelText}" Margin="0" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <TextBlock Text="{Binding LoaderItem.SizeText}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   Margin="0,0,10,0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding LoaderItem.StatusText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding LoaderItem.ShowStatusText, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                </Grid>
+                <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.1*" />
+                        <ColumnDefinition Width="10" />
+                        <ColumnDefinition Width="1.4*" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox ItemsSource="{Binding LoaderChoices}"
+                              SelectedItem="{Binding SelectedLoader, Mode=TwoWay}"
+                              AutomationProperties.Name="{Binding LoaderLabel}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Title}" />
+                                    <TextBlock Text="{Binding VersionText}"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Margin="8,0,0,0"
+                                               Visibility="{Binding HasVersion, Converter={StaticResource BoolToVisibility}}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <ComboBox Grid.Column="2"
+                              ItemsSource="{Binding LoaderVersions}"
+                              SelectedItem="{Binding SelectedLoaderVersion, Mode=TwoWay}"
                               ItemTemplate="{StaticResource DisplayNameItemTemplate}"
-                              AutomationProperties.Name="{Binding OptiFineLabel}" />
-                    <TextBlock Text="{loc:Loc Key=instances.optifine.disabled}"
+                              ToolTip="{Binding LoaderHistoryText}"
+                              AutomationProperties.Name="{Binding LoaderHistoryText}"
+                              Visibility="{Binding HasLoaderVersions, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+                <TextBlock Text="{Binding ComponentStatus}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           FontSize="10"
+                           TextWrapping="Wrap"
+                           Margin="0,8,0,0"
+                           Visibility="{Binding ComponentStatus, Converter={StaticResource StringToVisibility}}" />
+                <ProgressBar Height="3" Margin="0,8,0,0" IsIndeterminate="True"
+                             Visibility="{Binding IsLoadingComponents, Converter={StaticResource BoolToVisibility}}" />
+            </StackPanel>
+        </Border>
+        <Border Height="2" CornerRadius="1" Margin="16,0,16,0"
+                Visibility="{Binding ShowNormalConfiguration, Converter={StaticResource BoolToVisibility}}"
+                Background="{Binding LoaderItem.Status, Converter={StaticResource DeploymentStatusBrush}}" />
+
+        <!-- ==================== 普通模式：条件组件 Fabric API ==================== -->
+        <Border Style="{StaticResource Card}" Margin="0,12,0,0"
+                Visibility="{Binding ShowFabricApiRow, Converter={StaticResource BoolToVisibility}}"
+                IsEnabled="{Binding IsConfigEnabled}">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{loc:Loc Key=instances.fabricApi.title}"
+                               Style="{StaticResource LabelText}"
+                               Margin="0"
+                               VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <TextBlock Text="{Binding FabricApiItem.SizeText}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   Margin="0,0,10,0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding FabricApiItem.StatusText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding FabricApiItem.ShowStatusText, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                </Grid>
+                <ComboBox Margin="0,6,0,0"
+                          ItemsSource="{Binding FabricApiVersions}"
+                          SelectedItem="{Binding SelectedFabricApiVersion, Mode=TwoWay}"
+                          ItemTemplate="{StaticResource DisplayNameItemTemplate}"
+                          AutomationProperties.Name="Fabric API" />
+                <Border Background="{DynamicResource InputBrush}"
+                        CornerRadius="8"
+                        Padding="10,7"
+                        Margin="0,8,0,0">
+                    <TextBlock Text="{Binding FabricApiNoticeText}"
                                Foreground="{DynamicResource TextMutedBrush}"
                                FontSize="10"
-                               TextWrapping="Wrap"
-                               Margin="0,8,0,0" />
-                </StackPanel>
-            </Border>
-            <Border Height="2" CornerRadius="1" Margin="16,0,16,0"
-                    Visibility="{Binding ShowOptiFine, Converter={StaticResource BoolToVisibility}}"
-                    Background="{Binding OptiFineItem.Status, Converter={StaticResource DeploymentStatusBrush}}" />
+                               TextWrapping="Wrap" />
+                </Border>
+            </StackPanel>
+        </Border>
+        <Border Height="2" CornerRadius="1" Margin="16,0,16,0"
+                Visibility="{Binding ShowFabricApiRow, Converter={StaticResource BoolToVisibility}}"
+                Background="{Binding FabricApiItem.Status, Converter={StaticResource DeploymentStatusBrush}}" />
 
-            <!-- 版本清单状态 -->
-            <TextBlock Text="{Binding VersionStatus}"
-                       Foreground="{DynamicResource TextMutedBrush}"
-                       FontSize="10"
-                       TextWrapping="Wrap"
-                       Margin="2,10,0,0"
-                       Visibility="{Binding VersionStatus, Converter={StaticResource StringToVisibility}}" />
-        </StackPanel>
+        <!-- ==================== 普通模式：条件组件 OptiFine ==================== -->
+        <Border Style="{StaticResource Card}" Margin="0,12,0,0"
+                Visibility="{Binding ShowOptiFineRow, Converter={StaticResource BoolToVisibility}}"
+                IsEnabled="{Binding IsConfigEnabled}">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding OptiFineLabel}"
+                               Style="{StaticResource LabelText}"
+                               Margin="0"
+                               VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <TextBlock Text="{Binding OptiFineItem.SizeText}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   Margin="0,0,10,0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding OptiFineItem.StatusText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding OptiFineItem.ShowStatusText, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                </Grid>
+                <ComboBox Margin="0,6,0,0"
+                          ItemsSource="{Binding OptiFineVersions}"
+                          SelectedItem="{Binding SelectedOptiFineVersion, Mode=TwoWay}"
+                          ItemTemplate="{StaticResource DisplayNameItemTemplate}"
+                          AutomationProperties.Name="{Binding OptiFineLabel}" />
+                <TextBlock Text="{loc:Loc Key=instances.optifine.disabled}"
+                           Foreground="{DynamicResource TextMutedBrush}"
+                           FontSize="10"
+                           TextWrapping="Wrap"
+                           Margin="0,8,0,0" />
+            </StackPanel>
+        </Border>
+        <Border Height="2" CornerRadius="1" Margin="16,0,16,0"
+                Visibility="{Binding ShowOptiFineRow, Converter={StaticResource BoolToVisibility}}"
+                Background="{Binding OptiFineItem.Status, Converter={StaticResource DeploymentStatusBrush}}" />
+
+        <!-- 普通模式的版本清单状态 -->
+        <TextBlock Text="{Binding VersionStatus}"
+                   Foreground="{DynamicResource TextMutedBrush}"
+                   FontSize="10"
+                   TextWrapping="Wrap"
+                   Margin="2,10,0,0"
+                   Visibility="{Binding VersionStatus, Converter={StaticResource StringToVisibility}}" />
+
+        <!-- ==================== 整合包模式：模组数量与部署项 ==================== -->
+        <Border Style="{StaticResource Card}" Margin="0,12,0,0"
+                Visibility="{Binding ShowModpackConfiguration, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel>
+                <!-- 模组数量选项：不可编辑但保持正常视觉样式（download-modpacks.md §8.1） -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding ModpackModCountLabel}"
+                               Style="{StaticResource LabelText}"
+                               Margin="0"
+                               VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding ModpackModCountText}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="12"
+                               Margin="10,0,0,0"
+                               VerticalAlignment="Center" />
+                    <Button Grid.Column="2"
+                            Content="{Binding ModpackPreviewText}"
+                            Command="{Binding OpenModpackPreviewCommand}"
+                            Style="{StaticResource GhostButton}" />
+                </Grid>
+                <TextBlock Text="{Binding ModpackComponentsNote}"
+                           Foreground="{DynamicResource TextMutedBrush}"
+                           FontSize="10"
+                           TextWrapping="Wrap"
+                           Margin="0,6,0,0" />
+
+                <Border Height="1" Margin="0,10,0,0" Background="{DynamicResource BorderBrush}" />
+
+                <!-- 整合包归档 -->
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding ModpackItem.Title}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <TextBlock Text="{Binding ModpackItem.SizeText}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   Margin="0,0,10,0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding ModpackItem.StatusText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding ModpackItem.ShowStatusText, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                </Grid>
+                <Border Height="2" CornerRadius="1" Margin="16,6,16,0"
+                        Background="{Binding ModpackItem.Status, Converter={StaticResource DeploymentStatusBrush}}" />
+
+                <!-- Minecraft 游戏文件 -->
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding GameItem.Title}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <TextBlock Text="{Binding GameItem.SizeText}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   Margin="0,0,10,0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding GameItem.StatusText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding GameItem.ShowStatusText, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                </Grid>
+                <Border Height="2" CornerRadius="1" Margin="16,6,16,0"
+                        Background="{Binding GameItem.Status, Converter={StaticResource DeploymentStatusBrush}}" />
+
+                <!-- 加载器（原版整合包不选） -->
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding LoaderItem.Title}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <TextBlock Text="{Binding LoaderItem.SizeText}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   Margin="0,0,10,0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding LoaderItem.StatusText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding LoaderItem.ShowStatusText, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                </Grid>
+                <Border Height="2" CornerRadius="1" Margin="16,6,16,0"
+                        Background="{Binding LoaderItem.Status, Converter={StaticResource DeploymentStatusBrush}}" />
+            </StackPanel>
+        </Border>
 
         <!-- ==================== 部署进度与操作 ==================== -->
         <Border Style="{StaticResource Card}" Margin="0,16,0,0">
@@ -413,9 +618,3 @@
         </Border>
     </StackPanel>
 </UserControl>
-
-
-
-
-
-

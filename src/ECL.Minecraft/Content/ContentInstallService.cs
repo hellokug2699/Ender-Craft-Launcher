@@ -53,6 +53,26 @@ public interface IContentInstallService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 按来源上选定的具体版本下载整合包归档并解析清单（`download-instance-versions.md` §5）：
+    /// 文件由来源 API 重新解析，不接受页面拼接的下载地址；归档落在启动器下载目录。
+    /// 数量、版本、加载器等只返回清单真实声明的内容，不补默认值。
+    /// </summary>
+    Task<Result<ModpackPreparation>> PrepareModpackAsync(
+        ContentHit hit,
+        ContentVersion version,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 用已准备的整合包归档创建新实例并导入（统一部署流程）。失败时尝试删除本次新建的实例，
+    /// 不把半个实例留在列表里；不写入任何已有实例。
+    /// </summary>
+    Task<Result<ModpackImportResult>> DeployModpackAsync(
+        ModpackDeploymentRequest request,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 把来源上某个具体版本安装到实例对应内容目录（模组 → <c>mods</c>、资源包 → <c>resourcepacks</c>、
     /// 光影包 → <c>shaderpacks</c>）。文件由来源 API 重新解析，不信任页面传入的下载地址；
     /// 整合包必须走实例版本页的整合包模式，数据包需要世界目标，两者在这里拒绝。
@@ -999,22 +1019,206 @@ public sealed class ContentInstallService(
         return Result<ModpackImportResult>.Ok(import.Value! with { InstanceId = createdInstance.Id });
     }
 
-    private async Task RollbackCreatedInstanceAsync(string instanceId)
+    public async Task<Result<ModpackPreparation>> PrepareModpackAsync(
+        ContentHit hit,
+        ContentVersion version,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (hit.Kind != ContentKind.ModPack)
+        {
+            return Result<ModpackPreparation>.Fail(
+                "content.invalid_kind",
+                "只有整合包可以进入实例版本页的整合包模式。");
+        }
+
+        using var operation = new OperationProgressBridge<ContentProgress>(
+            operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Download,
+                Title = hit.Name,
+                StageId = "modpack.prepare",
+                Source = hit.SourceLabel,
+                CanCancel = false,
+                CanRetry = false,
+            },
+            progress,
+            MapContentProgress);
+
+        try
+        {
+            operation.Report(new ContentProgress("resolve", localizer.Get("content.stage.resolve")));
+            var resolved = await ResolveVersionFilesAsync(hit, version, null, null, cancellationToken)
+                .ConfigureAwait(false);
+            if (!resolved.IsSuccess)
+            {
+                var failed = Result<ModpackPreparation>.Fail(resolved.Error!);
+                Finish(operation, failed);
+                return failed;
+            }
+
+            var primary = resolved.Value!.Files[0];
+            var directory = Path.Combine(paths.DownloadsDirectory, "modpacks");
+            var downloaded = await DownloadFilesAsync(
+                    new ResolvedDownload([primary], []),
+                    directory,
+                    operation,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!downloaded.IsSuccess)
+            {
+                var failed = Result<ModpackPreparation>.Fail(downloaded.Error!);
+                Finish(operation, failed);
+                return failed;
+            }
+
+            var archivePath = Path.Combine(directory, primary.FileName);
+            operation.Report(new ContentProgress("inspect", localizer.Get("content.stage.inspect")));
+            var metadata = ModpackArchiveInspector.Read(archivePath);
+            if (!metadata.IsSuccess)
+            {
+                var failed = Result<ModpackPreparation>.Fail(metadata.Error!);
+                Finish(operation, failed);
+                return failed;
+            }
+
+            var size = primary.Size is > 0
+                ? primary.Size.Value
+                : File.Exists(archivePath) ? new FileInfo(archivePath).Length : 0;
+            var prepared = Result<ModpackPreparation>.Ok(new ModpackPreparation(archivePath, metadata.Value!, size));
+            Finish(operation, prepared);
+            return prepared;
+        }
+        catch (OperationCanceledException)
+        {
+            operation.Cancel();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            operation.Fail(OperationErrors.FromException("modpack.prepare_failed", exception));
+            throw;
+        }
+    }
+
+    public async Task<Result<ModpackImportResult>> DeployModpackAsync(
+        ModpackDeploymentRequest request,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var operation = new OperationProgressBridge<ContentProgress>(
+            operations,
+            new OperationStart
+            {
+                Kind = OperationKind.Import,
+                Title = request.InstanceName,
+                StageId = "modpack",
+                CanCancel = false,
+                CanRetry = false,
+            },
+            progress,
+            MapContentProgress);
+
+        try
+        {
+            if (!File.Exists(request.ArchivePath))
+            {
+                var missing = Result<ModpackImportResult>.Fail(
+                    "modpack.not_found",
+                    $"整合包归档不存在：{request.ArchivePath}");
+                Finish(operation, missing);
+                return missing;
+            }
+
+            operation.Report(new ContentProgress("create", localizer.Get("content.stage.createInstance")));
+            var createResult = await instances
+                .CreateAsync(
+                    TrimName(request.InstanceName),
+                    request.GameVersion,
+                    request.Loader,
+                    request.LoaderVersion,
+                    fabricApiVersion: null,
+                    optiFineVersion: null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!createResult.IsSuccess)
+            {
+                var failed = Result<ModpackImportResult>.Fail(createResult.Error!);
+                Finish(operation, failed);
+                return failed;
+            }
+
+            var instance = createResult.Value!;
+            operation.Report(new ContentProgress("import", localizer.Get("content.stage.import")));
+            Result<ModpackImportResult> import;
+            try
+            {
+                import = await ImportArchiveAsync(instance, request.ArchivePath, operation, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                await RollbackCreatedInstanceAsync(instance.Id).ConfigureAwait(false);
+                operation.Cancel();
+                throw;
+            }
+
+            if (!import.IsSuccess)
+            {
+                var rollback = await RollbackCreatedInstanceAsync(instance.Id).ConfigureAwait(false);
+                var failed = rollback is null
+                    ? import
+                    : Result<ModpackImportResult>.Fail(
+                        import.Error!.Code,
+                        import.Error.Message,
+                        $"整合包导入失败后无法删除本次新建的实例 {instance.Id}：{rollback}");
+                Finish(operation, failed);
+                return failed;
+            }
+
+            Finish(operation, import);
+            return import;
+        }
+        catch (Exception exception)
+        {
+            if (exception is OperationCanceledException)
+            {
+                throw;
+            }
+
+            operation.Fail(OperationErrors.FromException("modpack.deploy_failed", exception));
+            throw;
+        }
+    }
+
+
+    /// <summary>
+    /// 删除部署失败时本次新建的实例。返回 null 表示回滚成功；否则返回删除失败原因，
+    /// 由调用方写入失败详情（不得把未删除的实例描述为已回滚）。
+    /// </summary>
+    private async Task<string?> RollbackCreatedInstanceAsync(string instanceId)
     {
         try
         {
             var rollback = await instances.DeleteAsync(instanceId, CancellationToken.None).ConfigureAwait(false);
-            if (!rollback.IsSuccess)
+            if (rollback.IsSuccess)
             {
-                logger.LogError(
-                    "回滚整合包实例 {InstanceId} 失败：{Error}",
-                    instanceId,
-                    rollback.Error);
+                return null;
             }
+
+            logger.LogError(
+                "回滚整合包实例 {InstanceId} 失败：{Error}",
+                instanceId,
+                rollback.Error);
+            return rollback.Error?.Message ?? "删除实例失败。";
         }
         catch (Exception exception)
         {
             logger.LogError(exception, "回滚整合包实例 {InstanceId} 时发生异常。", instanceId);
+            return exception.Message;
         }
     }
 
@@ -1532,12 +1736,25 @@ public sealed class ContentInstallService(
 /// <summary>从 .mrpack / CurseForge .zip 中读取创建实例所需的元数据。</summary>
 public static class ModpackArchiveInspector
 {
+    /// <summary>
+    /// 清单声明的待安装模组；<see cref="RelativePath"/> 仅 Modrinth .mrpack 提供，
+    /// CurseForge 清单只有项目/文件 ID。页面据此展示预览，不解析实际下载内容。
+    /// </summary>
+    public sealed record ModpackModEntry(string? RelativePath, int? ProjectId, int? FileId);
+
     public sealed record ModpackMetadata(
         string Name,
         string? GameVersion,
         string Loader,
         string? LoaderVersion,
-        string? PackVersion);
+        string? PackVersion)
+    {
+        /// <summary>清单声明的待安装模组；<c>null</c> 表示清单没有可读取的文件列表（数量未知）。</summary>
+        public IReadOnlyList<ModpackModEntry>? ModFiles { get; init; }
+
+        /// <summary>可靠识别出的模组数量；未知时为 <c>null</c>，不显示为 0。</summary>
+        public int? ModCount => ModFiles?.Count;
+    }
 
     public static Result<ModpackMetadata> Read(string archivePath)
     {
@@ -1585,7 +1802,84 @@ public static class ModpackArchiveInspector
             : null;
 
         var (loader, loaderVersion) = DetectModrinthLoader(dependencies);
-        return Result<ModpackMetadata>.Ok(new ModpackMetadata(name, gameVersion, loader, loaderVersion, version));
+        return Result<ModpackMetadata>.Ok(new ModpackMetadata(name, gameVersion, loader, loaderVersion, version)
+        {
+            ModFiles = ReadModrinthModFiles(root),
+        });
+    }
+
+    /// <summary>
+    /// Modrinth 清单：<c>files</c> 数组的每项都会被下载到对应相对路径。模组数量只统计
+    /// 直接位于 <c>mods/</c> 下、且没有被声明为客户端不支持的文件；缺失文件列表时返回 null（未知）。
+    /// </summary>
+    private static IReadOnlyList<ModpackModEntry>? ReadModrinthModFiles(JsonElement root)
+    {
+        if (!root.TryGetProperty("files", out var files) || files.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var entries = new List<ModpackModEntry>();
+        foreach (var file in files.EnumerateArray())
+        {
+            var path = GetString(file, "path");
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                continue;
+            }
+
+            var normalized = path.Replace('\\', '/').TrimStart('/');
+            if (!normalized.StartsWith("mods/", StringComparison.OrdinalIgnoreCase) ||
+                normalized.EndsWith("/", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (file.TryGetProperty("env", out var env) &&
+                env.ValueKind == JsonValueKind.Object &&
+                env.TryGetProperty("client", out var client) &&
+                client.ValueKind == JsonValueKind.String &&
+                string.Equals(client.GetString(), "unsupported", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            entries.Add(new ModpackModEntry(normalized, null, null));
+        }
+
+        return entries;
+    }
+
+    /// <summary>
+    /// CurseForge 清单：<c>files</c> 中必需（<c>required</c> 缺省为 true）的条目会被安装；
+    /// 清单本身不含文件名，预览只显示项目/文件 ID，不猜测文件名。缺失文件列表时返回 null（未知）。
+    /// </summary>
+    private static IReadOnlyList<ModpackModEntry>? ReadCurseForgeModFiles(JsonElement root)
+    {
+        if (!root.TryGetProperty("files", out var files) || files.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var entries = new List<ModpackModEntry>();
+        foreach (var file in files.EnumerateArray())
+        {
+            var fileId = GetInt(file, "fileID") ?? GetInt(file, "fileId");
+            if (fileId is null or <= 0)
+            {
+                continue;
+            }
+
+            if (GetBool(file, "required") == false)
+            {
+                continue;
+            }
+
+            var projectId = GetInt(file, "projectID") ?? GetInt(file, "projectId");
+            entries.Add(new ModpackModEntry(null, projectId is > 0 ? projectId : null, fileId));
+        }
+
+        return entries;
     }
 
     private static (string Loader, string? Version) DetectModrinthLoader(JsonElement dependencies)
@@ -1647,7 +1941,10 @@ public static class ModpackArchiveInspector
             }
         }
 
-        return Result<ModpackMetadata>.Ok(new ModpackMetadata(name, gameVersion, loader, loaderVersion, version));
+        return Result<ModpackMetadata>.Ok(new ModpackMetadata(name, gameVersion, loader, loaderVersion, version)
+        {
+            ModFiles = ReadCurseForgeModFiles(root),
+        });
     }
 
     private const long MaxMetadataEntryBytes = 4L * 1024 * 1024;
@@ -1693,6 +1990,14 @@ public static class ModpackArchiveInspector
         element.TryGetProperty(property, out var value) &&
         value.ValueKind == JsonValueKind.String
             ? value.GetString()
+            : null;
+
+    private static int? GetInt(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object &&
+        element.TryGetProperty(property, out var value) &&
+        value.ValueKind == JsonValueKind.Number &&
+        value.TryGetInt32(out var result)
+            ? result
             : null;
 
     private static bool? GetBool(JsonElement element, string property) =>

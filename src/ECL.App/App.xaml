@@ -101,6 +101,10 @@
             <DataTemplate DataType="{x:Type dialogs:ContentTargetDialogViewModel}">
                 <dviews:ContentTargetDialogView />
             </DataTemplate>
+
+            <DataTemplate DataType="{x:Type dialogs:ModpackModListDialogViewModel}">
+                <dviews:ModpackModListDialogView />
+            </DataTemplate>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

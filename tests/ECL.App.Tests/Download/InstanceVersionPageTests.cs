@@ -9,6 +9,7 @@ using Ecl.App.ViewModels;
 using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Core.Storage;
+using Ecl.Minecraft.Content;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Loaders;
@@ -396,6 +397,482 @@ public sealed class InstanceVersionPageTests
         Assert.Contains(harness.Root, vm.InstallLocationText);
     }
 
+    [Fact]
+    public async Task ModpackModeLocksTheManifestConfigurationAndFillsTheName()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        harness.ContentInstall.PrepareResult = Result<ModpackPreparation>.Ok(Preparation());
+        await vm.EnsureLoadedAsync();
+
+        await vm.EnterModpackModeAsync(ModpackDeploymentSource.FromOnline(ModpackHit(), ModpackVersion()));
+
+        var call = Assert.Single(harness.ContentInstall.PrepareCalls);
+        Assert.Equal("pack", call.Hit.Id);
+        Assert.Equal("v1", call.Version.VersionId);
+        Assert.True(vm.IsModpackMode);
+        Assert.True(vm.ShowModpackConfiguration);
+        Assert.False(vm.ShowNormalConfiguration);
+        Assert.False(vm.ShowFabricApiRow);
+        Assert.False(vm.ShowOptiFineRow);
+        Assert.Equal("1.21.1", vm.ModpackGameVersion);
+        Assert.Equal("正式版", vm.ModpackGameType);
+        Assert.Equal("Fabric", vm.ModpackLoader);
+        Assert.Equal("0.16.14", vm.ModpackLoaderVersion);
+        Assert.Equal("2 MB", vm.ModpackArchiveSize);
+        Assert.Equal("3 个", vm.ModpackModCountText);
+        Assert.True(vm.CanPreviewModpackFiles);
+        Assert.Equal("Fancy Pack", vm.InstanceName);
+        Assert.True(vm.CanStartDownload);
+        Assert.Equal(DeploymentItemStatus.Completed, vm.ModpackItem.Status);
+    }
+
+    [Fact]
+    public async Task ModpackDeploymentCreatesTheInstanceThenInstallsTheGameFiles()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        harness.ContentInstall.PrepareResult = Result<ModpackPreparation>.Ok(Preparation());
+        harness.ContentInstall.DeployResult = Result<ModpackImportResult>.Ok(new ModpackImportResult(
+            "Fancy Pack",
+            "1.2.0",
+            3,
+            0,
+            1,
+            [],
+            "C:\\temp\\pack.mrpack",
+            "inst-modpack"));
+        await vm.EnsureLoadedAsync();
+        await vm.EnterModpackModeAsync(ModpackDeploymentSource.FromOnline(ModpackHit(), ModpackVersion()));
+        vm.InstanceName = "我的整合包";
+
+        await vm.StartDownloadCommand.ExecuteAsync(null);
+
+        var request = Assert.Single(harness.ContentInstall.DeployCalls);
+        Assert.Equal("我的整合包", request.InstanceName);
+        Assert.Equal("1.21.1", request.GameVersion);
+        Assert.Equal("fabric", request.Loader);
+        Assert.Equal("0.16.14", request.LoaderVersion);
+        Assert.Equal("C:\\temp\\pack.mrpack", request.ArchivePath);
+        var install = Assert.Single(harness.Install.Calls);
+        Assert.Equal("inst-modpack", install);
+        Assert.Empty(harness.Instances.CreateCalls);
+
+        Assert.Equal(InstanceDeploymentState.Succeeded, vm.DeploymentState);
+        Assert.Equal(DeploymentItemStatus.Completed, vm.ModpackItem.Status);
+        Assert.Equal(DeploymentItemStatus.Completed, vm.GameItem.Status);
+        Assert.Equal(DeploymentItemStatus.Completed, vm.LoaderItem.Status);
+        Assert.Equal(DeploymentItemStatus.NotSelected, vm.FabricApiItem.Status);
+        Assert.Equal("已安装 3 / 3", vm.ModpackModCountText);
+        Assert.True(vm.ShowResetButton);
+        Assert.False(vm.CanStartDownload);
+    }
+
+    [Fact]
+    public async Task ModpackInstallFailureRetriesOnlyTheInstallStage()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        harness.ContentInstall.PrepareResult = Result<ModpackPreparation>.Ok(Preparation());
+        harness.ContentInstall.DeployResult = Result<ModpackImportResult>.Ok(new ModpackImportResult(
+            "Fancy Pack",
+            "1.2.0",
+            3,
+            0,
+            0,
+            [],
+            "C:\\temp\\pack.mrpack",
+            "inst-modpack"));
+        harness.Install.InstallResult = Result<InstallReport>.Fail("download.failed", "下载失败");
+        await vm.EnsureLoadedAsync();
+        await vm.EnterModpackModeAsync(ModpackDeploymentSource.FromOnline(ModpackHit(), ModpackVersion()));
+
+        await vm.StartDownloadCommand.ExecuteAsync(null);
+
+        Assert.Equal(InstanceDeploymentState.Failed, vm.DeploymentState);
+        Assert.True(vm.CanRetry);
+        Assert.Single(harness.ContentInstall.DeployCalls);
+        Assert.Single(harness.Install.Calls);
+
+        harness.Install.InstallResult = Result<InstallReport>.Ok(new InstallReport("1.21.1", 2, 0, 1024, TimeSpan.FromSeconds(1)));
+        await vm.RetryCommand.ExecuteAsync(null);
+
+        Assert.Equal(InstanceDeploymentState.Succeeded, vm.DeploymentState);
+        Assert.Single(harness.ContentInstall.DeployCalls);
+        Assert.Equal(2, harness.Install.Calls.Count);
+    }
+
+    [Fact]
+    public async Task ModpackPreparationFailureBlocksDeploymentWithoutCreatingAnInstance()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        harness.ContentInstall.PrepareResult = Result<ModpackPreparation>.Fail(
+            "modpack.unsupported",
+            "不是受支持的整合包：缺少 modrinth.index.json 或 manifest.json。");
+        await vm.EnsureLoadedAsync();
+
+        await vm.EnterModpackModeAsync(ModpackDeploymentSource.FromOnline(ModpackHit(), ModpackVersion()));
+
+        Assert.True(vm.IsModpackMode);
+        Assert.Equal(InstanceDeploymentState.Failed, vm.DeploymentState);
+        Assert.False(vm.CanStartDownload);
+        Assert.True(vm.ShowErrorInfo);
+        Assert.Contains("不是受支持的整合包", vm.ErrorText);
+        Assert.False(vm.CanPreviewModpackFiles);
+        Assert.Equal(DeploymentItemStatus.Failed, vm.ModpackItem.Status);
+
+        await vm.StartDownloadCommand.ExecuteAsync(null);
+
+        Assert.Empty(harness.ContentInstall.DeployCalls);
+        Assert.Empty(harness.Install.Calls);
+    }
+
+    [Fact]
+    public async Task LocalArchiveEntersTheSameModpackModeWithoutDownloading()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        var archive = CreateLocalMrpack(harness.Root);
+        await vm.EnsureLoadedAsync();
+
+        await vm.EnterModpackModeAsync(ModpackDeploymentSource.FromLocalArchive(archive));
+
+        Assert.Empty(harness.ContentInstall.PrepareCalls);
+        Assert.True(vm.IsModpackMode);
+        Assert.Equal("Local Pack", vm.InstanceName);
+        Assert.Equal("1.20.1", vm.ModpackGameVersion);
+        Assert.Equal("Fabric", vm.ModpackLoader);
+        Assert.Equal("0.15.0", vm.ModpackLoaderVersion);
+        Assert.Equal("0 个", vm.ModpackModCountText);
+        Assert.True(vm.CanStartDownload);
+
+        await vm.StartDownloadCommand.ExecuteAsync(null);
+
+        var request = Assert.Single(harness.ContentInstall.DeployCalls);
+        Assert.Equal(archive, request.ArchivePath);
+        Assert.Equal("1.20.1", request.GameVersion);
+    }
+
+    [Fact]
+    public async Task UnsupportedManifestLoaderIsReportedWithoutCreatingAnInstance()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        harness.ContentInstall.PrepareResult = Result<ModpackPreparation>.Ok(
+            Preparation(loader: "quilt", loaderVersion: null));
+        await vm.EnsureLoadedAsync();
+
+        await vm.EnterModpackModeAsync(ModpackDeploymentSource.FromOnline(ModpackHit(), ModpackVersion()));
+
+        Assert.Equal(InstanceDeploymentState.Failed, vm.DeploymentState);
+        Assert.Contains("Quilt", vm.StatusMessage);
+        Assert.False(vm.CanStartDownload);
+
+        await vm.StartDownloadCommand.ExecuteAsync(null);
+
+        Assert.Empty(harness.ContentInstall.DeployCalls);
+    }
+
+    [Fact]
+    public async Task ModpackModeRequiresResetBeforeAnotherDeployment()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        harness.ContentInstall.PrepareResult = Result<ModpackPreparation>.Ok(Preparation());
+        harness.ContentInstall.DeployResult = Result<ModpackImportResult>.Ok(new ModpackImportResult(
+            "Fancy Pack",
+            "1.2.0",
+            3,
+            0,
+            0,
+            [],
+            "C:\\temp\\pack.mrpack",
+            "inst-modpack"));
+        await vm.EnsureLoadedAsync();
+        await vm.EnterModpackModeAsync(ModpackDeploymentSource.FromOnline(ModpackHit(), ModpackVersion()));
+        await vm.StartDownloadCommand.ExecuteAsync(null);
+        Assert.Equal(InstanceDeploymentState.Succeeded, vm.DeploymentState);
+
+        await vm.EnterModpackModeAsync(ModpackDeploymentSource.FromLocalArchive(
+            Path.Combine(harness.Root, "ignored.mrpack")));
+
+        Assert.Equal(InstanceDeploymentState.Succeeded, vm.DeploymentState);
+        Assert.Equal("Fancy Pack", vm.ModpackName);
+        Assert.Contains("重新布置", vm.StatusMessage);
+        Assert.Single(harness.ContentInstall.PrepareCalls);
+    }
+
+    [Fact]
+    public async Task ResetDeploymentLeavesModpackModeAndClearsItsConfiguration()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        harness.ContentInstall.PrepareResult = Result<ModpackPreparation>.Ok(Preparation());
+        harness.ContentInstall.DeployResult = Result<ModpackImportResult>.Ok(new ModpackImportResult(
+            "Fancy Pack",
+            "1.2.0",
+            3,
+            0,
+            0,
+            [],
+            "C:\\temp\\pack.mrpack",
+            "inst-modpack"));
+        await vm.EnsureLoadedAsync();
+        var location = vm.InstallLocationText;
+        await vm.EnterModpackModeAsync(ModpackDeploymentSource.FromOnline(ModpackHit(), ModpackVersion()));
+        await vm.StartDownloadCommand.ExecuteAsync(null);
+
+        vm.ResetDeploymentCommand.Execute(null);
+
+        Assert.False(vm.IsModpackMode);
+        Assert.True(vm.ShowNormalConfiguration);
+        Assert.Equal(string.Empty, vm.InstanceName);
+        Assert.Equal(string.Empty, vm.ModpackName);
+        Assert.Equal(string.Empty, vm.ModpackModCountText);
+        Assert.Equal(InstanceDeploymentState.Configuring, vm.DeploymentState);
+        Assert.Equal(location, vm.InstallLocationText);
+        Assert.False(vm.ShowProgress);
+    }
+
+    [Fact]
+    public async Task ModpackPreviewOpensTheDeclaredFileList()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        harness.Dialogs.Available = true;
+        harness.ContentInstall.PrepareResult = Result<ModpackPreparation>.Ok(Preparation());
+        await vm.EnsureLoadedAsync();
+        await vm.EnterModpackModeAsync(ModpackDeploymentSource.FromOnline(ModpackHit(), ModpackVersion()));
+
+        await vm.OpenModpackPreviewCommand.ExecuteAsync(null);
+
+        var request = Assert.Single(harness.Dialogs.Requests);
+        var dialog = Assert.IsType<ModpackModListDialogViewModel>(request.Content);
+        Assert.Equal(3, dialog.Entries.Count);
+        Assert.Contains("mods/mod1.jar", dialog.Entries);
+        Assert.Equal("3 个", dialog.CountText);
+        Assert.Empty(harness.Install.Calls);
+        Assert.Empty(harness.ContentInstall.DeployCalls);
+    }
+
+    [Fact]
+    public async Task DeploymentDoesNotFlagTheInstanceItJustCreatedAsDuplicate()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        await vm.EnsureLoadedAsync();
+        vm.InstanceName = "新建实例";
+
+        await vm.StartDownloadCommand.ExecuteAsync(null);
+
+        Assert.Single(harness.Instances.Existing);
+        Assert.Equal(InstanceDeploymentState.Succeeded, vm.DeploymentState);
+        Assert.False(vm.IsNameDuplicate);
+    }
+
+    [Fact]
+    public async Task PagePercentUsesTheReliableByteTotalWhileASingleFileDownloads()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        await vm.EnsureLoadedAsync();
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Install.Gate = gate;
+        harness.Install.BeforeGate =
+        [
+            new InstallProgress(InstallStage.Client, "正在下载客户端", 0, 1, 15 * 1024 * 1024, 40 * 1024 * 1024, "client.jar"),
+        ];
+
+        var deploying = vm.StartDownloadCommand.ExecuteAsync(null);
+
+        Assert.Equal(37.5, vm.ProgressValue, precision: 3);
+        Assert.Equal("38%", vm.ProgressPercentText);
+
+        gate.SetResult(true);
+        await deploying;
+        Assert.Equal("100%", vm.ProgressPercentText);
+    }
+
+    [Fact]
+    public async Task ExitingModpackModeClearsTheAutoFilledNameAndKeepsUserEdits()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        harness.ContentInstall.PrepareResult = Result<ModpackPreparation>.Ok(Preparation());
+        await vm.EnsureLoadedAsync();
+        await vm.EnterModpackModeAsync(ModpackDeploymentSource.FromOnline(ModpackHit(), ModpackVersion()));
+        Assert.Equal("Fancy Pack", vm.InstanceName);
+
+        vm.ExitModpackModeCommand.Execute(null);
+
+        Assert.False(vm.IsModpackMode);
+        Assert.True(vm.ShowNormalConfiguration);
+        Assert.Equal(string.Empty, vm.InstanceName);
+
+        await vm.EnterModpackModeAsync(ModpackDeploymentSource.FromOnline(ModpackHit(), ModpackVersion()));
+        vm.InstanceName = "我的名字";
+        vm.ExitModpackModeCommand.Execute(null);
+
+        Assert.Equal("我的名字", vm.InstanceName);
+        Assert.False(vm.IsModpackMode);
+    }
+
+    [Fact]
+    public async Task GameAndFabricLoaderSizesComeFromTheVersionMetadata()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        harness.Sizes.GameSizes = new VersionDownloadSizes(
+            40L * 1024 * 1024,
+            110L * 1024 * 1024,
+            480L * 1024 * 1024,
+            10L * 1024 * 1024);
+        harness.Sizes.LoaderSize = 12L * 1024 * 1024;
+        await vm.EnsureLoadedAsync();
+        await vm.PendingSizeRefresh;
+
+        Assert.Equal("640 MB", vm.GameItem.SizeText);
+        Assert.Equal(DeploymentItemStatus.NotSelected, vm.LoaderItem.Status);
+
+        vm.SelectedLoader = vm.LoaderChoices.First(choice => choice.Id == LoaderKinds.Fabric);
+        await vm.PendingComponentRefresh;
+        await vm.PendingSizeRefresh;
+
+        Assert.Equal("12 MB", vm.LoaderItem.SizeText);
+        Assert.Equal("640 MB", vm.GameItem.SizeText);
+        Assert.Contains(("1.21.1", "0.16.14"), harness.Sizes.LoaderCalls);
+    }
+
+    [Fact]
+    public async Task UnknownSizesStayUnknownAndDoNotBlockDeployment()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        await vm.EnsureLoadedAsync();
+        await vm.PendingSizeRefresh;
+
+        Assert.Equal("大小未知", vm.GameItem.SizeText);
+
+        await vm.StartDownloadCommand.ExecuteAsync(null);
+
+        Assert.Equal(InstanceDeploymentState.Succeeded, vm.DeploymentState);
+        Assert.Equal("大小未知", vm.GameItem.SizeText);
+    }
+
+    [Fact]
+    public async Task ModpackModeUsesTheManifestVersionForTheDownloadSizes()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        harness.Sizes.GameSizes = new VersionDownloadSizes(
+            40L * 1024 * 1024,
+            110L * 1024 * 1024,
+            480L * 1024 * 1024,
+            10L * 1024 * 1024);
+        harness.Sizes.LoaderSize = 12L * 1024 * 1024;
+        harness.ContentInstall.PrepareResult = Result<ModpackPreparation>.Ok(Preparation());
+        await vm.EnsureLoadedAsync();
+
+        await vm.EnterModpackModeAsync(ModpackDeploymentSource.FromOnline(ModpackHit(), ModpackVersion()));
+        await vm.PendingSizeRefresh;
+
+        Assert.Equal("640 MB", vm.GameItem.SizeText);
+        Assert.Equal("12 MB", vm.LoaderItem.SizeText);
+        Assert.Contains(("1.21.1", "0.16.14"), harness.Sizes.LoaderCalls);
+    }
+
+    [Fact]
+    public async Task NonFabricLoaderSizeStaysUnknown()
+    {
+        using var harness = new Harness();
+        var vm = harness.ViewModel;
+        harness.Sizes.LoaderSize = 12L * 1024 * 1024;
+        harness.ContentInstall.PrepareResult = Result<ModpackPreparation>.Ok(
+            Preparation(loader: "forge", loaderVersion: "47.4.0"));
+        await vm.EnsureLoadedAsync();
+
+        await vm.EnterModpackModeAsync(ModpackDeploymentSource.FromOnline(ModpackHit(), ModpackVersion()));
+        await vm.PendingSizeRefresh;
+
+        Assert.Equal("大小未知", vm.LoaderItem.SizeText);
+        Assert.Empty(harness.Sizes.LoaderCalls);
+    }
+
+    private static ModpackPreparation Preparation(
+        string name = "Fancy Pack",
+        string? gameVersion = "1.21.1",
+        string loader = "fabric",
+        string? loaderVersion = "0.16.14",
+        int? mods = 3,
+        long size = 2 * 1024 * 1024)
+    {
+        var files = mods is null
+            ? null
+            : Enumerable.Range(1, mods.Value)
+                .Select(index => new ModpackArchiveInspector.ModpackModEntry($"mods/mod{index}.jar", null, null))
+                .ToArray();
+        return new ModpackPreparation(
+            "C:\\temp\\pack.mrpack",
+            new ModpackArchiveInspector.ModpackMetadata(name, gameVersion, loader, loaderVersion, "1.2.0")
+            {
+                ModFiles = files,
+            },
+            size);
+    }
+
+    private static ContentHit ModpackHit() => new(
+        ContentSource.Modrinth,
+        "pack",
+        "pack",
+        "Fancy Pack",
+        "A test modpack",
+        "author",
+        1,
+        null,
+        null,
+        null,
+        ContentKind.ModPack);
+
+    private static ContentVersion ModpackVersion() => new(
+        ContentSource.Modrinth,
+        "pack",
+        "v1",
+        "1.2.0",
+        ["1.21.1"],
+        ["fabric"],
+        "pack.mrpack",
+        2048,
+        null);
+
+    private static string CreateLocalMrpack(string directory)
+    {
+        var path = Path.Combine(directory, "local-pack.mrpack");
+        using (var archive = System.IO.Compression.ZipFile.Open(
+                   path,
+                   System.IO.Compression.ZipArchiveMode.Create))
+        {
+            var index = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                formatVersion = 1,
+                game = "minecraft",
+                versionId = "1.0.0",
+                name = "Local Pack",
+                dependencies = new Dictionary<string, string>
+                {
+                    ["minecraft"] = "1.20.1",
+                    ["fabric-loader"] = "0.15.0",
+                },
+                files = Array.Empty<object>(),
+            });
+            var entry = archive.CreateEntry("modrinth.index.json");
+            using var writer = new StreamWriter(entry.Open());
+            writer.Write(index);
+        }
+
+        return path;
+    }
+
     private sealed class Harness : IDisposable
     {
         private readonly SynchronizationContext? _previous;
@@ -431,6 +908,8 @@ public sealed class InstanceVersionPageTests
             ViewModel = new InstanceVersionPageViewModel(
                 Instances,
                 Install,
+                ContentInstall,
+                Sizes,
                 Versions,
                 Loaders,
                 Workspace,
@@ -446,6 +925,10 @@ public sealed class InstanceVersionPageTests
         public FakeInstanceService Instances { get; } = new();
 
         public FakeInstallService Install { get; } = new();
+
+        public FakeContentInstallService ContentInstall { get; } = new();
+
+        public FakeSizeEstimator Sizes { get; } = new();
 
         public FakeVersionCatalog Versions { get; } = new();
 
@@ -624,6 +1107,117 @@ public sealed class InstanceVersionPageTests
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
+    private sealed class FakeContentInstallService : IContentInstallService
+    {
+        public List<(ContentHit Hit, ContentVersion Version)> PrepareCalls { get; } = [];
+
+        public List<ModpackDeploymentRequest> DeployCalls { get; } = [];
+
+        public Result<ModpackPreparation>? PrepareResult { get; set; }
+
+        public Result<ModpackImportResult>? DeployResult { get; set; }
+
+        public Task<Result<ModpackPreparation>> PrepareModpackAsync(
+            ContentHit hit,
+            ContentVersion version,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            PrepareCalls.Add((hit, version));
+            return Task.FromResult(PrepareResult
+                                   ?? Result<ModpackPreparation>.Fail("modpack.prepare_unset", "未配置准备结果。"));
+        }
+
+        public Task<Result<ModpackImportResult>> DeployModpackAsync(
+            ModpackDeploymentRequest request,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            DeployCalls.Add(request);
+            return Task.FromResult(DeployResult
+                                   ?? Result<ModpackImportResult>.Ok(new ModpackImportResult(
+                                       "Pack",
+                                       "1.0",
+                                       2,
+                                       0,
+                                       0,
+                                       [],
+                                       request.ArchivePath,
+                                       "inst-modpack")));
+        }
+
+        public Task<Result<ContentInstallReport>> InstallAsync(
+            string instanceId,
+            ContentHit hit,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<Result<ContentInstallReport>> InstallResolvedAsync(
+            string instanceId,
+            ResolvedDependency dependency,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<Result<ContentDownloadReport>> DownloadAsync(
+            ContentHit hit,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<Result<ModpackImportResult>> ImportModpackAsync(
+            string instanceId,
+            ContentHit hit,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<Result<ModpackImportResult>> CreateInstanceAndImportModpackAsync(
+            ContentHit hit,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<Result<ContentInstallReport>> InstallVersionAsync(
+            string instanceId,
+            ContentHit hit,
+            ContentVersion version,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<Result<ContentDownloadReport>> DownloadVersionAsync(
+            ContentHit hit,
+            ContentVersion version,
+            string directory,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class FakeSizeEstimator : IVersionDownloadSizeEstimator
+    {
+        public List<(string VersionId, string? Url)> GameCalls { get; } = [];
+
+        public List<(string GameVersion, string LoaderVersion)> LoaderCalls { get; } = [];
+
+        public VersionDownloadSizes GameSizes { get; set; } = new(null, null, null, null);
+
+        public long? LoaderSize { get; set; }
+
+        public Task<Result<VersionDownloadSizes>> EstimateGameFilesAsync(
+            string versionId,
+            string? versionJsonUrl,
+            CancellationToken cancellationToken = default)
+        {
+            GameCalls.Add((versionId, versionJsonUrl));
+            return Task.FromResult(Result<VersionDownloadSizes>.Ok(GameSizes));
+        }
+
+        public Task<long?> EstimateFabricLoaderAsync(
+            string gameVersion,
+            string loaderVersion,
+            CancellationToken cancellationToken = default)
+        {
+            LoaderCalls.Add((gameVersion, loaderVersion));
+            return Task.FromResult(LoaderSize);
+        }
+    }
+
     private sealed class FakeVersionCatalog : IVersionCatalog
     {
         public List<MinecraftGameVersion> Versions { get; } = [];
@@ -756,7 +1350,9 @@ public sealed class InstanceVersionPageTests
 
     private sealed class FakeDialogEngine : IDialogEngine
     {
-        public bool IsAvailable => false;
+        public bool Available { get; set; }
+
+        public bool IsAvailable => Available;
 
         public List<DialogRequest> Requests { get; } = [];
 

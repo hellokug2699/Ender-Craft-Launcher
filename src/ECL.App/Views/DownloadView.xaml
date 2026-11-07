@@ -17,7 +17,7 @@
                 </StackPanel>
                 <Button Grid.Column="1"
                         Content="{loc:Loc Key=common.refresh}"
-                        Command="{Binding RefreshInstancesCommand}"
+                        Command="{Binding RefreshCommand}"
                         Style="{StaticResource GhostButton}"
                         VerticalAlignment="Top" />
             </Grid>
@@ -44,63 +44,6 @@
             <!-- ==================== 实例版本 ==================== -->
             <StackPanel Visibility="{Binding IsGameTab, Converter={StaticResource BoolToVisibility}}">
                 <ContentControl Content="{Binding InstanceVersion}" />
-
-                <!--
-                    过渡区（B4b 待迁移）：「安装 / 补全已有实例」属于实例安装流程，
-                    下载页重写的实例版本页面只负责新建实例；在实例安装的新归属落地前保留本卡片，
-                    避免删除现有可用入口。B4b 完成后移除。
-                -->
-                <Border Style="{StaticResource Card}" Margin="0,16,0,0">
-                    <StackPanel>
-                        <TextBlock Text="{loc:Loc Key=downloads.game.existing}" Style="{StaticResource SectionText}" />
-                        <TextBlock Text="{loc:Loc Key=downloads.game.existingHint}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10"
-                                   TextWrapping="Wrap"
-                                   Margin="0,6,0,0" />
-                        <Grid Margin="0,10,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="10" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="10" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <ComboBox ItemsSource="{Binding TargetInstances}"
-                                      SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
-                                      ItemTemplate="{StaticResource NameItemTemplate}" />
-                            <Button Grid.Column="2"
-                                    Content="{loc:Loc Key=downloads.game.install}"
-                                    Command="{Binding InstallGameCommand}"
-                                    Style="{StaticResource PrimaryButton}"
-                                    IsEnabled="{Binding HasTargetInstance}" />
-                            <Button Grid.Column="4"
-                                    Content="{loc:Loc Key=instances.java.download}"
-                                    Command="{Binding DownloadJavaCommand}"
-                                    Style="{StaticResource GhostButton}"
-                                    IsEnabled="{Binding HasTargetInstance}" />
-                        </Grid>
-                        <TextBlock Text="{Binding TargetInstanceHint}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10"
-                                   Margin="0,6,0,0"
-                                   TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding Game.JavaStatus}"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   FontSize="10"
-                                   Margin="0,6,0,0"
-                                   TextWrapping="Wrap" />
-                        <ProgressBar Height="4" Margin="0,10,0,0" Minimum="0" Maximum="100"
-                                     Value="{Binding Game.InstallProgressValue}"
-                                     IsIndeterminate="{Binding Game.InstallIndeterminate}"
-                                     Visibility="{Binding Game.IsInstalling, Converter={StaticResource BoolToVisibility}}" />
-                        <TextBlock Text="{Binding Game.Operation.InstallStatus}"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   FontSize="10"
-                                   Margin="0,6,0,0"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
             </StackPanel>
 
             <!-- ==================== 内容发现（模组 / 整合包 / 资源包 / 光影包 / 数据包） ==================== -->

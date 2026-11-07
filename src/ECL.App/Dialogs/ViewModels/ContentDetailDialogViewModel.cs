@@ -229,7 +229,17 @@ public sealed partial class ContentDetailDialogViewModel : ObservableObject, IDi
             return;
         }
 
-        await _download(row).ConfigureAwait(true);
+        var leavesThePage = Kind == ContentKind.ModPack;
+        var navigation = _download(row);
+        if (leavesThePage)
+        {
+            // 整合包版本只负责把用户带到实例版本页的整合包模式：先关闭详情弹窗，
+            // 让归档下载/清单解析的进度在实例版本页可见（关闭弹窗不取消部署）。
+            _cancellation.Cancel();
+            _session?.TryClose(DialogOutcome.Cancel);
+        }
+
+        await navigation.ConfigureAwait(true);
     }
 
     [RelayCommand]

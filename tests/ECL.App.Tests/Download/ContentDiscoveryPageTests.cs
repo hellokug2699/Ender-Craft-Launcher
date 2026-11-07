@@ -300,7 +300,12 @@ public sealed class ContentDiscoveryPageTests
     {
         using var harness = new Harness();
         var page = harness.Create(ContentKind.Mod);
-        await page.ActivateForInstanceAsync("removed-instance", "sodium");
+        await page.ActivateAsync(ContentSearchContext.ForExistingInstance(
+            ContentKind.Mod,
+            "removed-instance",
+            gameVersion: null,
+            loader: null,
+            query: "sodium"));
 
         Assert.Equal("目标实例已失效，请重新选择实例后再安装模组。", page.StatusMessage);
         Assert.Empty(page.Results);
@@ -311,7 +316,12 @@ public sealed class ContentDiscoveryPageTests
     {
         using var harness = new Harness();
         var page = harness.Create(ContentKind.Mod);
-        await page.ActivateForInstanceAsync("alpha", "sodium");
+        await page.ActivateAsync(ContentSearchContext.ForExistingInstance(
+            ContentKind.Mod,
+            "alpha",
+            gameVersion: "1.20.1",
+            loader: "fabric",
+            query: "sodium"));
 
         Assert.True(page.UseExistingInstance);
         Assert.Equal("alpha", page.SelectedInstance?.Id);
@@ -321,10 +331,19 @@ public sealed class ContentDiscoveryPageTests
     }
 
     [Fact]
-    public async Task ModpackRowsExposeTheCapabilityBoundaryInsteadOfAFakeDownload()
+    public async Task ModpackVersionsEnterTheSharedModpackDeploymentInsteadOfInstallingHere()
     {
         using var harness = new Harness();
         var page = harness.Create(ContentKind.ModPack);
+        ContentHit? openedHit = null;
+        ContentVersion? openedVersion = null;
+        page.OpenModpackDeployment = (hit, version) =>
+        {
+            openedHit = hit;
+            openedVersion = version;
+            return Task.CompletedTask;
+        };
+
         await page.EnsureLoadedAsync();
         await page.SearchCommand.ExecuteAsync(null);
         await page.OpenDetailCommand.ExecuteAsync(page.Results[0]);
@@ -332,14 +351,17 @@ public sealed class ContentDiscoveryPageTests
         await detail.LoadAsync();
 
         var row = detail.AllVersions[0];
-        Assert.False(row.CanRequestDownload);
-        Assert.False(row.CanDownload);
-        Assert.Contains("B4b", row.DownloadHint);
+        Assert.True(row.CanRequestDownload);
+        Assert.True(row.CanDownload);
 
         harness.Dialogs.Fallback = new DialogResult(DialogOutcome.Primary);
         await detail.DownloadVersionCommand.ExecuteAsync(row);
+
+        Assert.Same(row.Hit, openedHit);
+        Assert.Same(row.Version, openedVersion);
         Assert.Empty(harness.Install.InstalledVersions);
         Assert.Empty(harness.Install.DownloadedVersions);
+        Assert.Equal(ContentVersionStatus.Idle, row.Status);
     }
 
     [Fact]
@@ -633,6 +655,17 @@ public sealed class ContentDiscoveryPageTests
 
         public Task<Result<ModpackImportResult>> CreateInstanceAndImportModpackAsync(
             ContentHit hit,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<Result<ModpackPreparation>> PrepareModpackAsync(
+            ContentHit hit,
+            ContentVersion version,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<Result<ModpackImportResult>> DeployModpackAsync(
+            ModpackDeploymentRequest request,
             IProgress<ContentProgress>? progress = null,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }

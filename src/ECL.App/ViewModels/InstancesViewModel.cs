@@ -66,6 +66,12 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     public Func<string, Task<string>>? GetModHealthSummary { get; set; }
 
+    /// <summary>
+    /// 本地整合包解析成功后的统一出口（instances.md §5.4）：由 Shell 接线到
+    /// “下载中心 → 实例版本 · 整合包模式”。主动选择与全局拖拽共用本入口。
+    /// </summary>
+    public Func<string, Task>? OpenModpackDeployment { get; set; }
+
     public ObservableCollection<InstanceItemViewModel> Instances { get; } = [];
 
     public ObservableCollection<InstanceSourceGroupViewModel> SourceGroups { get; } = [];
@@ -342,8 +348,8 @@ public sealed partial class InstancesViewModel : ObservableObject
 
     /// <summary>
     /// “导入整合包”（instances.md §5.1）：只允许 .zip / .mrpack，读取清单后给出失败或成功状态。
-    /// 成功后的“下载中心 → 实例版本 · 整合包模式”属于下载页迁移批次（B4），
-    /// 当前构建不会伪造该流程，而是明确说明尚不可继续。
+    /// 解析成功后统一进入“下载中心 → 实例版本”的整合包模式（§5.4），与在线下载共用同一部署流程；
+    /// 本页不建立第二套安装表单，也不直接把整合包写入任何一个已有实例。
     /// </summary>
     [RelayCommand]
     private async Task ImportModpackAsync()
@@ -360,7 +366,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     }
 
     /// <summary>主动选择与全局拖拽共用的解析入口。</summary>
-    public Task ImportModpackFileAsync(string archivePath)
+    public async Task ImportModpackFileAsync(string archivePath)
     {
         var inspection = ModpackArchiveInspector.Read(archivePath);
         if (!inspection.IsSuccess)
@@ -368,14 +374,17 @@ public sealed partial class InstancesViewModel : ObservableObject
             _dialogs.ShowError(
                 _localizer.Get("instances.modpack.title"),
                 _localizer.Get("instances.modpack.notFound"));
-            return Task.CompletedTask;
+            return;
         }
 
-        var metadata = inspection.Value!;
-        _dialogs.ShowInfo(
-            _localizer.Get("instances.modpack.title"),
-            _localizer.Get("instances.modpack.notAvailable", metadata.Name));
-        return Task.CompletedTask;
+        if (OpenModpackDeployment is null)
+        {
+            // 只可能发生在页面接线缺失时；明确报错，不伪造进入部署模式或直接创建实例。
+            StatusMessage = _localizer.Get("instances.modpack.deploymentUnavailable");
+            return;
+        }
+
+        await OpenModpackDeployment(archivePath).ConfigureAwait(true);
     }
 
     private async Task RefreshSourceGroupsAsync()
@@ -753,10 +762,11 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
     }
 
-    [RelayCommand]
-    private Task InstallAsync() => InstallForAsync(SelectedInstance, Operation);
-
-    /// <summary>对指定实例执行版本/加载器补全安装；进度写入调用方自己的状态。</summary>
+    /// <summary>
+    /// 对指定实例执行版本/加载器补全安装；进度写入调用方自己的状态。
+    /// 入口是实例工作区的「补全/修复」（<see cref="RepairForAsync"/>）：既有实例的安装不经过
+    /// 下载中心的新建实例流程，两者只共用领域安装服务。
+    /// </summary>
     internal async Task InstallForAsync(InstanceItemViewModel? item, InstanceOperationState state)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -1329,31 +1339,6 @@ public sealed partial class InstancesViewModel : ObservableObject
         {
             IsBusy = false;
             EndDownloadUi();
-        }
-    }
-
-    /// <summary>
-    /// 为指定实例准备 Java 运行时并返回结果文案（内容下载页复用）。
-    /// 目标实例由调用方显式给出，不读取共享的选择状态。
-    /// </summary>
-    public async Task<string> EnsureJavaForInstanceAsync(string instanceId)
-    {
-        var instance = Instances.FirstOrDefault(item =>
-            string.Equals(item.Model.Id, instanceId, StringComparison.Ordinal));
-        if (instance is null)
-        {
-            return _localizer.Get("instances.selectFirst");
-        }
-
-        try
-        {
-            var status = await ProvisionJavaAsync(instance.Model, progress: null).ConfigureAwait(true);
-            await UpdateJavaStatusAsync().ConfigureAwait(true);
-            return status;
-        }
-        catch (Exception exception)
-        {
-            return exception.Message;
         }
     }
 

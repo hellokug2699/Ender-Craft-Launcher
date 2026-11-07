@@ -57,6 +57,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IInstanceService, InstanceService>();
         services.AddSingleton<IVersionResolver, VersionResolver>();
         services.AddSingleton<IVersionCatalog, MojangVersionCatalog>();
+        services.AddSingleton<IVersionDownloadSizeEstimator, VersionDownloadSizeEstimator>();
         services.AddSingleton<SystemProcessLauncher>();
         services.AddSingleton<LogHostProcessLauncher>();
         services.AddSingleton<IProcessLauncher, HybridProcessLauncher>();

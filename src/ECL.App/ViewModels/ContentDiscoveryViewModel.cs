@@ -25,7 +25,8 @@ namespace Ecl.App.ViewModels;
 /// - 搜索只接受英文；中文输入立即标红且不提交。
 /// - 目标实例、版本与加载器筛选来自真实数据；已有实例模式下版本与加载器锁定。
 /// - 版本行由来源 API 重新解析后安装；页内只有条级进度，全局任务状态归 Output/Task。
-/// - 整合包部署需要实例版本页的整合包模式（B4b），数据包需要世界目标；能力未接入前置灰真实原因。
+/// - 整合包版本只负责发现：选定后进入实例版本页的整合包模式（B4b），不在本页建立第二套安装表单；
+///   数据包需要世界目标，能力未接入前置灰真实原因。
 /// </para>
 /// </summary>
 public sealed partial class ContentDiscoveryViewModel : ObservableObject
@@ -45,6 +46,7 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
     private Task? _initializeTask;
     private bool _suppressFilterReset;
     private bool _hasSearched;
+    private ContentSearchContext? _context;
 
     public ContentDiscoveryViewModel(
         ContentKind kind,
@@ -142,8 +144,17 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
 
     public bool ShowsShaderSupport => Kind == ContentKind.ShaderPack;
 
-    /// <summary>整合包部署模式属于 B4b：本页只提供发现与版本查看。</summary>
-    public bool CanRequestDownloads => Kind != ContentKind.ModPack && !IsUnavailable;
+    /// <summary>
+    /// 整合包版本行不再被能力缺口禁用：选定版本后进入实例版本页的整合包模式（`download-modpacks.md` §8）。
+    /// 数据包仍需要世界目标，保持不可用。
+    /// </summary>
+    public bool CanRequestDownloads => !IsUnavailable;
+
+    /// <summary>
+    /// 整合包版本动作的导航出口，由 <see cref="DownloadViewModel"/> 接到实例版本页的整合包模式。
+    /// 为空时明确报告入口不可用，不伪造部署或直接写入实例。
+    /// </summary>
+    public Func<ContentHit, ContentVersion, Task>? OpenModpackDeployment { get; set; }
 
     public ObservableCollection<ContentSourceChoice> Sources { get; } = [];
 
@@ -223,8 +234,6 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
 
     public string NoInstancesText => _localizer.Get("downloads.discovery.noInstances");
 
-    public string ModpackCapabilityNote => _localizer.Get("downloads.discovery.modpackBlocked");
-
     /// <summary>等待初始化（实例列表 + 版本清单）完成；重复调用复用同一任务。</summary>
     public Task EnsureLoadedAsync() => _initializeTask ??= InitializeAsync();
 
@@ -237,19 +246,55 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 从实例工作区模组/资源包/光影包页带入稳定 InstanceId 与搜索词
-    /// （`download-mods.md` §4、`download-resource-template.md` §5）。
+    /// 按结构化上下文进入页面（`download-mods.md` §4、`download-resource-template.md` §5）：
+    /// 已有实例模式使用稳定 InstanceId，版本与加载器来自上下文（调用方读取的实例事实）并锁定；
     /// 目标实例已失效时明确要求重新选择，不静默退化为自定义筛选或任意目录。
+    /// 无实例模式只应用筛选与搜索词，不改变任何实例。
     /// </summary>
-    public async Task ActivateForInstanceAsync(string instanceId, string? query)
+    public async Task ActivateAsync(ContentSearchContext context)
     {
+        ArgumentNullException.ThrowIfNull(context);
+
         await EnsureLoadedAsync().ConfigureAwait(true);
         await RefreshInstancesAsync().ConfigureAwait(true);
 
+        if (!context.ExistingInstance || context.InstanceId is null)
+        {
+            _context = context;
+            _suppressFilterReset = true;
+            try
+            {
+                UseExistingInstance = false;
+                if (context.GameVersion is { Length: > 0 } gameVersion)
+                {
+                    SelectedGameVersion = GameVersions.FirstOrDefault(item =>
+                                            string.Equals(item.Value, gameVersion, StringComparison.OrdinalIgnoreCase))
+                                        ?? SelectedGameVersion;
+                }
+
+                if (context.Loader is { Length: > 0 } loader)
+                {
+                    SelectedLoader = LoaderChoices.FirstOrDefault(item =>
+                                         string.Equals(item.Id, loader, StringComparison.OrdinalIgnoreCase))
+                                     ?? SelectedLoader;
+                }
+            }
+            finally
+            {
+                _suppressFilterReset = false;
+            }
+
+            Query = context.Query ?? string.Empty;
+            await RefreshShaderSupportAsync().ConfigureAwait(true);
+            await SearchAsync().ConfigureAwait(true);
+            return;
+        }
+
         var target = TargetInstances.FirstOrDefault(item =>
-            string.Equals(item.Id, instanceId, StringComparison.Ordinal));
+            string.Equals(item.Id, context.InstanceId, StringComparison.Ordinal));
         if (target is null)
         {
+            _context = null;
             _suppressFilterReset = true;
             try
             {
@@ -265,6 +310,7 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
             return;
         }
 
+        _context = context;
         _suppressFilterReset = true;
         try
         {
@@ -276,7 +322,7 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
             _suppressFilterReset = false;
         }
 
-        Query = query ?? string.Empty;
+        Query = context.Query ?? string.Empty;
         await RefreshShaderSupportAsync().ConfigureAwait(true);
         await SearchAsync().ConfigureAwait(true);
     }
@@ -492,8 +538,12 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
             .ConfigureAwait(true);
     }
 
+    /// <summary>
+    /// 已有实例模式下的版本筛选值：上下文（调用方读取的实例事实）优先，
+    /// 其次是本次页面刷新后的实例记录；两者都不猜测。
+    /// </summary>
     private string? FilterGameVersion => IsTargetLocked
-        ? SelectedInstance?.GameVersion
+        ? FirstNonEmpty(_context?.GameVersion, SelectedInstance?.GameVersion)
         : SelectedGameVersion?.Value;
 
     private string? FilterLoader
@@ -510,7 +560,8 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
                 return SelectedLoader?.Id;
             }
 
-            return SelectedInstance?.Loader?.Trim().ToLowerInvariant() switch
+            var loader = FirstNonEmpty(_context?.Loader, SelectedInstance?.Loader);
+            return loader?.Trim().ToLowerInvariant() switch
             {
                 "fabric" => "fabric",
                 "forge" or "cleanroom" => "forge",
@@ -520,6 +571,9 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
             };
         }
     }
+
+    private static string? FirstNonEmpty(string? primary, string? fallback) =>
+        !string.IsNullOrWhiteSpace(primary) ? primary : fallback;
 
     private ContentInstanceChoice? Target => IsTargetLocked ? SelectedInstance : null;
 
@@ -535,14 +589,31 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
             hit,
             version,
             CanRequestDownloads,
-            CanRequestDownloads ? null : ModpackCapabilityNote,
+            Kind == ContentKind.ModPack ? _localizer.Get("downloads.discovery.modpackOpen") : null,
             _localizer);
         _versionRows[key] = row;
         return row;
     }
 
     /// <summary>
-    /// 点击版本行下载按钮后的目标确认流程：已有实例 → 确认弹窗；自定义筛选 → 先选目录再确认。
+    /// 整合包版本 → 实例版本页整合包模式（`download-modpacks.md` §8）：本页不下载归档、
+    /// 不创建实例，也不显示假的进度；清单解析与部署由统一模式负责。
+    /// </summary>
+    private async Task OpenModpackDeploymentAsync(ContentVersionRowViewModel row)
+    {
+        if (OpenModpackDeployment is null)
+        {
+            StatusMessage = _localizer.Get("downloads.discovery.modpackEntryUnavailable");
+            return;
+        }
+
+        StatusMessage = _localizer.Get("downloads.discovery.modpackRedirect", row.VersionText);
+        await OpenModpackDeployment(row.Hit, row.Version).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 点击版本行下载按钮后的目标流程：整合包 → 实例版本页整合包模式（不在本页安装）；
+    /// 已有实例 → 确认弹窗；自定义筛选 → 先选目录再确认。
     /// 「安装到其他位置」总是重新选择合法目标，不静默改变本次安装目标（§7）。
     /// </summary>
     private async Task StartDownloadFlowAsync(ContentVersionRowViewModel row)
@@ -555,6 +626,12 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
         if (!row.CanRequestDownload)
         {
             StatusMessage = row.DownloadHint;
+            return;
+        }
+
+        if (Kind == ContentKind.ModPack)
+        {
+            await OpenModpackDeploymentAsync(row).ConfigureAwait(true);
             return;
         }
 
@@ -804,6 +881,12 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
         OnPropertyChanged(nameof(IsTargetLocked));
         OnPropertyChanged(nameof(ShowNoInstances));
         OnPropertyChanged(nameof(InstanceHint));
+        if (!_suppressFilterReset && !value)
+        {
+            // 用户取消已有实例模式：上下文里的版本/加载器不再代表当前目标。
+            _context = null;
+        }
+
         ClearResults();
         StatusMessage = string.Empty;
 
@@ -836,6 +919,8 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
             return;
         }
 
+        // 手动切换目标实例后，旧上下文中的版本/加载器不再适用。
+        _context = null;
         ClearResults();
         StatusMessage = string.Empty;
         _ = RefreshShaderSupportAsync();

@@ -178,6 +178,26 @@ public sealed record ModpackImportResult(
     string ArchivePath,
     string? InstanceId);
 
+/// <summary>
+/// 整合包部署前的准备结果：归档已落盘、清单已解析（`download-instance-versions.md` §5.2/§5.4）。
+/// 页面只用这里的真实信息装填锁定区域，不按来源搜索元数据或经验值补默认配置。
+/// </summary>
+public sealed record ModpackPreparation(
+    string ArchivePath,
+    ModpackArchiveInspector.ModpackMetadata Metadata,
+    long ArchiveSize);
+
+/// <summary>
+/// 新建实例并部署整合包的请求。配置全部来自整合包清单；页面只提供实例名称，
+/// 安装位置仍由新建实例的既有固定规则决定（主工作区）。
+/// </summary>
+public sealed record ModpackDeploymentRequest(
+    string InstanceName,
+    string ArchivePath,
+    string GameVersion,
+    string Loader,
+    string? LoaderVersion);
+
 /// <summary>把统一结果映射到平台具体的 classId / project_type。</summary>
 public static class ContentKinds
 {

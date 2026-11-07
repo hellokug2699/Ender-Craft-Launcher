@@ -20,6 +20,9 @@ public static class InstanceDeploymentPresentation
 
     public const string OptiFineItem = "optifine";
 
+    /// <summary>整合包模式下的整合包归档下载项（`download-instance-versions.md` §5.4）。</summary>
+    public const string ModpackItem = "modpack";
+
     /// <summary>下载项的状态文案；<see cref="DeploymentItemStatus.Idle"/> 表示尚未开始，不显示状态。</summary>
     public static string DescribeStatus(DeploymentItemStatus status, ILocalizer localizer) => status switch
     {

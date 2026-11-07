@@ -20,7 +20,14 @@ public enum MinecraftVersionKind
 public sealed record MinecraftGameVersion(
     string Id,
     MinecraftVersionKind Kind,
-    DateTimeOffset? ReleasedAt);
+    DateTimeOffset? ReleasedAt)
+{
+    /// <summary>
+    /// 版本 JSON 的官方地址（来自版本清单）。只用于安装前读取真实产物大小；
+    /// 为空时由页面回退到本机版本文件，不猜测地址。
+    /// </summary>
+    public string? Url { get; init; }
+}
 
 /// <summary>
 /// 读取 Mojang 版本清单，按“正式版 / 快照版 / 愚人节版”分类。
@@ -116,7 +123,7 @@ public sealed class MojangVersionCatalog(
 
             var versions = manifest.Versions
                 .Where(version => !string.IsNullOrWhiteSpace(version.Id))
-                .Select(version => Create(version.Id, version.Type, version.ReleaseTime))
+                .Select(version => Create(version.Id, version.Type, version.ReleaseTime, version.Url))
                 .Where(version => version is not null)
                 .Cast<MinecraftGameVersion>()
                 .ToArray();
@@ -132,7 +139,7 @@ public sealed class MojangVersionCatalog(
     }
 
     /// <summary>把清单条目映射为可选择的版本；不支持的旧版本返回 null。</summary>
-    public static MinecraftGameVersion? Create(string id, string type, string? releaseTime)
+    public static MinecraftGameVersion? Create(string id, string type, string? releaseTime, string? url = null)
     {
         var kind = Classify(id, type);
         if (kind is null)
@@ -141,7 +148,10 @@ public sealed class MojangVersionCatalog(
         }
 
         var releasedAt = DateTimeOffset.TryParse(releaseTime, out var parsed) ? parsed : (DateTimeOffset?)null;
-        return new MinecraftGameVersion(id, kind.Value, releasedAt);
+        return new MinecraftGameVersion(id, kind.Value, releasedAt)
+        {
+            Url = string.IsNullOrWhiteSpace(url) ? null : url,
+        };
     }
 
     /// <summary>按清单 type 与已知愚人节版本列表分类；alpha/beta 等不参与实例创建。</summary>

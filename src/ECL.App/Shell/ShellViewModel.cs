@@ -130,6 +130,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         instances.GetModHealthSummary = modsFactory.DescribeHealthAsync;
         modsFactory.OpenModBrowser = OpenModBrowser;
         contentPackFactory.OpenPackBrowser = OpenPackBrowser;
+        instances.OpenModpackDeployment = OpenModpackDeploymentAsync;
+        download.InstanceVersion.InstanceCreated = async instanceId =>
+        {
+            // 新建实例成功后立即出现在实例列表（Home 启动卡与实例页共用同一集合）。
+            await _instances.ReloadInstanceAsync(instanceId).ConfigureAwait(true);
+        };
         _exportFactory.OpenFolder = OpenExportFolder;
         instances.NavigateToDetails = instanceId => OpenInstanceWorkspace(instanceId);
         instances.NavigateBackFromDetails = NavigateToInstances;
@@ -380,8 +386,39 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         var contentKind = kind == ContentPackKind.ShaderPack
             ? Ecl.Minecraft.Content.ContentKind.ShaderPack
             : Ecl.Minecraft.Content.ContentKind.ResourcePack;
-        await _download.OpenContentBrowserAsync(instanceId, contentKind, null).ConfigureAwait(true);
+        await _download
+            .OpenContentBrowserAsync(CreateSearchContext(contentKind, instanceId, query: null))
+            .ConfigureAwait(true);
         ActivateDestination("download");
+    }
+
+    /// <summary>
+    /// 本地整合包解析成功后进入统一部署流程（instances.md §5.4）：
+    /// 先激活下载中心，再按归档路径进入实例版本页的整合包模式。
+    /// </summary>
+    private async Task OpenModpackDeploymentAsync(string archivePath)
+    {
+        ActivateDestination("download");
+        await _download.OpenModpackDeploymentAsync(archivePath).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 依赖搜索上下文（B4b）：目标实例使用稳定 InstanceId，版本与加载器取自已加载的实例记录。
+    /// 实例记录缺失时仍传入 InstanceId，下载中心会重新读取实例并明确报告目标失效。
+    /// </summary>
+    private ContentSearchContext CreateSearchContext(
+        Ecl.Minecraft.Content.ContentKind kind,
+        string instanceId,
+        string? query)
+    {
+        var instance = _instances.Instances.FirstOrDefault(item =>
+            string.Equals(item.Model.Id, instanceId, StringComparison.Ordinal));
+        return ContentSearchContext.ForExistingInstance(
+            kind,
+            instanceId,
+            instance?.Model.GameVersion,
+            instance?.Model.Loader,
+            query);
     }
 
     /// <summary>
@@ -408,7 +445,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private async Task OpenModBrowserAsync(string instanceId, string? query)
     {
-        await _download.OpenModBrowserAsync(instanceId, query).ConfigureAwait(true);
+        await _download
+            .OpenContentBrowserAsync(CreateSearchContext(
+                Ecl.Minecraft.Content.ContentKind.Mod,
+                instanceId,
+                query))
+            .ConfigureAwait(true);
         ActivateDestination("download");
     }
 

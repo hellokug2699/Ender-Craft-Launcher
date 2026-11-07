@@ -303,5 +303,18 @@ public sealed class ModDependencyInstallerTests
             IProgress<ContentProgress>? progress = null,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<Result<ModpackPreparation>> PrepareModpackAsync(
+            ContentHit hit,
+            ContentVersion version,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<Result<ModpackImportResult>> DeployModpackAsync(
+            ModpackDeploymentRequest request,
+            IProgress<ContentProgress>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Collections.ObjectModel;
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Dialogs;
@@ -9,6 +10,7 @@ using Ecl.App.Services;
 using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Core.Storage;
+using Ecl.Minecraft.Content;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Loaders;
@@ -31,6 +33,8 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
 {
     private readonly IInstanceService _instances;
     private readonly IVersionInstallService _install;
+    private readonly IContentInstallService _contentInstall;
+    private readonly IVersionDownloadSizeEstimator _sizeEstimator;
     private readonly IVersionCatalog _versionCatalog;
     private readonly ILoaderCatalog _loaderCatalog;
     private readonly IWorkspaceService _workspace;
@@ -46,11 +50,23 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
     private bool _initialized;
     private bool _suppressVersionReload;
     private int _componentGeneration;
+    private int _gameSizeGeneration;
+    private int _loaderSizeGeneration;
+    private long? _gameDownloadSize;
+    private long? _loaderDownloadSize;
     private string? _createdInstanceId;
+
+    private ModpackDeploymentSource? _modpackSource;
+    private ModpackPreparation? _modpackPreparation;
+    private int? _modpackInstalledMods;
+    private string? _modpackInstanceId;
+    private string _lastAutoModpackName = string.Empty;
 
     public InstanceVersionPageViewModel(
         IInstanceService instances,
         IVersionInstallService install,
+        IContentInstallService contentInstall,
+        IVersionDownloadSizeEstimator sizeEstimator,
         IVersionCatalog versionCatalog,
         ILoaderCatalog loaderCatalog,
         IWorkspaceService workspace,
@@ -62,6 +78,8 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
     {
         _instances = instances;
         _install = install;
+        _contentInstall = contentInstall;
+        _sizeEstimator = sizeEstimator;
         _versionCatalog = versionCatalog;
         _loaderCatalog = loaderCatalog;
         _workspace = workspace;
@@ -106,12 +124,17 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
             InstanceDeploymentPresentation.OptiFineItem,
             localizer.Get("downloads.deploy.item.optifine"),
             localizer);
+        ModpackItem = new DeploymentItemViewModel(
+            InstanceDeploymentPresentation.ModpackItem,
+            localizer.Get("downloads.deploy.item.modpack"),
+            localizer);
 
         // 初次进入时还没有选择版本/加载器：四个下载项都是「未选择」，由选择变化逐个启用。
         GameItem.MarkNotSelected();
         LoaderItem.MarkNotSelected();
         FabricApiItem.MarkNotSelected();
         OptiFineItem.MarkNotSelected();
+        ModpackItem.MarkNotSelected();
         InstallLocationText = localizer.Get("downloads.deploy.installLocationValue", paths.GameRoot);
     }
 
@@ -137,9 +160,12 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
 
     public DeploymentItemViewModel OptiFineItem { get; }
 
+    /// <summary>整合包归档；只在整合包模式下参与本次部署。</summary>
+    public DeploymentItemViewModel ModpackItem { get; }
+
     /// <summary>下载项按页面顺序排列；视图用同一顺序呈现状态线。</summary>
     public IReadOnlyList<DeploymentItemViewModel> DownloadItems =>
-        [GameItem, LoaderItem, FabricApiItem, OptiFineItem];
+        [GameItem, LoaderItem, FabricApiItem, OptiFineItem, ModpackItem];
 
     public string Title => _localizer.Get("downloads.version.title");
 
@@ -185,10 +211,15 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
 
 
 
-    public string DeploymentStateText => InstanceDeploymentPresentation.DescribeState(DeploymentState, _localizer);
+    public string DeploymentStateText => IsModpackPreparing
+        ? _localizer.Get("downloads.deploy.modpack.state.prepare")
+        : InstanceDeploymentPresentation.DescribeState(DeploymentState, _localizer);
 
     /// <summary>最近一次加载器/组件列表刷新；视图与测试可以等待它完成。</summary>
     public Task PendingComponentRefresh { get; private set; } = Task.CompletedTask;
+
+    /// <summary>最近一次产物大小刷新；测试可以等待它完成（大小只是辅助信息，失败不阻塞部署）。</summary>
+    public Task PendingSizeRefresh { get; private set; } = Task.CompletedTask;
 
     [ObservableProperty]
     private GameVersionTypeChoice? _selectedVersionType;
@@ -262,9 +293,13 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
     /// <summary>成功后页面只保留「重新布置」，不再显示开始下载。</summary>
     public bool ShowStartButton => DeploymentState != InstanceDeploymentState.Succeeded;
 
-    public bool CanRetry => DeploymentState == InstanceDeploymentState.Failed && _createdInstanceId is not null;
+    public bool CanRetry => DeploymentState == InstanceDeploymentState.Failed
+                            && (IsModpackMode
+                                ? _modpackSource is not null
+                                : _createdInstanceId is not null);
 
-    public bool IsConfigEnabled => !IsDeploying && DeploymentState != InstanceDeploymentState.Succeeded;
+    public bool IsConfigEnabled => !IsDeploying && !IsModpackPreparing
+                                   && DeploymentState != InstanceDeploymentState.Succeeded;
 
     public bool ShowFabricApi => string.Equals(SelectedLoader?.Id, LoaderKinds.Fabric, StringComparison.Ordinal);
 
@@ -275,6 +310,90 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
         string.Equals(SelectedLoader?.Id, LoaderKinds.Forge, StringComparison.Ordinal)
         || string.Equals(SelectedLoader?.Id, LoaderKinds.Cleanroom, StringComparison.Ordinal);
 
+    /// <summary>普通模式下才显示条件组件行；整合包模式的组件由清单决定。</summary>
+    public bool ShowFabricApiRow => ShowFabricApi && ShowNormalConfiguration;
+
+    public bool ShowOptiFineRow => ShowOptiFine && ShowNormalConfiguration;
+
+    /// <summary>整合包部署成功后回调（由 Shell 接到实例列表刷新）；InstanceId 稳定不变。</summary>
+    public Func<string, Task>? InstanceCreated { get; set; }
+
+    /// <summary>整合包模式：普通配置区隐藏，改为由清单驱动的只读配置区（§5.2）。</summary>
+    [ObservableProperty]
+    private bool _isModpackMode;
+
+    [ObservableProperty]
+    private ModpackModeState _modpackState;
+
+    [ObservableProperty]
+    private bool _isModpackPreparing;
+
+    [ObservableProperty]
+    private string _modpackName = string.Empty;
+
+    [ObservableProperty]
+    private string _modpackVersion = string.Empty;
+
+    [ObservableProperty]
+    private string _modpackGameVersion = string.Empty;
+
+    [ObservableProperty]
+    private string _modpackGameType = string.Empty;
+
+    [ObservableProperty]
+    private string _modpackLoader = string.Empty;
+
+    [ObservableProperty]
+    private string _modpackLoaderVersion = string.Empty;
+
+    [ObservableProperty]
+    private string _modpackArchiveSize = string.Empty;
+
+    /// <summary>模组数量文案：清单数量 / 安装中的真实完成计数 / 未知。</summary>
+    [ObservableProperty]
+    private string _modpackModCountText = string.Empty;
+
+    [ObservableProperty]
+    private string _modpackStatus = string.Empty;
+
+    public bool ShowNormalConfiguration => !IsModpackMode;
+
+    public bool ShowModpackConfiguration => IsModpackMode;
+
+    /// <summary>只有准备成功后才允许提交；准备中或失败时保持禁用。</summary>
+    public bool IsModpackReady => IsModpackMode && ModpackState == ModpackModeState.Ready;
+
+    /// <summary>清单声明了文件列表时才提供预览；数量未知时预览只说明未知原因。</summary>
+    public bool CanPreviewModpackFiles => IsModpackMode && _modpackPreparation?.Metadata.ModFiles is not null;
+
+    public bool ShowModpackExit => IsModpackMode && !IsDeploying && !IsModpackPreparing;
+
+    public string ModpackModeNotice => _localizer.Get("downloads.deploy.modpack.mode");
+
+    public string ModpackNameLabel => _localizer.Get("downloads.deploy.modpack.name");
+
+    public string ModpackVersionLabel => _localizer.Get("downloads.deploy.modpack.version");
+
+    public string ModpackGameVersionLabel => GameVersionLabel;
+
+    public string ModpackGameTypeLabel => VersionTypeLabel;
+
+    public string ModpackLoaderLabel => LoaderLabel;
+
+    public string ModpackLoaderVersionLabel => _localizer.Get("downloads.deploy.modpack.loaderVersion");
+
+    public string ModpackArchiveSizeLabel => _localizer.Get("downloads.deploy.modpack.archiveSize");
+
+    public string ModpackModCountLabel => _localizer.Get("downloads.deploy.modpack.modCount");
+
+    public string ModpackPreviewText => _localizer.Get("downloads.deploy.modpack.preview");
+
+    public string ModpackComponentsNote => _localizer.Get("downloads.deploy.modpack.components");
+
+    public string ModpackExitText => _localizer.Get("downloads.deploy.modpack.exit");
+
+    public string ModpackUnknownText => _localizer.Get("downloads.deploy.modpack.unknown");
+
 
     public string DuplicateNameMessage => _localizer.Get("downloads.deploy.nameDuplicate");
 
@@ -283,7 +402,9 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
         && !IsNameDuplicate
         && !IsLoadingVersions
         && !IsLoadingComponents
-        && SelectedGameVersion?.Value is { Length: > 0 };
+        && (IsModpackMode
+            ? IsModpackReady
+            : SelectedGameVersion?.Value is { Length: > 0 });
 
     /// <summary>首次进入下载中心时加载版本清单、实例名称与安装位置。</summary>
     public async Task EnsureLoadedAsync()
@@ -311,7 +432,11 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
         try
         {
             var instances = await _instances.GetInstancesAsync().ConfigureAwait(true);
-            _existingNames = instances.Select(instance => instance.Name).ToList();
+            // 本次部署刚创建的实例不算“重名”：它正是当前配置的目标。
+            _existingNames = instances
+                .Where(instance => !string.Equals(instance.Id, _createdInstanceId, StringComparison.Ordinal))
+                .Select(instance => instance.Name)
+                .ToList();
         }
         catch (Exception)
         {
@@ -408,6 +533,7 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
 
         UpdateGameItem();
         PendingComponentRefresh = ReloadComponentsAsync();
+        PendingSizeRefresh = RefreshDownloadSizesAsync();
     }
 
     [RelayCommand]
@@ -617,6 +743,7 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
         FabricApiVersions.Clear();
         OptiFineVersions.Clear();
         _fabricApiSizes = new Dictionary<string, long?>(StringComparer.Ordinal);
+        _loaderDownloadSize = null;
         SelectedLoaderVersion = null;
         SelectedFabricApiVersion = null;
         SelectedOptiFineVersion = null;
@@ -632,7 +759,7 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
     private void ResetComponentItems()
     {
         LoaderItem.VersionText = string.Empty;
-        LoaderItem.SizeText = _localizer.Get("downloads.deploy.sizeUnknown");
+        LoaderItem.SizeText = FormatDownloadSize(null);
         FabricApiItem.VersionText = string.Empty;
         FabricApiItem.SizeText = _localizer.Get("downloads.deploy.sizeUnknown");
         OptiFineItem.VersionText = string.Empty;
@@ -646,7 +773,7 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
         {
             GameItem.IsIncluded = true;
             GameItem.VersionText = version;
-            GameItem.SizeText = _localizer.Get("downloads.deploy.sizeUnknown");
+            GameItem.SizeText = FormatDownloadSize(_gameDownloadSize);
         }
         else
         {
@@ -687,7 +814,7 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
         LoaderItem.VersionText = SelectedLoaderVersion?.Value is { Length: > 0 } version
             ? $"{SelectedLoader?.Title} {version}"
             : SelectedLoader?.Title ?? string.Empty;
-        LoaderItem.SizeText = _localizer.Get("downloads.deploy.sizeUnknown");
+        LoaderItem.SizeText = FormatDownloadSize(_loaderDownloadSize);
         RefreshItemSelection();
     }
 
@@ -778,11 +905,844 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// 进入整合包模式并准备清单（`download-instance-versions.md` §5、`instances.md` §5.4）：
+    /// 在线来源先按选定版本下载归档，本地导入直接读取归档；随后只按清单装填锁定配置。
+    /// 本方法不创建实例、不写任何实例目录。
+    /// </summary>
+    public async Task EnterModpackModeAsync(ModpackDeploymentSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        if (IsDeploying || IsModpackPreparing)
+        {
+            StatusMessage = _localizer.Get("downloads.deploy.modpack.busy");
+            return;
+        }
+
+        if (DeploymentState == InstanceDeploymentState.Succeeded)
+        {
+            // §13.1：必须先重新布置才能开始配置并下载另一个实例。
+            StatusMessage = _localizer.Get("downloads.deploy.modpack.resetRequired");
+            return;
+        }
+
+        ResetModpackState();
+        _modpackSource = source;
+        IsModpackMode = true;
+        ModpackState = ModpackModeState.Preparing;
+        DeploymentState = InstanceDeploymentState.Configuring;
+        ShowErrorInfo = false;
+        ErrorText = string.Empty;
+        StatusMessage = string.Empty;
+        ProgressText = string.Empty;
+        ProgressValue = 0;
+        ProgressPercentText = string.Empty;
+        ShowProgress = false;
+        RaiseDeploymentStateChanged();
+        NotifyModpackStateChanged();
+
+        await PrepareModpackAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>退出整合包模式（只允许在尚未开始部署时）；不写实例，也不改安装位置。</summary>
     [RelayCommand]
-    private Task StartDownloadAsync() => DeployAsync(retry: false);
+    private void ExitModpackMode()
+    {
+        if (!IsModpackMode || IsDeploying || IsModpackPreparing || DeploymentState == InstanceDeploymentState.Succeeded)
+        {
+            return;
+        }
+
+        // 自动填充的整合包名称随模式退出而清空；用户自己改过的名称不动。
+        if (string.Equals(InstanceName.Trim(), _lastAutoModpackName, StringComparison.Ordinal))
+        {
+            InstanceName = string.Empty;
+        }
+
+        ResetModpackState();
+        DeploymentState = InstanceDeploymentState.Configuring;
+        StatusMessage = string.Empty;
+        ProgressText = string.Empty;
+        ProgressValue = 0;
+        ProgressPercentText = string.Empty;
+        ShowProgress = false;
+        ErrorText = string.Empty;
+        ShowErrorInfo = false;
+        ApplyNormalItemSelection();
+        PendingSizeRefresh = RefreshDownloadSizesAsync();
+        RaiseDeploymentStateChanged();
+        NotifyModpackStateChanged();
+    }
+
+    /// <summary>模组数量选项：不能修改清单；清单没有文件列表时显示「未知」。</summary>
+    [RelayCommand]
+    private async Task OpenModpackPreviewAsync()
+    {
+        if (!IsModpackMode)
+        {
+            return;
+        }
+
+        if (!_dialogEngine.IsAvailable)
+        {
+            StatusMessage = _localizer.Get("downloads.deploy.modpack.previewUnavailableDialog");
+            return;
+        }
+
+        var files = _modpackPreparation?.Metadata.ModFiles;
+        var rows = files is null
+            ? Array.Empty<string>()
+            : files.Select(DescribeModpackEntry).ToArray();
+        var dialog = new ModpackModListDialogViewModel(
+            ModpackName,
+            ModpackModCountText,
+            _localizer.Get("downloads.deploy.modpack.previewHint"),
+            rows,
+            _localizer);
+        await _dialogEngine.ShowAsync(new DialogRequest
+        {
+            Title = _localizer.Get("downloads.deploy.modpack.previewTitle"),
+            Content = dialog,
+            MinWidth = 520,
+            MaxWidth = 760,
+            MaxHeight = 620,
+            InitialFocus = DialogInitialFocus.FirstFocusable,
+        }).ConfigureAwait(true);
+    }
+
+    private string DescribeModpackEntry(ModpackArchiveInspector.ModpackModEntry entry)
+    {
+        if (entry.RelativePath is { Length: > 0 } path)
+        {
+            return path;
+        }
+
+        return _localizer.Get(
+            "downloads.deploy.modpack.previewEntry",
+            entry.ProjectId?.ToString() ?? ModpackUnknownText,
+            entry.FileId?.ToString() ?? ModpackUnknownText);
+    }
+
+    private async Task PrepareModpackAsync()
+    {
+        if (_modpackSource is null)
+        {
+            return;
+        }
+
+        IsModpackPreparing = true;
+        ModpackState = ModpackModeState.Preparing;
+        ModpackStatus = _localizer.Get("downloads.deploy.modpack.preparing");
+        StatusMessage = ModpackStatus;
+        ShowProgress = true;
+        ProgressIndeterminate = true;
+        ProgressValue = 0;
+        ProgressPercentText = string.Empty;
+        ProgressText = ModpackStatus;
+        ErrorText = string.Empty;
+        ShowErrorInfo = false;
+        _modpackPreparation = null;
+        _modpackInstalledMods = null;
+        _modpackInstanceId = null;
+        ModpackItem.MarkIdle();
+        ModpackItem.MarkQueued();
+        UpdateModpackModCountText();
+        RaiseDeploymentStateChanged();
+        NotifyModpackStateChanged();
+
+        try
+        {
+            ModpackPreparation prepared;
+            if (_modpackSource.IsOnline)
+            {
+                var progress = new Progress<ContentProgress>(ApplyModpackPrepareProgress);
+                var result = await _contentInstall
+                    .PrepareModpackAsync(_modpackSource.Hit!, _modpackSource.Version!, progress)
+                    .ConfigureAwait(true);
+                if (!result.IsSuccess)
+                {
+                    FailModpackPreparation(
+                        _localizer.Get(
+                            "downloads.deploy.modpack.prepareFailed",
+                            DescribeError(result.Error)));
+                    return;
+                }
+
+                prepared = result.Value!;
+            }
+            else
+            {
+                var path = _modpackSource.LocalArchivePath!;
+                var read = await Task.Run(() => ModpackArchiveInspector.Read(path)).ConfigureAwait(true);
+                if (!read.IsSuccess)
+                {
+                    FailModpackPreparation(
+                        _localizer.Get(
+                            "downloads.deploy.modpack.prepareFailed",
+                            DescribeError(read.Error)));
+                    return;
+                }
+
+                var size = 0L;
+                try
+                {
+                    size = new FileInfo(path).Length;
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    // 大小未知时保持 0，由展示层显示「大小未知」。
+                }
+
+                prepared = new ModpackPreparation(path, read.Value!, size);
+            }
+
+            ApplyPreparedModpack(prepared);
+        }
+        catch (Exception exception)
+        {
+            FailModpackPreparation(
+                _localizer.Get("downloads.deploy.modpack.prepareFailed", exception.Message));
+        }
+        finally
+        {
+            IsModpackPreparing = false;
+            ShowProgress = false;
+            ProgressIndeterminate = false;
+            RaiseDeploymentStateChanged();
+            NotifyModpackStateChanged();
+        }
+    }
+
+    private void ApplyModpackPrepareProgress(ContentProgress update)
+    {
+        var hasBytes = update.TotalBytes > 0;
+        ProgressIndeterminate = !hasBytes && update.TotalFiles <= 0;
+        ProgressValue = hasBytes
+            ? Math.Clamp(update.CompletedBytes * 100d / update.TotalBytes, 0, 100)
+            : update.TotalFiles > 0
+                ? Math.Clamp(update.CompletedFiles * 100d / update.TotalFiles, 0, 100)
+                : 0;
+        ProgressPercentText = hasBytes
+            ? $"{update.CompletedBytes * 100d / update.TotalBytes:0}%"
+            : string.Empty;
+        ProgressText = hasBytes
+            ? $"{update.Message} · {update.CompletedBytes * 100d / update.TotalBytes:0}%"
+            : update.TotalFiles > 0
+                ? $"{update.Message} ({update.CompletedFiles}/{update.TotalFiles})"
+                : update.Message;
+        ModpackStatus = ProgressText;
+        ModpackItem.MarkDownloading();
+    }
+
+    /// <summary>把清单解析结果装填到锁定区域；任何缺失都如实显示，不补默认配置。</summary>
+    private void ApplyPreparedModpack(ModpackPreparation prepared)
+    {
+        _modpackPreparation = prepared;
+        var metadata = prepared.Metadata;
+
+        ModpackName = string.IsNullOrWhiteSpace(metadata.Name)
+            ? _localizer.Get("downloads.deploy.modpack.nameFallback")
+            : metadata.Name.Trim();
+        ModpackVersion = string.IsNullOrWhiteSpace(metadata.PackVersion) ? ModpackUnknownText : metadata.PackVersion;
+        ModpackGameVersion = string.IsNullOrWhiteSpace(metadata.GameVersion) ? ModpackUnknownText : metadata.GameVersion;
+        ModpackGameType = ResolveModpackGameType(metadata.GameVersion);
+        ModpackLoader = DescribeLoader(metadata.Loader);
+        ModpackLoaderVersion = string.IsNullOrWhiteSpace(metadata.LoaderVersion)
+            ? ModpackUnknownText
+            : metadata.LoaderVersion;
+        ModpackArchiveSize = prepared.ArchiveSize > 0
+            ? StorageSizeFormatter.FormatBytes(prepared.ArchiveSize)
+            : _localizer.Get("downloads.deploy.sizeUnknown");
+
+        ModpackItem.VersionText = metadata.PackVersion ?? string.Empty;
+        ModpackItem.SizeText = ModpackArchiveSize;
+        ModpackItem.MarkCompleted();
+
+        // 清单已知的游戏文件与加载器在开始部署前就以「未开始」列出；未参与项保持未选择。
+        GameItem.MarkIdle();
+        GameItem.VersionText = metadata.GameVersion ?? string.Empty;
+        GameItem.SizeText = FormatDownloadSize(_gameDownloadSize);
+        if (string.Equals(metadata.Loader, LoaderKinds.Vanilla, StringComparison.Ordinal))
+        {
+            LoaderItem.MarkNotSelected();
+        }
+        else
+        {
+            LoaderItem.MarkIdle();
+            LoaderItem.VersionText = string.IsNullOrWhiteSpace(metadata.LoaderVersion)
+                ? DescribeLoader(metadata.Loader)
+                : $"{DescribeLoader(metadata.Loader)} {metadata.LoaderVersion}";
+            LoaderItem.SizeText = FormatDownloadSize(_loaderDownloadSize);
+        }
+
+        // 名称自动填充为整合包名称，但用户改过的名称不覆盖（§5.2）。
+        var current = InstanceName.Trim();
+        if (current.Length == 0 || string.Equals(current, _lastAutoModpackName, StringComparison.Ordinal))
+        {
+            InstanceName = ModpackName;
+        }
+
+        _lastAutoModpackName = ModpackName;
+        ValidateName();
+        UpdateModpackModCountText();
+
+        var problem = ValidateModpackConfiguration(metadata);
+        if (problem is not null)
+        {
+            FailModpackPreparation(problem, keepPrepared: true);
+            return;
+        }
+
+        ModpackState = ModpackModeState.Ready;
+        ModpackStatus = _localizer.Get("downloads.deploy.modpack.prepared");
+        StatusMessage = ModpackStatus;
+        ProgressIndeterminate = false;
+        ProgressValue = 100;
+        ProgressPercentText = string.Empty;
+        ProgressText = string.Empty;
+        RaiseDeploymentStateChanged();
+        NotifyModpackStateChanged();
+        ScheduleSizeRefresh();
+    }
+
+    /// <summary>清单配置能否用于统一部署；不能时返回真实原因。</summary>
+    private string? ValidateModpackConfiguration(ModpackArchiveInspector.ModpackMetadata metadata)
+    {
+        if (string.IsNullOrWhiteSpace(metadata.GameVersion))
+        {
+            return _localizer.Get("downloads.deploy.modpack.noGameVersion");
+        }
+
+        var loader = metadata.Loader?.Trim().ToLowerInvariant();
+        if (loader == LoaderKinds.Vanilla)
+        {
+            return null;
+        }
+
+        if (loader == "quilt")
+        {
+            return _localizer.Get("downloads.deploy.modpack.quiltUnsupported");
+        }
+
+        if (loader is not (LoaderKinds.Forge or LoaderKinds.NeoForge or LoaderKinds.Fabric or LoaderKinds.Cleanroom))
+        {
+            return _localizer.Get("downloads.deploy.modpack.loaderUnsupported", metadata.Loader ?? string.Empty);
+        }
+
+        if (string.IsNullOrWhiteSpace(metadata.LoaderVersion))
+        {
+            return _localizer.Get("downloads.deploy.modpack.noLoaderVersion");
+        }
+
+        if (loader == LoaderKinds.Cleanroom &&
+            !string.Equals(metadata.GameVersion, "1.12.2", StringComparison.OrdinalIgnoreCase))
+        {
+            return _localizer.Get("instances.loader.cleanroomOnly");
+        }
+
+        return null;
+    }
+
+    private string DescribeLoader(string? loader) => loader?.Trim().ToLowerInvariant() switch
+    {
+        LoaderKinds.Forge => _localizer.Get("instances.loader.forge"),
+        LoaderKinds.NeoForge => _localizer.Get("instances.loader.neoforge"),
+        LoaderKinds.Fabric => _localizer.Get("instances.loader.fabric"),
+        LoaderKinds.Cleanroom => _localizer.Get("instances.loader.cleanroom"),
+        "quilt" => "Quilt",
+        LoaderKinds.Vanilla => _localizer.Get("instances.loader.vanilla"),
+        { Length: > 0 } other => other,
+        _ => ModpackUnknownText,
+    };
+
+    /// <summary>类型来自版本清单的真实分类；清单缺失该版本时不猜测，显示未知。</summary>
+    private string ResolveModpackGameType(string? gameVersion)
+    {
+        if (string.IsNullOrWhiteSpace(gameVersion))
+        {
+            return ModpackUnknownText;
+        }
+
+        var version = _allVersions.FirstOrDefault(item =>
+            string.Equals(item.Id, gameVersion, StringComparison.OrdinalIgnoreCase));
+        return version is null
+            ? ModpackUnknownText
+            : VersionTypes.FirstOrDefault(type => type.Kind == version.Kind)?.Title ?? ModpackUnknownText;
+    }
+
+    private void UpdateModpackModCountText()
+    {
+        if (!IsModpackMode)
+        {
+            ModpackModCountText = string.Empty;
+            return;
+        }
+
+        var total = _modpackPreparation?.Metadata.ModCount;
+        if (total is null)
+        {
+            ModpackModCountText = _localizer.Get("downloads.deploy.modpack.modCountUnknown");
+            return;
+        }
+
+        if (_modpackInstalledMods is { } completed)
+        {
+            var text = DeploymentState == InstanceDeploymentState.Succeeded
+                ? "downloads.deploy.modpack.modCountInstalled"
+                : "downloads.deploy.modpack.modCountProgress";
+            ModpackModCountText = _localizer.Get(text, Math.Min(completed, total.Value), total.Value);
+            return;
+        }
+
+        ModpackModCountText = _localizer.Get("downloads.deploy.modpack.modCountValue", total.Value);
+    }
+
+    private void ApplyModpackImportProgress(ContentProgress update)
+    {
+        var hasBytes = update.TotalBytes > 0;
+        ProgressIndeterminate = !hasBytes && update.TotalFiles <= 0;
+        ProgressValue = hasBytes
+            ? Math.Clamp(update.CompletedBytes * 100d / update.TotalBytes, 0, 100)
+            : update.TotalFiles > 0
+                ? Math.Clamp(update.CompletedFiles * 100d / update.TotalFiles, 0, 100)
+                : 0;
+        ProgressPercentText = hasBytes
+            ? $"{update.CompletedBytes * 100d / update.TotalBytes:0}%"
+            : string.Empty;
+        ProgressText = update.TotalFiles > 0
+            ? $"{update.Message} ({update.CompletedFiles}/{update.TotalFiles})"
+            : update.Message;
+        StatusMessage = ProgressText;
+
+        if (string.Equals(update.Stage, "download", StringComparison.Ordinal) && update.TotalFiles > 0)
+        {
+            _modpackInstalledMods = update.CompletedFiles;
+            UpdateModpackModCountText();
+        }
+    }
+
+    private void PrepareModpackItemsForDeployment()
+    {
+        var metadata = _modpackPreparation!.Metadata;
+
+        GameItem.MarkIdle();
+        GameItem.VersionText = metadata.GameVersion ?? string.Empty;
+        GameItem.SizeText = FormatDownloadSize(_gameDownloadSize);
+        GameItem.MarkQueued();
+
+        if (string.Equals(metadata.Loader, LoaderKinds.Vanilla, StringComparison.Ordinal))
+        {
+            LoaderItem.MarkNotSelected();
+        }
+        else
+        {
+            LoaderItem.MarkIdle();
+            LoaderItem.VersionText = string.IsNullOrWhiteSpace(metadata.LoaderVersion)
+                ? DescribeLoader(metadata.Loader)
+                : $"{DescribeLoader(metadata.Loader)} {metadata.LoaderVersion}";
+            LoaderItem.SizeText = FormatDownloadSize(_loaderDownloadSize);
+            LoaderItem.MarkQueued();
+        }
+
+        // 清单声明的附加组件由整合包文件部署，页面不补任何组件。
+        FabricApiItem.MarkNotSelected();
+        OptiFineItem.MarkNotSelected();
+        ModpackItem.MarkCompleted();
+
+        _modpackInstalledMods = 0;
+        UpdateModpackModCountText();
+    }
+
+    /// <summary>
+    /// 整合包模式的统一部署（`download-instance-versions.md` §5.3）：
+    /// 创建新实例 → 导入清单文件（模组下载/解压/覆盖）→ 安装游戏文件与加载器。
+    /// 导入失败由领域删除本次新建实例；安装失败保留实例并只重试安装（与普通部署一致）。
+    /// </summary>
+    private async Task DeployModpackAsync(bool retry)
+    {
+        if (IsDeploying)
+        {
+            return;
+        }
+
+        if (_modpackPreparation is not { } preparation)
+        {
+            StatusMessage = _localizer.Get("downloads.deploy.modpack.notPrepared");
+            return;
+        }
+
+        var metadata = preparation.Metadata;
+        var problem = ValidateModpackConfiguration(metadata);
+        if (problem is not null)
+        {
+            StatusMessage = problem;
+            return;
+        }
+
+        if (!retry && !CanStartDownload)
+        {
+            StatusMessage = DescribeConfigurationProblem();
+            return;
+        }
+
+        var name = InstanceName.Trim();
+        if (name.Length == 0)
+        {
+            name = ModpackName;
+        }
+
+        if (!retry && IsNameDuplicate)
+        {
+            StatusMessage = DuplicateNameMessage;
+            return;
+        }
+
+        IsDeploying = true;
+        ShowErrorInfo = false;
+        ErrorText = string.Empty;
+        DeploymentState = InstanceDeploymentState.Deploying;
+        RaiseDeploymentStateChanged();
+        PrepareModpackItemsForDeployment();
+
+        try
+        {
+            if (_modpackInstanceId is null)
+            {
+                StatusMessage = _localizer.Get("downloads.deploy.modpack.importing", name);
+                ShowProgress = true;
+                ProgressIndeterminate = true;
+                ProgressValue = 0;
+                ProgressPercentText = string.Empty;
+                ProgressText = StatusMessage;
+                var request = new ModpackDeploymentRequest(
+                    name,
+                    preparation.ArchivePath,
+                    metadata.GameVersion!,
+                    metadata.Loader,
+                    metadata.LoaderVersion);
+                var progress = new Progress<ContentProgress>(ApplyModpackImportProgress);
+                var result = await _contentInstall
+                    .DeployModpackAsync(request, progress)
+                    .ConfigureAwait(true);
+                if (!result.IsSuccess)
+                {
+                    _modpackInstanceId = null;
+                    _createdInstanceId = null;
+                    FailDeployment(
+                        _localizer.Get("downloads.deploy.modpack.importFailed", DescribeError(result.Error)));
+                    return;
+                }
+
+                _modpackInstanceId = result.Value!.InstanceId;
+                _createdInstanceId = _modpackInstanceId;
+                _modpackInstalledMods = result.Value!.DownloadedFiles;
+                UpdateModpackModCountText();
+                await RefreshInstanceNamesAsync().ConfigureAwait(true);
+                ModpackItem.MarkCompleted();
+            }
+
+            await RunModpackInstallAsync(_modpackInstanceId!).ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            FailDeployment(_localizer.Get("downloads.deploy.modpack.importFailed", exception.Message));
+        }
+        finally
+        {
+            IsDeploying = false;
+            ShowProgress = false;
+            RaiseDeploymentStateChanged();
+            OnPropertyChanged(nameof(CanStartDownload));
+            NotifyModpackStateChanged();
+        }
+    }
+
+    private async Task RunModpackInstallAsync(string instanceId)
+    {
+        ShowProgress = true;
+        ProgressIndeterminate = true;
+        ProgressValue = 0;
+        ProgressPercentText = string.Empty;
+        ProgressText = _localizer.Get("downloads.deploy.preparing");
+        StatusMessage = ProgressText;
+
+        var progress = new Progress<InstallProgress>(update =>
+        {
+            ProgressIndeterminate = update.IsIndeterminate && update.Stage != InstallStage.Completed;
+            var percent = ProgressPercent(update);
+            ProgressValue = percent;
+            ProgressPercentText = update.TotalBytes > 0 || update.TotalFiles > 0
+                ? $"{percent:F0}%"
+                : string.Empty;
+            ProgressText = update.TotalFiles > 0
+                ? $"{update.Message} ({update.CompletedFiles}/{update.TotalFiles})"
+                : update.Message;
+            ApplyStage(update.Stage);
+        });
+
+        var result = await _install.InstallAsync(instanceId, progress).ConfigureAwait(true);
+        if (!result.IsSuccess)
+        {
+            MarkStageFailure();
+            FailDeployment(_localizer.Get("downloads.deploy.failed", DescribeError(result.Error)));
+            return;
+        }
+
+        foreach (var item in DownloadItems)
+        {
+            item.MarkCompleted();
+        }
+
+        ProgressIndeterminate = false;
+        ProgressValue = 100;
+        ProgressPercentText = "100%";
+        ProgressText = _localizer.Get("downloads.deploy.succeeded");
+        StatusMessage = _localizer.Get("downloads.deploy.modpack.succeededInstance", ResolveInstanceName());
+        DeploymentState = InstanceDeploymentState.Succeeded;
+        UpdateModpackModCountText();
+        RaiseDeploymentStateChanged();
+        await NotifyInstanceCreatedAsync(instanceId).ConfigureAwait(true);
+    }
+
+    private void FailModpackPreparation(string message, bool keepPrepared = false)
+    {
+        ModpackState = ModpackModeState.Failed;
+        ModpackStatus = message;
+        if (!keepPrepared)
+        {
+            _modpackPreparation = null;
+            ModpackItem.MarkFailed();
+        }
+
+        DeploymentState = InstanceDeploymentState.Failed;
+        StatusMessage = message;
+        ErrorText = message;
+        ShowErrorInfo = true;
+        ProgressPercentText = string.Empty;
+        ProgressText = message;
+        RaiseDeploymentStateChanged();
+        NotifyModpackStateChanged();
+    }
+
+    private void FailDeployment(string message)
+    {
+        MarkStageFailure();
+        foreach (var item in DownloadItems)
+        {
+            if (item.Status == DeploymentItemStatus.Queued)
+            {
+                // 还没轮到的下载项不应在失败后继续显示「正在排队」。
+                item.Reset();
+            }
+        }
+
+        DeploymentState = InstanceDeploymentState.Failed;
+        StatusMessage = message;
+        ErrorText = message;
+        ShowErrorInfo = true;
+        ProgressPercentText = string.Empty;
+        ProgressText = message;
+        RaiseDeploymentStateChanged();
+        NotifyModpackStateChanged();
+    }
+
+    private static string DescribeError(EclError? error)
+    {
+        if (error is null)
+        {
+            return string.Empty;
+        }
+
+        return string.IsNullOrWhiteSpace(error.Detail) ? error.Message : $"{error.Message} {error.Detail}";
+    }
+
+    private async Task NotifyInstanceCreatedAsync(string instanceId)
+    {
+        if (InstanceCreated is { } callback)
+        {
+            await callback(instanceId).ConfigureAwait(true);
+        }
+    }
+
+    private void ResetModpackState()
+    {
+        _modpackSource = null;
+        _modpackPreparation = null;
+        _modpackInstalledMods = null;
+        _modpackInstanceId = null;
+        _lastAutoModpackName = string.Empty;
+        IsModpackMode = false;
+        ModpackState = ModpackModeState.None;
+        ModpackName = string.Empty;
+        ModpackVersion = string.Empty;
+        ModpackGameVersion = string.Empty;
+        ModpackGameType = string.Empty;
+        ModpackLoader = string.Empty;
+        ModpackLoaderVersion = string.Empty;
+        ModpackArchiveSize = string.Empty;
+        ModpackModCountText = string.Empty;
+        ModpackStatus = string.Empty;
+        ModpackItem.MarkNotSelected();
+        ModpackItem.VersionText = string.Empty;
+        ModpackItem.SizeText = _localizer.Get("downloads.deploy.sizeUnknown");
+        _gameDownloadSize = null;
+        _loaderDownloadSize = null;
+        GameItem.SizeText = FormatDownloadSize(null);
+        LoaderItem.SizeText = FormatDownloadSize(null);
+    }
+
+    /// <summary>退出整合包模式后按普通配置的当前选择恢复下载项状态。</summary>
+    private void ApplyNormalItemSelection()
+    {
+        UpdateGameItem();
+        UpdateLoaderItem();
+        UpdateFabricApiItem();
+        UpdateOptiFineItem();
+        RefreshItemSelection();
+    }
+
+    /// <summary>
+    /// 按当前模式（普通/整合包）刷新两个下载项的真实产物大小。
+    /// 大小只是辅助信息：读取失败保持「大小未知」，不阻塞部署、也不显示 0。
+    /// </summary>
+    private Task ScheduleSizeRefresh() => PendingSizeRefresh = RefreshDownloadSizesAsync();
+
+    private async Task RefreshDownloadSizesAsync()
+    {
+        await RefreshGameSizeAsync().ConfigureAwait(true);
+        await RefreshLoaderSizeAsync().ConfigureAwait(true);
+    }
+
+    private async Task RefreshGameSizeAsync()
+    {
+        var generation = ++_gameSizeGeneration;
+        var versionId = IsModpackMode
+            ? _modpackPreparation?.Metadata.GameVersion
+            : SelectedGameVersion?.Value;
+        var url = ResolveVersionUrl(versionId);
+        _gameDownloadSize = null;
+        GameItem.SizeText = FormatDownloadSize(null);
+
+        if (string.IsNullOrWhiteSpace(versionId))
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await _sizeEstimator
+                .EstimateGameFilesAsync(versionId, url)
+                .ConfigureAwait(true);
+            if (generation != _gameSizeGeneration)
+            {
+                return;
+            }
+
+            _gameDownloadSize = result.IsSuccess ? result.Value!.TotalBytes : null;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            if (generation != _gameSizeGeneration)
+            {
+                return;
+            }
+
+            _gameDownloadSize = null;
+        }
+
+        GameItem.SizeText = FormatDownloadSize(_gameDownloadSize);
+    }
+
+    private async Task RefreshLoaderSizeAsync()
+    {
+        var generation = ++_loaderSizeGeneration;
+        var loader = IsModpackMode ? _modpackPreparation?.Metadata.Loader : SelectedLoader?.Id;
+        var loaderVersion = IsModpackMode
+            ? _modpackPreparation?.Metadata.LoaderVersion
+            : SelectedLoaderVersion?.Value;
+        var gameVersion = IsModpackMode
+            ? _modpackPreparation?.Metadata.GameVersion
+            : SelectedGameVersion?.Value;
+        _loaderDownloadSize = null;
+        LoaderItem.SizeText = FormatDownloadSize(null);
+
+        // 只有 Fabric 的 profile 提供真实文件大小；其它加载器目录没有声明大小，保持未知。
+        if (!string.Equals(loader, LoaderKinds.Fabric, StringComparison.Ordinal) ||
+            string.IsNullOrWhiteSpace(loaderVersion) ||
+            string.IsNullOrWhiteSpace(gameVersion))
+        {
+            return;
+        }
+
+        long? size = null;
+        try
+        {
+            size = await _sizeEstimator
+                .EstimateFabricLoaderAsync(gameVersion, loaderVersion)
+                .ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            size = null;
+        }
+
+        if (generation != _loaderSizeGeneration)
+        {
+            return;
+        }
+
+        _loaderDownloadSize = size;
+        LoaderItem.SizeText = FormatDownloadSize(_loaderDownloadSize);
+    }
+
+    private string? ResolveVersionUrl(string? versionId) =>
+        string.IsNullOrWhiteSpace(versionId)
+            ? null
+            : _allVersions.FirstOrDefault(item =>
+                string.Equals(item.Id, versionId, StringComparison.OrdinalIgnoreCase))?.Url;
+
+    private string FormatDownloadSize(long? bytes) => bytes is > 0
+        ? StorageSizeFormatter.FormatBytes(bytes.Value)
+        : _localizer.Get("downloads.deploy.sizeUnknown");
+
+    /// <summary>
+    /// 有可靠字节总量时按字节显示百分比（单个大客户端文件的下载中状态不会一直停在 0%）；
+    /// 否则退回安装服务的文件计数百分比。
+    /// </summary>
+    private static double ProgressPercent(InstallProgress update) =>
+        update.TotalBytes > 0
+            ? Math.Clamp(update.CompletedBytes * 100d / update.TotalBytes, 0, 100)
+            : update.Percent;
+
+    private void NotifyModpackStateChanged()
+    {
+        OnPropertyChanged(nameof(ShowNormalConfiguration));
+        OnPropertyChanged(nameof(ShowModpackConfiguration));
+        OnPropertyChanged(nameof(IsModpackReady));
+        OnPropertyChanged(nameof(CanPreviewModpackFiles));
+        OnPropertyChanged(nameof(ShowModpackExit));
+        OnPropertyChanged(nameof(CanRetry));
+        OnPropertyChanged(nameof(CanStartDownload));
+        OnPropertyChanged(nameof(DeploymentStateText));
+    }
 
     [RelayCommand]
-    private Task RetryAsync() => DeployAsync(retry: true);
+    private Task StartDownloadAsync() => IsModpackMode ? DeployModpackAsync(retry: false) : DeployAsync(retry: false);
+
+    [RelayCommand]
+    private Task RetryAsync()
+    {
+        if (!IsModpackMode)
+        {
+            return DeployAsync(retry: true);
+        }
+
+        return ModpackState == ModpackModeState.Ready && _modpackPreparation is not null
+            ? DeployModpackAsync(retry: true)
+            : PrepareModpackAsync();
+    }
+
 
     private async Task DeployAsync(bool retry)
     {
@@ -917,8 +1877,11 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
         var progress = new Progress<InstallProgress>(update =>
         {
             ProgressIndeterminate = update.IsIndeterminate && update.Stage != InstallStage.Completed;
-            ProgressValue = update.Percent;
-            ProgressPercentText = update.TotalFiles > 0 ? $"{update.Percent:F0}%" : string.Empty;
+            var percent = ProgressPercent(update);
+            ProgressValue = percent;
+            ProgressPercentText = update.TotalBytes > 0 || update.TotalFiles > 0
+                ? $"{percent:F0}%"
+                : string.Empty;
             ProgressText = update.TotalFiles > 0
                 ? $"{update.Message} ({update.CompletedFiles}/{update.TotalFiles})"
                 : update.Message;
@@ -951,6 +1914,7 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
         StatusMessage = _localizer.Get("downloads.deploy.succeededInstance", ResolveInstanceName());
         DeploymentState = InstanceDeploymentState.Succeeded;
         RaiseDeploymentStateChanged();
+        await NotifyInstanceCreatedAsync(_createdInstanceId).ConfigureAwait(true);
     }
 
     private void PrepareItemsForDeployment()
@@ -1047,6 +2011,12 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
 
         // download-instance-versions.md §13.2：保留安装位置，其余选项全部清空。
         _createdInstanceId = null;
+        if (IsModpackMode)
+        {
+            ResetModpackState();
+            NotifyModpackStateChanged();
+        }
+
         _suppressVersionReload = true;
         try
         {
@@ -1060,8 +2030,8 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
         InstanceName = string.Empty;
         SelectedLoader = LoaderChoices[0];
         ResetComponentChoices();
-        UpdateGameItem();
-        RefreshItemSelection();
+        ApplyNormalItemSelection();
+        PendingSizeRefresh = RefreshDownloadSizesAsync();
         DeploymentState = InstanceDeploymentState.Configuring;
         ShowProgress = false;
         ProgressValue = 0;
@@ -1102,6 +2072,7 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
         if (_initialized && !_suppressVersionReload)
         {
             PendingComponentRefresh = ReloadComponentsAsync();
+            PendingSizeRefresh = RefreshDownloadSizesAsync();
         }
     }
 
@@ -1109,9 +2080,12 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(ShowFabricApi));
         OnPropertyChanged(nameof(ShowOptiFine));
+        OnPropertyChanged(nameof(ShowFabricApiRow));
+        OnPropertyChanged(nameof(ShowOptiFineRow));
         if (_initialized)
         {
             PendingComponentRefresh = ReloadComponentsAsync();
+            PendingSizeRefresh = RefreshLoaderSizeAsync();
         }
     }
 
@@ -1123,6 +2097,7 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
         }
 
         UpdateLoaderItem();
+        PendingSizeRefresh = RefreshLoaderSizeAsync();
     }
 
     partial void OnSelectedFabricApiVersionChanged(VersionChoiceViewModel? value) => UpdateFabricApiItem();
@@ -1143,6 +2118,8 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
 
     partial void OnIsDeployingChanged(bool value) => RaiseDeploymentStateChanged();
 
+    partial void OnIsModpackPreparingChanged(bool value) => RaiseDeploymentStateChanged();
+
     partial void OnDeploymentStateChanged(InstanceDeploymentState value) => RaiseDeploymentStateChanged();
 
     partial void OnIsLoadingVersionsChanged(bool value) => OnPropertyChanged(nameof(CanStartDownload));
@@ -1157,6 +2134,14 @@ public sealed partial class InstanceVersionPageViewModel : ObservableObject
         OnPropertyChanged(nameof(CanRetry));
         OnPropertyChanged(nameof(IsConfigEnabled));
         OnPropertyChanged(nameof(CanStartDownload));
+        OnPropertyChanged(nameof(ShowModpackExit));
+        OnPropertyChanged(nameof(IsModpackReady));
+        OnPropertyChanged(nameof(CanPreviewModpackFiles));
+        OnPropertyChanged(nameof(ShowNormalConfiguration));
+        OnPropertyChanged(nameof(ShowModpackConfiguration));
+        OnPropertyChanged(nameof(ShowFabricApiRow));
+        OnPropertyChanged(nameof(ShowOptiFineRow));
+        OnPropertyChanged(nameof(ModpackModCountLabel));
     }
 
     private string FormatVersionWithDate(string version, DateTimeOffset? releasedAt)
@@ -1199,6 +2184,33 @@ public sealed record WorkspaceLocationRow(
     bool IsExternal,
     string PrimaryHint,
     string SourceHint);
+
+/// <summary>
+/// 整合包模式的来源（`download-instance-versions.md` §5.1）：在线下载与本地导入共用本页面与部署流程。
+/// 在线来源只保存来源与版本 ID，归档由领域按版本重新解析；本地来源保存用户选定的归档路径。
+/// </summary>
+public sealed record ModpackDeploymentSource(
+    ContentHit? Hit,
+    ContentVersion? Version,
+    string? LocalArchivePath)
+{
+    public bool IsOnline => Hit is not null && Version is not null;
+
+    public static ModpackDeploymentSource FromOnline(ContentHit hit, ContentVersion version) =>
+        new(hit, version, LocalArchivePath: null);
+
+    public static ModpackDeploymentSource FromLocalArchive(string archivePath) =>
+        new(Hit: null, Version: null, archivePath);
+}
+
+/// <summary>整合包模式自己的准备状态；普通新建模式不使用它。</summary>
+public enum ModpackModeState
+{
+    None,
+    Preparing,
+    Ready,
+    Failed,
+}
 
 
 
