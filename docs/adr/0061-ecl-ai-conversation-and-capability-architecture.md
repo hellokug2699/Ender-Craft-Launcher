@@ -35,7 +35,7 @@ ECL AI 内部提供三个工作模式：
 
 Chat、Knowledge 和 Diagnostic 是同一个 Addition 内的产品模式，不分别登记为三个 Addition。它们共享对话系统、上下文管理、模型后端、凭据管理、存储和安全机制，但可以拥有不同的 Prompt、上下文来源、工具权限和专业行为。
 
-不将 AI Runtime、Model Manager、Search Broker 或 Conversation Manager 单独登记为强制依赖的 Addition。它们属于 ECL AI 的内部基础设施能力；Core 仅提供必要的安全宿主原语。未来若出现独立复用需求，应另行评估，不预先拆分。
+不将 Model Manager、Search Broker 或 Conversation Manager 单独登记为 Addition；它们仍属于 ECL AI 的内部产品基础设施。AI Harness 则由 ADR 0062 单独定义为受控执行环境 Addition，负责模型工具调用编排与证据追踪，但不拥有 Core 权限裁决权。
 
 ### 2. 明确 Core 与 ECL AI 的职责边界
 
@@ -224,9 +224,9 @@ Diagnostic 的 AI 能力不可用时，ECL 既有原生诊断能力和独立 Dia
 
 每个功能可以独立安装，但需要重复处理对话、上下文、模型配置、凭据、历史记录和安全策略，并增加跨 Addition 版本兼容与数据共享成本。不采用。
 
-### 方案 B：将 AI Runtime、Model Manager、Search Broker 全部做成独立基础 Addition
+### 方案 B：将模型管理、搜索和对话基础设施全部拆成多个 Addition
 
-可以让多个 AI 功能复用，但会形成额外的强制安装链，并使用户为了使用一个 AI 功能先理解和安装多个基础扩展。当前功能规模不足以证明这种拆分的收益。不采用；相关能力先作为 ECL AI 内部基础设施。
+可以让多个 AI 功能复用，但会形成过多的强制安装链，并使用户为了使用一个 AI 功能先理解和安装多个基础扩展。模型管理、搜索和对话管理仍作为 ECL AI 内部基础设施；独立 Harness 的执行边界另由 ADR 0062 定义。
 
 ### 方案 C：将 AI 全部集成进 ECL Core
 
@@ -294,4 +294,5 @@ Diagnostic 的 AI 能力不可用时，ECL 既有原生诊断能力和独立 Dia
 
 ## 修订记录
 
-- 2026-11-08：经维护者授权形成正式架构决策并批准。确定单一 `ecl.ai` Feature Addition，内部提供 Chat、Knowledge、Diagnostic 三种模式；明确可替换推理后端、受控联网搜索、Diagnostic 可选增强、多对话隔离、上下文生命周期、本地聊天记录、Prompt 透明度和远程数据授权。Implementation 保持 Not Started。
+- 2026-11-08：经维护者授权形成正式架构决策并批准。确定统一 `ecl.ai` 产品 Addition，内部提供 Chat、Knowledge、Diagnostic 三种模式；明确可替换推理后端、受控联网搜索、Diagnostic 可选增强、多对话隔离、上下文生命周期、本地聊天记录、Prompt 透明度和远程数据授权。Implementation 保持 Not Started。
+- 2026-11-08：根据 ADR 0062 修订 AI 执行层边界。Model Manager、Search Broker 和 Conversation Manager 仍属于 ECL AI 内部基础设施；工具编排、执行循环、权限交互集成和证据追踪由独立 `ecl.ai-harness` Addition 承担。此修订仅取代原先将 Harness 视为 ECL AI 内部基础设施的部分，不改变本 ADR 对 ECL AI 产品模式与隐私边界的其他决策。
