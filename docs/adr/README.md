@@ -172,7 +172,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0025 Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md) | Accepted | Implemented | 安装前完整性确认 |
 | [0026 实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md) | Accepted | Implemented | 实例工作台 |
 | [0027 原生 C# 世界分析与编辑引擎](0027-native-world-engine.md) | Accepted | In Progress | 世界引擎、NBT 编辑器、语义本地化与编辑校验 |
-| [0028 世界种子与生成规则分析功能提议](0028-world-generation-analysis.md) | Proposed | Not Started | 世界生成分析提案 |
+| [0028 世界种子与生成规则分析功能提议](0028-world-generation-analysis.md) | Accepted | Not Started | 世界生成分析 Addition |
 | [0029 Installer、Bootstrapper 与 Uninstaller 的生命周期边界](0029-installer-bootstrapper-uninstaller-lifecycle.md) | Accepted | Implemented | 安装与卸载 |
 | [0030 世界诊断与区块异常定位联动](0030-world-diagnostics-and-chunk-fault-workflow.md) | Accepted | In Progress | 世界诊断 |
 | [0031 多维度世界架构与存储解析](0031-multi-dimension-world-architecture.md) | Accepted | Implemented | 多维度架构 |
@@ -197,7 +197,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0050 ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) | Accepted | Not Started | UI 设计系统、Application Shell、全局导航、Right Auxiliary Rail 全局视觉、排版与 DPI 适配（UI 领域最高优先级；Rail 具体职责由 0056 细化） |
 | [0051 统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md) | Accepted | In Progress | Installer / Bootstrapper 独立 UI、首次安装、更新源容灾、发布验证、部署、Repair Mode 与离线恢复 |
 | [0052 Unified Dialog Engine and Incremental Migration](0052-unified-dialog-engine-and-incremental-migration.md) | Accepted | Not Started | 统一弹窗引擎、应用内背景暗化、模态交互与旧弹窗渐进迁移 |
-| [0053 Additions 能力权限模型与用户授权流程](0053-addition-capability-permission-and-user-consent.md) | Proposed | Not Started | 扩展权限声明、安装前知情授权、宿主能力执行控制与撤销 |
-| [0054 Addition 注册表、清单与生命周期治理](0054-addition-registry-and-manifest-governance.md) | Proposed | Not Started | 官方 Addition 统一目录、Manifest、登记审核、生命周期与既有扩展 ADR 迁移 |
+| [0053 Additions 能力权限模型与用户授权流程](0053-addition-capability-permission-and-user-consent.md) | Accepted | Not Started | 扩展权限声明、安装前知情授权、宿主能力执行控制与撤销 |
+| [0054 Addition 注册表、清单与生命周期治理](0054-addition-registry-and-manifest-governance.md) | Accepted | Not Started | 官方 Addition 统一目录、Manifest、登记审核、生命周期与既有扩展 ADR 迁移 |
 | [0055 ECL 混合工作区与原生工具平台架构](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md) | Accepted | Not Started | Workspace、Native UI SDK、Addition Runtime、IPC、Event Bus、资源边界与条件式启动恢复 |
 | [0056 Right Auxiliary Rail and Inspector Integration](0056-right-auxiliary-rail-and-inspector-integration.md) | Accepted | Not Started | Right Auxiliary Rail：协调右侧 Tools 与 Inspector 两种模式 |

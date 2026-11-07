@@ -1,0 +1,47 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.github-project-center",
+  "name": "GitHub Project Center",
+  "type": "Feature",
+  "category": "Project Collaboration",
+  "summary": "在 ECL 原生 UI 中查看指定项目仓库的 Releases、Issues、Pull Requests、Discussions 等协作信息，并提供受控反馈能力.",
+  "registryStatus": "In Development",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0049-native-github-integration-and-repository-bounded-navigation.md",
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-07",
+    "lastUpdated": "2026-11-07",
+    "deprecation": null,
+    "replacement": null
+  }
+}

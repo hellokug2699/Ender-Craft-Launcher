@@ -2,11 +2,12 @@
 
 > 生命周期迁移说明：本次仅拆分决策与实施状态，不改变既有技术决策；尚未开始实施的提案保持原有阶段。
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-02
 - Scope: Minecraft 世界种子分析、群系定位、结构预测与生成地图
 - Related: ADR 0026（实例工作台的存档、多人游戏与最近访问）、ADR 0027（原生 C# 世界分析与编辑引擎）
+- Additions: [World Generation Analysis](../additions/ecl.world-generation-analysis/README.md)
 
 ## 背景
 
@@ -206,5 +207,7 @@ Biomes O' Plenty 等模组可以作为群系识别与配置解析的测试对象
 - [ADR 0027：原生 C# 世界分析与编辑引擎](0027-native-world-engine.md)
 
 ## 修订记录
+
+- 2026-11-07：维护者确认批准本决策；Implementation 保持 Not Started，批准不代表实现完成。同步登记 World Generation Analysis Addition。
 
 - 2026-11-03：完成度扫描确认仍为 Proposed + Not Started。主窗口「工具箱 / 世界工具」提供显式占位：不根据 Seed 或版本伪造生成结果；正式实现需先完成 ADR 评审与可复现测试样本。

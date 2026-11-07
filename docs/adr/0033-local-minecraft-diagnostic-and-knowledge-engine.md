@@ -5,6 +5,7 @@
 - Date: 2026-11-02
 - Scope: Minecraft 日志、崩溃报告、运行环境、模组关系、故障模式与本地诊断知识库
 - Related: [ADR 0015：按进程隔离的游戏日志会话与诊断证据](0015-process-scoped-game-log-sessions-and-diagnostics.md)、[ADR 0030：世界诊断与区块异常定位联动](0030-world-diagnostics-and-chunk-fault-workflow.md)、[ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)
+- Additions: [Minecraft Diagnostic Engine](../additions/ecl.diagnostic-engine/README.md)、[Diagnostic Knowledge Base](../additions/ecl.diagnostic-knowledge-base/README.md)
 
 > **Addition 登记说明：** 本 ADR 记录领域架构决策，不再作为扩展目录或发布状态的权威来源。相关 Addition 的正式身份、登记状态、版本与发布信息统一以 [ECL Additions Registry](../additions/README.md) 为准；当前登记目录中的对应项目仍属于候选，须完成 ADR 0054 评审与登记流程后才成为正式条目。
 

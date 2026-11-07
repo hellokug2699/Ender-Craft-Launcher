@@ -1,0 +1,47 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.vanilla-toolkit",
+  "name": "Vanilla Toolkit",
+  "type": "Feature",
+  "category": "Gameplay Tools",
+  "summary": "面向 Minecraft 原版规则的查询、计算、模拟与辅助工具集合.",
+  "registryStatus": "In Development",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0040-vanilla-toolkit-addition.md",
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-07",
+    "lastUpdated": "2026-11-07",
+    "deprecation": null,
+    "replacement": null
+  }
+}

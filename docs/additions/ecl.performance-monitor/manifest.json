@@ -1,0 +1,47 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.performance-monitor",
+  "name": "Performance Monitor",
+  "type": "Feature",
+  "category": "Performance",
+  "summary": "低开销、持续运行的 Minecraft 性能健康监控，记录进程、系统资源及可可靠获取的游戏侧指标.",
+  "registryStatus": "In Development",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0041-minecraft-performance-monitoring-and-profiling-architecture.md",
+    "../../adr/0033-local-minecraft-diagnostic-and-knowledge-engine.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-07",
+    "lastUpdated": "2026-11-07",
+    "deprecation": null,
+    "replacement": null
+  }
+}

@@ -7,6 +7,7 @@
 - Date: 2026-11-02
 - Scope: Minecraft 世界存档解析、NBT 数据浏览与编辑、区块分析、地图渲染及语义定义查询
 - Related: ADR 0026（实例工作台的存档、多人游戏与最近访问）、ADR 0030（世界诊断与区块异常定位联动）、ADR 0031（多维度世界架构与存储解析）
+- Additions: [NBT Explorer](../additions/ecl.nbt-explorer/README.md)、[World Region Selector](../additions/ecl.world-region-selector/README.md)
 
 ## 背景
 

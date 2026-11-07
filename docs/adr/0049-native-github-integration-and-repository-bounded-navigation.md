@@ -5,6 +5,7 @@
 - Date: 2026-11-03
 - Scope: GitHub 项目中心 Feature Addition、ECL 原生页面入口、GitHub App 用户授权、仓库数据访问、Issue 反馈与仓库边界内导航
 - Related: [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0021：WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md)
+- Additions: [GitHub Project Center](../additions/ecl.github-project-center/README.md)
 
 > **Addition 登记说明：** 本 ADR 记录领域架构决策，不再作为扩展目录或发布状态的权威来源。相关 Addition 的正式身份、登记状态、版本与发布信息统一以 [ECL Additions Registry](../additions/README.md) 为准；当前登记目录中的对应项目仍属于候选，须完成 ADR 0054 评审与登记流程后才成为正式条目。
 

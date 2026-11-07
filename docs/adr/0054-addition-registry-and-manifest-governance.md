@@ -1,6 +1,6 @@
 # ADR 0054：Addition 注册表、清单与生命周期治理
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-04
 - Scope: 官方 Addition 的身份分配、统一注册目录、机器可读 Manifest、登记审核、版本发布、兼容性、生命周期与历史 ADR 迁移
@@ -223,5 +223,7 @@ Registry 是供发现和管理扩展的入口，不得成为普通用户启动 E
 - 不会仅因 ADR 曾为扩展而创建，就错误废弃仍然有效的领域架构决策。
 
 ## 修订记录
+
+- 2026-11-07：维护者确认批准本决策；Implementation 保持 Not Started，批准不代表实现完成。完成首批 Addition Registry 登记时，按已批准规则建立单项 README 与 Manifest。
 
 - 2026-11-04：首次提出统一 Addition Registry 与 Manifest 治理规范；明确以 `docs/additions/README.md` 作为唯一官方扩展目录，并提出既有扩展 ADR 的逐项迁移原则。Decision 保持 Proposed，等待评审。

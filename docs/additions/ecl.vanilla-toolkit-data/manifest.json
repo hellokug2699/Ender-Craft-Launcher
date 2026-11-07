@@ -1,0 +1,50 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.vanilla-toolkit-data",
+  "name": "Vanilla Toolkit Data",
+  "type": "Data",
+  "category": "Gameplay Data",
+  "summary": "供 Vanilla Toolkit 使用的 Minecraft 原版版本化结构化数据包，与工具实现分离并可独立更新.",
+  "registryStatus": "Planned",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": {
+    "status": "pending-definition",
+    "schemaVersion": null
+  },
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0040-vanilla-toolkit-addition.md",
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-07",
+    "lastUpdated": "2026-11-07",
+    "deprecation": null,
+    "replacement": null
+  }
+}

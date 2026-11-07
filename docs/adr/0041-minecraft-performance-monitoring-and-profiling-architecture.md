@@ -5,6 +5,7 @@
 - Date: 2026-11-02
 - Scope: Minecraft 实例运行期间的性能健康监控、卡死检测、性能分析器集成、性能证据采集及与本地诊断引擎的联动
 - Related: [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033：本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md)、[ADR 0039：应用运行时生命周期与优雅关闭](0039-application-runtime-lifecycle-and-graceful-shutdown.md)
+- Additions: [Performance Monitor](../additions/ecl.performance-monitor/README.md)、[Performance Profiler](../additions/ecl.performance-profiler/README.md)
 
 > **Addition 登记说明：** 本 ADR 记录领域架构决策，不再作为扩展目录或发布状态的权威来源。相关 Addition 的正式身份、登记状态、版本与发布信息统一以 [ECL Additions Registry](../additions/README.md) 为准；当前登记目录中的对应项目仍属于候选，须完成 ADR 0054 评审与登记流程后才成为正式条目。
 

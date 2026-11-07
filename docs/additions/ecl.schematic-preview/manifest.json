@@ -1,0 +1,48 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.schematic-preview",
+  "name": "Schematic Preview",
+  "type": "Feature",
+  "category": "Building and Creation",
+  "summary": "投影/建筑方案文件的预览、空间查看与基础信息检查；具体格式覆盖范围由 Feature Spec 确认。",
+  "registryStatus": "Planned",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md",
+    "../../adr/0042-instance-file-explorer-and-crash-report-workflow.md",
+    "../../adr/0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-07",
+    "lastUpdated": "2026-11-07",
+    "deprecation": null,
+    "replacement": null
+  }
+}

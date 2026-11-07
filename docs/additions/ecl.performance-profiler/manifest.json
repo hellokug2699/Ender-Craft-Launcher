@@ -1,0 +1,47 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.performance-profiler",
+  "name": "Performance Profiler",
+  "type": "Feature",
+  "category": "Performance",
+  "summary": "按需启动的高级 Minecraft 性能分析能力，通过可替换 Profiler backend 捕获采样、Tick、线程与调用树证据.",
+  "registryStatus": "In Development",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0041-minecraft-performance-monitoring-and-profiling-architecture.md",
+    "../../adr/0033-local-minecraft-diagnostic-and-knowledge-engine.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-07",
+    "lastUpdated": "2026-11-07",
+    "deprecation": null,
+    "replacement": null
+  }
+}

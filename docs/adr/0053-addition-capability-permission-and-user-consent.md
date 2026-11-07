@@ -1,6 +1,6 @@
 # ADR 0053：Additions 能力权限模型与用户授权流程
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-04
 - Scope: Additions 权限声明、宿主能力授予、安装前用户知情授权、权限撤销与运行时访问控制
@@ -178,5 +178,7 @@ Instance 文件访问继续遵循 ADR 0045 和 Instance Engine 的所有权、�
 - 权限系统不会影响未安装扩展时的普通启动、实例管理和游戏启动路径。
 
 ## 修订记录
+
+- 2026-11-07：维护者确认批准本决策；Implementation 保持 Not Started，批准不代表实现完成。
 
 - 2026-11-04：首次提出 Additions 能力权限模型，定义安装前知情授权、能力分层、权限撤销及宿主运行时强制执行边界；Decision 保持 Proposed，等待评审。
