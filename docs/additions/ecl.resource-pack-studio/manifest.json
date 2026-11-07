@@ -1,0 +1,49 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.resource-pack-studio",
+  "name": "Resource Pack Studio",
+  "type": "Feature",
+  "category": "Resource Inspection and Preview",
+  "summary": "可选的 Minecraft 资源包浏览、材质/模型/动画预览、状态变体展示与资源结构分析工具。",
+  "registryStatus": "Proposed",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md",
+    "../../adr/0043-minecraft-threat-protection-and-security-analysis.md",
+    "../../adr/0054-addition-registry-and-manifest-governance.md",
+    "../../adr/0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md",
+    "../../adr/0058-resource-pack-studio-architecture.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-07",
+    "lastUpdated": "2026-11-07",
+    "deprecation": null,
+    "replacement": null
+  }
+}
