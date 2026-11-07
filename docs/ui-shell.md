@@ -331,9 +331,10 @@
     已完成绿、正在下载白、正在排队灰、下载失败红；未开始不画线，未参与本次部署的项显示「未选择」
     并灰化。状态只来自安装服务真实上报的 `InstallStage`（Manifest/Version → Loader/Processors →
     Client/Libraries/Assets/Logging → FabricApi → OptiFine），不虚构阶段。
-  - 总进度使用线性进度条与阶段文本；只有 `InstallProgress.TotalFiles > 0` 时才显示百分比，
-    否则只显示阶段与已完成数量。文件大小只在领域提供时显示（Fabric API 目录带字节数），
-    其余显示「大小未知」，不估算、不写 0。
+  - 总进度使用线性进度条与阶段文本；安装阶段有可靠字节总量时按字节计算百分比，否则退回文件计数，
+    再没有计数时只显示阶段文本（不伪造百分比）。文件大小来自真实元数据：Minecraft 游戏文件由
+    `IVersionDownloadSizeEstimator` 汇总官方版本 JSON，Fabric API 用目录字节数，整合包归档用来源/
+    实际归档大小；缺少可靠来源的加载器仍显示「大小未知」，不估算、不写 0。详见 §2.8。
   - 「开始下载」调用 `IInstanceService.CreateAsync` 后立即用 `IVersionInstallService.InstallAsync`
     部署同一个新实例；创建失败不进入安装，失败时保留已创建的实例并显示红色「查看错误信息」
     与「重试失败的下载项」（重试只重跑安装，靠领域哈希校验续传/重下，不重新创建实例）。
@@ -351,12 +352,14 @@
   已登记的所有根目录，主工作区标「当前安装位置」，外部目录标「只读来源」，并明确说明外部 Minecraft
   目录不会接收新实例（ADR 0018 / 0046）；「添加目录」复用实例页面的目录登记弹窗
   （`InstanceDirectoryDialogViewModel`），不另写一套选择逻辑。
-- **过渡区**：`DownloadView` 在实例版本页下方保留旧的「安装 / 补全已有实例」卡片并标注
-  “待 B4b 迁移到正式归属”，避免在实例安装的新归属落地前丢失现有能力；B4b 完成后移除。
+- **过渡区已移除（B4b）**：`DownloadView` 不再保留「安装 / 补全已有实例」卡片；既有实例的补全/修复
+  由实例工作区基本信息页的「补全/修复」入口承担（`RepairForAsync` → `InstallForAsync`），
+  下载页只负责新建实例。对应 `downloads.game.existing*` 键已删除。
 - 测试：`tests/ECL.App.Tests/Download/InstanceVersionPageTests.cs`（分类顺序、默认选择、类型过滤、
   Fabric/Forge/NeoForge 条件组件、Cleanroom 限制、同名提交拦截、创建+安装顺序、真实阶段映射、
   失败重试不重复创建、创建失败不安装、成功后必须重新布置、Fabric API 参数、版本目录失败、
-  安装位置只读来源）。实机见交接文档 §4（1500×950、1080×720、zh-CN/en-US）。
+  安装位置只读来源、真实产物大小、部署自身新建实例不算重名、字节百分比）。实机见交接文档 §4
+  （1500×950、1080×720、zh-CN/en-US）。
 
 ### 2.7 下载中心内容发现页（B4a-2）
 
@@ -395,13 +398,65 @@
   直接被拒绝并给出准确原因。
 - **条级进度**：页面只有版本行内进度，全局任务状态仍由 `IOperationService` 进入 Output / Task
   面板。多个版本行可同时下载，页面按 `network.maxConcurrentDownloads` 排队并显示“正在排队”。
-- **能力边界**：整合包部署属于 B4b（实例版本页的整合包模式），当前版本行下载按钮不可用并显示
-  原因；数据包需要世界目标（ADR 0026 / 0031），分类页只显示阻断说明；CurseForge 作者禁止
+- **能力边界（B4b 更新）**：整合包版本行已接通实例版本页的整合包模式（见 §2.8），本页仍不建立
+  第二套安装表单；数据包需要世界目标（ADR 0026 / 0031），分类页只显示阻断说明；CurseForge 作者禁止
   第三方分发时下载失败会显示领域原因，不伪造成功。
 - 测试：核心 `ContentVersionCatalogTests`（7）与 `ContentSearchTests`（作者、文件大小补全）；
-  应用 `ContentDiscoveryPageTests`（17：目标模式与锁定、英文输入、来源切换、列表字段、详情两表、
-  确认 / 取消 / 改目标、目录下载、资源包与光影包目标、失效实例、整合包与数据包边界）。
+  应用 `ContentDiscoveryPageTests`（目标模式与锁定、英文输入、来源切换、列表字段、详情两表、
+  确认 / 取消 / 改目标、目录下载、资源包与光影包目标、失效实例、整合包跳转与数据包边界）。
   实机结果见交接文档 §4。
+
+### 2.8 实例安装归属、结构化依赖搜索与整合包模式（B4b）
+
+页面规格：`download-instance-versions.md` §5、`download-modpacks.md` §8、`instances.md` §5。
+
+- **过渡卡片清理**：删除 `DownloadView` 的「安装 / 补全已有实例」卡片与
+  `downloads.game.existing*` 键；删除 `InstancesViewModel` 的页面级 `InstallCommand` 与
+  `EnsureJavaForInstanceAsync`。既有实例安装的正式归属是实例工作区的「补全/修复」入口，
+  它仍调用同一个 `InstallForAsync`（领域安装服务只有一份）。
+- **结构化依赖搜索上下文**：新增 `ContentSearchContext(Kind, InstanceId, GameVersion, Loader,
+  Query, ExistingInstance)`。Shell 从已加载实例记录构造上下文（稳定 InstanceId + 版本 + 加载器 +
+  搜索词），`DownloadViewModel.OpenContentBrowserAsync(context)` 传到
+  `ContentDiscoveryViewModel.ActivateAsync(context)`；已有实例模式的版本/加载器锁定值优先取上下文，
+  目标实例仍会重新读取验证，失效时明确要求重新选择，不静默退回自定义筛选。
+- **整合包模式入口**：
+  - 下载中心整合包分类的版本行下载按钮调用 `OpenModpackDeployment` → `DownloadViewModel` 切到
+    「实例版本」并进入整合包模式；详情弹窗在导航开始时立即关闭（关闭弹窗不取消部署）。
+  - 本地导入（实例页「导入整合包」与全局拖拽）解析成功后经 Shell 进入同一个整合包模式；
+    主动选择与拖拽共用 `InstancesViewModel.ImportModpackFileAsync`，不建立第二套部署流程。
+- **清单装填与锁定**：在线来源按选定版本重新解析并下载归档（`IContentInstallService.PrepareModpackAsync`，
+  归档落在启动器下载目录），随后 `ModpackArchiveInspector.Read` 解析清单；本地来源直接读取归档。
+  页面沿用实例版本页布局：整合包版本、归档大小、游戏版本、类型、加载器与加载器版本整体灰化只读，
+  实例名称自动填充为整合包名称（可改），安装位置沿用既有规则。缺失 Minecraft 版本、缺失加载器版本、
+  Quilt、未知加载器、Cleanroom 非 1.12.2 都显示准确原因且不允许部署；页面不补任何清单未声明的组件。
+- **模组数量与预览**（`download-modpacks.md` §8.1）：`ModpackArchiveInspector` 新增
+  `ModFiles`（Modrinth 只统计 `mods/` 下非客户端不支持的文件；CurseForge 统计 required 条目），
+  清单没有文件列表时数量显示「未知」而不是 0。选项不可编辑但保持正常视觉样式，点击打开只读预览弹窗
+  （`ModpackModListDialogViewModel`）；CurseForge 清单不含文件名，预览显示项目/文件 ID，不猜文件名。
+  部署期间显示「正在安装 已完成/总数」，完成计数来自领域真实下载计数，成功后才切换为「已安装」。
+- **统一部署**：`IContentInstallService.DeployModpackAsync` 在同一个 Import 任务中创建新实例并导入，
+  导入失败删除本次新建实例（无法删除时失败详情写明）；成功后页面再用
+  `IVersionInstallService.InstallAsync` 安装游戏文件与加载器。安装失败保留实例，重试只重跑安装；
+  导入失败重试从头部署。任务中心只有一条当前任务，不建立第二套任务列表。
+- **产物大小**（`download-instance-versions.md` §9）：新增 `IVersionDownloadSizeEstimator`：
+  - Minecraft 游戏文件 = 官方版本 JSON 的 `downloads.client.size` + 当前平台实际选择的
+    library/natives 大小 + `assetIndex.totalSize` + `logging.client.file.size`；缺少任一项时整体
+    「大小未知」，不显示 0；版本 JSON 地址来自版本清单（`MinecraftGameVersion.Url`），
+    失败时退回本机版本文件。该数字是产物总大小，可能包含本机已有、安装时会被哈希跳过的文件。
+  - 整合包归档大小来自来源声明的字节数或实际归档文件长度。
+  - Fabric 加载器仍保持「大小未知」：Fabric Meta 的 profile 不声明 fabric-loader 自身 jar 的大小，
+    只汇总其余库会漏项，因此不显示不完整数字；Forge/NeoForge/Cleanroom/OptiFine 目录同样没有
+    声明安装包/库大小。模组数量与归档大小是真实值。
+- **进度百分比**：安装阶段同时有可靠字节总量时按字节计算百分比（避免单个大客户端文件下载中一直显示
+  0%），否则退回文件计数百分比；总进度仍只用线性进度条与阶段文本。
+- **重名与自身实例**：部署刚创建的实例不参与后续同名校验（按稳定 InstanceId 排除），
+  避免成功或安装中页面把本次创建的实例显示成“实例已存在”。
+- 测试：核心 `ModpackDeploymentTests`（7：清单模组计数与只读 ID、缺失文件列表为未知、按版本准备、
+  部署创建+导入+回滚、归档缺失拒绝）与 `VersionDownloadSizeEstimatorTests`（5：客户端/库/资源/日志求和、
+  资源总大小缺失为未知、日志大小缺失为未知、Fabric profile 求和与缺失大小保持未知）；
+  应用新增 16 项（整合包锁定/名称装填、部署顺序、安装失败只重试安装、准备失败不创建实例、
+  本地归档同模式、Quilt 拒绝、成功后必须重新布置、重新布置退出模式、预览列表、退出模式清名、
+  真实大小、大小未知不阻塞、整合包大小来自清单、非 Fabric 大小未知、自身实例不算重名、字节百分比）。
 
 ## 3. 共享页面控件（B0）
 B0 只提供 B1 立即需要的三个共享件，其余控件（`DataTable`、`StatusBanner`、`InlineProgress`、
@@ -576,12 +631,17 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
 - 下载中心的实例版本页固定把新实例创建在主工作区：已登记的外部 Minecraft 目录只作为只读来源列出，
   不提供“安装到该目录”的选择。要支持多安装位置需要领域层面的新决策（新建实例目录与身份登记的边界），
   当前如实说明而不是放置会悄悄写到别处的选择器。
-- 实例版本的安装项文件大小只在领域提供时显示（Fabric API 目录带字节数）；Minecraft 客户端、库、
-  资源与加载器在安装前没有可靠的字节数来源，因此统一显示「大小未知」，不按版本 JSON 或经验估算。
+- 实例版本的安装项文件大小：Minecraft 游戏文件与整合包归档显示真实总大小（官方版本 JSON / 来源字节数）；
+  Fabric API 显示目录字节数；Fabric 加载器、Forge/NeoForge/Cleanroom 加载器与 OptiFine 仍显示「大小未知」，
+  因为各目录没有声明安装包或库文件大小，ECL 不用 HEAD 探测或经验估值补数字。
+  “游戏文件”是产物总大小，可能包含本机已存在、安装时被哈希跳过的文件；不是本次实际要下载的字节数。
 - 下载失败时只提供“重试失败的下载项”，它重跑同一实例的安装并依赖领域哈希校验续传；领域没有
   按单个产物重试的接口，因此不提供逐项重试的假按钮。关闭页面不会取消已开始的任务。
-- 打包模式（整合包在线下载/本地导入后进入实例版本页的整合包模式）属于 B4b；本批不伪造该模式，
-  实例版本页不显示会误导的整合包表单。
+- 整合包模式（在线下载/本地导入共用）已在 B4b 接通；本地导入入口的实机验证只覆盖到解析与路由的
+  自动化测试，文件选择器/拖拽没有走人工实机（见交接文档）。整合包清单未声明文件列表时模组数量显示
+  「未知」，CurseForge 清单不含文件名时预览只显示项目/文件 ID。
+- 整合包模式的加载器大小保持未知（Fabric Meta profile 缺少 fabric-loader jar 大小）；
+  清单未声明的附加组件不会由页面补入，安装内容完全由清单与部署规则决定。
 - WPF 线程/Dispatcher、共享控件与输出管线测试位于仅 Windows 可运行的 `tests/ECL.App.Tests`；CI 在 Windows job 执行，
   Linux job 不运行该测试项目。
 
