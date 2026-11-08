@@ -709,7 +709,7 @@ ADR 0005（下载源）、ADR 0020（下载产物生命周期）。本步把「�
 - **顺带修复**：`SettingsViewModel.ResetCurrentPage` 改为调用 `ISettingsPage.ResetToDefaults`，
   界面偏好与游戏与启动等专用页的「恢复本分类默认值」不再无效；`OptionChoiceItem.ToString()`
   返回本地化显示名，设置下拉的 UIA/读屏不再暴露 record 默认字符串。
-- 测试：核心 +28（`MemoryAllocationTests` 11：自动分档/未知值/真实采样/手动/实例优先/旧配置兼容/
+- 测试：核心 +28（`MemoryAllocationTests` 18：自动分档/未知值/真实采样/手动/实例优先/旧配置兼容/
   未知回退/默认用户迁移/显式 4096 与 8192/幂等/损坏配置；`JavaSelectionServiceTests` +1 自动策略与实例优先；
   `LaunchPipelineTests` +2 自动内存命令与 `--fullscreen`；`DownloadServiceTests` +3 关闭重试/
   配置最大次数/限速；`DownloadRateLimiterTests` 4；其余为断言调整）。应用 +10
