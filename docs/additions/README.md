@@ -47,6 +47,7 @@ ECL 采用“原生功能入口、可选功能能力”的产品模型：页面�
 | ECL AI | [`ecl.ai`](ecl.ai/README.md) | Planned | 统一 Chat、Minecraft Knowledge 与 Diagnostic 工作模式；支持本地/远程推理和受控联网搜索 | [ADR 0061](../adr/0061-ecl-ai-conversation-and-capability-architecture.md)（Accepted） |
 | ECL AI Agent Runtime | [`ecl.ai-agent-runtime`](ecl.ai-agent-runtime/README.md) | Proposed | Agent 编排运行时：Target、Plan、Task Scheduler、受控执行、Changes 审查、验证与恢复 | [ADR 0062](../adr/0062-ecl-ai-agent-runtime-and-orchestration-architecture.md)（Proposed） |
 | ECL Player Workspace | [`ecl.player-workspace`](ecl.player-workspace/README.md) | Proposed | 不限定用途的通用玩家工作空间：表格、目标与任务、项目资料组织及通用数据导入导出 | [ADR 0063](../adr/0063-ecl-player-workspace-architecture.md)（Proposed） |
+| Map Art Studio | [`ecl.map-art-studio`](ecl.map-art-studio/README.md) | Proposed | 地图画规划：单张/多地图画布、图片与原生地图数据导入、颜色映射和材料分析 | [ADR 0064](../adr/0064-map-art-studio-architecture.md)（Proposed） |
 
 ### Data Additions
 
