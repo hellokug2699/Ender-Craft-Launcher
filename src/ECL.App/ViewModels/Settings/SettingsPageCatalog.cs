@@ -73,6 +73,21 @@ public static class SettingsPageCatalog
                 new("settings.page.interface.gap.motion.title", "settings.page.interface.gap.motion.reason"),
             ]),
         new(
+            SettingsPageKeys.Java,
+            "settings.nav.java",
+            "settings.page.java.subtitle",
+            [
+                // 迁移期间的过渡页：保留仍在使用的 Java 搜索路径与运行时来源，
+                // 运行时清单/优先级/验证/卸载尚未迁入，列在能力缺口而不伪造列表。
+                new("settings.page.java.group.existing", ["java.defaultPath", "java.runtimeProvider"]),
+            ],
+            [
+                new("settings.page.java.gap.inventory.title", "settings.page.java.gap.inventory.reason"),
+                new("settings.page.java.gap.priority.title", "settings.page.java.gap.priority.reason"),
+                new("settings.page.java.gap.validation.title", "settings.page.java.gap.validation.reason"),
+                new("settings.page.java.gap.uninstall.title", "settings.page.java.gap.uninstall.reason"),
+            ]),
+        new(
             SettingsPageKeys.GameLaunch,
             "settings.nav.game",
             "settings.page.game.subtitle",

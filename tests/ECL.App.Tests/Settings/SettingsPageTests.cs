@@ -46,6 +46,7 @@ public sealed class SettingsPageTests
             [
                 SettingsPageKeys.General,
                 SettingsPageKeys.Interface,
+                SettingsPageKeys.Java,
                 SettingsPageKeys.GameLaunch,
                 SettingsPageKeys.Downloads,
                 SettingsPageKeys.Network,
@@ -57,22 +58,17 @@ public sealed class SettingsPageTests
     public void UnimplementedCategoriesStayInTheNavigationWithAReasonAndCannotBeSelected()
     {
         using var host = new SettingsHost();
-        var java = host.ViewModel.Navigation.Find(SettingsPageKeys.Java)!;
-
-        Assert.False(java.IsAvailable);
-        Assert.Null(java.Page);
-        Assert.False(string.IsNullOrWhiteSpace(java.UnavailableReason));
-        Assert.Contains("Java 管理", java.UnavailableReason);
-
-        host.ViewModel.Navigation.SelectedItem = java;
-        Assert.Equal(SettingsPageKeys.General, host.ViewModel.Navigation.SelectedItem!.Key);
-        Assert.False(host.ViewModel.Navigation.TryActivate(SettingsPageKeys.Java));
 
         foreach (var key in new[] { SettingsPageKeys.Storage, SettingsPageKeys.Additions })
         {
             var item = host.ViewModel.Navigation.Find(key)!;
             Assert.False(item.IsAvailable);
+            Assert.Null(item.Page);
             Assert.False(string.IsNullOrWhiteSpace(item.UnavailableReason));
+
+            host.ViewModel.Navigation.SelectedItem = item;
+            Assert.Equal(SettingsPageKeys.General, host.ViewModel.Navigation.SelectedItem!.Key);
+            Assert.False(host.ViewModel.Navigation.TryActivate(key));
         }
     }
 
@@ -301,6 +297,7 @@ public sealed class SettingsPageTests
                  {
                      SettingsPageKeys.General,
                      SettingsPageKeys.Interface,
+                     SettingsPageKeys.Java,
                      SettingsPageKeys.GameLaunch,
                      SettingsPageKeys.Downloads,
                      SettingsPageKeys.Network,
@@ -322,6 +319,17 @@ public sealed class SettingsPageTests
         Assert.Equal(
             ["network.proxyMode", "network.proxyAddress"],
             network.Options.Select(option => option.Key));
+    }
+
+    [Fact]
+    public void JavaPageKeepsTheLivePathAndProviderOptionsWhileTheInventoryIsPending()
+    {
+        using var host = new SettingsHost();
+        var java = Page(host, SettingsPageKeys.Java);
+
+        Assert.Equal(["java.defaultPath", "java.runtimeProvider"], java.Options.Select(option => option.Key));
+        var gap = Assert.Single(java.Sections.OfType<SettingsUnavailableSectionViewModel>());
+        Assert.Contains(gap.Items, item => item.Title.Contains("运行时清单", StringComparison.Ordinal));
     }
 
     [Fact]
