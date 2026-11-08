@@ -139,6 +139,17 @@ public sealed class SettingsPageTests
     }
 
     [Fact]
+    public void OptionChoicesExposeLocalizedNamesToAutomation()
+    {
+        using var host = new SettingsHost();
+        var channel = OptionsPage(host, SettingsPageKeys.General)
+            .Options.Single(option => option.Key == "launcher.updateChannel");
+
+        // 下拉条目只暴露本地化显示名；UIA/读屏不应看到 record 的默认 ToString。
+        Assert.All(channel.Choices, choice => Assert.Equal(choice.DisplayName, choice.ToString()));
+    }
+
+    [Fact]
     public void LegacyUpdateChannelAliasDisplaysAsStableAndIsRewrittenOnlyWhenChanged()
     {
         using var host = new SettingsHost(
@@ -173,7 +184,7 @@ public sealed class SettingsPageTests
         Assert.Equal("false", host.Settings.GetRawString("launcher.checkUpdates"));
         Assert.Equal(SettingsValueSource.Global, host.Settings.GetSource("launcher.checkUpdates"));
 
-        var game = OptionsPage(host, SettingsPageKeys.GameLaunch);
+        var game = GamePage(host);
         var memory = game.Options.Single(option => option.Key == "java.defaultMemoryMb");
         memory.TextValue = "not-a-number";
         memory.CommitCommand.Execute(null);
@@ -299,7 +310,6 @@ public sealed class SettingsPageTests
         foreach (var key in new[]
                  {
                      SettingsPageKeys.General,
-                     SettingsPageKeys.GameLaunch,
                      SettingsPageKeys.Downloads,
                      SettingsPageKeys.Network,
                  })
@@ -315,6 +325,18 @@ public sealed class SettingsPageTests
                     Assert.False(string.IsNullOrWhiteSpace(item.Reason));
                 });
         }
+
+        // 游戏与启动是专用页面：内存策略/窗口联合校验已真实接入，
+        // 规格明确不提供的启动能力以「固定边界」分组说明。
+        var game = GamePage(host);
+        Assert.NotEmpty(game.Boundaries.Items);
+        Assert.All(
+            game.Boundaries.Items,
+            item =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(item.Title));
+                Assert.False(string.IsNullOrWhiteSpace(item.Reason));
+            });
 
         // 界面偏好不是通用元数据页：字体/字号/缩放/动效已真实接入，
         // 规格明确不提供的能力（主题色、逐控件字号、字体导入等）以“固定边界”分组说明。
@@ -376,6 +398,10 @@ public sealed class SettingsPageTests
     private static SettingsOptionsPageViewModel OptionsPage(SettingsHost host, string key) =>
         Assert.IsAssignableFrom<SettingsOptionsPageViewModel>(host.ViewModel.Navigation.Find(key)!.Page);
 
+    private static SettingsGameLaunchPageViewModel GamePage(SettingsHost host) =>
+        Assert.IsType<SettingsGameLaunchPageViewModel>(
+            host.ViewModel.Navigation.Find(SettingsPageKeys.GameLaunch)!.Page);
+
     private sealed class SettingsHost : IDisposable
     {
         private readonly string _root;
@@ -416,7 +442,10 @@ public sealed class SettingsPageTests
                 localizer,
                 new CodeSigningTrustService(Path.Combine(_root, "signing")),
                 Dialogs,
-                JavaPage);
+                JavaPage,
+                new Ecl.Minecraft.Launch.MemoryAllocationService(
+                    Settings,
+                    new FakeSystemMemoryProbe(totalMegabytes: 32 * 1024, availableMegabytes: 16 * 1024)));
         }
 
         public ISettingsService Settings { get; }
@@ -448,6 +477,16 @@ public sealed class SettingsPageTests
                 // 同上。
             }
         }
+    }
+
+    private sealed class FakeSystemMemoryProbe(long totalMegabytes, long availableMegabytes)
+        : Ecl.Core.Diagnostics.ISystemMemoryProbe
+    {
+        public Ecl.Core.Diagnostics.MemoryPressureSample? Read() => new(
+            availableMegabytes * 1024 * 1024,
+            totalMegabytes * 1024 * 1024,
+            0,
+            0);
     }
 
     private sealed class FakeDialogService : IDialogService

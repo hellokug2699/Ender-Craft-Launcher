@@ -3,6 +3,7 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 using Ecl.Configuration.Settings;
+using Ecl.Core.Diagnostics;
 using Ecl.Core.Localization;
 using Ecl.Java;
 using Ecl.Minecraft.Instances;
@@ -185,6 +186,37 @@ public sealed class JavaSelectionServiceTests
     }
 
     [Fact]
+    public async Task AutomaticMemoryPolicyUsesAvailableMemoryAndManualPolicyKeepsItsValue()
+    {
+        using var environment = new TestEnvironment();
+        var java17 = Runtime(environment, "17.0.15");
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IJavaLocator>(new FakeJavaLocator([java17]));
+            services.AddSingleton<ISystemMemoryProbe>(new StubMemoryProbe(32 * 1024, 16 * 1024));
+        });
+
+        var settings = provider.GetRequiredService<ISettingsService>();
+        var instance = await CreateVersionAsync(provider, environment, "1.20.1");
+        var version = (await provider.GetRequiredService<IVersionResolver>().ResolveAsync(instance.VersionId)).Value!;
+        var selection = provider.GetRequiredService<IJavaSelectionService>();
+
+        // 默认自动策略：16 GB 可用内存对应 8192 MB。
+        var automatic = await selection.ResolveAsync(instance, version);
+        Assert.Equal(8192, automatic.MemoryMb);
+
+        Assert.True(settings.TrySetRaw("java.memoryPolicy", "manual", null, out var policyError), policyError);
+        Assert.True(settings.TrySetRaw("java.defaultMemoryMb", "6144", null, out var memoryError), memoryError);
+
+        var manual = await selection.ResolveAsync(instance, version);
+        Assert.Equal(6144, manual.MemoryMb);
+
+        // 实例覆盖始终优先。
+        Assert.True(settings.TrySetRaw("instance.java.memoryMb", "10240", instance.Id, out var instanceError), instanceError);
+        Assert.Equal(10240, (await selection.ResolveAsync(instance, version)).MemoryMb);
+    }
+
+    [Fact]
     public async Task InstanceMemoryOverridesGlobalMemory()
     {
         using var environment = new TestEnvironment();
@@ -313,6 +345,15 @@ public sealed class JavaSelectionServiceTests
             "Test",
             architecture,
             parsed);
+    }
+
+    private sealed class StubMemoryProbe(long totalMegabytes, long availableMegabytes) : ISystemMemoryProbe
+    {
+        public MemoryPressureSample? Read() => new(
+            availableMegabytes * 1024 * 1024,
+            totalMegabytes * 1024 * 1024,
+            0,
+            0);
     }
 
     private sealed class FakeJavaLocator(

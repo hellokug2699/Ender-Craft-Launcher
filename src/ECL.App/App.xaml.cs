@@ -125,6 +125,12 @@ public partial class App : Application
             _logger = _services.GetRequiredService<ILogger<App>>();
             DispatcherUnhandledException += OnDispatcherUnhandledException;
 
+            // D-03：旧配置的显式内存值迁移为“手动指定”，未修改过默认值的用户保持自动。
+            // 迁移可能写一次全局配置；失败不阻断启动（运行时的兼容回退仍保留数值）。
+            Ecl.Minecraft.Launch.MemoryPolicyMigration.TryMigrate(
+                _services.GetRequiredService<ISettingsService>(),
+                _logger);
+
             // ADR 0039：组合根建立后进入 Starting，初始化完成后再进入 Running。
             var lifecycle = _services.GetRequiredService<IApplicationLifecycle>();
             lifecycle.BeginStart();

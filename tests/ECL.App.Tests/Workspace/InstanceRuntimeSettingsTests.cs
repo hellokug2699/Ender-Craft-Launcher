@@ -10,6 +10,7 @@ using Ecl.Core.Localization;
 using Ecl.Java;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
+using Ecl.Minecraft.Launch;
 using Ecl.Minecraft.Versions;
 using Xunit;
 
@@ -38,6 +39,7 @@ public sealed class InstanceRuntimeSettingsTests
             settings,
             new FakeJavaLocator(),
             new FakeJavaSelectionService(),
+            new FakeMemoryAllocationService(settings),
             new FakeJavaInstallService(),
             new FakeVersionResolver(),
             new FakeDownloadController(),
@@ -262,6 +264,15 @@ public sealed class InstanceRuntimeSettingsTests
             MinecraftVersion? version,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class FakeMemoryAllocationService(ISettingsService settings) : IMemoryAllocationService
+    {
+        public MemoryAllocationPlan Resolve(int? instanceMemoryMb = null)
+        {
+            var value = instanceMemoryMb ?? settings.Get<int>("java.defaultMemoryMb");
+            return new MemoryAllocationPlan(MemoryAllocationMode.Manual, value, 0, 0, true);
+        }
     }
 
     private sealed class FakeJavaInstallService : IJavaInstallService

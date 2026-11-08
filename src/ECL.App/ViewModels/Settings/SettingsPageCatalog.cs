@@ -4,6 +4,7 @@ using Ecl.App.Services;
 using Ecl.Configuration.Settings;
 using Ecl.Core.Localization;
 using Ecl.Deployment;
+using Ecl.Minecraft.Launch;
 
 namespace Ecl.App.ViewModels.Settings;
 
@@ -61,31 +62,19 @@ public static class SettingsPageCatalog
             ],
             IncludesCodeSigning: true),
         new(
-            SettingsPageKeys.GameLaunch,
-            "settings.nav.game",
-            "settings.page.game.subtitle",
-            [
-                new("settings.page.game.group.memory", ["java.defaultMemoryMb"]),
-                new("settings.page.game.group.jvm", ["java.extraArguments"]),
-                new("settings.page.game.group.window", ["game.windowWidth", "game.windowHeight"]),
-                new("settings.page.game.group.launch", ["game.showConsole", "game.extraArguments"]),
-            ],
-            [
-                new("settings.page.game.gap.memoryPolicy.title", "settings.page.game.gap.memoryPolicy.reason"),
-                new("settings.page.game.gap.fullscreen.title", "settings.page.game.gap.fullscreen.reason"),
-            ]),
-        new(
             SettingsPageKeys.Downloads,
             "settings.nav.downloads",
             "settings.page.downloads.subtitle",
             [
                 new("settings.page.downloads.group.source", ["network.downloadSource"]),
-                new("settings.page.downloads.group.concurrency", ["network.maxConcurrentDownloads"]),
+                new("settings.page.downloads.group.concurrency", ["network.maxConcurrentDownloads", "network.speedLimitMbps"]),
+                new("settings.page.downloads.group.retry", ["network.autoRetry", "network.maxRetryAttempts"]),
             ],
             [
-                new("settings.page.downloads.gap.retry.title", "settings.page.downloads.gap.retry.reason"),
                 new("settings.page.downloads.gap.autoInstall.title", "settings.page.downloads.gap.autoInstall.reason"),
-                new("settings.page.downloads.gap.limit.title", "settings.page.downloads.gap.limit.reason"),
+                new("settings.page.downloads.gap.integrity.title", "settings.page.downloads.gap.integrity.reason"),
+                new("settings.page.downloads.gap.mirror.title", "settings.page.downloads.gap.mirror.reason"),
+                new("settings.page.downloads.gap.cache.title", "settings.page.downloads.gap.cache.reason"),
             ]),
         new(
             SettingsPageKeys.Network,
@@ -110,13 +99,15 @@ public static class SettingsPageCatalog
         ILocalizer localizer,
         IDialogService dialogs,
         CodeSigningTrustService codeSigning,
-        SettingsJavaPageViewModel javaPage)
+        SettingsJavaPageViewModel javaPage,
+        IMemoryAllocationService memoryAllocation)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(localizer);
         ArgumentNullException.ThrowIfNull(dialogs);
         ArgumentNullException.ThrowIfNull(codeSigning);
         ArgumentNullException.ThrowIfNull(javaPage);
+        ArgumentNullException.ThrowIfNull(memoryAllocation);
 
         var pages = new Dictionary<string, ISettingsPage>(StringComparer.Ordinal)
         {
@@ -124,6 +115,9 @@ public static class SettingsPageCatalog
             [SettingsPageKeys.Java] = javaPage,
             // 界面偏好有字号档位与界面缩放的专用控件，同样不是通用元数据页。
             [SettingsPageKeys.Interface] = new SettingsInterfacePageViewModel(settings, localizer, dialogs),
+            // 游戏与启动有内存策略状态、联合校验的窗口尺寸与全屏开关，需要专用页面。
+            [SettingsPageKeys.GameLaunch] = new SettingsGameLaunchPageViewModel(
+                settings, localizer, dialogs, memoryAllocation),
         };
         foreach (var spec in Specs)
         {

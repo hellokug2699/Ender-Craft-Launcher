@@ -4,6 +4,7 @@ using Ecl.Configuration.Settings;
 using Ecl.Core.Localization;
 using Ecl.Java;
 using Ecl.Minecraft.Instances;
+using Ecl.Minecraft.Launch;
 using Ecl.Minecraft.Versions;
 
 namespace Ecl.Minecraft.Java;
@@ -42,6 +43,7 @@ public sealed class JavaSelectionService(
     ISettingsService settings,
     IJavaLocator locator,
     ILocalizer localizer,
+    IMemoryAllocationService memoryAllocation,
     IJavaRequirementProvider? requirementProvider = null) : IJavaSelectionService
 {
     public async Task<JavaSelectionResult> ResolveAsync(
@@ -116,8 +118,13 @@ public sealed class JavaSelectionService(
                                                       StringComparison.Ordinal);
 
         var instanceMemory = settings.Get<int?>("instance.java.memoryMb", instance.Id);
-        var globalMemory = settings.Get<int>("java.defaultMemoryMb");
-        var memoryMb = Math.Clamp(instanceMemory ?? globalMemory, 1024, 65536);
+        var memoryPlan = memoryAllocation.Resolve(instanceMemory);
+        var memoryMb = memoryPlan.EffectiveMb;
+        if (memoryPlan.Mode == MemoryAllocationMode.Automatic && !memoryPlan.IsEstimateReliable)
+        {
+            // 自动策略依赖真实可用内存；读取不到时退回保守值并明确告知，不伪装成自动结果。
+            warnings.Add(localizer.Get("launch.java.memory.autoUnavailable", memoryPlan.EffectiveMb));
+        }
 
         foreach (var issue in JavaPlatformAdvisor.Assess(decision.Runtime, memoryMb))
         {

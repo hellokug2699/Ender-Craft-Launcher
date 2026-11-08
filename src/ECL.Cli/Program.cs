@@ -52,6 +52,11 @@ internal static class Program
         services.AddEclMinecraft();
 
         await using var provider = services.BuildServiceProvider();
+        // D-03：旧配置的显式内存值迁移为“手动指定”；失败不阻断 CLI 命令。
+        Ecl.Minecraft.Launch.MemoryPolicyMigration.TryMigrate(
+            provider.GetRequiredService<ISettingsService>(),
+            provider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()
+                ?.CreateLogger("MemoryPolicyMigration"));
         var lifecycle = provider.GetRequiredService<Ecl.Core.Runtime.IApplicationLifecycle>();
         lifecycle.BeginStart();
         var application = new CliApplication(provider, commandLine);

@@ -169,6 +169,8 @@ public sealed partial class OptionEditorViewModel : ObservableObject
 
         RefreshSource();
         NotifyState();
+        // 显式“应用”成功后同样通知依赖方（可见性、页面内的汇总状态）。
+        ValueChanged?.Invoke(this, EventArgs.Empty);
         return true;
     }
 
@@ -300,4 +302,8 @@ public sealed partial class OptionEditorViewModel : ObservableObject
     }
 }
 
-public sealed record OptionChoiceItem(string Value, string DisplayName);
+public sealed record OptionChoiceItem(string Value, string DisplayName)
+{
+    /// <summary>UI 自动化/读屏只应看到本地化选项名，不暴露 record 的默认字符串。</summary>
+    public override string ToString() => DisplayName;
+}

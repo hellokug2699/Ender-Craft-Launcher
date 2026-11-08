@@ -109,9 +109,79 @@ public sealed class DownloadServiceTests
         Assert.False(File.Exists(destination));
         Assert.False(File.Exists(destination + ".part"));
 
+        // 内容完整性错误不重试：只尝试一次，不把坏内容当成可恢复的网络问题。
+        Assert.Equal(1, handler.Calls);
+
         var snapshot = Assert.Single(operations.Snapshots);
         Assert.Equal(OperationState.Failed, snapshot.State);
         Assert.Equal(OperationErrorKind.FileIntegrity, snapshot.Error?.Kind);
+    }
+
+    [Fact]
+    public async Task AutomaticRetryCanBeDisabled()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var settings = provider.GetRequiredService<ISettingsService>();
+        Assert.True(settings.TrySetRaw("network.autoRetry", "false", null, out var retryError), retryError);
+        var handler = new StubHandler();
+        handler.Respond = _ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+        var service = CreateService(settings, handler);
+
+        var request = new DownloadRequest(
+            Path.Combine(environment.Root, "downloads", "no-retry.bin"),
+            [new Uri("https://example.com/no-retry.bin")]);
+
+        await Assert.ThrowsAsync<DownloadException>(() => service.DownloadAsync([request]));
+
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
+    public async Task RetriesUseTheConfiguredMaximumAttempts()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var settings = provider.GetRequiredService<ISettingsService>();
+        Assert.True(settings.TrySetRaw("network.maxRetryAttempts", "2", null, out var attemptsError), attemptsError);
+        var handler = new StubHandler();
+        handler.Respond = _ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+        var service = CreateService(settings, handler);
+
+        var request = new DownloadRequest(
+            Path.Combine(environment.Root, "downloads", "two-attempts.bin"),
+            [new Uri("https://example.com/two-attempts.bin")]);
+
+        await Assert.ThrowsAsync<DownloadException>(() => service.DownloadAsync([request]));
+
+        Assert.Equal(2, handler.Calls);
+    }
+
+    [Fact]
+    public async Task SpeedLimitThrottlesLargeDownloads()
+    {
+        using var environment = new TestEnvironment();
+        using var provider = environment.CreateServices();
+        var settings = provider.GetRequiredService<ISettingsService>();
+        Assert.True(settings.TrySetRaw("network.speedLimitMbps", "1", null, out var limitError), limitError);
+        var handler = new StubHandler();
+        // 1 Mbps ≈ 125 KB/s；256 KB 突发之外的 256 KB 至少需要约 2 秒。
+        var content = Encoding.UTF8.GetBytes(new string('x', 512 * 1024));
+        handler.Respond = _ => Ok(content);
+        var service = CreateService(settings, handler);
+
+        var request = new DownloadRequest(
+            Path.Combine(environment.Root, "downloads", "limited.bin"),
+            [new Uri("https://example.com/limited.bin")],
+            Size: content.Length);
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        await service.DownloadAsync([request]);
+        stopwatch.Stop();
+
+        Assert.True(
+            stopwatch.Elapsed >= TimeSpan.FromMilliseconds(700),
+            $"限速未生效：实际耗时 {stopwatch.ElapsedMilliseconds} ms");
     }
 
     [Fact]

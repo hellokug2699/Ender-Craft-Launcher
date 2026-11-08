@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-using System.Runtime.InteropServices;
 using System.Windows.Threading;
 using Ecl.Core.Diagnostics;
 using Microsoft.Extensions.Logging;
@@ -70,52 +69,12 @@ public sealed class MemoryPressureMonitor : IMemoryPressureMonitor, IDisposable
         LevelChanged?.Invoke(this, level);
     }
 
-    private static MemoryPressureSample? TryReadSample()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            var status = new MemoryStatusEx { Length = (uint)Marshal.SizeOf<MemoryStatusEx>() };
-            if (GlobalMemoryStatusEx(ref status))
-            {
-                return new MemoryPressureSample(
-                    (long)status.AvailablePhysical,
-                    (long)status.TotalPhysical,
-                    (long)status.AvailablePageFile,
-                    (long)status.TotalPageFile);
-            }
-        }
-
-        var info = GC.GetGCMemoryInfo();
-        if (info.TotalAvailableMemoryBytes <= 0)
-        {
-            return null;
-        }
-
-        var available = Math.Max(0, info.TotalAvailableMemoryBytes - info.MemoryLoadBytes);
-        return new MemoryPressureSample(available, info.TotalAvailableMemoryBytes, 0, 0);
-    }
+    // 与启动服务的自动内存策略共用同一份系统采样，见 SystemMemoryProbe。
+    private static MemoryPressureSample? TryReadSample() => SystemMemoryProbe.ReadSample();
 
     public void Dispose()
     {
         _timer.Stop();
         LevelChanged = null;
     }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MemoryStatusEx
-    {
-        public uint Length;
-        public uint MemoryLoad;
-        public ulong TotalPhysical;
-        public ulong AvailablePhysical;
-        public ulong TotalPageFile;
-        public ulong AvailablePageFile;
-        public ulong TotalVirtual;
-        public ulong AvailableVirtual;
-        public ulong AvailableExtendedVirtual;
-    }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
 }

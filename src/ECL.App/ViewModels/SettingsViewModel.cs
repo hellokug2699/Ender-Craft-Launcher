@@ -6,8 +6,10 @@ using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Services;
 using Ecl.App.ViewModels.Settings;
 using Ecl.Configuration.Settings;
+using Ecl.Core.Diagnostics;
 using Ecl.Core.Localization;
 using Ecl.Deployment;
+using Ecl.Minecraft.Launch;
 
 namespace Ecl.App.ViewModels;
 
@@ -30,10 +32,17 @@ public sealed partial class SettingsViewModel : ObservableObject
         ILocalizer localizer,
         CodeSigningTrustService codeSigning,
         IDialogService dialogs,
-        SettingsJavaPageViewModel javaPage)
+        SettingsJavaPageViewModel javaPage,
+        IMemoryAllocationService? memoryAllocation = null)
     {
         _localizer = localizer;
-        Navigation = SettingsPageCatalog.CreateNavigation(settings, localizer, dialogs, codeSigning, javaPage);
+        Navigation = SettingsPageCatalog.CreateNavigation(
+            settings,
+            localizer,
+            dialogs,
+            codeSigning,
+            javaPage,
+            memoryAllocation ?? new MemoryAllocationService(settings, new SystemMemoryProbe()));
         Navigation.PropertyChanged += OnNavigationPropertyChanged;
     }
 
@@ -98,10 +107,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void ResetCurrentPage()
     {
-        if (Navigation.CurrentPage is SettingsOptionsPageViewModel page)
-        {
-            page.ResetToDefaults();
-        }
+        // 所有已实现页面都通过 ISettingsPage 提供按分类恢复默认值；
+        // 不要再只识别通用元数据页（界面偏好/游戏与启动是专用页面）。
+        Navigation.CurrentPage?.ResetToDefaults();
     }
     partial void OnSearchTextChanged(string value) => UpdateSearch();
 

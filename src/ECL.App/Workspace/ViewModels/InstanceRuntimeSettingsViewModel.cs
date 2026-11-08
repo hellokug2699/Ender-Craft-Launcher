@@ -13,6 +13,7 @@ using Ecl.Download;
 using Ecl.Java;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
+using Ecl.Minecraft.Launch;
 using Ecl.Minecraft.Versions;
 
 namespace Ecl.App.Workspace.ViewModels;
@@ -32,6 +33,7 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
     private readonly ISettingsService _settings;
     private readonly IJavaLocator _javaLocator;
     private readonly IJavaSelectionService _javaSelection;
+    private readonly IMemoryAllocationService _memoryAllocation;
     private readonly IJavaInstallService _javaInstall;
     private readonly IVersionResolver _versionResolver;
     private readonly IDownloadController _downloads;
@@ -46,6 +48,7 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
         ISettingsService settings,
         IJavaLocator javaLocator,
         IJavaSelectionService javaSelection,
+        IMemoryAllocationService memoryAllocation,
         IJavaInstallService javaInstall,
         IVersionResolver versionResolver,
         IDownloadController downloads,
@@ -57,6 +60,7 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
         _settings = settings;
         _javaLocator = javaLocator;
         _javaSelection = javaSelection;
+        _memoryAllocation = memoryAllocation;
         _javaInstall = javaInstall;
         _versionResolver = versionResolver;
         _downloads = downloads;
@@ -123,7 +127,7 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
     /// <summary>页面内存条使用的游戏分配值；输入非法时为 0，不把未知值画成有效分配。</summary>
     public int EffectiveMemoryMb =>
         UseGlobalMemory
-            ? _settings.Get<int>("java.defaultMemoryMb")
+            ? _memoryAllocation.Resolve().EffectiveMb
             : TryParseMemory(out var memoryMb)
                 ? memoryMb
                 : 0;
@@ -379,8 +383,9 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
         // 取消勾选时用全局值作为起点，避免用户面对一个空输入框。
         if (!value && string.IsNullOrWhiteSpace(MemoryMbText))
         {
-            MemoryMbText = _settings
-                .Get<int>("java.defaultMemoryMb")
+            MemoryMbText = _memoryAllocation
+                .Resolve()
+                .EffectiveMb
                 .ToString(CultureInfo.InvariantCulture);
         }
     }
@@ -440,7 +445,7 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
     private void RefreshGlobalMemoryText() =>
         GlobalMemoryText = _localizer.Get(
             "instance.detail.memoryGlobal",
-            _settings.Get<int>("java.defaultMemoryMb"));
+            _memoryAllocation.Resolve().EffectiveMb);
 
     private async Task RefreshJavaOptionsAsync()
     {

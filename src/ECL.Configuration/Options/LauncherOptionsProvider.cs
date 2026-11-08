@@ -246,6 +246,37 @@ internal sealed class LauncherOptionsProvider : IOptionProvider
             Order = 50,
         };
 
+        // 下载失败重试（settings-downloads.md §5）：开关关闭时每个地址只尝试一次；
+        // 只有可恢复的网络/传输错误会重试，校验失败与权限拒绝不会重试。
+        yield return new OptionDefinition<bool>
+        {
+            Key = "network.autoRetry",
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.network",
+            DisplayNameKey = "option.network.autoRetry.name",
+            DescriptionKey = "option.network.autoRetry.desc",
+            Default = true,
+            Order = 60,
+        };
+
+        yield return new OptionDefinition<int>
+        {
+            Key = "network.maxRetryAttempts",
+            Kind = OptionKind.Integer,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.network",
+            DisplayNameKey = "option.network.maxRetryAttempts.name",
+            DescriptionKey = "option.network.maxRetryAttempts.desc",
+            Default = 3,
+            Min = 1,
+            Max = 10,
+            Step = 1,
+            VisibleWhenKey = "network.autoRetry",
+            VisibleWhenValue = "true",
+            Order = 70,
+        };
+
         yield return new OptionDefinition<string>
         {
             Key = "java.defaultPath",
@@ -290,6 +321,26 @@ internal sealed class LauncherOptionsProvider : IOptionProvider
             Order = 999,
         };
 
+        // 全局内存策略（settings-game-launch.md §4.1，D-03）：
+        // 默认自动；自动算法归启动服务，页面只显示结果，不自行计算。
+        // java.defaultMemoryMb 继续作为手动数值保存，策略切到自动时数值保留但暂不生效。
+        yield return new OptionDefinition<string>
+        {
+            Key = "java.memoryPolicy",
+            Kind = OptionKind.Select,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.java",
+            DisplayNameKey = "option.java.memoryPolicy.name",
+            DescriptionKey = "option.java.memoryPolicy.desc",
+            Default = "auto",
+            Order = 18,
+            Choices =
+            [
+                new OptionChoice("auto", "option.java.memoryPolicy.auto"),
+                new OptionChoice("manual", "option.java.memoryPolicy.manual"),
+            ],
+        };
+
         yield return new OptionDefinition<int>
         {
             Key = "java.defaultMemoryMb",
@@ -303,6 +354,8 @@ internal sealed class LauncherOptionsProvider : IOptionProvider
             Min = 1024,
             Max = 65536,
             Step = 512,
+            VisibleWhenKey = "java.memoryPolicy",
+            VisibleWhenValue = "manual",
             Order = 20,
         };
 
@@ -363,6 +416,7 @@ internal sealed class LauncherOptionsProvider : IOptionProvider
             Scope = OptionScope.Global,
             CategoryKey = "category.game",
             DisplayNameKey = "option.game.windowWidth.name",
+            DescriptionKey = "option.game.windowWidth.desc",
             UnitKey = "unit.px",
             Default = 1280,
             Min = 854,
@@ -378,12 +432,27 @@ internal sealed class LauncherOptionsProvider : IOptionProvider
             Scope = OptionScope.Global,
             CategoryKey = "category.game",
             DisplayNameKey = "option.game.windowHeight.name",
+            DescriptionKey = "option.game.windowHeight.desc",
             UnitKey = "unit.px",
             Default = 720,
             Min = 480,
             Max = 4320,
             Step = 1,
             Order = 20,
+        };
+
+        // 默认全屏（settings-game-launch.md §6）。窗口宽高在开启全屏时仍保留，
+        // 关闭全屏后可继续使用；页面只展示 ECL 提供的启动默认值。
+        yield return new OptionDefinition<bool>
+        {
+            Key = "game.fullscreen",
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.game",
+            DisplayNameKey = "option.game.fullscreen.name",
+            DescriptionKey = "option.game.fullscreen.desc",
+            Default = false,
+            Order = 25,
         };
 
         yield return new OptionDefinition<bool>

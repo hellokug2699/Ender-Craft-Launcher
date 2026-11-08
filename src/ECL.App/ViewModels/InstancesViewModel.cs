@@ -45,6 +45,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IAppPaths _paths;
     private readonly IJavaLocator _javaLocator;
     private readonly IJavaSelectionService _javaSelection;
+    private readonly IMemoryAllocationService _memoryAllocation;
     private readonly IJavaInstallService _javaInstall;
     private readonly IVersionResolver _versionResolver;
     private readonly IEulaService _eula;
@@ -199,6 +200,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         IAppPaths paths,
         IJavaLocator javaLocator,
         IJavaSelectionService javaSelection,
+        IMemoryAllocationService memoryAllocation,
         IJavaInstallService javaInstall,
         IVersionResolver versionResolver,
         IEulaService eula,
@@ -222,6 +224,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         _paths = paths;
         _javaLocator = javaLocator;
         _javaSelection = javaSelection;
+        _memoryAllocation = memoryAllocation;
         _javaInstall = javaInstall;
         _versionResolver = versionResolver;
         _eula = eula;
@@ -1380,6 +1383,7 @@ public sealed partial class InstancesViewModel : ObservableObject
             _settings,
             _javaLocator,
             _javaSelection,
+            _memoryAllocation,
             _javaInstall,
             _versionResolver,
             _downloads,
