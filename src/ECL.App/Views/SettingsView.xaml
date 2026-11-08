@@ -1,354 +1,246 @@
 <UserControl x:Class="Ecl.App.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:loc="clr-namespace:Ecl.App.Localization"
-             xmlns:sel="clr-namespace:Ecl.App.Selectors"
-             xmlns:behaviors="clr-namespace:Ecl.App.Behaviors">
+             xmlns:loc="clr-namespace:Ecl.App.Localization">
     <UserControl.Resources>
-        <DataTemplate x:Key="Option.Boolean">
-            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding DisplayName}" FontSize="12" Style="{StaticResource EmphasisText}" />
-                            <Border Style="{StaticResource Badge}"
-                                    Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
-                                <TextBlock Text="{loc:Loc Key=common.restartRequired}"
-                                           FontSize="9"
-                                           Foreground="{DynamicResource AccentHoverBrush}" />
-                            </Border>
-                        </StackPanel>
-                        <TextBlock Text="{Binding Description}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10"
-                                   TextWrapping="Wrap"
-                                   Margin="0,3,0,0" />
-                        <TextBlock Text="{Binding HintText}"
-                                   Foreground="{DynamicResource WarningBrush}"
-                                   FontSize="10"
-                                   Visibility="{Binding HasHint, Converter={StaticResource BoolToVisibility}}"
-                                   Margin="0,3,0,0" />
-                        <TextBlock Text="{Binding SourceText}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="9"
-                                   Margin="0,4,0,0" />
-                    </StackPanel>
-                    <CheckBox Grid.Column="1"
-                              IsChecked="{Binding BoolValue, Mode=TwoWay}"
-                              VerticalAlignment="Center" />
-                </Grid>
-            </Border>
-        </DataTemplate>
+        <Style x:Key="SettingsNavItemStyle" TargetType="ListBoxItem" BasedOn="{StaticResource CompactNavItemStyle}">
+            <Setter Property="AutomationProperties.Name" Value="{Binding Title}" />
+            <Setter Property="AutomationProperties.HelpText" Value="{Binding UnavailableReason}" />
+            <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+            <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                </Trigger>
+                <DataTrigger Binding="{Binding IsAvailable}" Value="False">
+                    <Setter Property="ToolTip" Value="{Binding UnavailableReason}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
 
-        <DataTemplate x:Key="Option.Number">
-            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding DisplayName}" FontSize="12" Style="{StaticResource EmphasisText}" />
-                            <Border Style="{StaticResource Badge}"
-                                    Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
-                                <TextBlock Text="{loc:Loc Key=common.restartRequired}"
-                                           FontSize="9"
-                                           Foreground="{DynamicResource AccentHoverBrush}" />
-                            </Border>
-                        </StackPanel>
-                        <TextBlock Text="{Binding Description}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10"
-                                   TextWrapping="Wrap"
-                                   Margin="0,3,0,0" />
-                        <TextBlock Text="{Binding HintText}"
-                                   Foreground="{DynamicResource WarningBrush}"
-                                   FontSize="10"
-                                   Visibility="{Binding HasHint, Converter={StaticResource BoolToVisibility}}"
-                                   Margin="0,3,0,0" />
-                        <TextBlock Text="{Binding SourceText}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="9"
-                                   Margin="0,4,0,0" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBox Width="120"
-                                 Text="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        <TextBlock Text="{Binding Unit}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10"
-                                   Margin="8,0,0,0"
-                                   VerticalAlignment="Center" />
-                    </StackPanel>
-                </Grid>
-            </Border>
-        </DataTemplate>
-
-        <DataTemplate x:Key="Option.Text">
-            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding DisplayName}" FontSize="12" Style="{StaticResource EmphasisText}" />
-                            <Border Style="{StaticResource Badge}"
-                                    Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
-                                <TextBlock Text="{loc:Loc Key=common.restartRequired}"
-                                           FontSize="9"
-                                           Foreground="{DynamicResource AccentHoverBrush}" />
-                            </Border>
-                        </StackPanel>
-                        <TextBlock Text="{Binding Description}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10"
-                                   TextWrapping="Wrap"
-                                   Margin="0,3,0,0" />
-                        <TextBlock Text="{Binding HintText}"
-                                   Foreground="{DynamicResource WarningBrush}"
-                                   FontSize="10"
-                                   Visibility="{Binding HasHint, Converter={StaticResource BoolToVisibility}}"
-                                   Margin="0,3,0,0" />
-                        <TextBlock Text="{Binding SourceText}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="9"
-                                   Margin="0,4,0,0" />
-                    </StackPanel>
-                    <TextBox Grid.Column="1"
-                             Width="280"
-                             VerticalAlignment="Center"
-                             Text="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                </Grid>
-            </Border>
-        </DataTemplate>
-
-        <DataTemplate x:Key="Option.Path">
-            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding DisplayName}" FontSize="12" Style="{StaticResource EmphasisText}" />
-                            <Border Style="{StaticResource Badge}"
-                                    Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
-                                <TextBlock Text="{loc:Loc Key=common.restartRequired}"
-                                           FontSize="9"
-                                           Foreground="{DynamicResource AccentHoverBrush}" />
-                            </Border>
-                        </StackPanel>
-                        <TextBlock Text="{Binding Description}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10"
-                                   TextWrapping="Wrap"
-                                   Margin="0,3,0,0" />
-                        <TextBlock Text="{Binding HintText}"
-                                   Foreground="{DynamicResource WarningBrush}"
-                                   FontSize="10"
-                                   Visibility="{Binding HasHint, Converter={StaticResource BoolToVisibility}}"
-                                   Margin="0,3,0,0" />
-                        <TextBlock Text="{Binding SourceText}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="9"
-                                   Margin="0,4,0,0" />
-                    </StackPanel>
-                    <Grid Grid.Column="1" Width="360" VerticalAlignment="Center">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="8" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox Text="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        <Button Grid.Column="2"
-                                Content="{loc:Loc Key=common.browse}"
-                                Command="{Binding BrowseCommand}"
-                                Style="{StaticResource GhostButton}" />
-                    </Grid>
-                </Grid>
-            </Border>
-        </DataTemplate>
-
-        <DataTemplate x:Key="Option.Select">
-            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Margin="0,0,16,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding DisplayName}" FontSize="12" Style="{StaticResource EmphasisText}" />
-                            <Border Style="{StaticResource Badge}"
-                                    Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
-                                <TextBlock Text="{loc:Loc Key=common.restartRequired}"
-                                           FontSize="9"
-                                           Foreground="{DynamicResource AccentHoverBrush}" />
-                            </Border>
-                        </StackPanel>
-                        <TextBlock Text="{Binding Description}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10"
-                                   TextWrapping="Wrap"
-                                   Margin="0,3,0,0" />
-                        <TextBlock Text="{Binding HintText}"
-                                   Foreground="{DynamicResource WarningBrush}"
-                                   FontSize="10"
-                                   Visibility="{Binding HasHint, Converter={StaticResource BoolToVisibility}}"
-                                   Margin="0,3,0,0" />
-                        <TextBlock Text="{Binding SourceText}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="9"
-                                   Margin="0,4,0,0" />
-                    </StackPanel>
-                    <ComboBox Grid.Column="1"
-                              Width="240"
-                              VerticalAlignment="Center"
-                              ItemsSource="{Binding Choices}"
-                              ItemTemplate="{StaticResource DisplayNameItemTemplate}"
-                              SelectedValuePath="Value"
-                              SelectedValue="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                </Grid>
-            </Border>
-        </DataTemplate>
-
-        <sel:OptionTemplateSelector x:Key="OptionTemplateSelector"
-                                    BooleanOptionTemplate="{StaticResource Option.Boolean}"
-                                    NumberOptionTemplate="{StaticResource Option.Number}"
-                                    TextOptionTemplate="{StaticResource Option.Text}"
-                                    PathOptionTemplate="{StaticResource Option.Path}"
-                                    SelectOptionTemplate="{StaticResource Option.Select}" />
+        <!-- 窄窗口下的分类选择器：同样用禁用态与文字徽标表达不可用，不只靠颜色。 -->
+        <Style x:Key="SettingsNavComboItemStyle" TargetType="ComboBoxItem">
+            <Setter Property="IsEnabled" Value="{Binding IsAvailable}" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding Title}" />
+            <Setter Property="AutomationProperties.HelpText" Value="{Binding UnavailableReason}" />
+            <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsAvailable}" Value="False">
+                    <Setter Property="ToolTip" Value="{Binding UnavailableReason}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
 
-    <UserControl.InputBindings>
-        <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveCommand}" />
-    </UserControl.InputBindings>
-    <Grid KeyboardNavigation.TabNavigation="Cycle">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+    <!--
+        设置中心（B3 步骤 1）：左侧纵向二级导航 + 右侧当前分类。
+        分类顺序固定为 settings.md §3.2；默认“常规”，未实现的分类只保留准确的不可用状态。
+    -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-        <StackPanel>
-            <TextBlock Text="{loc:Loc Key=settings.title}" Style="{StaticResource TitleText}" />
-            <TextBlock Text="{loc:Loc Key=settings.subtitle}" Style="{StaticResource SubtitleText}" Margin="0,6,0,0" />
-        </StackPanel>
+        <Border Grid.Column="0"
+                Width="176"
+                Padding="0,0,14,0"
+                BorderBrush="{DynamicResource BorderSoftBrush}"
+                BorderThickness="0,0,1,0"
+                Visibility="{Binding IsNavigationCollapsed, Converter={StaticResource InverseBoolToVisibility}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
 
-        <Grid Grid.Row="1" Margin="0,18,0,10">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="160" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="220" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Text="{loc:Loc Key=settings.scope}"
-                       Style="{StaticResource LabelText}"
-                       VerticalAlignment="Center"
-                       Margin="0,0,8,0" />
-            <ComboBox Grid.Column="1"
-                      ItemsSource="{Binding Scopes}"
-                      ItemTemplate="{StaticResource TitleItemTemplate}"
-                      SelectedItem="{Binding SelectedScope, Mode=TwoWay}" />
-            <ComboBox Grid.Column="3"
-                      ItemsSource="{Binding InstanceChoices}"
-                      ItemTemplate="{StaticResource NameItemTemplate}"
-                      SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
-                      Visibility="{Binding IsInstanceScope, Converter={StaticResource BoolToVisibility}}" />
-            <Button Grid.Column="5"
-                    Content="{loc:Loc Key=common.refresh}"
-                    Command="{Binding RefreshInstancesCommand}"
-                    Style="{StaticResource GhostButton}"
-                    Visibility="{Binding IsInstanceScope, Converter={StaticResource BoolToVisibility}}" />
-            <Button Grid.Column="7"
-                    Content="{loc:Loc Key=settings.save}"
-                    Command="{Binding SaveCommand}"
-                    Style="{StaticResource PrimaryButton}" />
-        </Grid>
+                <StackPanel Margin="2,0,0,14">
+                    <TextBlock Text="{loc:Loc Key=settings.title}"
+                               Style="{StaticResource EmphasisText}"
+                               FontSize="14" />
+                    <TextBlock Text="{loc:Loc Key=settings.shell.subtitle}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Margin="0,3,0,0" />
+                </StackPanel>
 
-        <TextBlock Grid.Row="2"
-                   Text="{Binding StatusMessage}"
-                   Foreground="{DynamicResource TextSecondaryBrush}"
-                   FontSize="11"
-                   TextWrapping="Wrap"
-                   Margin="0,0,0,12" />
-
-        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                      behaviors:WheelScroll.IsEnabled="True">
-            <StackPanel>
-            <ItemsControl ItemsSource="{Binding Categories}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                <ListBox Grid.Row="1"
+                         ItemsSource="{Binding Navigation.ItemsView}"
+                         SelectedItem="{Binding Navigation.SelectedItem, Mode=TwoWay}"
+                         ItemContainerStyle="{StaticResource SettingsNavItemStyle}"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         AutomationProperties.Name="{loc:Loc Key=settings.nav.title}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <!-- 不可用分类：标题下另起一行显示文字徽标，避免英文标题被徽标挤断。 -->
                             <StackPanel>
                                 <TextBlock Text="{Binding Title}"
-                                           FontSize="15"
-                                           Style="{StaticResource EmphasisText}"
-                                           Margin="0,0,0,4" />
-                                <ItemsControl ItemsSource="{Binding Options}"
-                                              ItemTemplateSelector="{StaticResource OptionTemplateSelector}">
-                                    <ItemsControl.ItemContainerStyle>
-                                        <Style TargetType="ContentPresenter">
-                                            <Setter Property="Visibility"
-                                                    Value="{Binding IsVisible, Converter={StaticResource BoolToVisibility}}" />
-                                        </Style>
-                                    </ItemsControl.ItemContainerStyle>
-                                </ItemsControl>
+                                           FontSize="12"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding Title}"
+                                           AutomationProperties.Name="{Binding Title}" />
+                                <TextBlock Text="{loc:Loc Key=settings.nav.unavailable.badge}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="9"
+                                           Margin="0,2,0,0"
+                                           Visibility="{Binding IsAvailable, Converter={StaticResource InverseBoolToVisibility}}" />
                             </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </Border>
 
-            <Border Style="{StaticResource Card}" Margin="0,0,0,14">
-                <StackPanel>
-                    <TextBlock Text="代码签名信任" Style="{StaticResource SectionText}" />
-                    <TextBlock Text="ECL 使用自签名 Authenticode 证书。导入仅信任该叶证书到 TrustedPeople，不是公开 CA 认证，也不会静默执行。"
+        <Grid Grid.Column="1" Margin="18,0,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- 窄窗口（<640）下用分类选择器替代左侧导航，避免内容区被压缩到不可用。 -->
+            <ComboBox Grid.Row="0"
+                      ItemsSource="{Binding Navigation.Items}"
+                      SelectedItem="{Binding Navigation.SelectedItem, Mode=TwoWay}"
+                      ItemContainerStyle="{StaticResource SettingsNavComboItemStyle}"
+                      Margin="0,0,0,10"
+                      AutomationProperties.Name="{loc:Loc Key=settings.nav.title}"
+                      Visibility="{Binding IsNavigationCollapsed, Converter={StaticResource BoolToVisibility}}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding Title}"
+                                       FontSize="12"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding Title}" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{loc:Loc Key=settings.nav.unavailable.badge}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="9"
+                                       Margin="10,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Visibility="{Binding IsAvailable, Converter={StaticResource InverseBoolToVisibility}}" />
+                        </Grid>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <!-- 设置搜索：搜索名称与说明，命中后可定位到具体设置项（settings.md §3.1）。 -->
+            <Grid Grid.Row="1" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid>
+                    <TextBox Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="{loc:Loc Key=settings.search.placeholder}" />
+                    <TextBlock Text="{loc:Loc Key=settings.search.placeholder}"
                                Foreground="{DynamicResource TextMutedBrush}"
-                               FontSize="10"
-                               Margin="0,5,0,8"
-                               TextWrapping="Wrap" />
-                    <TextBlock Text="{Binding CodeSigningStatus}"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               FontSize="10"
-                               TextWrapping="Wrap" />
-                    <TextBlock Text="{Binding CodeSigningFingerprint}"
-                               FontFamily="Consolas"
-                               FontSize="10"
+                               FontSize="11"
+                               Margin="10,0,0,0"
+                               VerticalAlignment="Center"
+                               IsHitTestVisible="False"
+                               Visibility="{Binding IsSearching, Converter={StaticResource InverseBoolToVisibility}}" />
+                </Grid>
+                <Button Grid.Column="1"
+                        Content="{loc:Loc Key=settings.search.clear}"
+                        Command="{Binding ClearSearchCommand}"
+                        Style="{StaticResource GhostButton}"
+                        Margin="8,0,0,0"
+                        Visibility="{Binding IsSearching, Converter={StaticResource BoolToVisibility}}" />
+            </Grid>
+
+            <!-- 当前分类标题与按分类恢复默认值。 -->
+            <Grid Grid.Row="2"
+                  Margin="0,0,0,12"
+                  Visibility="{Binding IsSearching, Converter={StaticResource InverseBoolToVisibility}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="{Binding Navigation.CurrentPage.Title}" Style="{StaticResource TitleText}" />
+                    <TextBlock Text="{Binding Navigation.CurrentPage.Subtitle}"
+                               Style="{StaticResource SubtitleText}"
                                TextWrapping="Wrap"
-                               Margin="0,5,0,0" />
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Content="信任此证书（需要管理员权限）"
-                                Command="{Binding TrustCodeSigningCommand}"
-                                Style="{StaticResource PrimaryButton}"
-                                IsEnabled="{Binding CanTrustCodeSigning}" />
-                        <Button Content="撤销本机信任"
-                                Command="{Binding RevokeCodeSigningCommand}"
-                                Style="{StaticResource GhostButton}"
-                                IsEnabled="{Binding IsCodeSigningTrusted}"
-                                Margin="8,0,0,0" />
-                    </StackPanel>
-                    <TextBlock Text="{Binding CodeSigningActionStatus}"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               FontSize="10"
-                               Margin="0,6,0,0"
-                               TextWrapping="Wrap" />
+                               Margin="0,6,0,0" />
                 </StackPanel>
-            </Border>
-            </StackPanel>
-        </ScrollViewer>
+                <Button Grid.Column="1"
+                        Content="{Binding ResetDefaultsText}"
+                        Command="{Binding ResetCurrentPageCommand}"
+                        Style="{StaticResource GhostButton}"
+                        VerticalAlignment="Top" />
+            </Grid>
+
+            <ContentControl Grid.Row="3"
+                            Content="{Binding Navigation.CurrentPage}"
+                            VerticalContentAlignment="Stretch"
+                            Visibility="{Binding IsSearching, Converter={StaticResource InverseBoolToVisibility}}" />
+
+            <!-- 搜索结果替代内容区；未命中时显示明确空状态。 -->
+            <Grid Grid.Row="3" Visibility="{Binding IsSearching, Converter={StaticResource BoolToVisibility}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Text="{Binding SearchSummary}"
+                           Foreground="{DynamicResource TextMutedBrush}"
+                           FontSize="11"
+                           Margin="0,0,0,8"
+                           Visibility="{Binding HasSearchResults, Converter={StaticResource BoolToVisibility}}" />
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding SearchResults}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Command="{Binding DataContext.OpenSearchResultCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{StaticResource ResourceRowButton}"
+                                        HorizontalContentAlignment="Stretch"
+                                        AutomationProperties.Name="{Binding Title}"
+                                        AutomationProperties.HelpText="{Binding Description}"
+                                        Margin="0,0,0,6"
+                                        Padding="12,9">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding Title}"
+                                                       FontSize="12"
+                                                       Style="{StaticResource EmphasisText}" />
+                                            <TextBlock Text="{Binding PageTitle}"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       FontSize="10"
+                                                       Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Description}"
+                                                   Foreground="{DynamicResource TextMutedBrush}"
+                                                   FontSize="10"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,3,0,0" />
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <TextBlock Grid.Row="1"
+                           Text="{loc:Loc Key=settings.search.empty}"
+                           Foreground="{DynamicResource TextMutedBrush}"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Visibility="{Binding HasNoSearchResults, Converter={StaticResource BoolToVisibility}}" />
+            </Grid>
+        </Grid>
     </Grid>
 </UserControl>
+

@@ -1,0 +1,174 @@
+<UserControl x:Class="Ecl.App.Views.SettingsOptionGroupView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization"
+             xmlns:sel="clr-namespace:Ecl.App.Selectors"
+             xmlns:behaviors="clr-namespace:Ecl.App.Behaviors">
+    <UserControl.Resources>
+        <!-- 设置行：左侧名称/说明/默认值/来源，右侧按 OptionKind 选择控件。 -->
+        <Style x:Key="SettingsOptionRow" TargetType="Border">
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="0,10" />
+            <Setter Property="Background" Value="Transparent" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 需要完整输入才能校验的控件：显式应用/还原。 -->
+        <DataTemplate x:Key="Control.ApplyButtons">
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Margin="0,6,0,0">
+                <Button Content="{loc:Loc Key=common.apply}"
+                        Command="{Binding CommitCommand}"
+                        IsEnabled="{Binding IsDirty}"
+                        Style="{StaticResource GhostButton}" />
+                <Button Content="{loc:Loc Key=common.revert}"
+                        Command="{Binding RevertCommand}"
+                        IsEnabled="{Binding IsDirty}"
+                        Style="{StaticResource GhostButton}"
+                        Margin="8,0,0,0" />
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="Control.Boolean">
+            <CheckBox IsChecked="{Binding BoolValue, Mode=TwoWay}"
+                      AutomationProperties.Name="{Binding DisplayName}"
+                      VerticalAlignment="Center" />
+        </DataTemplate>
+
+        <DataTemplate x:Key="Control.Number">
+            <StackPanel VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <TextBox Width="120"
+                             Text="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="{Binding DisplayName}" />
+                    <TextBlock Text="{Binding Unit}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="10"
+                               Margin="8,0,0,0"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+                <ContentControl Content="{Binding}"
+                                ContentTemplate="{StaticResource Control.ApplyButtons}"
+                                Visibility="{Binding HasManualApply, Converter={StaticResource BoolToVisibility}}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="Control.Text">
+            <StackPanel Width="300" VerticalAlignment="Center">
+                <TextBox Text="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.Name="{Binding DisplayName}" />
+                <ContentControl Content="{Binding}"
+                                ContentTemplate="{StaticResource Control.ApplyButtons}"
+                                Visibility="{Binding HasManualApply, Converter={StaticResource BoolToVisibility}}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="Control.Path">
+            <StackPanel Width="360" VerticalAlignment="Center">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="8" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Text="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="{Binding DisplayName}" />
+                    <Button Grid.Column="2"
+                            Content="{loc:Loc Key=common.browse}"
+                            Command="{Binding BrowseCommand}"
+                            Style="{StaticResource GhostButton}" />
+                </Grid>
+                <ContentControl Content="{Binding}"
+                                ContentTemplate="{StaticResource Control.ApplyButtons}"
+                                Visibility="{Binding HasManualApply, Converter={StaticResource BoolToVisibility}}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="Control.Select">
+            <ComboBox Width="240"
+                      VerticalAlignment="Center"
+                      ItemsSource="{Binding Choices}"
+                      ItemTemplate="{StaticResource DisplayNameItemTemplate}"
+                      SelectedItem="{Binding SelectedChoice, Mode=TwoWay}"
+                      AutomationProperties.Name="{Binding DisplayName}" />
+        </DataTemplate>
+
+        <sel:OptionTemplateSelector x:Key="OptionControlSelector"
+                                    BooleanOptionTemplate="{StaticResource Control.Boolean}"
+                                    NumberOptionTemplate="{StaticResource Control.Number}"
+                                    TextOptionTemplate="{StaticResource Control.Text}"
+                                    PathOptionTemplate="{StaticResource Control.Path}"
+                                    SelectOptionTemplate="{StaticResource Control.Select}" />
+
+        <DataTemplate x:Key="Option.Row">
+            <Border Style="{StaticResource SettingsOptionRow}"
+                    behaviors:HighlightScrollBehavior.IsHighlighted="{Binding IsHighlighted}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,16,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding DisplayName}" FontSize="12" Style="{StaticResource EmphasisText}" />
+                            <Border Style="{StaticResource Badge}"
+                                    Visibility="{Binding RequiresRestart, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="{loc:Loc Key=common.restartRequired}"
+                                           FontSize="9"
+                                           Foreground="{DynamicResource AccentHoverBrush}" />
+                            </Border>
+                        </StackPanel>
+                        <TextBlock Text="{Binding Description}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,3,0,0" />
+                        <TextBlock Text="{Binding HintText}"
+                                   Foreground="{DynamicResource WarningBrush}"
+                                   FontSize="10"
+                                   Visibility="{Binding HasHint, Converter={StaticResource BoolToVisibility}}"
+                                   Margin="0,3,0,0" />
+                        <TextBlock Text="{Binding ErrorText}"
+                                   Foreground="{DynamicResource DangerBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}"
+                                   Margin="0,3,0,0" />
+                        <TextBlock Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="0,4,0,0">
+                            <Run Text="{Binding DefaultText, Mode=OneWay}" />
+                            <Run Text=" · " />
+                            <Run Text="{Binding SourceText, Mode=OneWay}" />
+                        </TextBlock>
+                    </StackPanel>
+                    <ContentControl Grid.Column="1"
+                                    Content="{Binding}"
+                                    ContentTemplateSelector="{StaticResource OptionControlSelector}"
+                                    VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <StackPanel>
+        <TextBlock Text="{Binding Title}"
+                   Style="{StaticResource SectionText}"
+                   Margin="0,0,0,8" />
+        <Border Style="{StaticResource Card}">
+            <ItemsControl ItemsSource="{Binding Options}"
+                          ItemTemplate="{StaticResource Option.Row}">
+                <ItemsControl.ItemContainerStyle>
+                    <Style TargetType="ContentPresenter">
+                        <Setter Property="Visibility"
+                                Value="{Binding IsVisible, Converter={StaticResource BoolToVisibility}}" />
+                    </Style>
+                </ItemsControl.ItemContainerStyle>
+            </ItemsControl>
+        </Border>
+    </StackPanel>
+</UserControl>

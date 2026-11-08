@@ -219,7 +219,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         await _home.InitializeAsync().ConfigureAwait(true);
         await _home.Launcher.InitializeAsync().ConfigureAwait(true);
         await _download.InitializeAsync().ConfigureAwait(true);
-        await _settings.InitializeAsync().ConfigureAwait(true);
         if (SelectedNavigationItem?.Page is ToolsViewModel tools)
         {
             await tools.ActivateAsync().ConfigureAwait(true);
@@ -663,6 +662,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         if (page is DownloadViewModel download)
         {
             _ = ActivateDownloadAsync(download);
+        }
+        else if (page is SettingsViewModel settings)
+        {
+            // settings.md §2：首次进入与重新进入设置中心都以“常规”为默认落点。
+            settings.Activate();
         }
     }
 

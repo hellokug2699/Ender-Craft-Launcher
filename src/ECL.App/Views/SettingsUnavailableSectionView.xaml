@@ -1,0 +1,29 @@
+<UserControl x:Class="Ecl.App.Views.SettingsUnavailableSectionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        规格要求、但当前版本没有底层能力的分组：只说明缺什么与为什么暂不提供，
+        不放置不生效的控件（settings.md §8“选项不可用时说明原因”）。
+    -->
+    <Border Style="{StaticResource Card}">
+        <StackPanel>
+            <TextBlock Text="{Binding Title}" Style="{StaticResource SectionText}" />
+            <ItemsControl ItemsSource="{Binding Items}" Margin="0,8,0,0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="0,0,0,8">
+                            <TextBlock Text="{Binding Title}"
+                                       FontSize="12"
+                                       Style="{StaticResource EmphasisText}" />
+                            <TextBlock Text="{Binding Reason}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,3,0,0" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </Border>
+</UserControl>

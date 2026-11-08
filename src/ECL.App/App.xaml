@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:views="clr-namespace:Ecl.App.Views"
              xmlns:vm="clr-namespace:Ecl.App.ViewModels"
+             xmlns:svm="clr-namespace:Ecl.App.ViewModels.Settings"
              xmlns:wsvm="clr-namespace:Ecl.App.Workspace.ViewModels"
              xmlns:dialogs="clr-namespace:Ecl.App.Dialogs.ViewModels"
              xmlns:dviews="clr-namespace:Ecl.App.Dialogs.Views"
@@ -83,6 +84,19 @@
             </DataTemplate>
             <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
                 <views:SettingsView />
+            </DataTemplate>
+            <!-- 设置中心二级页：一个分类一个页面对象；分组/代码签名/能力缺口各有呈现模板。 -->
+            <DataTemplate DataType="{x:Type svm:SettingsOptionsPageViewModel}">
+                <views:SettingsOptionsPageView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type svm:SettingsOptionGroupViewModel}">
+                <views:SettingsOptionGroupView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type svm:CodeSigningSectionViewModel}">
+                <views:SettingsCodeSigningSectionView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type svm:SettingsUnavailableSectionViewModel}">
+                <views:SettingsUnavailableSectionView />
             </DataTemplate>
             <DataTemplate DataType="{x:Type vm:AboutViewModel}">
                 <views:AboutView />

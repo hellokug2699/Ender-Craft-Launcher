@@ -4,291 +4,137 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Services;
-using Ecl.Configuration;
+using Ecl.App.ViewModels.Settings;
 using Ecl.Configuration.Settings;
 using Ecl.Core.Localization;
 using Ecl.Deployment;
-using Ecl.Minecraft.Instances;
 
 namespace Ecl.App.ViewModels;
 
+/// <summary>
+/// 设置中心 Shell（B3 步骤 1）。
+///
+/// 按 <c>settings.md</c> §3 使用纵向二级导航（常规 / 界面偏好 / Java 管理 /
+/// 游戏与启动 / 下载 / 网络 / 存储与路径 / 扩展管理），首次进入默认“常规”，
+/// 切换分类保留当前会话选择，重新进入设置中心回到常规。
+///
+/// 页面内的设置项由 ADR 0002 的元数据驱动；本类不保存全局/实例作用域开关，
+/// 实例专属配置归实例工作区（C-13）。未实现的分类只在导航中保留准确的不可用状态。
+/// </summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
-    private readonly ISettingsService _settings;
-    private readonly IInstanceService _instances;
     private readonly ILocalizer _localizer;
-    private readonly CodeSigningTrustService _codeSigning;
-    private readonly IDialogService _dialogs;
-    private readonly List<OptionEditorViewModel> _editors = [];
-    private bool _ready;
-
-    public ObservableCollection<SettingsScopeOption> Scopes { get; }
-
-    public ObservableCollection<InstanceChoice> InstanceChoices { get; } = [];
-
-    public ObservableCollection<SettingsCategoryViewModel> Categories { get; } = [];
-
-    [ObservableProperty]
-    private SettingsScopeOption _selectedScope;
-
-    [ObservableProperty]
-    private InstanceChoice? _selectedInstance;
-
-    [ObservableProperty]
-    private string _statusMessage = string.Empty;
-
-    [ObservableProperty]
-    private bool _isInstanceScope;
-
-    [ObservableProperty]
-    private bool _hasInstances;
-
-    [ObservableProperty]
-    private string _codeSigningStatus = "正在读取代码签名证书…";
-
-    [ObservableProperty]
-    private string _codeSigningFingerprint = string.Empty;
-
-    [ObservableProperty]
-    private bool _isCodeSigningTrusted;
-
-    [ObservableProperty]
-    private bool _canTrustCodeSigning;
-
-    [ObservableProperty]
-    private string _codeSigningActionStatus = string.Empty;
-
-    private string _codeSigningExpectedFingerprint = string.Empty;
 
     public SettingsViewModel(
         ISettingsService settings,
-        IInstanceService instances,
         ILocalizer localizer,
         CodeSigningTrustService codeSigning,
         IDialogService dialogs)
     {
-        _settings = settings;
-        _instances = instances;
         _localizer = localizer;
-        _codeSigning = codeSigning;
-        _dialogs = dialogs;
-
-        Scopes =
-        [
-            new SettingsScopeOption(OptionScope.Global, localizer.Get("settings.scope.global")),
-            new SettingsScopeOption(OptionScope.Instance, localizer.Get("settings.scope.instance")),
-        ];
-
-        _selectedScope = Scopes[0];
+        Navigation = SettingsPageCatalog.CreateNavigation(settings, localizer, dialogs, codeSigning);
+        Navigation.PropertyChanged += OnNavigationPropertyChanged;
     }
 
-    public async Task InitializeAsync()
+    /// <summary>8 个固定分类的纵向二级导航；不可用分类保留说明且不可选中。</summary>
+    public SettingsNavigationViewModel Navigation { get; }
+
+    public ObservableCollection<SettingsSearchResultViewModel> SearchResults { get; } = [];
+
+    /// <summary>窄窗口下的布局收缩状态（ADR 0050）：导航收为内容区顶部的页面选择器。</summary>
+    [ObservableProperty]
+    private bool _isNavigationCollapsed;
+
+    [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isSearching;
+
+    [ObservableProperty]
+    private bool _hasSearchResults;
+
+    public bool HasNoSearchResults => IsSearching && !HasSearchResults;
+
+    public string SearchSummary => _localizer.Get("settings.search.results", SearchResults.Count);
+
+    public string ResetDefaultsText => _localizer.Get("settings.reset.command");
+
+    /// <summary>
+    /// 进入设置中心（首次打开或从其它目的地返回）：按 §2 回到“常规”，
+    /// 不重置用户在本页各设置项上已经持久化的值。
+    /// </summary>
+    public void Activate()
     {
-        await RefreshInstancesAsync().ConfigureAwait(true);
-        RefreshCodeSigning();
-        _ready = true;
-        Rebuild();
+        SearchText = string.Empty;
+        Navigation.ResetToDefault();
     }
 
     [RelayCommand]
-    private void TrustCodeSigning()
+    private void OpenSearchResult(SettingsSearchResultViewModel? result)
     {
-        if (!CanTrustCodeSigning)
+        if (result is null)
         {
             return;
         }
 
-        var accepted = _dialogs.Confirm(
-            "信任 ECL 代码签名证书",
-            "这是 ECL 自行生成的自签名证书，不是公开 CA 对开发者现实身份的背书。\n\n" +
-            $"SHA-256 指纹：\n{_codeSigningExpectedFingerprint}\n\n" +
-            "导入后 Windows 将在 TrustedPeople 中信任该证书签署的代码。此操作需要管理员权限，且仅用于本次信任导入；" +
-            "ECL 的常规启动、更新和游戏启动不会请求管理员权限。\n\n" +
-            "你可以拒绝，ECL 仍可运行并使用更新 Manifest 验签。是否继续？",
-            "code-signing.trust.v1");
-        if (!accepted)
+        // 先清空搜索，让内容区切回页面本身，再激活页面并定位设置项。
+        SearchText = string.Empty;
+        if (!Navigation.TryActivate(result.PageKey))
         {
             return;
         }
 
-        var result = _codeSigning.Trust(_codeSigningExpectedFingerprint);
-        CodeSigningActionStatus = result.IsSuccess ? "证书信任已导入。" : result.Error!.Message;
-        RefreshCodeSigning();
+        Navigation.CurrentPage?.Highlight(result.OptionKey);
     }
 
     [RelayCommand]
-    private void RevokeCodeSigning()
-    {
-        var accepted = _dialogs.Confirm(
-            "撤销 ECL 代码签名信任",
-            "将从本机 TrustedPeople 中移除 ECL 的自签名代码证书。更新 Manifest 验签不受影响。是否继续？",
-            "code-signing.revoke.v1");
-        if (!accepted)
-        {
-            return;
-        }
-
-        var result = _codeSigning.Revoke(_codeSigningExpectedFingerprint);
-        CodeSigningActionStatus = result.IsSuccess ? "已撤销本机信任。" : result.Error!.Message;
-        RefreshCodeSigning();
-    }
-
-    private void RefreshCodeSigning()
-    {
-        var inspected = _codeSigning.Inspect();
-        if (!inspected.IsSuccess)
-        {
-            CodeSigningStatus = inspected.Error!.Message;
-            CodeSigningFingerprint = string.Empty;
-            IsCodeSigningTrusted = false;
-            CanTrustCodeSigning = false;
-            return;
-        }
-
-        var info = inspected.Value!;
-        CodeSigningStatus = info.IsTrusted
-            ? "本机已信任该 ECL 代码签名证书。"
-            : "本机尚未信任该证书；不影响 ECL 运行与更新 Manifest 验签。";
-        CodeSigningFingerprint = info.Sha256Fingerprint;
-        _codeSigningExpectedFingerprint = info.Sha256Fingerprint;
-        IsCodeSigningTrusted = info.IsTrusted;
-        CanTrustCodeSigning = !info.IsTrusted;
-    }
+    private void ClearSearch() => SearchText = string.Empty;
 
     [RelayCommand]
-    private async Task RefreshInstancesAsync()
+    private void ResetCurrentPage()
     {
-        var selectedId = SelectedInstance?.Id;
-        var instances = await _instances.GetInstancesAsync().ConfigureAwait(true);
-
-        InstanceChoices.Clear();
-        foreach (var instance in instances)
+        if (Navigation.CurrentPage is SettingsOptionsPageViewModel page)
         {
-            InstanceChoices.Add(new InstanceChoice(instance.Id, instance.Name));
+            page.ResetToDefaults();
         }
-
-        HasInstances = InstanceChoices.Count > 0;
-        SelectedInstance = InstanceChoices.FirstOrDefault(item => item.Id == selectedId) ?? InstanceChoices.FirstOrDefault();
     }
 
-    [RelayCommand]
-    private void Save()
+    partial void OnSearchTextChanged(string value) => UpdateSearch();
+
+    private void UpdateSearch()
     {
-        foreach (var editor in _editors.Where(editor => editor.IsVisible))
+        var query = SearchText.Trim();
+        IsSearching = query.Length > 0;
+        SearchResults.Clear();
+
+        if (IsSearching)
         {
-            if (!editor.Apply(out var error))
+            foreach (var item in Navigation.Items.Where(item => item.IsAvailable))
             {
-                StatusMessage = error ?? _localizer.Get("settings.invalid");
-                return;
+                foreach (var entry in item.Page!.SearchEntries)
+                {
+                    if (Matches(entry.Title, query) || Matches(entry.Description, query))
+                    {
+                        SearchResults.Add(new SettingsSearchResultViewModel(entry));
+                    }
+                }
             }
         }
 
-        foreach (var editor in _editors)
-        {
-            editor.RefreshSource();
-        }
-
-        StatusMessage = _localizer.Get("settings.saved");
+        HasSearchResults = SearchResults.Count > 0;
+        OnPropertyChanged(nameof(HasNoSearchResults));
+        OnPropertyChanged(nameof(SearchSummary));
     }
 
-    partial void OnSelectedScopeChanged(SettingsScopeOption value)
+    private static bool Matches(string text, string query) =>
+        text.Contains(query, StringComparison.OrdinalIgnoreCase);
+
+    private void OnNavigationPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        IsInstanceScope = value.Scope == OptionScope.Instance;
-        if (_ready)
+        if (e.PropertyName == nameof(SettingsNavigationViewModel.CurrentPage))
         {
-            Rebuild();
+            OnPropertyChanged(nameof(ResetDefaultsText));
         }
     }
-
-    partial void OnSelectedInstanceChanged(InstanceChoice? value)
-    {
-        if (_ready && IsInstanceScope)
-        {
-            Rebuild();
-        }
-    }
-
-    private void Rebuild()
-    {
-        Categories.Clear();
-        _editors.Clear();
-        StatusMessage = string.Empty;
-
-        var scope = SelectedScope.Scope;
-        var instanceId = scope == OptionScope.Instance ? SelectedInstance?.Id : null;
-
-        if (scope == OptionScope.Instance && instanceId is null)
-        {
-            StatusMessage = _localizer.Get("settings.noInstances");
-            return;
-        }
-
-        var definitions = _settings.GetDefinitions(scope)
-            .Where(definition => !definition.IsHidden);
-        var groups = definitions
-            .GroupBy(definition => definition.CategoryKey)
-            .OrderBy(group => group.Min(definition => definition.Order));
-
-        foreach (var group in groups)
-        {
-            var editors = group
-                .OrderBy(definition => definition.Order)
-                .Select(definition => new OptionEditorViewModel(definition, _settings, _localizer, instanceId))
-                .ToArray();
-
-            foreach (var editor in editors)
-            {
-                editor.ValueChanged += OnEditorValueChanged;
-                _editors.Add(editor);
-            }
-
-            Categories.Add(new SettingsCategoryViewModel(_localizer.Get(group.Key), editors));
-        }
-
-        RefreshVisibility();
-
-        if (scope == OptionScope.Instance)
-        {
-            StatusMessage = _localizer.Get("settings.inheritHint");
-        }
-        else if (_editors.Any(editor => editor.RequiresRestart))
-        {
-            StatusMessage = _localizer.Get("settings.restartHint");
-        }
-    }
-
-    private void OnEditorValueChanged(object? sender, EventArgs e) => RefreshVisibility();
-
-    private void RefreshVisibility()
-    {
-        var instanceId = SelectedScope.Scope == OptionScope.Instance ? SelectedInstance?.Id : null;
-        var values = _editors.ToDictionary(editor => editor.Key, editor => editor.TextValue, StringComparer.Ordinal);
-
-        foreach (var editor in _editors)
-        {
-            var definition = editor.Definition;
-            if (definition.VisibleWhenKey is null)
-            {
-                editor.SetVisible(true);
-                continue;
-            }
-
-            var dependency = values.TryGetValue(definition.VisibleWhenKey, out var current)
-                ? current
-                : _settings.GetRawString(definition.VisibleWhenKey, instanceId);
-
-            editor.SetVisible(string.Equals(dependency, definition.VisibleWhenValue, StringComparison.OrdinalIgnoreCase));
-        }
-    }
-}
-
-public sealed record SettingsScopeOption(OptionScope Scope, string Title);
-
-public sealed record InstanceChoice(string Id, string Name);
-
-public sealed class SettingsCategoryViewModel(string title, IReadOnlyList<OptionEditorViewModel> options)
-{
-    public string Title { get; } = title;
-
-    public IReadOnlyList<OptionEditorViewModel> Options { get; } = options;
 }
