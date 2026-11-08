@@ -1,0 +1,50 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.player-workspace",
+  "name": "ECL Player Workspace",
+  "type": "Feature",
+  "category": "Productivity & Organization",
+  "summary": "不限定用途的通用玩家工作空间，提供表格、目标与任务、项目资料组织及通用数据导入导出能力。",
+  "registryStatus": "Proposed",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0063-ecl-player-workspace-architecture.md",
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md",
+    "../../adr/0053-addition-capability-permission-and-user-consent.md",
+    "../../adr/0054-addition-registry-and-manifest-governance.md",
+    "../../adr/0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-08",
+    "lastUpdated": "2026-11-08",
+    "deprecation": null,
+    "replacement": null
+  }
+}
