@@ -1,0 +1,53 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.map-art-studio",
+  "name": "Map Art Studio",
+  "type": "Feature",
+  "category": "Map Art Planning and Material Analysis",
+  "summary": "可选的 Minecraft 地图画规划工具，支持单张与多地图画布、图片/地图数据导入、颜色映射和材料分析。",
+  "registryStatus": "Proposed",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [
+      "ecl.schematic-preview",
+      "ecl.player-workspace"
+    ]
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md",
+    "../../adr/0053-addition-capability-permission-and-user-consent.md",
+    "../../adr/0054-addition-registry-and-manifest-governance.md",
+    "../../adr/0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md",
+    "../../adr/0060-multi-addition-visual-preview-composition.md",
+    "../../adr/0064-map-art-studio-architecture.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-08",
+    "lastUpdated": "2026-11-08",
+    "deprecation": null,
+    "replacement": null
+  }
+}
