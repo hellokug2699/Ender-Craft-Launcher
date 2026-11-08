@@ -210,3 +210,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0063 ECL Player Workspace Architecture](0063-ecl-player-workspace-architecture.md) | Proposed | Not Started | 不限定用途的通用玩家工作空间：表格、目标与任务、项目资料、数据导入导出及玩家数据自主权 |
 | [0064 Map Art Studio Architecture](0064-map-art-studio-architecture.md) | Proposed | Not Started | Map Art Studio Addition、单张/多地图画布、图片与地图数据导入、颜色映射、材料优化及可选投影预览组合 |
 | [0065 OAuth Login Session Termination and Authentication Safety](0065-oauth-login-session-termination-and-authentication-safety.md) | Proposed | Not Started | Microsoft 正版登录 OAuth 会话异常检测与立即终止、回调隔离、令牌兑换中止及安全边界 |
+| [0066 Non-Elevated Execution Requirement and Bootstrap Enforcement](0066-non-elevated-execution-requirement-and-bootstrap-enforcement.md) | Proposed | Not Started | ECL 非提权运行原则、Bootstrapper 最早期权限检查、管理员账户与提升令牌区分及拒绝启动 |
