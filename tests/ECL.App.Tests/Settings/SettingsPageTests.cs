@@ -3,13 +3,16 @@
 using System.Globalization;
 using System.IO;
 using Ecl.App.Services;
+using Ecl.App.Tests.Support;
 using Ecl.App.ViewModels;
 using Ecl.App.ViewModels.Settings;
 using Ecl.Configuration;
 using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Deployment;
+using Ecl.Java;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Ecl.App.Tests.Settings;
@@ -93,7 +96,7 @@ public sealed class SettingsPageTests
     public void GeneralPageOnlyRendersGlobalMetadataOptionsAndNeverInstanceScope()
     {
         using var host = new SettingsHost();
-        var general = Page(host, SettingsPageKeys.General);
+        var general = OptionsPage(host, SettingsPageKeys.General);
 
         Assert.Equal(
             ["launcher.checkUpdates", "launcher.updateChannel", "launcher.confirmBeforeDelete"],
@@ -122,7 +125,7 @@ public sealed class SettingsPageTests
     public void UpdateChannelShowsSpecNamesWhilePersistingExistingValues()
     {
         using var host = new SettingsHost();
-        var general = Page(host, SettingsPageKeys.General);
+        var general = OptionsPage(host, SettingsPageKeys.General);
         var channel = general.Options.Single(option => option.Key == "launcher.updateChannel");
 
         Assert.Equal(["main", "dev", "nightly"], channel.Choices.Select(choice => choice.Value));
@@ -142,7 +145,7 @@ public sealed class SettingsPageTests
             seedSettingsFile: file => File.WriteAllText(
                 file,
                 "{\"schemaVersion\":1,\"values\":{\"launcher.updateChannel\":\"stable\"}}"));
-        var channel = Page(host, SettingsPageKeys.General)
+        var channel = OptionsPage(host, SettingsPageKeys.General)
             .Options.Single(option => option.Key == "launcher.updateChannel");
 
         // D-01：旧值 stable 是 main 的别名；界面按规范项显示且不算未保存修改。
@@ -161,7 +164,7 @@ public sealed class SettingsPageTests
     public void BooleanOptionsSaveImmediatelyAndInvalidManualInputIsRejected()
     {
         using var host = new SettingsHost();
-        var general = Page(host, SettingsPageKeys.General);
+        var general = OptionsPage(host, SettingsPageKeys.General);
         var checkUpdates = general.Options.Single(option => option.Key == "launcher.checkUpdates");
 
         Assert.True(checkUpdates.BoolValue);
@@ -170,7 +173,7 @@ public sealed class SettingsPageTests
         Assert.Equal("false", host.Settings.GetRawString("launcher.checkUpdates"));
         Assert.Equal(SettingsValueSource.Global, host.Settings.GetSource("launcher.checkUpdates"));
 
-        var game = Page(host, SettingsPageKeys.GameLaunch);
+        var game = OptionsPage(host, SettingsPageKeys.GameLaunch);
         var memory = game.Options.Single(option => option.Key == "java.defaultMemoryMb");
         memory.TextValue = "not-a-number";
         memory.CommitCommand.Execute(null);
@@ -193,7 +196,7 @@ public sealed class SettingsPageTests
     public void DependentOptionVisibilityFollowsTheSavedValue()
     {
         using var host = new SettingsHost();
-        var general = Page(host, SettingsPageKeys.General);
+        var general = OptionsPage(host, SettingsPageKeys.General);
         var checkUpdates = general.Options.Single(option => option.Key == "launcher.checkUpdates");
         var channel = general.Options.Single(option => option.Key == "launcher.updateChannel");
 
@@ -215,7 +218,7 @@ public sealed class SettingsPageTests
         host.Settings.TrySetRaw("launcher.checkUpdates", "false", null, out _);
         host.Settings.TrySetRaw("launcher.confirmBeforeDelete", "false", null, out _);
         host.Settings.TrySetRaw("launcher.language", "en-US", null, out _);
-        var general = Page(host, SettingsPageKeys.General);
+        var general = OptionsPage(host, SettingsPageKeys.General);
 
         // 取消确认时不改变任何值。
         host.Dialogs.ConfirmResult = false;
@@ -267,7 +270,7 @@ public sealed class SettingsPageTests
 
         Assert.False(viewModel.IsSearching);
         Assert.Equal(SettingsPageKeys.Network, viewModel.Navigation.SelectedItem!.Key);
-        var network = Page(host, SettingsPageKeys.Network);
+        var network = OptionsPage(host, SettingsPageKeys.Network);
         var proxyMode = network.Options.Single(option => option.Key == "network.proxyMode");
         var proxyAddress = network.Options.Single(option => option.Key == "network.proxyAddress");
 
@@ -297,13 +300,12 @@ public sealed class SettingsPageTests
                  {
                      SettingsPageKeys.General,
                      SettingsPageKeys.Interface,
-                     SettingsPageKeys.Java,
                      SettingsPageKeys.GameLaunch,
                      SettingsPageKeys.Downloads,
                      SettingsPageKeys.Network,
                  })
         {
-            var page = Page(host, key);
+            var page = OptionsPage(host, key);
             var gaps = page.Sections.OfType<SettingsUnavailableSectionViewModel>().ToArray();
             Assert.NotEmpty(gaps);
             Assert.All(
@@ -315,21 +317,37 @@ public sealed class SettingsPageTests
                 });
         }
 
-        var network = Page(host, SettingsPageKeys.Network);
+        var network = OptionsPage(host, SettingsPageKeys.Network);
         Assert.Equal(
             ["network.proxyMode", "network.proxyAddress"],
             network.Options.Select(option => option.Key));
     }
 
     [Fact]
-    public void JavaPageKeepsTheLivePathAndProviderOptionsWhileTheInventoryIsPending()
+    public void JavaManagementIsARealSettingsPageWithItsOwnRuntimeInventory()
     {
         using var host = new SettingsHost();
-        var java = Page(host, SettingsPageKeys.Java);
+        var java = host.ViewModel.Navigation.Find(SettingsPageKeys.Java)!;
 
-        Assert.Equal(["java.defaultPath", "java.runtimeProvider"], java.Options.Select(option => option.Key));
-        var gap = Assert.Single(java.Sections.OfType<SettingsUnavailableSectionViewModel>());
-        Assert.Contains(gap.Items, item => item.Title.Contains("运行时清单", StringComparison.Ordinal));
+        Assert.True(java.IsAvailable);
+        var page = Assert.IsType<Ecl.App.ViewModels.Settings.SettingsJavaPageViewModel>(java.Page);
+
+        // Java 目录/路径与运行时来源仍是页面上的真实设置；清单本身不是元数据默认值。
+        Assert.Equal(["java.defaultPath", "java.runtimeProvider"], page.Options.Select(option => option.Key));
+        Assert.False(page.CanResetDefaults);
+        Assert.Equal(0, host.Locator.RefreshCalls);
+
+        // 构造设置中心与默认导航不触发 Java 目录扫描（页面尚未被进入）。
+        host.ViewModel.Activate();
+        Assert.Equal(0, host.Locator.RefreshCalls);
+
+        // 首次进入 Java 页才触发一次有界发现；再次进入复用当前运行周期的结果。
+        Assert.True(host.ViewModel.Navigation.TryActivate(SettingsPageKeys.Java));
+        Assert.Equal(1, host.Locator.RefreshCalls);
+
+        host.ViewModel.Navigation.TryActivate(SettingsPageKeys.General);
+        host.ViewModel.Navigation.TryActivate(SettingsPageKeys.Java);
+        Assert.Equal(1, host.Locator.RefreshCalls);
     }
 
     [Fact]
@@ -337,11 +355,11 @@ public sealed class SettingsPageTests
     {
         using var host = new SettingsHost();
 
-        Assert.Single(Page(host, SettingsPageKeys.General).Sections.OfType<CodeSigningSectionViewModel>());
-        Assert.Empty(Page(host, SettingsPageKeys.Interface).Sections.OfType<CodeSigningSectionViewModel>());
+        Assert.Single(OptionsPage(host, SettingsPageKeys.General).Sections.OfType<CodeSigningSectionViewModel>());
+        Assert.Empty(OptionsPage(host, SettingsPageKeys.Interface).Sections.OfType<CodeSigningSectionViewModel>());
     }
 
-    private static SettingsOptionsPageViewModel Page(SettingsHost host, string key) =>
+    private static SettingsOptionsPageViewModel OptionsPage(SettingsHost host, string key) =>
         Assert.IsAssignableFrom<SettingsOptionsPageViewModel>(host.ViewModel.Navigation.Find(key)!.Page);
 
     private sealed class SettingsHost : IDisposable
@@ -367,16 +385,33 @@ public sealed class SettingsPageTests
             Settings = _provider.GetRequiredService<ISettingsService>();
             configure?.Invoke(Settings);
             Dialogs = new FakeDialogService();
+            Locator = new FakeJavaLocator();
+            var localizer = _provider.GetRequiredService<Ecl.Core.Localization.ILocalizer>();
+            JavaPage = new SettingsJavaPageViewModel(
+                Locator,
+                new JavaRuntimeRegistry(paths, NullLogger<JavaRuntimeRegistry>.Instance),
+                new FakeJavaRuntimeValidator(),
+                new FakeJavaRuntimeUninstallService(),
+                Settings,
+                Dialogs,
+                paths,
+                localizer,
+                NullLogger<SettingsJavaPageViewModel>.Instance);
             ViewModel = new SettingsViewModel(
                 Settings,
-                _provider.GetRequiredService<Ecl.Core.Localization.ILocalizer>(),
+                localizer,
                 new CodeSigningTrustService(Path.Combine(_root, "signing")),
-                Dialogs);
+                Dialogs,
+                JavaPage);
         }
 
         public ISettingsService Settings { get; }
 
         public FakeDialogService Dialogs { get; }
+
+        public FakeJavaLocator Locator { get; }
+
+        public SettingsJavaPageViewModel JavaPage { get; }
 
         public SettingsViewModel ViewModel { get; }
 

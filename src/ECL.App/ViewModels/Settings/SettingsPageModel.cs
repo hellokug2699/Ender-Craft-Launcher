@@ -55,6 +55,12 @@ public interface ISettingsPage
     /// <summary>只把本页的设置项恢复为元数据默认值，不触碰其它分类或文件。</summary>
     void ResetToDefaults();
 
+    /// <summary>
+    /// 本页是否支持“恢复本分类默认值”。Java 管理页的列表与登记不是元数据默认值，
+    /// 不提供会把用户登记误清空的按钮。
+    /// </summary>
+    bool CanResetDefaults => true;
+
     /// <summary>高亮并滚动到指定设置项；项不存在时返回 <c>false</c>。</summary>
     bool Highlight(string optionKey);
 }
@@ -137,6 +143,10 @@ public sealed class SettingsNavigationViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(CurrentPage));
                 OnPropertyChanged(nameof(CurrentPageTitle));
+
+                // 用户点击导航时只改变选中项；页面的惰性读取必须在这里触发
+                // （设置搜索与重新进入走 TryActivate/ResetToDefault，同样会激活）。
+                value?.Page?.Activate();
             }
         }
     }

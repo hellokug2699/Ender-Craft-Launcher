@@ -54,6 +54,7 @@ public sealed class JavaSelectionService(
 
         var instancePath = settings.Get<string?>("instance.java.executablePath", instance.Id);
         var globalPaths = JavaSearchPath.Split(settings.Get<string>("java.defaultPath"));
+        var explicitPriority = JavaSearchPath.Split(settings.Get<string>(JavaPriorityOrdering.SettingsKey));
 
         var warnings = new List<string>();
         JavaRuntime? explicitRuntime = null;
@@ -84,7 +85,19 @@ public sealed class JavaSelectionService(
             .Select(group => group.First())
             .ToArray();
 
-        var priority = JavaPriorityOrdering.Order(configuredRuntimes, globalPaths);
+        // 用户在 Java 管理页显式调整过的全局优先级优先；
+        // 未配置时沿用 java.defaultPath 的旧顺序，升级前后候选顺序保持一致。
+        var priorityRuntimes = explicitPriority
+            .Select(path => ResolveConfiguredRuntime(locator, path))
+            .Where(candidate => candidate is not null)
+            .Select(candidate => candidate!)
+            .Concat(configuredRuntimes)
+            .GroupBy(candidate => candidate.ExecutablePath, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+        var orderSeed = JavaPriorityOrdering.SelectSeed(explicitPriority, globalPaths);
+
+        var priority = JavaPriorityOrdering.Order(priorityRuntimes, orderSeed);
         var decision = JavaSelectionPlanner.Select(
             priority.Runtimes,
             requirements,
@@ -134,7 +147,7 @@ public sealed class JavaSelectionService(
             requirements.ToRequirement(),
             true,
             compatibility,
-            discovered.Count > 0 || configuredRuntimes.Length > 0 || decision.Runtime is not null,
+            discovered.Count > 0 || priority.Runtimes.Count > 0 || decision.Runtime is not null,
             explicitPath,
             decision.IsExplicitOverride,
             warnings,

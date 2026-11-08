@@ -66,6 +66,10 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IVersionInstallService, VanillaInstallService>();
         services.AddSingleton<IJavaSelectionService, JavaSelectionService>();
         services.AddSingleton<IJavaRequirementProvider, ModJavaRequirementProvider>();
+
+        // Java 管理页的卸载安全探测：实例固定引用与活动游戏会话由本层提供，
+        // 领域层（ECL.Java）只负责所有权校验与文件删除。
+        services.AddSingleton<IJavaRuntimeUsageProvider, InstanceJavaRuntimeUsageProvider>();
         services.AddSingleton<IEulaService, FileEulaService>();
         services.AddSingleton<IModService, ModService>();
         services.AddSingleton<IModDependencyInstaller, ModDependencyInstaller>();

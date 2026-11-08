@@ -92,7 +92,7 @@ public partial class App : Application
             services.AddSingleton<ContentDiscoveryPageFactory>();
             services.AddSingleton<DownloadViewModel>();
             services.AddSingleton<SettingsViewModel>();
-            services.AddSingleton<JavaManagementViewModel>();
+            services.AddSingleton<Ecl.App.ViewModels.Settings.SettingsJavaPageViewModel>();
             services.AddSingleton<LogSessionsViewModel>();
             services.AddSingleton<AdditionsViewModel>();
             services.AddSingleton<WardrobeViewModel>();

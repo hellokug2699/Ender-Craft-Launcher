@@ -29,10 +29,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         ISettingsService settings,
         ILocalizer localizer,
         CodeSigningTrustService codeSigning,
-        IDialogService dialogs)
+        IDialogService dialogs,
+        SettingsJavaPageViewModel javaPage)
     {
         _localizer = localizer;
-        Navigation = SettingsPageCatalog.CreateNavigation(settings, localizer, dialogs, codeSigning);
+        Navigation = SettingsPageCatalog.CreateNavigation(settings, localizer, dialogs, codeSigning, javaPage);
         Navigation.PropertyChanged += OnNavigationPropertyChanged;
     }
 
@@ -59,6 +60,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     public string SearchSummary => _localizer.Get("settings.search.results", SearchResults.Count);
 
     public string ResetDefaultsText => _localizer.Get("settings.reset.command");
+
+    /// <summary>当前分类是否提供“恢复本分类默认值”；Java 管理页没有元数据默认值可恢复。</summary>
+    public bool CanResetCurrentPage => Navigation.CurrentPage?.CanResetDefaults == true;
 
     /// <summary>
     /// 进入设置中心（首次打开或从其它目的地返回）：按 §2 回到“常规”，
@@ -99,7 +103,6 @@ public sealed partial class SettingsViewModel : ObservableObject
             page.ResetToDefaults();
         }
     }
-
     partial void OnSearchTextChanged(string value) => UpdateSearch();
 
     private void UpdateSearch()
@@ -135,6 +138,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (e.PropertyName == nameof(SettingsNavigationViewModel.CurrentPage))
         {
             OnPropertyChanged(nameof(ResetDefaultsText));
+            OnPropertyChanged(nameof(CanResetCurrentPage));
         }
     }
 }

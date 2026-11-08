@@ -182,6 +182,22 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             Order = 10,
         };
 
+        // 全局 Java 候选优先级（有序的可执行文件路径，分号分隔）。
+        // 由设置中心“Java 管理”页的列表维护：只有用户实际调整顺序后才写入，
+        // 未配置时仍使用发现默认顺序（页面规格 §6/§7）。不在通用设置页渲染。
+        yield return new OptionDefinition<string>
+        {
+            Key = "java.priority",
+            Kind = OptionKind.Text,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.java",
+            DisplayNameKey = "option.java.priority.name",
+            DescriptionKey = "option.java.priority.desc",
+            Default = string.Empty,
+            IsHidden = true,
+            Order = 15,
+        };
+
 
         // Internal acknowledgement state. Hidden from the generic settings editor.
         yield return new OptionDefinition<string?>

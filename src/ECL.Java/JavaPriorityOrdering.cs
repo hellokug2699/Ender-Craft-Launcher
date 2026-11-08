@@ -13,6 +13,26 @@ public sealed record JavaPriorityOrder(
 /// </summary>
 public static class JavaPriorityOrdering
 {
+    /// <summary>
+    /// 全局候选优先级的配置键（有序的可执行文件路径列表，分号分隔）。
+    /// 只有用户在 Java 管理页实际调整顺序后才会写入；为空表示“尚未配置用户优先级”。
+    /// </summary>
+    public const string SettingsKey = "java.priority";
+
+    /// <summary>
+    /// 兼容旧行为：<c>java.priority</c> 为空时沿用 <c>java.defaultPath</c> 的配置顺序，
+    /// 让升级前已经配置过全局 Java 路径的用户保持相同候选顺序。
+    /// </summary>
+    public static IReadOnlyList<string> SelectSeed(
+        IReadOnlyList<string> explicitPriority,
+        IReadOnlyList<string> legacyConfiguredPaths)
+    {
+        ArgumentNullException.ThrowIfNull(explicitPriority);
+        ArgumentNullException.ThrowIfNull(legacyConfiguredPaths);
+
+        return explicitPriority.Count > 0 ? explicitPriority : legacyConfiguredPaths;
+    }
+
     public static JavaPriorityOrder Order(
         IReadOnlyList<JavaRuntime> runtimes,
         IReadOnlyList<string> configuredPaths)

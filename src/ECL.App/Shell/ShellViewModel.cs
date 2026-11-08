@@ -68,7 +68,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         SchematicPageFactory schematicFactory,
         ExportPageFactory exportFactory,
         SettingsViewModel settings,
-        JavaManagementViewModel javaManagement,
         LogSessionsViewModel logSessions,
         ToolsViewModel tools,
         AboutViewModel about,
@@ -116,7 +115,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             new ShellNavigationItem("settings", "settings", localizer.Get("nav.settings"), primaryGroup, settings),
             new ShellNavigationItem("tools", "tools", localizer.Get("nav.tools"), toolGroup, tools),
             new ShellNavigationItem("storage", "storage", localizer.Get("nav.storage"), toolGroup, storage),
-            new ShellNavigationItem("java", "java", localizer.Get("nav.java"), toolGroup, javaManagement),
             new ShellNavigationItem("logs", "logs", localizer.Get("nav.logs"), toolGroup, logSessions),
             new ShellNavigationItem("about", "about", localizer.Get("nav.about"), toolGroup, about),
         ];

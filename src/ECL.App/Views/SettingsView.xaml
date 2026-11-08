@@ -177,7 +177,8 @@
                         Content="{Binding ResetDefaultsText}"
                         Command="{Binding ResetCurrentPageCommand}"
                         Style="{StaticResource GhostButton}"
-                        VerticalAlignment="Top" />
+                        VerticalAlignment="Top"
+                        Visibility="{Binding CanResetCurrentPage, Converter={StaticResource BoolToVisibility}}" />
             </Grid>
 
             <ContentControl Grid.Row="3"

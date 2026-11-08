@@ -73,21 +73,6 @@ public static class SettingsPageCatalog
                 new("settings.page.interface.gap.motion.title", "settings.page.interface.gap.motion.reason"),
             ]),
         new(
-            SettingsPageKeys.Java,
-            "settings.nav.java",
-            "settings.page.java.subtitle",
-            [
-                // 迁移期间的过渡页：保留仍在使用的 Java 搜索路径与运行时来源，
-                // 运行时清单/优先级/验证/卸载尚未迁入，列在能力缺口而不伪造列表。
-                new("settings.page.java.group.existing", ["java.defaultPath", "java.runtimeProvider"]),
-            ],
-            [
-                new("settings.page.java.gap.inventory.title", "settings.page.java.gap.inventory.reason"),
-                new("settings.page.java.gap.priority.title", "settings.page.java.gap.priority.reason"),
-                new("settings.page.java.gap.validation.title", "settings.page.java.gap.validation.reason"),
-                new("settings.page.java.gap.uninstall.title", "settings.page.java.gap.uninstall.reason"),
-            ]),
-        new(
             SettingsPageKeys.GameLaunch,
             "settings.nav.game",
             "settings.page.game.subtitle",
@@ -136,14 +121,20 @@ public static class SettingsPageCatalog
         ISettingsService settings,
         ILocalizer localizer,
         IDialogService dialogs,
-        CodeSigningTrustService codeSigning)
+        CodeSigningTrustService codeSigning,
+        SettingsJavaPageViewModel javaPage)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(localizer);
         ArgumentNullException.ThrowIfNull(dialogs);
         ArgumentNullException.ThrowIfNull(codeSigning);
+        ArgumentNullException.ThrowIfNull(javaPage);
 
-        var pages = new Dictionary<string, ISettingsPage>(StringComparer.Ordinal);
+        var pages = new Dictionary<string, ISettingsPage>(StringComparer.Ordinal)
+        {
+            // Java 管理是独立页面对象（真实运行时清单），不是元数据分组页。
+            [SettingsPageKeys.Java] = javaPage,
+        };
         foreach (var spec in Specs)
         {
             pages[spec.Key] = CreatePage(spec, settings, localizer, dialogs, codeSigning);
@@ -153,7 +144,7 @@ public static class SettingsPageCatalog
         {
             Item(SettingsPageKeys.General, "settings.nav.general"),
             Item(SettingsPageKeys.Interface, "settings.nav.interface"),
-            Item(SettingsPageKeys.Java, "settings.nav.java", "settings.nav.unavailable.java"),
+            Item(SettingsPageKeys.Java, "settings.nav.java"),
             Item(SettingsPageKeys.GameLaunch, "settings.nav.game"),
             Item(SettingsPageKeys.Downloads, "settings.nav.downloads"),
             Item(SettingsPageKeys.Network, "settings.nav.network"),
