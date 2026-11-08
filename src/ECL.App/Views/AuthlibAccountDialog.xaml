@@ -9,7 +9,7 @@
         ResizeMode="NoResize"
         ShowInTaskbar="False"
         Background="{DynamicResource BackgroundBrush}"
-        FontFamily="{StaticResource UiFontFamily}">
+        FontFamily="{DynamicResource UiFontFamily}">
     <Border Style="{StaticResource Card}" Margin="16">
         <StackPanel>
             <TextBlock Text="{loc:Loc Key=authlib.dialog.title}" Style="{StaticResource SectionText}" />

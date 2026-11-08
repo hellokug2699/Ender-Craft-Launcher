@@ -90,6 +90,9 @@
             <DataTemplate DataType="{x:Type svm:SettingsJavaPageViewModel}">
                 <views:SettingsJavaPageView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type svm:SettingsInterfacePageViewModel}">
+                <views:SettingsInterfacePageView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type svm:SettingsOptionGroupViewModel}">
                 <views:SettingsOptionGroupView />
             </DataTemplate>

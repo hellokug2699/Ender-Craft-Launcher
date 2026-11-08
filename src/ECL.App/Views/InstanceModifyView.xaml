@@ -32,7 +32,7 @@
 
         <Style x:Key="ModifyPlanImpactText" TargetType="TextBlock">
             <Setter Property="FontSize" Value="9" />
-            <Setter Property="FontFamily" Value="{StaticResource UiMediumFontFamily}" />
+            <Setter Property="FontFamily" Value="{DynamicResource UiMediumFontFamily}" />
             <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
             <Setter Property="VerticalAlignment" Value="Top" />
             <Style.Triggers>

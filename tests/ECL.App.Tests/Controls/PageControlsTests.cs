@@ -6,9 +6,8 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using Ecl.App.Controls;
 using Ecl.App.Converters;
-using Ecl.App.Localization;
+using Ecl.App.Tests.Support;
 using Ecl.App.ViewModels;
-using Ecl.Core.Localization;
 using Xunit;
 
 namespace Ecl.App.Tests.Controls;
@@ -204,33 +203,7 @@ public sealed class PageControlsTests
             .ToArray();
     }
 
-    private static void EnsureApplication()
-    {
-        LocalizationProvider.Current ??= new JsonLocalizer(CultureInfo.GetCultureInfo("zh-CN"));
-
-        if (Application.Current is not null)
-        {
-            return;
-        }
-
-        var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        application.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/ECL;component/Themes/Theme.xaml", UriKind.Absolute),
-        });
-        application.Resources.MergedDictionaries.Add(new ResourceDictionary
-        {
-            Source = new Uri("pack://application:,,,/ECL;component/Themes/Brand.xaml", UriKind.Absolute),
-        });
-
-        // 与 App.xaml 保持同一组应用级转换器：页面与弹窗视图在测试环境中也必须能完整加载。
-        application.Resources["BoolToVisibility"] = new BooleanToVisibilityConverter();
-        application.Resources["InverseBoolToVisibility"] = new InverseBooleanToVisibilityConverter();
-        application.Resources["StringToVisibility"] = new StringToVisibilityConverter();
-        application.Resources["NullToVisibility"] = new NullToVisibilityConverter();
-        application.Resources["LogLevelBrush"] = new LogLevelToBrushConverter();
-        application.Resources["LoaderKindBrush"] = new LoaderKindToBrushConverter();
-    }
+    private static void EnsureApplication() => TestApplication.Ensure();
 }
 
 

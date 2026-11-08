@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-using Ecl.Core.Localization;
-
 namespace Ecl.Configuration.Options;
 
-internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionProvider
+internal sealed class LauncherOptionsProvider : IOptionProvider
 {
     public IEnumerable<OptionDefinition> GetOptions()
     {
-        var defaultLanguage = localizer.Culture.Name;
-
+        // 界面语言默认“跟随系统”（settings-interface-preferences.md §5）：
+        // 启动时按操作系统首选语言选择 ECL 已提供的最合适语言，不支持时回退到 en-US。
+        // 已保存的旧值（zh-CN / en-US）继续有效，不迁移、不改写。
         yield return new OptionDefinition<string>
         {
             Key = "launcher.language",
@@ -18,11 +17,12 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             CategoryKey = "category.launcher",
             DisplayNameKey = "option.launcher.language.name",
             DescriptionKey = "option.launcher.language.desc",
-            Default = defaultLanguage,
+            Default = "system",
             RequiresRestart = true,
             Order = 10,
             Choices =
             [
+                new OptionChoice("system", "option.launcher.language.system"),
                 new OptionChoice("zh-CN", "option.launcher.language.zh"),
                 new OptionChoice("en-US", "option.launcher.language.en"),
             ],
@@ -86,6 +86,82 @@ internal sealed class LauncherOptionsProvider(ILocalizer localizer) : IOptionPro
             DescriptionKey = "option.launcher.confirmBeforeDelete.desc",
             Default = true,
             Order = 60,
+        };
+
+        // 界面偏好（settings-interface-preferences.md §3–§6）。ECL 品牌主题固定，
+        // 这里只有字体族、字号档位、界面缩放与动效开关，不存在主题色或浅色模式键。
+        //
+        // 字体族只允许随包提供且已完成内部家族名/字面验证的资源；当前版本只随包提供
+        // HarmonyOS Sans SC（Regular / Medium / Bold），因此选项表只有这一项。
+        // 新增字体必须先随包资源与验证一起提交，不能只在这里加一个字符串。
+        yield return new OptionDefinition<string>
+        {
+            Key = "launcher.interfaceFont",
+            Kind = OptionKind.Select,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.interfaceFont.name",
+            DescriptionKey = "option.launcher.interfaceFont.desc",
+            Default = "harmonyos-sans-sc",
+            Order = 50,
+            Choices =
+            [
+                new OptionChoice("harmonyos-sans-sc", "option.launcher.interfaceFont.harmonyosSc"),
+            ],
+        };
+
+        // 字号档位只表达“整体文字尺寸”，倍率由 Design System 统一定义
+        // （UiTypography：标准 1.0 / 较大 1.1 / 最大 1.25）。低于标准的档位会跌破
+        // ADR 0050 §5 的可读性底线，因此不提供“较小”。
+        yield return new OptionDefinition<string>
+        {
+            Key = "launcher.fontSize",
+            Kind = OptionKind.Select,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.fontSize.name",
+            DescriptionKey = "option.launcher.fontSize.desc",
+            Default = "standard",
+            Order = 52,
+            Choices =
+            [
+                new OptionChoice("standard", "option.launcher.fontSize.standard"),
+                new OptionChoice("large", "option.launcher.fontSize.large"),
+                new OptionChoice("xlarge", "option.launcher.fontSize.xlarge"),
+            ],
+        };
+
+        // 界面缩放只作用于 ECL 自身布局（LayoutTransform），不修改 Windows 显示缩放。
+        // 范围经最小窗口尺寸实测后确认；步进 5% 由 Validate 保证，CLI 也不能写入 83 之类的值。
+        yield return new OptionDefinition<int>
+        {
+            Key = "launcher.uiScale",
+            Kind = OptionKind.Integer,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.uiScale.name",
+            DescriptionKey = "option.launcher.uiScale.desc",
+            UnitKey = "unit.percent",
+            Default = 100,
+            Min = 80,
+            Max = 150,
+            Step = 5,
+            Order = 54,
+            Validate = percent => percent % 5 == 0,
+        };
+
+        // 关闭后非必要动效时长归零（页面转场、按钮按压、弹窗淡入），但状态提示、
+        // 进度与后台任务不受影响；操作系统“减少动画”偏好仍是上限（ADR 0021 §6）。
+        yield return new OptionDefinition<bool>
+        {
+            Key = "launcher.animationsEnabled",
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.animationsEnabled.name",
+            DescriptionKey = "option.launcher.animationsEnabled.desc",
+            Default = true,
+            Order = 56,
         };
 
         yield return new OptionDefinition<string>

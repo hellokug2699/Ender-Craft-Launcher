@@ -170,5 +170,12 @@
                 </ItemsControl.ItemContainerStyle>
             </ItemsControl>
         </Border>
+        <!-- 分组说明：生效范围与固定边界，不是可编辑项。 -->
+        <TextBlock Text="{Binding Note}"
+                   Foreground="{DynamicResource TextMutedBrush}"
+                   FontSize="10"
+                   TextWrapping="Wrap"
+                   Margin="2,7,0,0"
+                   Visibility="{Binding HasNote, Converter={StaticResource BoolToVisibility}}" />
     </StackPanel>
 </UserControl>

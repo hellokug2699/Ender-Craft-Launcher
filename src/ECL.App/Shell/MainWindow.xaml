@@ -15,7 +15,7 @@
         AllowDrop="True"
         Drop="OnFilesDropped"
         Background="{DynamicResource BackgroundBrush}"
-        FontFamily="{StaticResource UiFontFamily}"
+        FontFamily="{DynamicResource UiFontFamily}"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
     <Window.Resources>

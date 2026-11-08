@@ -54,8 +54,11 @@ public partial class App : Application
                 SettingsBootstrap.ReadGlobalString(paths, "launcher.minecraftDirectory"));
             paths.EnsureCreated();
 
-            var language = SettingsBootstrap.ReadGlobalString(paths, "launcher.language")
-                           ?? CultureInfo.CurrentUICulture.Name;
+            // 界面语言默认“跟随系统”（settings-interface-preferences.md §5）：
+            // “system”与未设置都按操作系统首选语言解析，已保存的具体区域性名称原样使用。
+            var language = SettingsBootstrap.ResolveLanguage(
+                SettingsBootstrap.ReadGlobalString(paths, "launcher.language"),
+                CultureInfo.CurrentUICulture);
             var culture = JsonLocalizer.Normalize(CultureInfo.GetCultureInfo(language));
             LocalizationProvider.Current = new JsonLocalizer(culture);
 
@@ -77,6 +80,8 @@ public partial class App : Application
             services.AddSingleton<IDialogService, DialogService>();
             services.AddSingleton<IShaderHintStore, ShaderHintStore>();
             services.AddSingleton<IScreenshotImageLoader, ScreenshotImageLoader>();
+            // 界面偏好（字体/字号档位/缩放/动效）在窗口显示前应用，避免首帧抖动。
+            services.AddSingleton<IUserInterfacePreferences, UserInterfacePreferences>();
             services.AddSingleton(new Ecl.Deployment.CodeSigningTrustService());
             services.AddSingleton<InstancesViewModel>();
             services.AddSingleton<StorageViewModel>();
@@ -135,6 +140,11 @@ public partial class App : Application
             var window = _services.GetRequiredService<MainWindow>();
             MainWindow = window;
             window.Closing += OnMainWindowClosing;
+
+            // ADR 0002 + settings-interface-preferences.md §7：偏好保存在配置服务里，
+            // 启动时在显示窗口前应用一次；之后由设置变更事件自动重新应用。
+            _services.GetRequiredService<IUserInterfacePreferences>().Attach(window);
+
             window.Show();
             splash.Close();
 

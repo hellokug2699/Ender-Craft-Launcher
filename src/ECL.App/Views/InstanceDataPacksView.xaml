@@ -28,7 +28,7 @@
 
         <Style x:Key="DataPackTableHeaderText" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
-            <Setter Property="FontFamily" Value="{StaticResource UiMediumFontFamily}" />
+            <Setter Property="FontFamily" Value="{DynamicResource UiMediumFontFamily}" />
             <Setter Property="FontSize" Value="9" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
@@ -52,7 +52,7 @@
                 <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="8,4">
                     <TextBlock Text="{Binding Title}"
                                FontSize="14"
-                               FontFamily="{StaticResource UiMediumFontFamily}"
+                               FontFamily="{DynamicResource UiMediumFontFamily}"
                                TextAlignment="Center"
                                TextTrimming="CharacterEllipsis"
                                ToolTip="{Binding Title}" />

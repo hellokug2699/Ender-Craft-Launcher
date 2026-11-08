@@ -10,12 +10,23 @@ using Ecl.Deployment;
 
 namespace Ecl.App.ViewModels.Settings;
 
-/// <summary>一组设置项：标题 + 元数据驱动的编辑行。</summary>
-public sealed class SettingsOptionGroupViewModel(string title, IReadOnlyList<OptionEditorViewModel> options)
+/// <summary>
+/// 一组设置项：标题 + 元数据驱动的编辑行。
+/// 可选的 <paramref name="note"/> 用于说明一组偏好的生效范围或固定边界
+/// （例如字体族只随包提供、语言切换需要重启），不占用设置项本身。
+/// </summary>
+public sealed class SettingsOptionGroupViewModel(
+    string title,
+    IReadOnlyList<OptionEditorViewModel> options,
+    string? note = null)
 {
     public string Title { get; } = title;
 
     public IReadOnlyList<OptionEditorViewModel> Options { get; } = options;
+
+    public string Note { get; } = note ?? string.Empty;
+
+    public bool HasNote => !string.IsNullOrEmpty(Note);
 }
 
 /// <summary>

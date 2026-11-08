@@ -121,20 +121,22 @@
         随程序分发且未做任何修改。Medium 的内部家族名为 “HarmonyOS Sans SC Medium”，
         因此必须使用独立的 FontFamily 资源，不能只设置 FontWeight=Medium 让 WPF 合成。
         字体许可证见 Fonts/HarmonyOS_Sans_LICENSE.txt；缺失字符时由 WPF 回退到系统字体。
+        字体族用 DynamicResource 引用：设置中心的界面偏好（launcher.interfaceFont）会在
+        用户选择其它已验证字体族时覆盖应用级资源，选择默认字体族时移除覆盖（ADR 0002）。
     -->
     <FontFamily x:Key="UiFontFamily">pack://application:,,,/Fonts/#HarmonyOS Sans SC</FontFamily>
     <FontFamily x:Key="UiMediumFontFamily">pack://application:,,,/Fonts/#HarmonyOS Sans SC Medium</FontFamily>
 
     <Style TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFontFamily}" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
     </Style>
 
     <!-- 强调/次要标题：使用真实 Medium 字面，避免合成粗细。 -->
     <Style x:Key="EmphasisText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-        <Setter Property="FontFamily" Value="{StaticResource UiMediumFontFamily}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiMediumFontFamily}" />
     </Style>
 
     <!-- 页面主标题/强强调：使用真实 Bold 字面。 -->
@@ -144,27 +146,27 @@
 
     <Style x:Key="TitleText" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFontFamily}" />
         <Setter Property="FontSize" Value="28" />
         <Setter Property="FontWeight" Value="Bold" />
     </Style>
 
     <Style x:Key="SubtitleText" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFontFamily}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
     <Style x:Key="SectionText" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-        <Setter Property="FontFamily" Value="{StaticResource UiMediumFontFamily}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiMediumFontFamily}" />
         <Setter Property="FontSize" Value="14" />
     </Style>
 
     <Style x:Key="LabelText" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-        <Setter Property="FontFamily" Value="{StaticResource UiMediumFontFamily}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiMediumFontFamily}" />
         <Setter Property="FontSize" Value="11" />
         <Setter Property="Margin" Value="0,0,0,7" />
     </Style>
@@ -192,7 +194,7 @@
         <Setter Property="Padding" Value="16,8" />
         <Setter Property="MinHeight" Value="36" />
         <Setter Property="FontSize" Value="12" />
-        <Setter Property="FontFamily" Value="{StaticResource UiMediumFontFamily}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiMediumFontFamily}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
@@ -394,7 +396,7 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="12,8" />
         <Setter Property="MinHeight" Value="36" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFontFamily}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
@@ -454,7 +456,7 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="12,0" />
         <Setter Property="MinHeight" Value="36" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFontFamily}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -627,7 +629,7 @@
 
     <Style TargetType="CheckBox">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFontFamily}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
@@ -1089,7 +1091,7 @@
 
     <Style TargetType="ToolTip">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-        <Setter Property="FontFamily" Value="{StaticResource UiFontFamily}" />
+        <Setter Property="FontFamily" Value="{DynamicResource UiFontFamily}" />
         <Setter Property="FontSize" Value="11" />
         <Setter Property="Template">
             <Setter.Value>

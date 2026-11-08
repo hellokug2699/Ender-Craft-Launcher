@@ -8,7 +8,7 @@
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         Background="{DynamicResource BackgroundBrush}"
-        FontFamily="{StaticResource UiFontFamily}">
+        FontFamily="{DynamicResource UiFontFamily}">
     <Border Style="{StaticResource Card}" Margin="16">
         <Grid>
             <Grid.RowDefinitions>

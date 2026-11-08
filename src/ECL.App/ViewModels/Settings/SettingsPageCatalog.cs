@@ -61,18 +61,6 @@ public static class SettingsPageCatalog
             ],
             IncludesCodeSigning: true),
         new(
-            SettingsPageKeys.Interface,
-            "settings.nav.interface",
-            "settings.page.interface.subtitle",
-            [
-                new("settings.page.interface.group.language", ["launcher.language"]),
-            ],
-            [
-                new("settings.page.interface.gap.font.title", "settings.page.interface.gap.font.reason"),
-                new("settings.page.interface.gap.scale.title", "settings.page.interface.gap.scale.reason"),
-                new("settings.page.interface.gap.motion.title", "settings.page.interface.gap.motion.reason"),
-            ]),
-        new(
             SettingsPageKeys.GameLaunch,
             "settings.nav.game",
             "settings.page.game.subtitle",
@@ -134,6 +122,8 @@ public static class SettingsPageCatalog
         {
             // Java 管理是独立页面对象（真实运行时清单），不是元数据分组页。
             [SettingsPageKeys.Java] = javaPage,
+            // 界面偏好有字号档位与界面缩放的专用控件，同样不是通用元数据页。
+            [SettingsPageKeys.Interface] = new SettingsInterfacePageViewModel(settings, localizer, dialogs),
         };
         foreach (var spec in Specs)
         {

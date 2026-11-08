@@ -37,7 +37,9 @@ internal static class Program
             SettingsBootstrap.ReadGlobalString(paths, "launcher.minecraftDirectory"));
         paths.EnsureCreated();
 
-        var language = commandLine.Language ?? SettingsBootstrap.ReadGlobalString(paths, "launcher.language") ?? CultureInfo.CurrentUICulture.Name;
+        var language = commandLine.Language ?? SettingsBootstrap.ResolveLanguage(
+            SettingsBootstrap.ReadGlobalString(paths, "launcher.language"),
+            CultureInfo.CurrentUICulture);
         var culture = JsonLocalizer.Normalize(CultureInfo.GetCultureInfo(language));
 
         var services = new ServiceCollection();

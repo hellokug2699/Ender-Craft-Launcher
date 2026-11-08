@@ -299,7 +299,6 @@ public sealed class SettingsPageTests
         foreach (var key in new[]
                  {
                      SettingsPageKeys.General,
-                     SettingsPageKeys.Interface,
                      SettingsPageKeys.GameLaunch,
                      SettingsPageKeys.Downloads,
                      SettingsPageKeys.Network,
@@ -316,6 +315,19 @@ public sealed class SettingsPageTests
                     Assert.False(string.IsNullOrWhiteSpace(item.Reason));
                 });
         }
+
+        // 界面偏好不是通用元数据页：字体/字号/缩放/动效已真实接入，
+        // 规格明确不提供的能力（主题色、逐控件字号、字体导入等）以“固定边界”分组说明。
+        var interfacePage = Assert.IsType<SettingsInterfacePageViewModel>(
+            host.ViewModel.Navigation.Find(SettingsPageKeys.Interface)!.Page);
+        Assert.NotEmpty(interfacePage.Boundaries.Items);
+        Assert.All(
+            interfacePage.Boundaries.Items,
+            item =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(item.Title));
+                Assert.False(string.IsNullOrWhiteSpace(item.Reason));
+            });
 
         var network = OptionsPage(host, SettingsPageKeys.Network);
         Assert.Equal(
@@ -356,7 +368,9 @@ public sealed class SettingsPageTests
         using var host = new SettingsHost();
 
         Assert.Single(OptionsPage(host, SettingsPageKeys.General).Sections.OfType<CodeSigningSectionViewModel>());
-        Assert.Empty(OptionsPage(host, SettingsPageKeys.Interface).Sections.OfType<CodeSigningSectionViewModel>());
+        // 界面偏好是专用页面，不承载代码签名卡（它只属于常规页）。
+        Assert.IsType<SettingsInterfacePageViewModel>(
+            host.ViewModel.Navigation.Find(SettingsPageKeys.Interface)!.Page);
     }
 
     private static SettingsOptionsPageViewModel OptionsPage(SettingsHost host, string key) =>
