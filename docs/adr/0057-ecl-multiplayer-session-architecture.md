@@ -3,7 +3,7 @@
 - Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-07
-- Scope: ECL Multiplayer Feature Addition、点对点/小规模私人联机、网络会话生命周期、联机环境兼容性检查、模组差异处理与安全边界
+- Scope: ECL Multiplayer Feature Addition、点对点/小规模私人联机、网络会话生命周期、联机环境兼容性检查、模组差异处理、安全边界与玩家通讯功能边界
 - Related: [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0043：Minecraft 威胁防护与安全分析架构](0043-minecraft-threat-protection-and-security-analysis.md)、[ADR 0044：本地优先网络诊断 Addition 与数据主权](0044-local-first-network-diagnostics-and-data-sovereignty.md)、[ADR 0053：Additions 能力权限模型与用户授权流程](0053-addition-capability-permission-and-user-consent.md)、[ADR 0054：Addition 注册表、清单与生命周期治理](0054-addition-registry-and-manifest-governance.md)
 - Addition: [ECL Multiplayer](../additions/ecl.multiplayer/README.md)
 
@@ -141,6 +141,15 @@ ECL 希望提供自有的联机产品体验，而不是把一个第三方联机�
 4. 会话结束不得自动删除用户原始世界、实例或模组。
 5. 自动安装/调整模组前应使用现有事务和快照能力，确保失败时可恢复。
 
+### 10. 玩家通讯与社交功能边界
+
+1. ECL Multiplayer 是联机连接与会话管理功能，不是独立的玩家通讯或社交平台。
+2. ECL 不提供独立于 Minecraft 游戏内聊天机制之外的玩家即时通讯能力，包括但不限于私聊、群聊、独立文字消息、语音通话和视频通话；也不建设玩家动态、社交关系流或类似社区功能。
+3. Minecraft 游戏内聊天仍由 Minecraft 及其游戏/服务端机制负责。ECL 不建立自己的聊天内容中继、托管、消息历史或独立聊天服务，也不应为了提供通讯体验而截获或转发游戏聊天内容。
+4. 为创建、邀请、加入、维护和结束联机连接所必需的控制消息，不属于玩家通讯功能。此类消息应限于会话控制所需的最小信息，不得扩展为通用消息通道或借机承载玩家聊天。
+5. 邀请分享、加入通知、连接状态和会话生命周期提示属于联机流程，不构成社交功能；不得因此引入常驻好友关系、私信收件箱或公共社交图谱。
+6. 本边界限制 ECL 自身提供的产品能力，不限制 Minecraft、服务端、模组或用户自行选择的外部通讯工具。
+
 ## 备选方案
 
 ### 方案 A：直接嵌入第三方联机工具
@@ -205,7 +214,10 @@ ECL 希望提供自有的联机产品体验，而不是把一个第三方联机�
 13. 不自动上传世界、实例、日志、账户令牌或本地诊断数据；不建设广告或行为分析遥测。
 14. 邀请凭据具有随机性、有限有效期和撤销机制，不会写入公开日志。
 15. 所有网络组件、许可、平台兼容和分发方式均经过审查后，才可确定正式运行时依赖。
+16. ECL 不提供独立玩家私聊、群聊、文字消息、语音/视频通话或社交关系功能；Minecraft 游戏内聊天由 Minecraft 自身机制负责，ECL 不托管或中继聊天内容。
+17. 联机邀请、加入通知、连接状态及会话控制消息仅用于建立和管理会话，不形成通用玩家通讯通道。
 
 ## 修订记录
 
+- 2026-11-08：明确 Multiplayer 不承担独立玩家通讯或社交平台职责；保留 Minecraft 游戏内聊天，并区分联机控制消息与玩家聊天内容。
 - 2026-11-07：根据维护者批准，将 ECL Multiplayer 的 Addition 定位、私人会话产品边界、可替换网络层原则、兼容性要求及 Security Center 职责边界确认为正式架构决策。Decision 更新为 Accepted，Implementation 保持 Not Started；EasyTier 仍仅为待验证候选。具体 UI、协议和实现策略留给后续 Feature Spec 与本机开发验证。
