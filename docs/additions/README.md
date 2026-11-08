@@ -46,6 +46,7 @@ ECL 采用“原生功能入口、可选功能能力”的产品模型：页面�
 | Shader Studio | [`ecl.shader-studio`](ecl.shader-studio/README.md) | Proposed | 光影包浏览、结构与兼容性分析、固定场景视觉预览；官方标准与高级场景统一交付 | [ADR 0059](../adr/0059-shader-studio-and-standard-scene-environment-architecture.md)（Proposed） |
 | ECL AI | [`ecl.ai`](ecl.ai/README.md) | Planned | 统一 Chat、Minecraft Knowledge 与 Diagnostic 工作模式；支持本地/远程推理和受控联网搜索 | [ADR 0061](../adr/0061-ecl-ai-conversation-and-capability-architecture.md)（Accepted） |
 | ECL AI Agent Runtime | [`ecl.ai-agent-runtime`](ecl.ai-agent-runtime/README.md) | Proposed | Agent 编排运行时：Target、Plan、Task Scheduler、受控执行、Changes 审查、验证与恢复 | [ADR 0062](../adr/0062-ecl-ai-agent-runtime-and-orchestration-architecture.md)（Proposed） |
+| ECL Player Workspace | [`ecl.player-workspace`](ecl.player-workspace/README.md) | Proposed | 不限定用途的通用玩家工作空间：表格、目标与任务、项目资料组织及通用数据导入导出 | [ADR 0063](../adr/0063-ecl-player-workspace-architecture.md)（Proposed） |
 
 ### Data Additions
 
