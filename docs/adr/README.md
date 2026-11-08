@@ -209,4 +209,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0062 ECL AI Agent Runtime and Orchestration Architecture](0062-ecl-ai-agent-runtime-and-orchestration-architecture.md) | Proposed | Not Started | 独立 Agent Runtime Addition、Target/Plan/Task Scheduler、受控执行、Changes 审查、验证与恢复 |
 | [0063 ECL Player Workspace Architecture](0063-ecl-player-workspace-architecture.md) | Proposed | Not Started | 不限定用途的通用玩家工作空间：表格、目标与任务、项目资料、数据导入导出及玩家数据自主权 |
 | [0064 Map Art Studio Architecture](0064-map-art-studio-architecture.md) | Proposed | Not Started | Map Art Studio Addition、单张/多地图画布、图片与地图数据导入、颜色映射、材料优化及可选投影预览组合 |
-| [0065 OAuth Login Session Termination and Authentication Safety](0065-official-account-authentication-security-warning-and-authorization-verification.md) | Proposed | Not Started | Microsoft 正版登录 OAuth 会话异常检测与立即终止、回调隔离、令牌兑换中止及安全边界 |
+| [0065 OAuth Login Session Termination and Authentication Safety](0065-oauth-login-session-termination-and-authentication-safety.md) | Proposed | Not Started | Microsoft 正版登录 OAuth 会话异常检测与立即终止、回调隔离、令牌兑换中止及安全边界 |
