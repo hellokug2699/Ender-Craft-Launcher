@@ -619,6 +619,56 @@ Java 管理的运行时清单/优先级/验证/卸载已由 §2.12 完成。
   重复提示、验证所选、扫描失败空状态、释放后停止、搜索定位）；
   `SettingsPageTests` 断言设置中心不再在构造时扫描 Java，且 Java 页不是元数据分组页。
 
+### 2.13 界面偏好页（B3 步骤 2）
+
+页面规格：`settings-interface-preferences.md` §2–§10；ADR 0002（元数据配置）、ADR 0021（动效）、
+ADR 0050 §2/§5/§6（字体、排版与 DPI）。设置中心「界面偏好」从“语言 + 能力缺口”替换为真实页面，
+字体、字号档位、界面缩放、语言与动效偏好全部接入；品牌主题固定，页面不提供主题色、主题包或浅色模式。
+
+- **页面对象**：`SettingsInterfacePageViewModel`（实现 `ISettingsPage`）+ `Views/SettingsInterfacePageView.xaml`
+  （`App.xaml` DataTemplate 注册）。四组偏好：字体与文字、界面缩放、语言、动效；另有一组
+  「界面偏好的固定边界」如实列出不提供的能力（主题色/浅色模式、逐控件字号与间距、字体导入、
+  Windows 显示设置、游戏内语言、逐项动画参数）。
+- **新增配置键（ADR 0002，默认与校验都在元数据里）**：
+  - `launcher.interfaceFont`：字体族，默认 `harmonyos-sans-sc`；选项表只包含随包且已验证的字体族，
+    当前版本只有 HarmonyOS Sans SC（`Fonts/` 下 Regular / Medium / Bold 三个静态字面）。
+  - `launcher.fontSize`：字号档位 `standard` / `large` / `xlarge`（1.0 / 1.1 / 1.25）；
+    **不提供“较小”**：继续缩小会跌破 ADR 0050 §5 的可读性底线。
+  - `launcher.uiScale`：界面缩放 80–150%、步进 5%（`Validate` 同时拒绝非整档值，CLI 也写不进 83%）。
+  - `launcher.animationsEnabled`：界面动效开关，默认开启。
+  - `launcher.language` 默认值改为 `system`（跟随系统），保留 `zh-CN` / `en-US`；已保存的旧值不迁移。
+- **字号档位（`UiTextScaler`）**：页面字号来自设计令牌与局部样式（数百处），因此不在每个 XAML 再引入第二套
+  资源键，而是在界面树上按同一倍率换算“元素自己的”字号：只处理有局部值/样式值的元素，纯继承的元素跟随父元素、
+  不重复乘算；记录原始字号，倍率变化时从原始值重算，恢复 1.0 时还原；后加载的元素（虚拟化列表、弹窗模板、
+  页面切换）通过 `Loaded` 路由事件补做；数据绑定或动画驱动的字号不动。只改表现层字号，不触碰模板、图标尺寸
+  与业务状态。
+- **界面缩放（`UserInterfacePreferences.ApplyLayoutScale`）**：对窗口内容应用 `LayoutTransform`，
+  WPF 按缩放后的可用尺寸重新测量，页面因此走既有的窄窗口响应式逻辑（折叠导航、表格内部横向滚动），
+  而不是把内容裁掉。窗口尺寸与 `MinWidth`/`MinHeight` 同步按比例变化，保证任何档位下布局的可用逻辑尺寸
+  都不低于设计系统的最小窗口（1080×720）；窗口最终受 `SystemParameters.WorkArea` 限制，被限制时页面
+  仍只在自身滚动容器内收缩。用户手动改过窗口尺寸会按当前比例折算回 100% 的等效尺寸；被屏幕限制过的尺寸
+  不会被当成新基准（否则“125% → 恢复默认”会把窗口越缩越小，实机复现后修复）。
+  Windows 显示缩放、分辨率与系统字体不受影响。
+- **语言**：下拉显示“跟随系统 / 简体中文 / English”，带「需要重启」徽标；页面另起一行显示
+  **当前实际使用的界面语言**。启动时 `SettingsBootstrap.ResolveLanguage` 把未设置/空/`system` 解析为
+  操作系统首选语言，不支持的语言仍由 `JsonLocalizer` 回退到 en-US；CLI 与 GUI 共用同一解析。
+  语言不修改 Minecraft 实例语言、资源包或系统语言。
+- **动效**：`MotionSettings` 从“只读 Windows 偏好”改为用户偏好 + 系统偏好的组合（`UserEnabled`），
+  页面开关写入 `launcher.animationsEnabled`；关闭后页面转场、弹窗淡入与按钮按压时长为零，
+  状态提示、进度、焦点与后台任务不受影响；Windows 已要求减少动画时页面显示真实原因且动效保持关闭。
+- **字体族生效路径**：主题里的字体声明改为 `DynamicResource UiFontFamily` / `UiMediumFontFamily`，
+  `UserInterfacePreferences` 在选择非默认字体族时覆盖应用级资源，默认字体族则移除覆盖；
+  当前只有一个随包字体族，因此默认情况下资源保持主题原值，机制已为后续字体扩展就绪。
+- **保存失败与恢复默认**：滑块类设置保存失败时回到最后一次有效值并显示真实原因；
+  「恢复默认」只清除界面缩放键（默认值以后调整仍然生效），「恢复本分类默认值」只清本页五个键。
+- 测试：`tests/ECL.App.Tests/Settings/InterfacePreferencesPageTests.cs`（9 项：四组与随包字体、
+  无主题/逐控件字号设置、字体族与字号档位即时保存、缩放步进与恢复默认、保存失败回退、
+  语言“跟随系统 + 需重启”与实际语言、动效开关驱动策略、按分类恢复默认、搜索定位与高亮）；
+  `tests/ECL.App.Tests/Shell/UserInterfacePreferencesTests.cs`（23 项：档位倍率与未知值回退、
+  缩放松紧与边界、字号取整、界面树换算/还原/新增元素/数据绑定跳过、窗口与最小尺寸缩放、
+  屏幕限制后的往返恢复、字体资源覆盖与移除）；核心 `SettingsServiceTests` 增加默认值、
+  非法缩放/字体/档位拒绝与 `ResolveLanguage` 分支覆盖。
+
 ## 3. 共享页面控件（B0）
 B0 只提供 B1 立即需要的三个共享件，其余控件（`DataTable`、`StatusBanner`、`InlineProgress`、
 `SearchBox`、`FilterPill`、`SortSelector`、`SeverityBadge`、`MonoText`、扩展图标集）在第一个真实消费者批次实现，
@@ -816,4 +866,18 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
   探测失败按「无法确认」阻断。部分删除失败时保留该行并重新验证，不宣称已卸载。
 - 移除 Java 只解除 ECL 登记/候选关系并写入 `config/java-runtimes.json`，不删除任何文件；
   实例显式固定的 Java 不受影响。已移除的候选不会因后续扫描自动回到列表，重新添加同一路径才恢复。
+- 界面偏好页（§2.13）的字号档位用界面树换算实现：它只换算“元素自己的”字号，之后由代码在 `Loaded`
+  之后新写入的字号（而不是通过样式/`DynamicResource`）不会被自动重新换算，需要重新应用档位；
+  这是避免为 30 个页面逐处引入第二套字号资源键的取舍。当前主题与页面样式都是静态字号声明，未发现该情形。
+- 界面缩放的窗口适配以 `SystemParameters.WorkArea` 为上限：在 1680×1050 实机屏幕上 150% 的逻辑高度约 668
+  （低于设计最小高度 720），页面改为在自身滚动容器内滚动，仍无裁切或重叠；更高档位在更小屏幕上会被
+  工作区限制，页面的可用逻辑宽度仍≥1080。125%/150% 等在**多 DPI 显示器间移动**时的组合行为仍为 NOT RUN
+ （与本轮其它批次一致，只有 100% DPI 的实机证据）。
+- 动效关闭后的“无动画转场”没有逐帧实机证据：开关写入、`MotionSettings.IsReducedMotion` 与
+  `TryBeginPageTransition` 的零时长分支由自动化覆盖，实机只确认了开关状态与页面可用性（NOT RUN：帧级）。
+- 界面字体当前只有一个随包且已验证的字体族（HarmonyOS Sans SC）；下拉是真实选项但暂无可切换值，
+  新增字体必须先随包提供资源、许可证与字面验证，再登记到 `BundledFontFamilies`。
+- 界面缩放的“最小可用档位”是以 ECL 自身最小窗口（1080×720）与当前屏幕工作区验证的：窗口小于该尺寸时
+  由 `MinWidth`/`MinHeight` 阻止；若用户把系统 DPI 与 ECL 缩放叠加，可用逻辑尺寸仍按 DPI 归一，
+  但 125/150/175% 系统 DPI 下的组合验证仍为 NOT RUN。
 
