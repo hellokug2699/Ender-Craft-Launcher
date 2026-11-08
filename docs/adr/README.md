@@ -207,3 +207,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0060 Multi-Addition Visual Preview Composition Architecture](0060-multi-addition-visual-preview-composition.md) | Proposed | Not Started | Schematic Preview、Resource Pack Studio、Shader Studio 的独立与组合预览模式、统一会话及跨 Addition 协作规范 |
 | [0061 ECL AI Conversation and Capability Architecture](0061-ecl-ai-conversation-and-capability-architecture.md) | Accepted | Not Started | ECL AI：Chat、Knowledge、Diagnostic、推理后端、受控搜索、对话/上下文、数据隐私与安全边界（Harness 执行层由 0062 细化） |
 | [0062 ECL AI Agent Runtime and Orchestration Architecture](0062-ecl-ai-agent-runtime-and-orchestration-architecture.md) | Proposed | Not Started | 独立 Agent Runtime Addition、Target/Plan/Task Scheduler、受控执行、Changes 审查、验证与恢复 |
+| [0063 ECL Player Workspace Architecture](0063-ecl-player-workspace-architecture.md) | Proposed | Not Started | 不限定用途的通用玩家工作空间：表格、目标与任务、项目资料、数据导入导出及玩家数据自主权 |
