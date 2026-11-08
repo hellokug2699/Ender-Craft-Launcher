@@ -4,7 +4,7 @@
 - Implementation: In Progress
 - Date: 2026-11-04
 - Scope: Windows 安装介质、Installer 与 Bootstrapper 独立交互界面、ECL 自身完整性、更新源解析、版本部署、Repair Mode 与离线恢复
-- Related: [ADR 0050：ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md)、[ADR 0013：分支驱动的版本与发布频道](0013-branch-based-versioning-and-release-channels.md)、[ADR 0024：用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md)、[ADR 0025：Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md)、[ADR 0029：Installer、Bootstrapper 与 Uninstaller 的生命周期边界](0029-installer-bootstrapper-uninstaller-lifecycle.md)
+- Related: [ADR 0050：ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md)、[ADR 0013：分支驱动的版本与发布频道](0013-branch-based-versioning-and-release-channels.md)、[ADR 0024：用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md)、[ADR 0025：Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md)、[ADR 0029：Installer、Bootstrapper 与 Uninstaller 的生命周期边界](0029-installer-bootstrapper-uninstaller-lifecycle.md)、[ADR 0066: Non-Elevated Execution Requirement and Bootstrap Enforcement](0066-non-elevated-execution-requirement-and-bootstrap-enforcement.md)
 - Supersedes: [ADR 0016：独立 Bootstrapper 与安全部署边界](0016-independent-bootstrapper-and-safe-deployment-boundaries.md)、[ADR 0017：图形化首次安装程序](0017-graphical-first-run-installer.md)、[ADR 0034：ECL 自身完整性与可恢复安装架构](0034-ecl-self-integrity-and-recovery.md)
 
 ## 背景
