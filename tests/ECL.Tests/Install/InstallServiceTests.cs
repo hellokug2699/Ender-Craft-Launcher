@@ -456,9 +456,46 @@ public sealed class InstallServiceTests
     }
 
     [Fact]
-    public void RollbackReportsFailedDeletesInsteadOfClaimingSuccess()
+    public void RollbackReportsFailedRestoresInsteadOfClaimingSuccess()
     {
         var root = Directory.CreateTempSubdirectory("ecl-rollback-").FullName;
+        try
+        {
+            var path = Path.Combine(root, "blocked.jar");
+            File.WriteAllText(path, "original content");
+            var transaction = new InstallTransaction();
+            transaction.TrackFileWithBackup(path);
+
+            // 用同名目录占据文件路径：恢复备份在 Windows 与 Linux 上都必须失败。
+            // 不能在 Linux 上依赖“文件仍被打开”来制造删除失败——Unix 允许删除打开的文件，
+            // 那样测试会在 Linux CI 上误判为回滚成功。
+            File.Delete(path);
+            Directory.CreateDirectory(path);
+
+            var result = transaction.Rollback();
+
+            Assert.False(result.IsComplete);
+            var failure = Assert.Single(result.Failures);
+            Assert.Contains("failed to rollback", failure, StringComparison.Ordinal);
+            Assert.Contains(path, failure, StringComparison.Ordinal);
+            Assert.Single(result.Actions);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RollbackReportsFailedDeletesWhenTheFileIsStillOpen()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            // Windows 的共享锁语义是此路径的前提；Linux 允许删除仍打开的文件。
+            return;
+        }
+
+        var root = Directory.CreateTempSubdirectory("ecl-rollback-lock-").FullName;
         try
         {
             var path = Path.Combine(root, "locked.jar");
