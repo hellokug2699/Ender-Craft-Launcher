@@ -669,6 +669,58 @@ ADR 0050 §2/§5/§6（字体、排版与 DPI）。设置中心「界面偏好�
   屏幕限制后的往返恢复、字体资源覆盖与移除）；核心 `SettingsServiceTests` 增加默认值、
   非法缩放/字体/档位拒绝与 `ResolveLanguage` 分支覆盖。
 
+### 2.14 游戏与启动 / 下载页（B3 步骤 4）
+
+页面规格：`settings-game-launch.md` §4–§8、`settings-downloads.md` §3–§7；ADR 0002（元数据配置）、
+ADR 0005（下载源）、ADR 0020（下载产物生命周期）。本步把「游戏与启动」从通用元数据页替换为专用页面，
+并接通下载重试/限速能力；不新增主题、通知或系统显示设置。
+
+- **游戏与启动页（`SettingsGameLaunchPageViewModel` + `Views/SettingsGameLaunchPageView.xaml`，
+  `App.xaml` DataTemplate 注册）**：四个分组（内存分配 / JVM 参数 / 游戏窗口 / 启动行为）+
+  「启动行为的固定边界」。内存分配策略与手动值复用元数据行；下方「当前内存状态」只显示
+  `IMemoryAllocationService` 的结果（物理总量、当前可用、自动/手动分配值），未知时显示「不可用」，
+  不写 0；手动值超过当前可用内存或自动算法读取不到系统内存时显示真实原因警告。
+- **内存策略（D-03）**：新增 `java.memoryPolicy`（`auto` 默认 / `manual`，Select 即时保存）；
+  `java.defaultMemoryMb` 继续作为手动数值保存，策略为自动时数值保留、行隐藏且不生效。
+  `JavaSelectionService`、实例工作区内存条与设置页共用 `MemoryAllocationService`：
+  自动算法按**当前可用物理内存**分档（例如可用 7103 MB→3072 MB、16384 MB→8192 MB、
+  32768 MB→16384 MB、49152 MB 及以上→24576 MB），为系统与 ECL 保留空间，
+  不使用物理内存总量的固定比例；读取不到系统内存时回退 4096 MB 并标记不可靠，启动步骤给出明确警告。
+  实例 `instance.java.memoryMb` 始终优先；全局 JVM 参数只在实例无专属参数时生效。
+  `MemoryPolicyMigration` 在 App/CLI 启动时执行一次：只有显式保存过 `java.defaultMemoryMb` 时才写入
+  `manual`（数值原样保留），否则保持默认 `auto`；策略键已存在时直接返回，可重复执行。
+  **旧版本“整页保存”可能把默认 4096 也写进配置**，此时按持久化修改记录迁移为手动 4096（与升级前
+  行为一致）；未写过内存键的用户保持自动。该兼容边界记录在交接文档 §6.7。
+- **游戏窗口**：宽度与高度作为一组校验并共同提交（`ApplyWindowCommand` 先验证两者，任一失败不写盘；
+  高度写入失败时恢复宽度），默认 1280×720；`game.fullscreen`（默认关闭）是独立即时保存的开关，
+  开启后仍保留窗口尺寸。`CommandLineBuilder` 在全屏开启时向游戏主类追加 `--fullscreen`，
+  不修改 Windows 分辨率/DPI/显示缩放。启动行为分组保留 `game.showConsole` / `game.extraArguments`；
+  页面不提供跳过启动检查、忽略错误或启动后 ECL 窗口行为的开关（这些边界以文字说明）。
+- **下载页（`SettingsPageCatalog` 映射，仍为通用元数据页）**：分组改为「下载来源 / 并发与限速 /
+  重试与失败恢复」。新增 `network.autoRetry`（默认开启）与 `network.maxRetryAttempts`
+  （1–10，默认 3，关闭自动重试时隐藏）；`network.speedLimitMbps` 从“仅展示”改为真实控件。
+  能力缺口改为「关闭完整性校验 / 自定义镜像地址 / 下载缓存位置 / 下载后自动安装」，
+  不再声称重试与限速未接入。
+- **下载引擎**：`DownloadService` 按配置解析每个地址的最大尝试次数（自动重试关闭时为 1），
+  只重试可恢复的网络/传输错误；大小/哈希校验失败不再重试，断点文件不可用（需丢弃重来）使用
+  内部 `DownloadRestartRequiredException` 保留可重试语义。`DownloadRateLimiter` 是批次级共享令牌桶
+  （256 KB 突发、按 `network.speedLimitMbps` 折算），在两次读取之间等待；限速时按已知大小延长本次
+  尝试超时，避免低速被误判为网络超时。限速不中断正在传输的文件。
+- **顺带修复**：`SettingsViewModel.ResetCurrentPage` 改为调用 `ISettingsPage.ResetToDefaults`，
+  界面偏好与游戏与启动等专用页的「恢复本分类默认值」不再无效；`OptionChoiceItem.ToString()`
+  返回本地化显示名，设置下拉的 UIA/读屏不再暴露 record 默认字符串。
+- 测试：核心 +28（`MemoryAllocationTests` 11：自动分档/未知值/真实采样/手动/实例优先/旧配置兼容/
+  未知回退/默认用户迁移/显式 4096 与 8192/幂等/损坏配置；`JavaSelectionServiceTests` +1 自动策略与实例优先；
+  `LaunchPipelineTests` +2 自动内存命令与 `--fullscreen`；`DownloadServiceTests` +3 关闭重试/
+  配置最大次数/限速；`DownloadRateLimiterTests` 4；其余为断言调整）。应用 +10
+  （`GameLaunchAndDownloadsPageTests`：四组与真实内存结果、手动切换与保留、旧配置兼容、压力警告、
+  系统内存不可用、窗口联合校验/全屏/还原、下载重试与限速控件、搜索定位、专用页恢复默认）+
+  `SettingsPageTests` 适配专用页与下拉 `ToString` 断言。
+- 实机：1500×950 / 1080×720、zh-CN / en-US；内存策略自动→手动切换、真实可用内存对应自动值、
+  窗口非法宽度阻止保存、全屏开关即时写盘、下载自动重试关闭后最大次数隐藏；`ecl launch --dry-run`
+  实际命令包含 `-Xmx3072M`（自动）与 `--fullscreen`，仍保留 `--width/--height`。
+  窗口尺寸与设置已还原，实例元数据 SHA256 前后一致。
+
 ## 3. 共享页面控件（B0）
 B0 只提供 B1 立即需要的三个共享件，其余控件（`DataTable`、`StatusBanner`、`InlineProgress`、
 `SearchBox`、`FilterPill`、`SortSelector`、`SeverityBadge`、`MonoText`、扩展图标集）在第一个真实消费者批次实现，
