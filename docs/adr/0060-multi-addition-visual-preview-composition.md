@@ -3,8 +3,8 @@
 - Decision: Proposed
 - Implementation: Not Started
 - Date: 2026-11-08
-- Scope: Schematic Preview、Resource Pack Studio 与 Shader Studio 的可组合视觉预览模式、Addition 能力协作、统一预览会话及降级边界
-- Related: [ADR 0032](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0053](0053-addition-capability-permission-and-user-consent.md)、[ADR 0054](0054-addition-registry-and-manifest-governance.md)、[ADR 0055](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)、[ADR 0058](0058-resource-pack-studio-architecture.md)、[ADR 0059](0059-shader-studio-and-standard-scene-environment-architecture.md)
+- Scope: Schematic Preview、Resource Pack Studio 与 Shader Studio 的可组合视觉预览模式，以及 Map Art Studio 与 Schematic Preview 的可选结构预览组合、Addition 能力协作、统一预览会话及降级边界
+- Related: [ADR 0032](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0053](0053-addition-capability-permission-and-user-consent.md)、[ADR 0054](0054-addition-registry-and-manifest-governance.md)、[ADR 0055](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)、[ADR 0058](0058-resource-pack-studio-architecture.md)、[ADR 0059](0059-shader-studio-and-standard-scene-environment-architecture.md)、[ADR 0064](0064-map-art-studio-architecture.md)
 
 ## 背景
 
@@ -145,6 +145,8 @@ A+B+C 必须作为一个协调后的组合预览会话运行，而不是将 A+B 
 - ADR 0058 负责 Resource Pack Studio 自身的资源发现、解析、状态变体、资源预览和安全边界；组合模式遵循本 ADR。
 - ADR 0059 负责 Shader Studio、自身渲染能力、官方标准场景、时间段取景和场景资产治理；组合模式遵循本 ADR。
 - Schematic Preview 的专项 ADR/Feature Spec 应定义其结构解析和独立投影预览能力，并引用本 ADR 规定组合行为。
+- ADR 0064 定义 Map Art Studio 的二维地图画画布、颜色映射和材料规划；Map Art Studio 可独立运行，也可在经过验证后将地图画方案交由 Schematic Preview 进行三维结构预览。该组合属于 A（Schematic Preview）+ D（Map Art Studio）的独立组合方向，不改变本 ADR 第 2 节 A/B/C 既有模式矩阵，也不推导出 D 与 B、C 的其他组合受到支持。
+- Map Art Studio 与 Schematic Preview 的组合必须遵循本 ADR 的宿主协调、授权、兼容性、资源生命周期和失败隔离原则；具体转换语义由 ADR 0064 及后续原型验证确定。
 - 未来其他 Addition 若希望参与视觉预览组合，应先评估是否属于本 ADR 的适用范围；必要时通过后续 ADR 扩展组合模型，而不是自行建立旁路协议。
 
 本 ADR 不重复各 Addition 的内部实现规范，也不规定具体 UI 布局、IPC 消息、接口签名、数据结构或渲染后端。
