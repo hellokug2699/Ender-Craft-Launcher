@@ -154,7 +154,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0007 加载器安装与组件分发](0007-loaders-and-components.md) | Accepted | Verified | 加载器与组件 |
 | [0008 Forge 与 NeoForge 安装器 processors](0008-forge-neoforge-installers.md) | Accepted | Verified | 加载器安装 |
 | [0009 CurseForge API 集成与凭据注入](0009-curseforge-integration.md) | Superseded | N/A | CurseForge 客户端集成 |
-| [0010 CurseForge 改由私有代理转发](0010-curseforge-private-proxy.md) | Accepted | Verified | 私有代理边界 |
+| [0010 CurseForge 改由私有代理转发](0010-curseforge-private-proxy.md) | Superseded | N/A | 历史决策（由 0069 取代） |
 | [0011 全局下载任务与页面解耦](0011-download-task-boundary.md) | Superseded | N/A | 下载任务模型 |
 | [0012 整合包归档提取安全边界](0012-modpack-archive-extraction-boundary.md) | Accepted | Implemented | 归档安全 |
 | [0013 分支驱动的版本与发布频道](0013-branch-based-versioning-and-release-channels.md) | Accepted | Implemented | 版本与发布 |
@@ -213,3 +213,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0066 Non-Elevated Execution Requirement and Bootstrap Enforcement](0066-non-elevated-execution-requirement-and-bootstrap-enforcement.md) | Proposed | Not Started | ECL 非提权运行原则、Bootstrapper 最早期权限检查、管理员账户与提升令牌区分及拒绝启动 |
 | [0067 ECL Music Player and Minecraft Audio Bridge Architecture](0067-ecl-music-player-and-minecraft-audio-bridge-architecture.md) | Proposed | Not Started | ECL Music Player、Core 托管音频播放、Java Agent 游戏内音量桥接、跨版本/Loader 兼容性与进程修改授权 |
 | [0068 ECL Media Processing and Editing Architecture](0068-ecl-media-engine-and-format-conversion-architecture.md) | Proposed | Not Started | 独立媒体处理 Addition、图片/音频/视频识别转换与基础编辑、预览可视化、临时工作区与源文件安全提交、可替换后端及平台保护措施边界 |
+| [0069 Client-Side CurseForge Access and Adaptive Download Architecture](0069-client-side-curseforge-auth-and-adaptive-download-architecture.md) | Accepted | Not Started | CurseForge 客户端直连与 Worker 渐进退出、统一下载协调、全局资源预算、自适应 Range、多源回退及既有 Artifact Lifecycle 保留 |
