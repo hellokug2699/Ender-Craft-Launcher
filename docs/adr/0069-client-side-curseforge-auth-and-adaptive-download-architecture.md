@@ -1,7 +1,7 @@
 # ADR 0069: Server-Side CurseForge Credential Proxy and Adaptive Download Architecture
 
 - Decision: Accepted
-- Implementation: Not Started
+- Implementation: In Progress
 - Date: 2026-11-09
 - Scope: ECL CurseForge API 凭据边界、云端 API 转发服务、下载传输层与全局下载资源调度
 - Related: [ADR 0005](0005-download-source-strategy.md)、[ADR 0020](0020-download-artifact-lifecycle-and-cleanup.md)
