@@ -1,0 +1,51 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.music-player",
+  "name": "ECL Music Player",
+  "type": "Feature",
+  "category": "Music and Audio",
+  "summary": "可选的本地音乐播放器，通过 ECL Core 托管音频播放，并可在用户授权后使用随附 Java Agent 控制 Minecraft 的 MUSIC 音量分类。",
+  "registryStatus": "Proposed",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md",
+    "../../adr/0039-application-runtime-lifecycle-and-graceful-shutdown.md",
+    "../../adr/0053-addition-capability-permission-and-user-consent.md",
+    "../../adr/0054-addition-registry-and-manifest-governance.md",
+    "../../adr/0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md",
+    "../../adr/0067-ecl-music-player-and-minecraft-audio-bridge-architecture.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-09",
+    "lastUpdated": "2026-11-09",
+    "deprecation": null,
+    "replacement": null
+  }
+}
