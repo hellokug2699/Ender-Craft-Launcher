@@ -273,32 +273,30 @@ public sealed class SettingsPageTests
         Assert.True(viewModel.HasNoSearchResults);
         Assert.Empty(viewModel.SearchResults);
 
-        viewModel.SearchText = "代理地址";
+        viewModel.SearchText = "代理主机";
         var result = Assert.Single(
             viewModel.SearchResults,
-            item => item.OptionKey == "network.proxyAddress");
+            item => item.OptionKey == "network.proxyHost");
         viewModel.OpenSearchResultCommand.Execute(result);
 
         Assert.False(viewModel.IsSearching);
         Assert.Equal(SettingsPageKeys.Network, viewModel.Navigation.SelectedItem!.Key);
-        var network = OptionsPage(host, SettingsPageKeys.Network);
-        var proxyMode = network.Options.Single(option => option.Key == "network.proxyMode");
-        var proxyAddress = network.Options.Single(option => option.Key == "network.proxyAddress");
+        var network = Assert.IsType<SettingsNetworkPageViewModel>(
+            viewModel.Navigation.Find(SettingsPageKeys.Network)!.Page);
 
-        // 目标项被 VisibleWhen 隐藏时，定位到控制它的选项并说明解锁条件。
-        Assert.False(proxyAddress.IsVisible);
-        Assert.True(proxyMode.IsHighlighted);
-        Assert.False(proxyAddress.IsHighlighted);
+        // 目标项被手动代理模式隐藏时，定位到控制它的模式选项并说明解锁条件。
+        Assert.False(network.IsManualMode);
+        Assert.True(network.ModeEditor.IsHighlighted);
         Assert.Contains("仅在", network.StatusMessage);
 
         // 满足可见条件后，再次定位到具体设置项。
-        proxyMode.TextValue = "manual";
-        viewModel.SearchText = "代理地址";
+        network.ModeEditor.TextValue = "manual";
+        viewModel.SearchText = "代理主机";
         viewModel.OpenSearchResultCommand.Execute(
-            Assert.Single(viewModel.SearchResults, item => item.OptionKey == "network.proxyAddress"));
+            Assert.Single(viewModel.SearchResults, item => item.OptionKey == "network.proxyHost"));
 
-        Assert.True(proxyAddress.IsVisible);
-        Assert.True(proxyAddress.IsHighlighted);
+        Assert.True(network.IsManualMode);
+        Assert.True(network.IsManualHighlighted);
         Assert.Contains("已定位到", network.StatusMessage);
     }
 
@@ -311,7 +309,6 @@ public sealed class SettingsPageTests
                  {
                      SettingsPageKeys.General,
                      SettingsPageKeys.Downloads,
-                     SettingsPageKeys.Network,
                  })
         {
             var page = OptionsPage(host, key);
@@ -351,10 +348,19 @@ public sealed class SettingsPageTests
                 Assert.False(string.IsNullOrWhiteSpace(item.Reason));
             });
 
-        var network = OptionsPage(host, SettingsPageKeys.Network);
+        var network = Assert.IsType<SettingsNetworkPageViewModel>(
+            host.ViewModel.Navigation.Find(SettingsPageKeys.Network)!.Page);
+        Assert.NotEmpty(network.Boundaries.Items);
+        Assert.All(
+            network.Boundaries.Items,
+            item =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(item.Title));
+                Assert.False(string.IsNullOrWhiteSpace(item.Reason));
+            });
         Assert.Equal(
-            ["network.proxyMode", "network.proxyAddress"],
-            network.Options.Select(option => option.Key));
+            ["network.proxyMode", "network.proxyProtocol", "network.proxyHost", "network.proxyPort"],
+            network.SearchEntries.Select(entry => entry.OptionKey));
     }
 
     [Fact]

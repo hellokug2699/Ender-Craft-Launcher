@@ -1,0 +1,299 @@
+<UserControl x:Class="Ecl.App.Views.SettingsNetworkPageView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization"
+             xmlns:behaviors="clr-namespace:Ecl.App.Behaviors">
+    <!--
+        设置中心「网络」页（settings-network.md，B3 步骤 5 / D-04）：
+        代理模式、结构化手动端点、受保护凭据与指定目标测试。
+        不提供关闭 TLS 验证、修改系统代理/DNS/防火墙或伪装 User-Agent 的入口。
+    -->
+    <UserControl.Resources>
+        <Style x:Key="NetworkHighlightCard" TargetType="Border" BasedOn="{StaticResource Card}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsManualHighlighted}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsTestHighlighted}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="NetworkFieldLabel" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Width" Value="130" />
+        </Style>
+
+        <Style x:Key="TestStatusText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,8,0,0" />
+            <Style.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding HasTestResult}" Value="True" />
+                        <Condition Binding="{Binding TestSucceeded}" Value="False" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                </MultiDataTrigger>
+                <DataTrigger Binding="{Binding TestSucceeded}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="{Binding StatusMessage}"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,10"
+                   Visibility="{Binding StatusMessage, Converter={StaticResource StringToVisibility}}" />
+
+        <ScrollViewer x:Name="PageScroll"
+                      Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      behaviors:WheelScroll.IsEnabled="True">
+            <StackPanel>
+                <!-- 代理模式：元数据即时保存；不把默认值迁移伪装成可用开关。 -->
+                <ContentControl Content="{Binding ModeGroup}" Margin="0,0,0,6" />
+                <TextBlock Text="{Binding DefaultModeNote}"
+                           Foreground="{DynamicResource TextMutedBrush}"
+                           FontSize="10"
+                           TextWrapping="Wrap"
+                           Margin="2,0,0,14" />
+
+                <!-- 手动代理：协议 / 主机 / 端口作为一组校验并原子式写入（失败回滚）。 -->
+                <StackPanel Margin="0,0,0,14"
+                            Visibility="{Binding ShowManualCard, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="{loc:Loc Key=settings.page.network.manual.title}"
+                               Style="{StaticResource SectionText}"
+                               Margin="0,0,0,8" />
+                    <Border Style="{StaticResource NetworkHighlightCard}"
+                            behaviors:HighlightScrollBehavior.IsHighlighted="{Binding IsManualHighlighted}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{loc:Loc Key=option.network.proxyProtocol.name}"
+                                           Style="{StaticResource NetworkFieldLabel}" />
+                                <ComboBox Grid.Column="1"
+                                          Width="220"
+                                          ItemsSource="{Binding ProtocolChoices}"
+                                          DisplayMemberPath="DisplayName"
+                                          SelectedValuePath="Value"
+                                          SelectedValue="{Binding Protocol, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          AutomationProperties.Name="{loc:Loc Key=option.network.proxyProtocol.name}" />
+                            </Grid>
+
+                            <Grid Margin="0,9,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{loc:Loc Key=option.network.proxyHost.name}"
+                                           Style="{StaticResource NetworkFieldLabel}" />
+                                <TextBox Grid.Column="1"
+                                         Width="220"
+                                         Text="{Binding Host, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="{loc:Loc Key=option.network.proxyHost.name}" />
+                            </Grid>
+
+                            <Grid Margin="0,9,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{loc:Loc Key=option.network.proxyPort.name}"
+                                           Style="{StaticResource NetworkFieldLabel}" />
+                                <TextBox Grid.Column="1"
+                                         Width="220"
+                                         Text="{Binding PortText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="{loc:Loc Key=option.network.proxyPort.name}" />
+                            </Grid>
+
+                            <TextBlock Text="{Binding ErrorText}"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,9,0,0"
+                                       Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}" />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
+                                <TextBlock Text="{loc:Loc Key=settings.page.network.savedEndpoint}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="10" />
+                                <TextBlock Text="{Binding SavedEndpointText, Mode=OneWay}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="10"
+                                           Margin="4,0,0,0" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Right"
+                                        Margin="0,10,0,0">
+                                <Button Content="{loc:Loc Key=common.apply}"
+                                        Command="{Binding ApplyManualCommand}"
+                                        IsEnabled="{Binding CanApplyManual}"
+                                        Style="{StaticResource GhostButton}" />
+                                <Button Content="{loc:Loc Key=common.revert}"
+                                        Command="{Binding RevertManualCommand}"
+                                        IsEnabled="{Binding CanApplyManual}"
+                                        Style="{StaticResource GhostButton}"
+                                        Margin="8,0,0,0" />
+                            </StackPanel>
+
+                            <TextBlock Text="{loc:Loc Key=settings.page.network.manual.note}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,9,0,0" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- 代理凭据：密码从 PasswordBox 直接交给受保护存储，页面不回显。 -->
+                <StackPanel Margin="0,0,0,14"
+                            Visibility="{Binding ShowCredentialCard, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="{loc:Loc Key=settings.page.network.credential.title}"
+                               Style="{StaticResource SectionText}"
+                               Margin="0,0,0,8" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding CredentialStatus}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="11"
+                                       TextWrapping="Wrap" />
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding CredentialUserNameLabel}"
+                                           Style="{StaticResource NetworkFieldLabel}" />
+                                <TextBox Grid.Column="1"
+                                         Width="220"
+                                         Text="{Binding CredentialUserName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="{Binding CredentialUserNameLabel}" />
+                            </Grid>
+                            <Grid Margin="0,9,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding CredentialPasswordLabel}"
+                                           Style="{StaticResource NetworkFieldLabel}" />
+                                <PasswordBox x:Name="PasswordInput"
+                                             Grid.Column="1"
+                                             Width="220"
+                                             AutomationProperties.Name="{Binding CredentialPasswordLabel}" />
+                            </Grid>
+                            <TextBlock Text="{loc:Loc Key=settings.page.network.credential.note}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,9,0,0" />
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Right"
+                                        Margin="0,10,0,0">
+                                <Button Content="{Binding CredentialSaveText}"
+                                        Click="SaveCredential_Click"
+                                        Style="{StaticResource GhostButton}" />
+                                <Button Content="{Binding CredentialClearText}"
+                                        Command="{Binding ClearCredentialCommand}"
+                                        IsEnabled="{Binding CanClearCredential}"
+                                        Style="{StaticResource GhostButton}"
+                                        Margin="8,0,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- 测试连接：只验证指定目标，不保证所有下载源/API 可达。 -->
+                <StackPanel Margin="0,0,0,14">
+                    <TextBlock Text="{loc:Loc Key=settings.page.network.test.title}"
+                               Style="{StaticResource SectionText}"
+                               Margin="0,0,0,8" />
+                    <Border Style="{StaticResource NetworkHighlightCard}"
+                            behaviors:HighlightScrollBehavior.IsHighlighted="{Binding IsTestHighlighted}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding TestTargetLabel}"
+                                           Style="{StaticResource NetworkFieldLabel}" />
+                                <TextBox Grid.Column="1"
+                                         Width="320"
+                                         Text="{Binding TestTarget, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         AutomationProperties.Name="{Binding TestTargetLabel}" />
+                            </Grid>
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Right"
+                                        Margin="0,10,0,0">
+                                <Button Content="{Binding TestButtonText}"
+                                        Command="{Binding TestConnectionCommand}"
+                                        IsEnabled="{Binding CanTest}"
+                                        Style="{StaticResource GhostButton}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding TestStatus}"
+                                       Style="{StaticResource TestStatusText}"
+                                       Visibility="{Binding HasTestResult, Converter={StaticResource BoolToVisibility}}" />
+                            <TextBlock Text="{loc:Loc Key=settings.page.network.test.note}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- 旧版单一代理地址：只作为迁移来源；无法解析时保留并提示修复。 -->
+                <StackPanel Margin="0,0,0,14"
+                            Visibility="{Binding HasLegacyAddress, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="{loc:Loc Key=settings.page.network.legacy.title}"
+                               Style="{StaticResource SectionText}"
+                               Margin="0,0,0,8" />
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding LegacyMessage}"
+                                       Foreground="{DynamicResource WarningBrush}"
+                                       FontSize="11"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding LegacyActionStatus}"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Margin="0,8,0,0"
+                                       Visibility="{Binding LegacyActionStatus, Converter={StaticResource StringToVisibility}}" />
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Right"
+                                        Margin="0,10,0,0">
+                                <Button Content="{loc:Loc Key=settings.page.network.legacy.migrate}"
+                                        Command="{Binding MigrateLegacyCommand}"
+                                        IsEnabled="{Binding CanMigrateLegacy}"
+                                        Style="{StaticResource GhostButton}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <ContentControl Content="{Binding Boundaries}" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

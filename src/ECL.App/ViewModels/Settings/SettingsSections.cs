@@ -42,7 +42,11 @@ public sealed class SettingsUnavailableSectionViewModel(
     public IReadOnlyList<SettingsUnavailableItemViewModel> Items { get; } = items;
 }
 
-public sealed record SettingsUnavailableItemViewModel(string Title, string Reason);
+public sealed record SettingsUnavailableItemViewModel(string Title, string Reason)
+{
+    /// <summary>UIA/读屏只应看到条目名称，不暴露 record 的默认 ToString。</summary>
+    public override string ToString() => Title;
+}
 
 /// <summary>
 /// 常规页的 ECL 代码签名信任卡（ADR 0024）。只信任固定指纹的叶证书到 TrustedPeople。

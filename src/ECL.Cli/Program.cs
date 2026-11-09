@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Ecl.Auth;
 using Ecl.Configuration;
+using Ecl.Configuration.Network;
 using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Json;
@@ -57,6 +58,12 @@ internal static class Program
             provider.GetRequiredService<ISettingsService>(),
             provider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()
                 ?.CreateLogger("MemoryPolicyMigration"));
+        // D-04：旧版 network.proxyAddress 只作为迁移输入；失败保留原值并继续运行。
+        ProxySettingsMigration.TryMigrate(
+            provider.GetRequiredService<ISettingsService>(),
+            provider.GetRequiredService<IProxyCredentialStore>(),
+            provider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()
+                ?.CreateLogger("ProxySettingsMigration"));
         var lifecycle = provider.GetRequiredService<Ecl.Core.Runtime.IApplicationLifecycle>();
         lifecycle.BeginStart();
         var application = new CliApplication(provider, commandLine);

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.App.Services;
+using Ecl.Configuration.Network;
 using Ecl.Configuration.Settings;
 using Ecl.Core.Localization;
 using Ecl.Deployment;
+using Ecl.Download;
 using Ecl.Minecraft.Launch;
 
 namespace Ecl.App.ViewModels.Settings;
@@ -76,18 +78,6 @@ public static class SettingsPageCatalog
                 new("settings.page.downloads.gap.mirror.title", "settings.page.downloads.gap.mirror.reason"),
                 new("settings.page.downloads.gap.cache.title", "settings.page.downloads.gap.cache.reason"),
             ]),
-        new(
-            SettingsPageKeys.Network,
-            "settings.nav.network",
-            "settings.page.network.subtitle",
-            [
-                new("settings.page.network.group.proxy", ["network.proxyMode", "network.proxyAddress"]),
-            ],
-            [
-                new("settings.page.network.gap.endpoint.title", "settings.page.network.gap.endpoint.reason"),
-                new("settings.page.network.gap.test.title", "settings.page.network.gap.test.reason"),
-                new("settings.page.network.gap.default.title", "settings.page.network.gap.default.reason"),
-            ]),
     ];
 
     /// <summary>
@@ -100,7 +90,9 @@ public static class SettingsPageCatalog
         IDialogService dialogs,
         CodeSigningTrustService codeSigning,
         SettingsJavaPageViewModel javaPage,
-        IMemoryAllocationService memoryAllocation)
+        IMemoryAllocationService memoryAllocation,
+        IProxyCredentialStore? proxyCredentials = null,
+        IProxyConnectionTester? proxyTester = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(localizer);
@@ -118,6 +110,9 @@ public static class SettingsPageCatalog
             // 游戏与启动有内存策略状态、联合校验的窗口尺寸与全屏开关，需要专用页面。
             [SettingsPageKeys.GameLaunch] = new SettingsGameLaunchPageViewModel(
                 settings, localizer, dialogs, memoryAllocation),
+            // 网络页有联合校验的结构化端点、受保护凭据与测试连接，需要专用页面。
+            [SettingsPageKeys.Network] = new SettingsNetworkPageViewModel(
+                settings, localizer, dialogs, proxyCredentials, proxyTester),
         };
         foreach (var spec in Specs)
         {

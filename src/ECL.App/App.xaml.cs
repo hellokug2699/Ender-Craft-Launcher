@@ -15,6 +15,7 @@ using Ecl.App.Views;
 using Ecl.App.Workspace.ViewModels;
 using Ecl.Auth;
 using Ecl.Configuration;
+using Ecl.Configuration.Network;
 using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Localization;
@@ -129,6 +130,13 @@ public partial class App : Application
             // 迁移可能写一次全局配置；失败不阻断启动（运行时的兼容回退仍保留数值）。
             Ecl.Minecraft.Launch.MemoryPolicyMigration.TryMigrate(
                 _services.GetRequiredService<ISettingsService>(),
+                _logger);
+
+            // D-04：旧版 network.proxyAddress 只作为迁移输入；可无歧义拆分时写入结构化键，
+            // 无法拆分时保留原值并在网络页提示修复。失败不阻断启动（运行时会显式报错）。
+            ProxySettingsMigration.TryMigrate(
+                _services.GetRequiredService<ISettingsService>(),
+                _services.GetRequiredService<IProxyCredentialStore>(),
                 _logger);
 
             // ADR 0039：组合根建立后进入 Starting，初始化完成后再进入 Running。

@@ -33,7 +33,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         CodeSigningTrustService codeSigning,
         IDialogService dialogs,
         SettingsJavaPageViewModel javaPage,
-        IMemoryAllocationService? memoryAllocation = null)
+        IMemoryAllocationService? memoryAllocation = null,
+        Ecl.Configuration.Network.IProxyCredentialStore? proxyCredentials = null,
+        Ecl.Download.IProxyConnectionTester? proxyTester = null)
     {
         _localizer = localizer;
         Navigation = SettingsPageCatalog.CreateNavigation(
@@ -42,7 +44,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             dialogs,
             codeSigning,
             javaPage,
-            memoryAllocation ?? new MemoryAllocationService(settings, new SystemMemoryProbe()));
+            memoryAllocation ?? new MemoryAllocationService(settings, new SystemMemoryProbe()),
+            proxyCredentials,
+            proxyTester);
         Navigation.PropertyChanged += OnNavigationPropertyChanged;
     }
 

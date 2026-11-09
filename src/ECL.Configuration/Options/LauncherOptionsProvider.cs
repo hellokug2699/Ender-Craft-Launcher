@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using Ecl.Configuration.Network;
+
 namespace Ecl.Configuration.Options;
 
 internal sealed class LauncherOptionsProvider : IOptionProvider
@@ -191,6 +193,9 @@ internal sealed class LauncherOptionsProvider : IOptionProvider
             CategoryKey = "category.network",
             DisplayNameKey = "option.network.proxyMode.name",
             DescriptionKey = "option.network.proxyMode.desc",
+            // D-02 仍受“可靠安装代际信号”工程阻断（交接文档 §6.5）：
+            // 在能区分旧安装与新安装之前，不能把默认值从 system 改成 none，
+            // 否则会静默改变旧安装的代理行为。新安装默认 none 的迁移另行实施。
             Default = "system",
             Order = 20,
             Choices =
@@ -201,6 +206,64 @@ internal sealed class LauncherOptionsProvider : IOptionProvider
             ],
         };
 
+        // D-04：结构化端点。协议集合只包含本地代理服务对 .NET WebProxy 实测通过的项
+        // （http / socks5 / socks4a），不承诺未验证的 https 代理。
+        yield return new OptionDefinition<string>
+        {
+            Key = "network.proxyProtocol",
+            Kind = OptionKind.Select,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.network",
+            DisplayNameKey = "option.network.proxyProtocol.name",
+            DescriptionKey = "option.network.proxyProtocol.desc",
+            Default = ProxyProtocols.Http,
+            VisibleWhenKey = "network.proxyMode",
+            VisibleWhenValue = "manual",
+            Order = 21,
+            Choices =
+            [
+                new OptionChoice(ProxyProtocols.Http, "option.network.proxyProtocol.http"),
+                new OptionChoice(ProxyProtocols.Socks5, "option.network.proxyProtocol.socks5"),
+                new OptionChoice(ProxyProtocols.Socks4a, "option.network.proxyProtocol.socks4a"),
+            ],
+        };
+
+        yield return new OptionDefinition<string>
+        {
+            Key = "network.proxyHost",
+            Kind = OptionKind.Text,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.network",
+            DisplayNameKey = "option.network.proxyHost.name",
+            DescriptionKey = "option.network.proxyHost.desc",
+            Default = string.Empty,
+            VisibleWhenKey = "network.proxyMode",
+            VisibleWhenValue = "manual",
+            Order = 22,
+            Validate = value => string.IsNullOrWhiteSpace(value)
+                || ProxyEndpoint.TryCreate(ProxyProtocols.Http, value, 1, out _, out _),
+        };
+
+        yield return new OptionDefinition<int?>
+        {
+            Key = "network.proxyPort",
+            Kind = OptionKind.Integer,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.network",
+            DisplayNameKey = "option.network.proxyPort.name",
+            DescriptionKey = "option.network.proxyPort.desc",
+            Default = null,
+            Min = 1,
+            Max = 65535,
+            Step = 1,
+            EmptyIsNull = true,
+            VisibleWhenKey = "network.proxyMode",
+            VisibleWhenValue = "manual",
+            Order = 23,
+        };
+
+        // 旧版单一地址：只作为 D-04 的迁移输入，不再由页面编辑。
+        // 解析成功时迁移为上面的结构化键并清除；解析失败时保留原值并提示修复。
         yield return new OptionDefinition<string>
         {
             Key = "network.proxyAddress",
@@ -210,8 +273,7 @@ internal sealed class LauncherOptionsProvider : IOptionProvider
             DisplayNameKey = "option.network.proxyAddress.name",
             DescriptionKey = "option.network.proxyAddress.desc",
             Default = string.Empty,
-            VisibleWhenKey = "network.proxyMode",
-            VisibleWhenValue = "manual",
+            IsHidden = true,
             Order = 30,
         };
 

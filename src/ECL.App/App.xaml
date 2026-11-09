@@ -96,6 +96,9 @@
             <DataTemplate DataType="{x:Type svm:SettingsGameLaunchPageViewModel}">
                 <views:SettingsGameLaunchPageView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type svm:SettingsNetworkPageViewModel}">
+                <views:SettingsNetworkPageView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type svm:SettingsOptionGroupViewModel}">
                 <views:SettingsOptionGroupView />
             </DataTemplate>
