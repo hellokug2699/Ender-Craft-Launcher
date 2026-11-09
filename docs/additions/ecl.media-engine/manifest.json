@@ -4,7 +4,7 @@
   "name": "ECL Media Engine",
   "type": "Feature",
   "category": "Media Processing",
-  "summary": "可选的通用媒体处理引擎，提供普通图片、音频和视频格式识别、元数据读取及格式转换能力。",
+  "summary": "可选的通用媒体处理引擎，提供图片、音频、视频识别、转换、基础编辑、预览与可视化能力；编辑通过 Core 管理的临时工作区保护源文件。",
   "registryStatus": "Proposed",
   "currentVersion": null,
   "coreApiCompatibility": {
@@ -40,6 +40,8 @@
   "relatedDocuments": [
     "../../adr/0032-native-feature-interfaces-and-optional-additions.md",
     "../../adr/0039-application-runtime-lifecycle-and-graceful-shutdown.md",
+    "../../adr/0047-instance-transactions-and-concurrency-control.md",
+    "../../adr/0048-instance-snapshots-and-recovery.md",
     "../../adr/0053-addition-capability-permission-and-user-consent.md",
     "../../adr/0054-addition-registry-and-manifest-governance.md",
     "../../adr/0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md",
