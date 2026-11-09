@@ -212,4 +212,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0065 OAuth Login Session Termination and Authentication Safety](0065-oauth-login-session-termination-and-authentication-safety.md) | Proposed | Not Started | Microsoft 正版登录 OAuth 会话异常检测与立即终止、回调隔离、令牌兑换中止及安全边界 |
 | [0066 Non-Elevated Execution Requirement and Bootstrap Enforcement](0066-non-elevated-execution-requirement-and-bootstrap-enforcement.md) | Proposed | Not Started | ECL 非提权运行原则、Bootstrapper 最早期权限检查、管理员账户与提升令牌区分及拒绝启动 |
 | [0067 ECL Music Player and Minecraft Audio Bridge Architecture](0067-ecl-music-player-and-minecraft-audio-bridge-architecture.md) | Proposed | Not Started | ECL Music Player、Core 托管音频播放、Java Agent 游戏内音量桥接、跨版本/Loader 兼容性与进程修改授权 |
-| [0068 ECL Media Engine and Standard Media Format Conversion Architecture](0068-ecl-media-engine-and-format-conversion-architecture.md) | Proposed | Not Started | 独立媒体处理 Addition、图片/音频/视频普通格式识别与转换、可替换后端、按需依赖及平台保护措施边界 |
+| [0068 ECL Media Processing and Editing Architecture](0068-ecl-media-engine-and-format-conversion-architecture.md) | Proposed | Not Started | 独立媒体处理 Addition、图片/音频/视频识别转换与基础编辑、预览可视化、临时工作区与源文件安全提交、可替换后端及平台保护措施边界 |
