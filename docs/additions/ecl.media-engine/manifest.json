@@ -1,0 +1,55 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.media-engine",
+  "name": "ECL Media Engine",
+  "type": "Feature",
+  "category": "Media Processing",
+  "summary": "可选的通用媒体处理引擎，提供普通图片、音频和视频格式识别、元数据读取及格式转换能力。",
+  "registryStatus": "Proposed",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "formats": {
+      "image": [],
+      "audio": [],
+      "video": []
+    },
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md",
+    "../../adr/0039-application-runtime-lifecycle-and-graceful-shutdown.md",
+    "../../adr/0053-addition-capability-permission-and-user-consent.md",
+    "../../adr/0054-addition-registry-and-manifest-governance.md",
+    "../../adr/0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md",
+    "../../adr/0067-ecl-music-player-and-minecraft-audio-bridge-architecture.md",
+    "../../adr/0068-ecl-media-engine-and-format-conversion-architecture.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-09",
+    "lastUpdated": "2026-11-09",
+    "deprecation": null,
+    "replacement": null
+  }
+}
