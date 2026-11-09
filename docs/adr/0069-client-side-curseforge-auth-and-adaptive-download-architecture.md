@@ -1,19 +1,21 @@
-# ADR 0069: Client-Side CurseForge Access and Adaptive Download Architecture
+# ADR 0069: Server-Side CurseForge Credential Proxy and Adaptive Download Architecture
 
 - Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-09
-- Scope: ECL CurseForge API access、下载传输层、全局下载资源调度与 Worker 退出
+- Scope: ECL CurseForge API 凭据边界、云端 API 转发服务、下载传输层与全局下载资源调度
 - Related: [ADR 0005](0005-download-source-strategy.md)、[ADR 0020](0020-download-artifact-lifecycle-and-cleanup.md)
 - Supersedes: [ADR 0010](0010-curseforge-private-proxy.md)
 
 ## 背景
 
-ECL 当前通过私有 Cloudflare Worker 代理 CurseForge API 请求。Worker 从 Cloudflare Secret 读取 API Key，向 CurseForge API 注入认证信息，再将针对具体文件请求返回的下载 URL 交还给 ECL；实际文件内容由 ECL 直接从 CurseForge CDN 下载，不经过 Worker。
+ECL 曾通过私有 Cloudflare Worker 代理 CurseForge API 请求：服务端注入 API Key，转发官方 API 请求，再将响应交还给客户端；实际文件内容始终由 ECL 直接从 CurseForge CDN 下载，不经过 Worker。
 
-这套方案已经能够正常完成下载，但 CurseForge API 控制请求仍依赖 Worker 的可用性、请求额度和托管配置。Worker 的请求限额会随着 API 请求量增长，成为不必要的长期运行约束。
+此前曾考虑将 ECL 自有 CurseForge API Key 注入客户端并由客户端直连官方 API，以摆脱 Worker 的请求额度与托管限制。但客户端发行包中的凭据无法被真正保密：混淆、编译时注入或 Native AOT 都只能提高提取成本，不能建立可信的秘密边界。既然 ECL 已拥有自己的云服务器，就没有必要再把服务端凭据下放给客户端。
 
-ECL 已经持有可用于自身 CurseForge 集成的 API Key。Prism Launcher 等公开客户端也采用了客户端集成 CurseForge API Key 的实践。这说明公开客户端携带 API Key 在技术上可行，但不代表 Key 是秘密，也不代表可以复用其他启动器的 Key。ECL 必须使用自身的 Key，并接受客户端分发后 Key 可被提取、滥用和轮换的现实。
+维护者痛定思痛买了ECS。
+
+ECS 将作为 ECL 自有的服务端凭据边界，负责接收受限的 CurseForge API 请求、注入 ECL 自己的 API Key 并转发请求。客户端只持有 ECL 服务的公开访问地址，不持有 CurseForge API Key。具体部署配置、运行参数、域名、密钥注入方式和运维方案留待项目实施阶段决定，不在本 ADR 中预先固化。
 
 与此同时，现有下载服务已经具备多源解析、断点续传、临时产物身份管理、完整性校验和安全提交等能力，但传输层仍缺少统一的全局连接资源协调和单文件自适应 Range 并行下载。PCL-CE 的下载实现提供了值得参考的资源调度、Range 探测、动态分段和回退思路；ECL 应吸收其机制，而不是直接复制其实现或固定参数。
 
@@ -21,15 +23,17 @@ ECL 已经持有可用于自身 CurseForge 集成的 API Key。Prism Launcher �
 
 ## 决策
 
-### 1. CurseForge API 改为客户端直连
+### 1. CurseForge API 凭据由 ECL 云端服务持有
 
-1. ECL 客户端直接请求 CurseForge 官方 API，不再通过 ECL 私有 Worker 转发 CurseForge API 请求。
-2. 客户端使用 ECL 自身配置的 CurseForge API Key 完成 API 认证。不得复用 Prism Launcher 或其他第三方应用的 Key。
-3. API Key 属于公开客户端凭据，不得将其描述为客户端内不可提取的秘密。将 Key 注入构建产物、配置或客户端资源，只是分发方式，不构成保密措施。
-4. Key 的来源、轮换和发布流程应集中管理，不得散落在业务模块中。不得将 Key 写入日志、诊断附件、错误消息或与请求无关的持久化数据。
-5. 客户端只在明确允许的 CurseForge 官方 API 与 CDN 请求目标上附加 Key。重定向必须逐跳验证目标主机；跨域跳转默认不得携带 Key。禁止向任意第三方主机转发认证 Header。
-6. 认证失败、配额限制和服务端错误必须如实呈现，不得通过静默重试或切换到未授权的代理掩盖问题。
-7. CurseForge API 数据缓存仍须遵循适用的官方条款与既有缓存约束，不因取消 Worker 而默认恢复客户端持久化缓存。
+1. ECL 客户端不得携带、内置、构建时注入或运行时获取 ECL 的 CurseForge API Key。
+2. ECL 客户端通过 ECL 自有云端 API 服务请求 CurseForge API 能力；云端服务在服务端持有 ECL 自己的 API Key，向 CurseForge 官方 API 注入认证信息并转发请求。
+3. 云端服务只提供完成 ECL 业务所需的受限 API 转发能力，不得成为任意 URL、任意主机或任意 HTTP 方法的通用代理。
+4. 服务端必须对允许的上游主机、API 路径、HTTP 方法和必要请求参数实施白名单校验；客户端不得自行指定认证 Header、上游地址或覆盖服务端凭据。
+5. API Key 只能存在于服务端受控环境，不得进入客户端响应、日志、诊断附件、异常文本、镜像、公开仓库或与认证无关的持久化数据。
+6. 服务端对上游请求负责注入 Key；重定向必须逐跳验证目标主机，禁止向非允许的主机转发认证 Header。
+7. 服务端应实施合理的请求限流、超时、并发控制和错误分类，避免公开接口被滥用并保护上游 API 配额。
+8. 认证失败、配额限制和服务端错误必须以可诊断但不泄露凭据的形式返回客户端；不得通过无界重试掩盖问题。
+9. CurseForge API 数据缓存仍须遵循适用的官方条款与既有缓存约束；是否缓存及其策略由实施阶段依据接口语义确定。
 
 ### 2. 下载 URL 获取与文件传输保持分离
 
@@ -40,13 +44,13 @@ ECL 已经持有可用于自身 CurseForge 集成的 API Key。Prism Launcher �
 5. 下载 URL、重定向目标与实际文件来源均须经过下载源安全策略校验。不得因为 URL 来自官方 API 就跳过最终目标主机验证。
 6. 下载 URL 与文件内容的可信性仍需通过预期大小、Hash 或其他可获得的完整性证据判断；URL 对应单个文件请求不等于文件内容已经验证。
 
-### 3. Worker 退出采用渐进迁移
+### 3. 由 ECL 自有云端服务取代客户端凭据注入
 
-1. CurseForge Worker 不再是 ECL 正常 API 访问和文件下载的长期必要依赖。
-2. 新客户端完成直连能力、认证、重定向、错误处理和测试覆盖后，逐步移除客户端对该 Worker endpoint 的调用。
-3. 在客户端迁移与发布验证完成前，允许现有已发布版本继续使用旧 Worker；不得通过提前关闭 Worker 破坏旧版本用户。
-4. 迁移完成后，可停止为 ECL CurseForge 链路维护该 Worker。是否保留 Worker 工程或服务供其他用途，不属于本 ADR 的决策范围。
-5. Worker 不得被重新引入为普通文件内容的中转层，以规避客户端直连或下载调度设计。
+1. ECL 自有云端服务是新版本客户端访问 CurseForge API 的凭据代理；Cloudflare Worker 不再作为该链路的目标运行平台。
+2. 新客户端应调用 ECL 云端 API，由服务端注入 API Key 并转发请求；不得回退为客户端携带 Key 直连官方 API。
+3. 已发布旧版本若仍依赖原 Worker，应在兼容迁移窗口内维持必要的旧链路；不得在替代路径可用前贸然破坏旧版本。
+4. 新服务应保持职责单一，只承担 API 请求转发及必要的安全控制，不承担 CurseForge 文件内容代理或下载任务调度。
+5. 具体服务器部署、配置管理、密钥装载、域名与运维细节由项目实施阶段确定，本 ADR 不预设其实现选型。
 
 ### 4. 下载系统采用统一协调器与分层传输策略
 
@@ -106,25 +110,31 @@ ECL 下载体系采用统一 Download Coordinator 管理任务生命周期和资
 
 ## 备选方案
 
-### 方案 A：继续通过 Worker 代理 CurseForge API
+### 方案 A：客户端携带 ECL 的 API Key 直连 CurseForge
+
+优点是链路短，不需要自建凭据代理服务。
+
+缺点是客户端发行包中的 Key 可被提取，混淆或编译方式不能建立真正的秘密边界；Key 一旦被滥用，影响的是 ECL 共用的上游 API 配额。既然 ECL 已有自有云服务器，拒绝继续采用客户端注入方案。
+
+### 方案 B：继续使用 Cloudflare Worker 代理 API 请求
 
 优点是 API Key 保留在服务端，客户端不需要携带 Key。
 
-缺点是 ECL 仍然依赖 Worker 的请求配额、部署、Secret 和服务可用性；而 Worker 并未承担文件传输，保留它只为 API 控制请求增加额外链路。ECL 已经有自身 API Key，且公开客户端集成 Key 有可参考的实践，因此不再选择该方案作为长期架构。
+缺点是 ECL 仍然依赖 Worker 的请求额度、部署和平台运行约束。ECL 已有自己的云服务器，因此将凭据代理迁移到 ECL 自有服务，减少对额外托管平台的依赖。
 
-### 方案 B：由 Worker 代理文件内容
+### 方案 C：由云端服务代理文件内容
 
 优点是可以由服务端统一控制 CDN 认证和文件请求。
 
 缺点是所有大文件流量、长连接和额外请求都会进入 Worker 数据路径，扩大请求限额和运行时资源压力；这与 ECL 希望避免长期数据中转的目标相反。拒绝该方案。
 
-### 方案 C：保留现有下载引擎，只增加单文件多线程
+### 方案 D：保留现有下载引擎，只增加单文件多线程
 
 优点是改动范围较小。
 
 缺点是缺少全局资源预算时，多任务并发会放大连接和内存占用；单独增加 Range 也无法解决资源版本一致性、动态分段竞态、错误分类和源切换问题。拒绝将其作为完整重构方案。
 
-### 方案 D：整体替换现有下载服务并复制 PCL-CE 实现
+### 方案 E：整体替换现有下载服务并复制 PCL-CE 实现
 
 优点是可以快速获得成熟的分段下载和资源调度思路。
 
@@ -134,31 +144,33 @@ ECL 下载体系采用统一 Download Coordinator 管理任务生命周期和资
 
 正面影响：
 
-- CurseForge API 访问不再依赖 ECL Worker 的请求额度和部署可用性。
-- CurseForge API 认证与文件传输路径更直接，Worker 不再成为新版本客户端的必要链路。
-- 文件数据继续由客户端直接访问 CDN，不引入额外的数据中转流量。
+- CurseForge API Key 不再分发到客户端，建立明确的服务端凭据边界。
+- API 凭据代理由 ECL 自有云服务承担，不再依赖 Cloudflare Worker 的请求额度和运行约束。
+- 文件数据继续由客户端直接访问 CDN，不引入额外的数据中转流量；云服务器不承担大文件流量。
 - 单文件 Range 并行与全局资源调度可以协同工作，避免多任务同时下载时无约束地增加连接。
 - 保留 ECL 已有临时产物生命周期和安全提交能力，降低重构对现有可靠性机制的破坏。
 - 顺序下载仍然是一等回退路径，不会把 Range 能力变成服务端兼容性前提。
 
 代价与风险：
 
-- API Key 随公开客户端分发后可被提取，可能遭到滥用或导致配额耗尽；必须使用 ECL 自身的 Key，并建立轮换与异常处理流程。
-- 直接访问 CurseForge API 后，客户端需要正确处理认证、限流、错误响应和 API 兼容性。
-- Worker 退出需要考虑旧版本客户端兼容，不能提前关闭旧链路。
+- ECL 云端服务成为 CurseForge API 访问的可用性依赖；需要监控服务健康状态并设计合理的故障处理。
+- 云端代理接口可能遭到滥用，必须落实上游白名单、请求校验、限流和配额保护。
+- 服务端仍需保护 API Key，避免凭据进入日志、镜像、响应或公开仓库。
+- 从旧 Worker 迁移需要考虑旧版本客户端兼容，不能提前关闭旧链路。
 - 自适应 Range、资源版本一致性和全局预算会增加下载引擎的实现与测试复杂度。
 - 多源下载与 Range 分段组合时，需要防止不同来源或不同资源版本的数据被错误拼接。
 - 性能收益取决于 CDN、网络环境、磁盘吞吐和服务端 Range 行为，不承诺所有下载都能获得多线程提速。
 
 ## 验收标准
 
-1. 新版本 ECL 可以直接请求 CurseForge 官方 API，并在请求中使用 ECL 自身的 API Key；正常流程不再请求 ECL Worker。
-2. CurseForge API Key 不会被写入日志、诊断输出或与认证无关的数据；代码和构建流程不会复用其他启动器的 Key。
-3. API 请求与 CDN 下载请求的重定向均经过逐跳目标校验；未经允许的目标主机不会收到 CurseForge API Key。
-4. CurseForge API 返回的具体文件下载 URL 能由 ECL 直接访问官方 CDN；文件内容不经过 Worker。
-5. 下载 URL 失效或过期后，ECL 能重新获取 URL，而不是无限复用旧 URL。
-6. 旧版本客户端在迁移窗口内仍可使用既有 Worker 链路；只有在兼容策略明确后才停止旧链路。
-7. 多个下载任务共享全局连接和缓冲区预算；并发压力测试不会突破配置上限或造成无界资源增长。
+1. 新版本 ECL 通过 ECL 自有云端 API 服务访问 CurseForge API；正常流程不再由客户端直连官方 API，也不再依赖 Cloudflare Worker。
+2. CurseForge API Key 仅存在于服务端受控环境，不会出现在客户端二进制、配置、响应、日志或诊断输出中。
+3. 云端服务只允许经过白名单校验的 CurseForge API 主机、路径和方法；客户端不能将其用作任意 URL 代理。
+4. 云端服务注入 ECL 自己的 API Key，并对上游重定向逐跳校验；未经允许的目标主机不会收到 Key。
+5. CurseForge API 返回的具体文件下载 URL 能由 ECL 直接访问官方 CDN；文件内容不经过云端服务或 Worker。
+6. 下载 URL 失效或过期后，ECL 能重新获取 URL，而不是无限复用旧 URL。
+7. 旧版本客户端在迁移窗口内仍可使用既有 Worker 链路；只有在兼容策略明确后才停止旧链路。
+8. 多个下载任务共享全局连接和缓冲区预算；并发压力测试不会突破配置上限或造成无界资源增长。
 8. 支持 Range 的测试服务能够完成并行下载，最终文件区间完整、无重叠、无缺失，并通过预期大小和 Hash 校验。
 9. Range 不支持、返回异常、资源版本变化或并行恢复不安全时，下载能够安全回退到顺序模式。
 10. 动态分段在高并发压力下不会突破配额，不会产生重复区间、丢失区间或并发写入冲突。
@@ -170,3 +182,4 @@ ECL 下载体系采用统一 Download Coordinator 管理任务生命周期和资
 ## 修订记录
 
 - 2026-11-09：建立客户端直连 CurseForge API 与自适应下载架构决策，采用统一全局资源调度和可回退的 Range 传输策略；明确保留既有 Artifact Lifecycle，并逐步退出 CurseForge Worker。
+- 2026-11-09：修订 CurseForge 凭据边界，改由 ECL 自有云服务器持有 API Key 并代理 API 请求，取消客户端注入方案；文件内容仍由客户端直连 CDN。
