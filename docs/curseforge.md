@@ -4,29 +4,29 @@ v0.7 补全了 CurseForge for Minecraft API 的接入：搜索、文件解析、
 
 ## 1. 请求路径与 API key
 
-ECL **不持有 CurseForge API key**。客户端只把请求发往 ECL 自建的 ECL API Gateway，由代理注入 key 后转发到官方 API：
+ECL **不持有 CurseForge API key**。客户端只把请求发往 ECL 自建的 CurseForge 代理，由代理注入 key 后转发到官方 API：
 
 ```text
-ECL ── GET /v1/... ──▶ https://api.endercraftlauncher.top ── x-api-key ──▶ https://api.curseforge.com/v1/...
+ECL ── GET /v1/... ──▶ ECL 代理 ── x-api-key ──▶ https://api.curseforge.com/v1/...
 ```
 
-- 代理服务端实现、部署材料与凭据管理位于 private Core 仓库；本仓库只包含公开客户端入口及调用说明。
-- 服务入口由 `CurseForgeClient.BaseAddress` 固定为 `https://api.endercraftlauncher.top`；客户端路径与 CurseForge 官方 API 一致（`/v1/...`）。
+- 代理的源码、路由、部署与凭据材料全部在 private Core 仓库，**不在本仓库**；本仓库只包含客户端与“经代理访问”的说明。
+- 代理地址由 `CurseForgeClient` 中的内置常量决定；客户端路径与 CurseForge 官方 API 一致（`/v1/...`）。
 - API endpoint 是公开客户端配置，且 `curseforge status` 会显示它；它不是凭据或访问控制。代理必须在服务端实施限流、配额与滥用防护，不能依赖隐藏 endpoint。
 - 实际 `.jar` / `.zip` 下载不经过代理，仍由 ECL 直接访问 `edge.forgecdn.net` 等官方 CDN。
 
 关键约束：
 
-- ECL 客户端源码、构建、发布产物、配置文件、日志与诊断包都不包含 key。
-- 客户端构建与运行都不读取任何 API key：没有环境变量、没有程序集元数据，也没有“从私库注入构建”的步骤。
+- ECL 的源码、构建、发布产物、配置文件、日志与诊断包都不包含 key。
+- 构建与运行都不读取任何 API key：没有环境变量、没有程序集元数据，也没有“从私库注入构建”的步骤。
 - 客户端不存在“未配置 key”的状态；`ICurseForgeClient.Status.Source` 固定为 `Proxy`。
-- 更换 key 只需要在 ECS 服务端更新，不需要重新发布启动器。
+- 更换 key 只需要在代理服务端更新，不需要重新发布启动器。
 
 ## 2. 搜索与文件解析
 
 `ICurseForgeClient` 封装 REST 调用，统一处理：
 
-- 请求发往 ECL 自有 ECS API Gateway，不携带 `x-api-key`、`Authorization` 或 Cookie，认证完全由服务端负责；
+- 请求发往代理，不携带 `x-api-key`、`Authorization` 或 Cookie，认证完全由代理负责；
 - 30 秒单请求超时；
 - HTTP 401/403 → `curseforge.unauthorized`（通常是代理侧 key 无效或没有权限）；
 - 404 → `curseforge.not_found`；
