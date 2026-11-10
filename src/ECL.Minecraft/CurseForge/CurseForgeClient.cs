@@ -58,7 +58,7 @@ public interface ICurseForgeClient
 public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
 {
     /// <summary>ECL 的 CurseForge 代理主机；路径与官方 API 完全一致，不做前缀改写。</summary>
-    public const string BaseAddress = "https://api.endercraftlauncher.top";
+    public const string BaseAddress = "https://api.wikifactory.top";
 
     /// <summary>CurseForge API 版本前缀，实际请求形如 <c>/v1/mods/search</c>。</summary>
     public const string ApiVersionPath = "/v1";
