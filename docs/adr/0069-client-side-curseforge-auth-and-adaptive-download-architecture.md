@@ -1,7 +1,7 @@
 # ADR 0069: Server-Side CurseForge Credential Proxy and Adaptive Download Architecture
 
 - Decision: Accepted
-- Implementation: In Progress
+- Implementation: Blocked
 - Date: 2026-11-09
 - Scope: ECL CurseForge API 凭据边界、云端 API 转发服务、下载传输层与全局下载资源调度
 - Related: [ADR 0005](0005-download-source-strategy.md)、[ADR 0020](0020-download-artifact-lifecycle-and-cleanup.md)
@@ -180,6 +180,8 @@ ECL 下载体系采用统一 Download Coordinator 管理任务生命周期和资
 15. 新旧下载路径在迁移期间有可重复的集成测试和故障注入测试；完成迁移后，确认 CurseForge 正常路径不再依赖 Worker。
 
 ## 修订记录
+
+- 2026-11-10：因大陆 ECS 域名访问受到阿里云未完成 ICP 备案的合规拦截，公网 HTTP 返回备案拦截 403、HTTPS TLS 握手提前 EOF，导致新 API Gateway 无法从客户端网络访问。该问题属于当前外部合规/部署前置条件，不是客户端构建或自动化测试失败；实施状态暂标记为 `Blocked`。解除条件：完成 ICP 备案并确认域名接入，或将服务迁移至不受该大陆备案限制的部署地域，并重新完成端到端验收。
 
 - 2026-11-09：建立客户端直连 CurseForge API 与自适应下载架构决策，采用统一全局资源调度和可回退的 Range 传输策略；明确保留既有 Artifact Lifecycle，并逐步退出 CurseForge Worker。
 - 2026-11-09：修订 CurseForge 凭据边界，改由 ECL 自有云服务器持有 API Key 并代理 API 请求，取消客户端注入方案；文件内容仍由客户端直连 CDN。
