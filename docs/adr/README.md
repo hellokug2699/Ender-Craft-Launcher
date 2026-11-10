@@ -25,6 +25,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | `Not Started` | 尚未实施 | 决策已批准，但尚无实质实现工作。 |
 | `In Progress` | 实施中 | 已开始实现，但范围尚未完成。 |
 | `Implemented` | 已实现 | 约定范围已有实现，但验收或验证仍未全部完成。 |
+| `Blocked` | 已阻塞 | 实施因外部依赖、政策/合规限制或其他当前无法由项目团队消除的因素而暂停；须记录阻塞原因与解除条件。不得将其解释为实现失败或验收通过。 |
 | `Verified` | 已验证 | 已完成约定验收，并有测试、构建、实机验证或其他可复核证据。 |
 | `N/A` | 不适用 | 例如纯治理规则、已拒绝提案或不要求代码实施的决策。 |
 
@@ -34,6 +35,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 - `Accepted + Not Started`：已经批准，但尚未开始实施。
 - `Accepted + In Progress`：已经批准，正在实施。
 - `Accepted + Implemented`：实现已完成，验证尚未全部完成。
+- `Accepted + Blocked`：决策仍然有效，但实施被外部或暂不可控因素阻塞；解除阻塞后恢复相应实施状态。
 - `Accepted + Verified`：实现及约定验收均已完成。
 - `Rejected + N/A`：已拒绝，不应实施。
 - `Superseded + N/A`：已被后续决策取代，保留历史记录。
@@ -154,7 +156,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0007 加载器安装与组件分发](0007-loaders-and-components.md) | Accepted | Verified | 加载器与组件 |
 | [0008 Forge 与 NeoForge 安装器 processors](0008-forge-neoforge-installers.md) | Accepted | Verified | 加载器安装 |
 | [0009 CurseForge API 集成与凭据注入](0009-curseforge-integration.md) | Superseded | N/A | CurseForge 客户端集成 |
-| [0010 CurseForge 改由私有代理转发](0010-curseforge-private-proxy.md) | Superseded | N/A | 历史决策（由 0069 取代） |
+| [0010 CurseForge 改由私有代理转发](0010-curseforge-private-proxy.md) | Superseded | Verified | 历史决策（由 0069 取代；原实施已验证） |
 | [0011 全局下载任务与页面解耦](0011-download-task-boundary.md) | Superseded | N/A | 下载任务模型 |
 | [0012 整合包归档提取安全边界](0012-modpack-archive-extraction-boundary.md) | Accepted | Implemented | 归档安全 |
 | [0013 分支驱动的版本与发布频道](0013-branch-based-versioning-and-release-channels.md) | Accepted | Implemented | 版本与发布 |
@@ -213,4 +215,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0066 Non-Elevated Execution Requirement and Bootstrap Enforcement](0066-non-elevated-execution-requirement-and-bootstrap-enforcement.md) | Proposed | Not Started | ECL 非提权运行原则、Bootstrapper 最早期权限检查、管理员账户与提升令牌区分及拒绝启动 |
 | [0067 ECL Music Player and Minecraft Audio Bridge Architecture](0067-ecl-music-player-and-minecraft-audio-bridge-architecture.md) | Proposed | Not Started | ECL Music Player、Core 托管音频播放、Java Agent 游戏内音量桥接、跨版本/Loader 兼容性与进程修改授权 |
 | [0068 ECL Media Processing and Editing Architecture](0068-ecl-media-engine-and-format-conversion-architecture.md) | Proposed | Not Started | 独立媒体处理 Addition、图片/音频/视频识别转换与基础编辑、预览可视化、临时工作区与源文件安全提交、可替换后端及平台保护措施边界 |
-| [0069 Server-Side CurseForge Credential Proxy and Adaptive Download Architecture](0069-client-side-curseforge-auth-and-adaptive-download-architecture.md) | Accepted | In Progress | ECL 云端服务端持有 CurseForge API Key 并代理 API 请求、客户端直连 CDN、统一下载协调、全局资源预算、自适应 Range、多源回退及既有 Artifact Lifecycle 保留 |
+| [0069 Server-Side CurseForge Credential Proxy and Adaptive Download Architecture](0069-client-side-curseforge-auth-and-adaptive-download-architecture.md) | Accepted | Blocked | ECL 云端服务端持有 CurseForge API Key 并代理 API 请求、客户端直连 CDN、统一下载协调、全局资源预算、自适应 Range、多源回退及既有 Artifact Lifecycle 保留 |
