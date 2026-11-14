@@ -997,7 +997,9 @@ ADR 0039（应用生命周期）、ADR 0041（性能监测）；日志入口契�
   不一次性加载整份历史日志。导出任务仍归 `IOperationService`。
 - **入口**：Home 错误日志入口继续传准确 SessionId并保留“目标会话不可用/不静默切换”；
   实例工作区导航的“日志”改为**快捷入口**（`InstanceNavigationItemViewModel.IsShortcut`），
-  打开同一个全局 Logs Workspace 并按 InstanceId 筛选，不建立实例私有日志页面。
+  基本信息页“日志与诊断”卡片也新增“查看日志”按钮（`InstanceDetailPageViewModel.OpenLogsCommand`），
+  两者都打开同一个全局 Logs Workspace 并按 InstanceId 筛选，不建立实例私有日志页面。
+  卡片原有的实例级 latest.log 导出/崩溃分析/诊断包仍保留，它们是实例操作而不是会话阅读器。
 - **本地化**：新增 `logs.workspace.*` / `logs.source.*` / `logs.search.*` / `logs.filter.*` /
   `logs.inspector.*` / `logs.export.*` / `logs.evidence.*` / `logs.ownership.*` 等键（zh/en 成对）。
 - **测试**：核心 +7（`SessionLogReaderTests`：来源身份、尾窗半行、增量偏移、截断重建、共享歧义、
