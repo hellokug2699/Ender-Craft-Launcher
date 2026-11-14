@@ -280,8 +280,8 @@ public sealed class UserInterfacePreferencesTests
                     // window remains bounded by the current screen's available work area.
                     Assert.Equal(Math.Min(1600, workArea.Width), window.Width);
                     Assert.Equal(Math.Min(950, workArea.Height), window.Height);
-                    Assert.Equal(1080, window.MinWidth);
-                    Assert.Equal(720, window.MinHeight);
+                    Assert.Equal(Math.Min(1080, workArea.Width), window.MinWidth);
+                    Assert.Equal(Math.Min(720, workArea.Height), window.MinHeight);
                 }
                 finally
                 {
