@@ -54,6 +54,7 @@ public sealed class SettingsPageTests
                 SettingsPageKeys.Downloads,
                 SettingsPageKeys.Network,
                 SettingsPageKeys.Storage,
+                SettingsPageKeys.Additions,
             ],
             host.ViewModel.Navigation.Items.Where(item => item.IsAvailable).Select(item => item.Key));
     }
@@ -74,21 +75,33 @@ public sealed class SettingsPageTests
     }
 
     [Fact]
-    public void UnimplementedCategoriesStayInTheNavigationWithAReasonAndCannotBeSelected()
+    public void AdditionsCategoryUsesTheDedicatedLifecyclePage()
     {
         using var host = new SettingsHost();
+        var item = host.ViewModel.Navigation.Find(SettingsPageKeys.Additions)!;
+        Assert.True(item.IsAvailable);
+        var page = Assert.IsType<SettingsAdditionsPageViewModel>(item.Page);
 
-        foreach (var key in new[] { SettingsPageKeys.Additions })
-        {
-            var item = host.ViewModel.Navigation.Find(key)!;
-            Assert.False(item.IsAvailable);
-            Assert.Null(item.Page);
-            Assert.False(string.IsNullOrWhiteSpace(item.UnavailableReason));
+        // 扩展列表与安装记录不是元数据默认值；进入页面只读本地记录，不请求目录。
+        Assert.False(page.CanResetDefaults);
+        Assert.Empty(page.SearchEntries);
+        host.ViewModel.Navigation.TryActivate(SettingsPageKeys.Additions);
+        Assert.Equal(0, host.Additions.CatalogCalls);
+    }
 
-            host.ViewModel.Navigation.SelectedItem = item;
-            Assert.Equal(SettingsPageKeys.General, host.ViewModel.Navigation.SelectedItem!.Key);
-            Assert.False(host.ViewModel.Navigation.TryActivate(key));
-        }
+    [Fact]
+    public void MissingDomainDependenciesKeepACategoryUnavailable()
+    {
+        using var host = new SettingsHost(withAdditions: false);
+
+        var item = host.ViewModel.Navigation.Find(SettingsPageKeys.Additions)!;
+        Assert.False(item.IsAvailable);
+        Assert.Null(item.Page);
+        Assert.False(string.IsNullOrWhiteSpace(item.UnavailableReason));
+
+        host.ViewModel.Navigation.SelectedItem = item;
+        Assert.Equal(SettingsPageKeys.General, host.ViewModel.Navigation.SelectedItem!.Key);
+        Assert.False(host.ViewModel.Navigation.TryActivate(SettingsPageKeys.Additions));
     }
 
     [Fact]
@@ -431,7 +444,8 @@ public sealed class SettingsPageTests
 
         public SettingsHost(
             Action<ISettingsService>? configure = null,
-            Action<string>? seedSettingsFile = null)
+            Action<string>? seedSettingsFile = null,
+            bool withAdditions = true)
         {
             _root = Path.Combine(Path.GetTempPath(), "ecl-settings-tests", Guid.NewGuid().ToString("N"));
             var paths = new AppPaths(_root);
@@ -470,7 +484,8 @@ public sealed class SettingsPageTests
                     new FakeSystemMemoryProbe(totalMegabytes: 32 * 1024, availableMegabytes: 16 * 1024)),
                 paths: paths,
                 workspace: _provider.GetRequiredService<Ecl.Core.Storage.IWorkspaceService>(),
-                migration: _provider.GetRequiredService<Ecl.Core.Storage.IWorkspaceMigrationService>());
+                migration: _provider.GetRequiredService<Ecl.Core.Storage.IWorkspaceMigrationService>(),
+                additions: withAdditions ? Additions : null);
         }
 
         public ISettingsService Settings { get; }
@@ -478,6 +493,8 @@ public sealed class SettingsPageTests
         public FakeDialogService Dialogs { get; }
 
         public FakeJavaLocator Locator { get; }
+
+        public Ecl.App.Tests.Support.FakeAdditionsService Additions { get; } = new();
 
         public SettingsJavaPageViewModel JavaPage { get; }
 

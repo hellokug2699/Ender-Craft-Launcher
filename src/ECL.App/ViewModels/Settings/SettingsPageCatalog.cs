@@ -99,7 +99,8 @@ public static class SettingsPageCatalog
         IAppPaths? paths = null,
         IWorkspaceService? workspace = null,
         IWorkspaceMigrationService? migration = null,
-        IOperationStore? operations = null)
+        IOperationStore? operations = null,
+        IAdditionsService? additions = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(localizer);
@@ -133,6 +134,16 @@ public static class SettingsPageCatalog
                 dialogs,
                 localizer,
                 operations);
+        }
+
+        if (additions is not null)
+        {
+            // 扩展管理页：已安装记录、目录条目与安装计划全部经领域入口；
+            // 没有扩展领域服务时不构造半成品页面（导航项保持准确的不可用状态）。
+            pages[SettingsPageKeys.Additions] = new SettingsAdditionsPageViewModel(
+                additions,
+                dialogs,
+                localizer);
         }
 
         foreach (var spec in Specs)

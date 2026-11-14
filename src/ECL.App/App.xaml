@@ -26,6 +26,7 @@
             <conv:DeploymentStatusToBrushConverter x:Key="DeploymentStatusBrush" />
             <conv:ContentVersionStatusToBrushConverter x:Key="ContentVersionStatusBrush" />
             <conv:JavaValidationStateToBrushConverter x:Key="JavaValidationStateBrush" />
+            <conv:AdditionRowStateToBrushConverter x:Key="AdditionRowStateBrush" />
 
             <!-- 页面 ViewModel → 视图映射；工作区只切换 DataContext，不直接构造视图。 -->
             <DataTemplate DataType="{x:Type vm:ToolsViewModel}">
@@ -101,6 +102,9 @@
             </DataTemplate>
             <DataTemplate DataType="{x:Type svm:SettingsStoragePageViewModel}">
                 <views:SettingsStoragePageView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type svm:SettingsAdditionsPageViewModel}">
+                <views:SettingsAdditionsPageView />
             </DataTemplate>
             <DataTemplate DataType="{x:Type svm:SettingsOptionGroupViewModel}">
                 <views:SettingsOptionGroupView />

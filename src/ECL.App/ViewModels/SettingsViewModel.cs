@@ -39,7 +39,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         Ecl.Core.IAppPaths? paths = null,
         Ecl.Core.Storage.IWorkspaceService? workspace = null,
         Ecl.Core.Storage.IWorkspaceMigrationService? migration = null,
-        Ecl.Operations.IOperationStore? operations = null)
+        Ecl.Operations.IOperationStore? operations = null,
+        IAdditionsService? additions = null)
     {
         _localizer = localizer;
         Navigation = SettingsPageCatalog.CreateNavigation(
@@ -54,7 +55,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             paths,
             workspace,
             migration,
-            operations);
+            operations,
+            additions);
         Navigation.PropertyChanged += OnNavigationPropertyChanged;
     }
 

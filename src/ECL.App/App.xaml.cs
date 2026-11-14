@@ -100,7 +100,8 @@ public partial class App : Application
             services.AddSingleton<SettingsViewModel>();
             services.AddSingleton<Ecl.App.ViewModels.Settings.SettingsJavaPageViewModel>();
             services.AddSingleton<LogSessionsViewModel>();
-            services.AddSingleton<AdditionsViewModel>();
+            // 扩展生命周期与目录读取收敛到领域入口；设置 → 扩展管理页只做呈现与确认。
+            services.AddSingleton<Ecl.App.Services.IAdditionsService, Ecl.App.Services.AdditionsService>();
             services.AddSingleton<WardrobeViewModel>();
             services.AddSingleton<DiagnosticsViewModel>();
             services.AddSingleton<EngineToolsViewModel>();

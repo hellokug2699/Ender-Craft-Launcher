@@ -1,0 +1,621 @@
+<UserControl x:Class="Ecl.App.Views.SettingsAdditionsPageView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization"
+             xmlns:behaviors="clr-namespace:Ecl.App.Behaviors">
+    <!--
+        设置中心「扩展管理」页（settings-additions.md）：
+        已安装扩展（真实安装记录）、官方目录中的可安装项、安装计划预览与确认，
+        以及按 ADR 0053/0054 如实说明的权限、沙箱与注册目录缺口。
+        名称与用途只在目录提供条目时才有来源；没有目录时只显示扩展 ID。
+    -->
+    <UserControl.Resources>
+        <Style x:Key="AdditionRowToolButton" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+            <Setter Property="Padding" Value="7,2" />
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+
+        <Style x:Key="AdditionTableHeaderText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+            <Setter Property="FontFamily" Value="{DynamicResource UiMediumFontFamily}" />
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="AdditionRowItemStyle" TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding IdText}" />
+            <Setter Property="AutomationProperties.HelpText" Value="{Binding StatusText}" />
+        </Style>
+
+        <Style x:Key="AvailableRowItemStyle" TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+            <Setter Property="AutomationProperties.HelpText" Value="{Binding Description}" />
+        </Style>
+
+        <!-- 已安装扩展行：每行固定等高（72），五列——状态 / 名称 / 版本与安装信息 / 类型 / 操作。
+             名称列固定三行（名称 / 扩展 ID / 一行说明），说明优先显示阻塞原因；
+             完整文本都在 ToolTip 中，不换行撑高表格，也不再把表格挤成横向滚动。 -->
+        <DataTemplate x:Key="InstalledAdditionRowTemplate">
+            <Grid Height="72" Margin="10,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="84" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="116" />
+                    <ColumnDefinition Width="92" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="8,0">
+                    <!-- 状态固定两行：第一行已启用/已禁用，第二行才是阻塞原因；行高仍然一致。 -->
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="7" Height="7"
+                                 VerticalAlignment="Center"
+                                 Fill="{Binding State, Converter={StaticResource AdditionRowStateBrush}}" />
+                        <StackPanel Margin="5,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding StatusPrimaryText}"
+                                       FontSize="9"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding StatusText}"
+                                       Foreground="{Binding State, Converter={StaticResource AdditionRowStateBrush}}" />
+                            <TextBlock Text="{Binding StatusSecondaryText}"
+                                       FontSize="9"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding StatusText}"
+                                       Margin="0,1,0,0"
+                                       Foreground="{Binding State, Converter={StaticResource AdditionRowStateBrush}}" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="8,4">
+                    <TextBlock Text="{Binding Name}"
+                               FontSize="12"
+                               Style="{StaticResource EmphasisText}"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Name}" />
+                    <TextBlock Text="{Binding IdText}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="9"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding IdText}"
+                               Margin="0,2,0,0" />
+                    <!-- 说明行三选一：依赖缺失 / Core API 不兼容 / 目录用途。只占一行，保证行高一致。 -->
+                    <TextBlock Text="{Binding Description}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="9"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Description}"
+                               Margin="0,2,0,0"
+                               Visibility="{Binding ShowDescription, Converter={StaticResource BoolToVisibility}}" />
+                    <!-- 阻塞原因最多两行并完整显示（短句 + 换行），不靠省略号或只看 ToolTip。 -->
+                    <TextBlock Text="{Binding DependencyText}"
+                               Foreground="{DynamicResource WarningBrush}"
+                               FontSize="9"
+                               TextWrapping="Wrap"
+                               MaxHeight="24"
+                               ToolTip="{Binding DependencyText}"
+                               Margin="0,2,0,0"
+                               Visibility="{Binding HasDependencyText, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Text="{Binding CompatibilityText}"
+                               Foreground="{DynamicResource DangerBrush}"
+                               FontSize="9"
+                               TextWrapping="Wrap"
+                               MaxHeight="24"
+                               ToolTip="{Binding CompatibilityText}"
+                               Margin="0,2,0,0"
+                               Visibility="{Binding HasCompatibilityText, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="8,0">
+                    <TextBlock Text="{Binding VersionTypeText}"
+                               FontSize="11"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding VersionTypeText}" />
+                    <TextBlock Text="{Binding UpdateText}"
+                               Foreground="{DynamicResource AccentBrush}"
+                               FontSize="9"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding UpdateText}"
+                               Margin="0,2,0,0"
+                               Visibility="{Binding HasUpdate, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Text="{Binding InstalledAtText}"
+                               FontSize="9"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding InstalledAtText}"
+                               Margin="0,2,0,0" />
+                    <TextBlock Text="{Binding PreviousVersionText}"
+                               FontSize="9"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding PreviousVersionText}"
+                               Margin="0,2,0,0" />
+                </StackPanel>
+
+
+                <!-- 操作列固定两行两列（启用/更新、回滚/移除），窄窗口下也不会被截断。 -->
+                <WrapPanel Grid.Column="3" Orientation="Horizontal" Width="92" VerticalAlignment="Center">
+                    <Button Content="{Binding ToggleText}"
+                            Command="{Binding DataContext.ToggleEnabledCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                            CommandParameter="{Binding}"
+                            Style="{StaticResource AdditionRowToolButton}"
+                            IsEnabled="{Binding CanToggle}"
+                            ToolTip="{Binding EnableBlockedReason}"
+                            ToolTipService.ShowOnDisabled="True"
+                            AutomationProperties.Name="{Binding ToggleText}"
+                            AutomationProperties.HelpText="{Binding EnableBlockedReason}" />
+                    <Button Content="{loc:Loc Key=settings.page.additions.action.update}"
+                            Command="{Binding DataContext.PlanCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                            CommandParameter="{Binding IdText}"
+                            Style="{StaticResource AdditionRowToolButton}"
+                            Visibility="{Binding CanUpdate, Converter={StaticResource BoolToVisibility}}"
+                            AutomationProperties.Name="{loc:Loc Key=settings.page.additions.action.update}" />
+                    <Button Content="{loc:Loc Key=settings.page.additions.action.rollback}"
+                            Command="{Binding DataContext.RollbackCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                            CommandParameter="{Binding}"
+                            Style="{StaticResource AdditionRowToolButton}"
+                            Visibility="{Binding CanRollback, Converter={StaticResource BoolToVisibility}}"
+                            AutomationProperties.Name="{loc:Loc Key=settings.page.additions.action.rollback}" />
+                    <Button Content="{loc:Loc Key=settings.page.additions.action.remove}"
+                            Command="{Binding DataContext.RemoveCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                            CommandParameter="{Binding}"
+                            Style="{StaticResource AdditionRowToolButton}"
+                            Foreground="{DynamicResource DangerBrush}"
+                            Margin="0,0,4,0"
+                            IsEnabled="{Binding CanRemove}"
+                            ToolTip="{Binding RemoveBlockedReason}"
+                            ToolTipService.ShowOnDisabled="True"
+                            AutomationProperties.Name="{loc:Loc Key=settings.page.additions.action.remove}"
+                            AutomationProperties.HelpText="{Binding RemoveBlockedReason}" />
+                </WrapPanel>
+            </Grid>
+        </DataTemplate>
+
+        <!-- 目录行：同样固定等高，名称列三行（名称 / 扩展 ID / 用途），平台并入 Core API 列。 -->
+        <DataTemplate x:Key="AvailableAdditionRowTemplate">
+            <Grid Height="72" Margin="10,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="70" />
+                    <ColumnDefinition Width="70" />
+                    <ColumnDefinition Width="130" />
+                    <ColumnDefinition Width="140" />
+                    <ColumnDefinition Width="92" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="8,4">
+                    <TextBlock Text="{Binding Name}"
+                               FontSize="12"
+                               Style="{StaticResource EmphasisText}"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Name}" />
+                    <TextBlock Text="{Binding IdText}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="9"
+                               TextTrimming="CharacterEllipsis"
+                               Margin="0,2,0,0" />
+                    <TextBlock Text="{Binding Description}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="9"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Description}"
+                               Margin="0,2,0,0"
+                               Visibility="{Binding HasDescription, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+
+                <TextBlock Grid.Column="1"
+                           Text="{Binding VersionText}"
+                           FontSize="11"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           Margin="8,0"
+                           ToolTip="{Binding VersionText}" />
+
+                <TextBlock Grid.Column="2"
+                           Text="{Binding SizeText}"
+                           FontSize="9"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           Margin="8,0"
+                           ToolTip="{Binding SizeText}" />
+
+                <TextBlock Grid.Column="3"
+                           Text="{Binding DependenciesText}"
+                           FontSize="9"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding DependenciesText}"
+                           Margin="8,0" />
+
+                <StackPanel Grid.Column="4" VerticalAlignment="Center" Margin="8,0">
+                    <TextBlock Text="{Binding CompatibilityText}"
+                               FontSize="9"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding CompatibilityText}" />
+                    <TextBlock Text="{Binding PlatformsText}"
+                               FontSize="9"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding PlatformsText}"
+                               Margin="0,2,0,0" />
+                </StackPanel>
+
+                <Button Grid.Column="5"
+                        Content="{loc:Loc Key=settings.page.additions.catalog.action.plan}"
+                        Command="{Binding DataContext.PlanCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                        CommandParameter="{Binding IdText}"
+                        Style="{StaticResource AdditionRowToolButton}"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="{loc:Loc Key=settings.page.additions.catalog.action.plan}" />
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <ScrollViewer x:Name="PageScroll"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  behaviors:WheelScroll.IsEnabled="True">
+        <StackPanel>
+            <!-- 工具区：刷新只读本地记录；目录读取必须由用户显式发起（分类切换不做网络请求）。 -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                <Button Content="{Binding RefreshText}"
+                        Command="{Binding RefreshCommand}"
+                        Style="{StaticResource GhostButton}"
+                        AutomationProperties.Name="{Binding RefreshText}" />
+                <Button Content="{Binding CheckCatalogText}"
+                        Command="{Binding CheckCatalogCommand}"
+                        Style="{StaticResource PrimaryButton}"
+                        Margin="8,0,0,0"
+                        AutomationProperties.Name="{Binding CheckCatalogText}" />
+                <ProgressBar Width="120" Height="4" Margin="12,0,0,0" IsIndeterminate="True"
+                             VerticalAlignment="Center"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+            </StackPanel>
+
+            <TextBlock Text="{Binding StatusMessage}"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,8"
+                       Visibility="{Binding StatusMessage, Converter={StaticResource StringToVisibility}}" />
+
+            <!-- 状态文件损坏：列表可能不完整，页面保持只读并说明原因。 -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,0,0,12"
+                    Visibility="{Binding IsStateCorrupt, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <TextBlock Text="{Binding StateCorruptMessage}"
+                               Foreground="{DynamicResource WarningBrush}"
+                               FontSize="11"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding StateError}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="9"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- 已安装扩展：名称/ID、版本、类型、安装时间、状态与真实可执行操作。 -->
+            <StackPanel>
+                <TextBlock Text="{Binding InstalledSectionTitle}" Style="{StaticResource SectionText}" Margin="0,0,0,8" />
+
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="{Binding InstalledCountText}"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               FontSize="11"
+                               VerticalAlignment="Center" />
+
+                    <Grid Grid.Column="1" Margin="14,0,0,0">
+                        <TextBox Text="{Binding FilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="{Binding SearchPlaceholder}" />
+                        <TextBlock Text="{Binding SearchPlaceholder}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="11"
+                                   Margin="10,0,0,0"
+                                   VerticalAlignment="Center"
+                                   IsHitTestVisible="False"
+                                   Visibility="{Binding HasFilterText, Converter={StaticResource InverseBoolToVisibility}}" />
+                    </Grid>
+
+                    <Button Grid.Column="2"
+                            Content="{Binding ClearSearchText}"
+                            Command="{Binding ClearSearchCommand}"
+                            Style="{StaticResource GhostButton}"
+                            Margin="8,0,0,0"
+                            Visibility="{Binding HasFilterText, Converter={StaticResource BoolToVisibility}}" />
+
+                    <ComboBox Grid.Column="3"
+                              ItemsSource="{Binding StatusFilters}"
+                              SelectedItem="{Binding SelectedStatusFilter, Mode=TwoWay}"
+                              Width="132"
+                              Margin="8,0,0,0"
+                              AutomationProperties.Name="{Binding FilterLabel}"
+                              ToolTip="{Binding FilterLabel}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding DisplayName}" FontSize="10" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </Grid>
+
+                <TextBlock Text="{Binding NameSourceNote}"
+                           Foreground="{DynamicResource TextMutedBrush}"
+                           FontSize="9"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,8" />
+
+                <!-- 窄窗口（1080×720）下列表在表格内部横向滚动，页面本身不横向溢出。 -->
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <Border MinWidth="440"
+                            Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ScrollViewer}}"
+                            BorderBrush="{DynamicResource BorderSoftBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Background="{DynamicResource SurfaceBrush}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{DynamicResource InputBrush}"
+                                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                                    BorderThickness="0,0,0,1"
+                                    CornerRadius="8,8,0,0"
+                                    Padding="10,7">
+                                <Grid Margin="0,0,9,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="84" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="116" />
+                                        <ColumnDefinition Width="92" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{loc:Loc Key=settings.page.additions.installed.column.state}" Style="{StaticResource AdditionTableHeaderText}" Margin="8,0" />
+                                    <TextBlock Grid.Column="1" Text="{loc:Loc Key=settings.page.additions.installed.column.name}" Style="{StaticResource AdditionTableHeaderText}" Margin="8,0" />
+                                    <TextBlock Grid.Column="2" Text="{loc:Loc Key=settings.page.additions.installed.column.versionInfo}" Style="{StaticResource AdditionTableHeaderText}" Margin="8,0" />
+                                    <TextBlock Grid.Column="3" Text="{loc:Loc Key=settings.page.additions.installed.column.actions}" Style="{StaticResource AdditionTableHeaderText}" />
+                                </Grid>
+                            </Border>
+
+                            <!-- 列表高度随内容展开：整个设置页负责纵向滚动，行不会被固定高度的内层容器裁切。 -->
+                            <ListBox Grid.Row="1"
+                                     ItemsSource="{Binding Installed}"
+                                     ItemTemplate="{StaticResource InstalledAdditionRowTemplate}"
+                                     ItemContainerStyle="{StaticResource AdditionRowItemStyle}"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.CanContentScroll="False"
+                                     AutomationProperties.Name="{Binding InstalledSectionTitle}" />
+
+                            <TextBlock Grid.Row="2"
+                                       Text="{Binding InstalledEmptyMessage}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="11"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap"
+                                       Margin="24,20"
+                                       Visibility="{Binding HasInstalled, Converter={StaticResource InverseBoolToVisibility}}" />
+
+                            <TextBlock Grid.Row="3"
+                                       Text="{Binding InstalledFilteredEmptyMessage}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="11"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap"
+                                       Margin="24,20"
+                                       Visibility="{Binding IsInstalledFilteredEmpty, Converter={StaticResource BoolToVisibility}}" />
+                        </Grid>
+                    </Border>
+                </ScrollViewer>
+            </StackPanel>
+
+            <!-- 官方目录：可安装项与更新来源；没有目录时不会构造在线条目。 -->
+            <StackPanel Margin="0,18,0,0">
+                <TextBlock Text="{Binding AvailableSectionTitle}" Style="{StaticResource SectionText}" Margin="0,0,0,8" />
+
+                <Border Style="{StaticResource Card}" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="{Binding CatalogStatus}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Text="{Binding AvailableCountText}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   Margin="0,4,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                              Visibility="{Binding HasAvailable, Converter={StaticResource BoolToVisibility}}">
+                    <Border MinWidth="700"
+                            Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ScrollViewer}}"
+                            BorderBrush="{DynamicResource BorderSoftBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Background="{DynamicResource SurfaceBrush}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Border Background="{DynamicResource InputBrush}"
+                                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                                    BorderThickness="0,0,0,1"
+                                    CornerRadius="8,8,0,0"
+                                    Padding="10,7">
+                                <Grid Margin="0,0,9,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="70" />
+                                        <ColumnDefinition Width="70" />
+                                        <ColumnDefinition Width="130" />
+                                        <ColumnDefinition Width="140" />
+                                        <ColumnDefinition Width="92" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{loc:Loc Key=settings.page.additions.catalog.column.name}" Style="{StaticResource AdditionTableHeaderText}" Margin="8,0" />
+                                    <TextBlock Grid.Column="1" Text="{loc:Loc Key=settings.page.additions.catalog.column.version}" Style="{StaticResource AdditionTableHeaderText}" Margin="8,0" />
+                                    <TextBlock Grid.Column="2" Text="{loc:Loc Key=settings.page.additions.catalog.column.size}" Style="{StaticResource AdditionTableHeaderText}" Margin="8,0" />
+                                    <TextBlock Grid.Column="3" Text="{loc:Loc Key=settings.page.additions.catalog.column.dependencies}" Style="{StaticResource AdditionTableHeaderText}" Margin="8,0" />
+                                    <TextBlock Grid.Column="4" Text="{loc:Loc Key=settings.page.additions.catalog.column.compatibility}" Style="{StaticResource AdditionTableHeaderText}" Margin="8,0" />
+                                    <TextBlock Grid.Column="5" Text="{loc:Loc Key=settings.page.additions.installed.column.actions}" Style="{StaticResource AdditionTableHeaderText}" />
+                                </Grid>
+                            </Border>
+
+                            <!-- 目录行的表格在为空时整体隐藏，由上方目录卡片说明原因与数量。 -->
+                            <ListBox Grid.Row="1"
+                                     ItemsSource="{Binding Available}"
+                                     ItemTemplate="{StaticResource AvailableAdditionRowTemplate}"
+                                     ItemContainerStyle="{StaticResource AvailableRowItemStyle}"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.CanContentScroll="False"
+                                     AutomationProperties.Name="{Binding AvailableSectionTitle}" />
+                        </Grid>
+                    </Border>
+                </ScrollViewer>
+            </StackPanel>
+
+            <!-- 安装计划预览（两阶段安装的第一步）：条目、大小、依赖、Core API 范围与警告。 -->
+            <Border Style="{StaticResource Card}"
+                    Margin="0,18,0,0"
+                    Visibility="{Binding HasPlan, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <TextBlock Text="{loc:Loc Key=settings.page.additions.plan.title}"
+                               Style="{StaticResource EmphasisText}"
+                               FontSize="12" />
+                    <TextBlock Text="{Binding Plan.SummaryText}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0" />
+
+                    <ItemsControl ItemsSource="{Binding Plan.Items}" Margin="0,8,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{DynamicResource BorderSoftBrush}"
+                                        BorderThickness="0,0,0,1"
+                                        Padding="0,7">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="64" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="72" />
+                                            <ColumnDefinition Width="82" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding KindText}"
+                                                   FontSize="9"
+                                                   Foreground="{DynamicResource AccentBrush}"
+                                                   VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1" Margin="6,0">
+                                            <TextBlock Text="{Binding Title}"
+                                                       FontSize="11"
+                                                       Style="{StaticResource EmphasisText}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Title}" />
+                                            <TextBlock Text="{Binding DependenciesText}"
+                                                       FontSize="9"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0" />
+                                            <TextBlock Text="{Binding CompatibilityText}"
+                                                       FontSize="9"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,2,0,0" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding VersionText}"
+                                                   FontSize="10"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Margin="6,0" />
+                                        <TextBlock Grid.Column="3"
+                                                   Text="{Binding SizeText}"
+                                                   FontSize="9"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Margin="6,0" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <StackPanel Margin="0,8,0,0"
+                                Visibility="{Binding Plan.HasWarnings, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="{loc:Loc Key=settings.page.additions.plan.warnings.title}"
+                                   FontSize="9"
+                                   Foreground="{DynamicResource WarningBrush}"
+                                   Margin="0,0,0,3" />
+                        <ItemsControl ItemsSource="{Binding Plan.Warnings}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}"
+                                               FontSize="9"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               TextWrapping="Wrap"
+                                               Margin="0,0,0,2" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding Plan.RestartNote}"
+                               FontSize="9"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,8,0,0" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="{loc:Loc Key=settings.page.additions.plan.confirm}"
+                                Command="{Binding ConfirmPlanCommand}"
+                                Style="{StaticResource PrimaryButton}"
+                                AutomationProperties.Name="{loc:Loc Key=settings.page.additions.plan.confirm}" />
+                        <Button Content="{loc:Loc Key=settings.page.additions.plan.cancel}"
+                                Command="{Binding CancelPlanCommand}"
+                                Style="{StaticResource GhostButton}"
+                                Margin="8,0,0,0"
+                                AutomationProperties.Name="{loc:Loc Key=settings.page.additions.plan.cancel}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 安装/更新的授权门槛：ADR 0053 的能力授权弹窗与运行时检查尚未实现。 -->
+            <TextBlock Text="{Binding AuthorizationNote}"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Margin="0,18,0,10" />
+
+            <!-- 权限、沙箱、注册目录与发布者验证的固定边界。 -->
+            <ContentControl Content="{Binding Boundaries}" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
