@@ -1,0 +1,162 @@
+<UserControl x:Class="Ecl.App.Dialogs.Views.StorageDeleteConfirmView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization">
+    <UserControl.Resources>
+        <!-- 条目底边的细进度条：白色处理中、绿色成功、红色失败/跳过。 -->
+        <Style x:Key="StorageItemProgressStyle" TargetType="ProgressBar">
+            <Setter Property="Height" Value="3" />
+            <Setter Property="Minimum" Value="0" />
+            <Setter Property="Maximum" Value="100" />
+            <Setter Property="Background" Value="{DynamicResource BorderSoftBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Grid Height="3" Background="{TemplateBinding Background}">
+                            <Rectangle x:Name="PART_Track" />
+                            <Rectangle x:Name="PART_Indicator"
+                                       Fill="{TemplateBinding Foreground}"
+                                       HorizontalAlignment="Left" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding ProgressKind}" Value="success">
+                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ProgressKind}" Value="failed">
+                    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="20,0,20,18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="{Binding Hint}"
+                   FontSize="12"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,10" />
+
+        <Grid Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid Grid.Row="0" Margin="6,0,12,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="32" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="90" />
+                    <ColumnDefinition Width="110" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" FontSize="10" />
+                <TextBlock Grid.Column="1" Text="{Binding FileHeader}" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBlock Grid.Column="2" Text="{Binding OwnerHeader}" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBlock Grid.Column="3" Text="{Binding SizeHeader}" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" />
+                <TextBlock Grid.Column="4" Text="{Binding SuggestionHeader}" FontSize="10" Foreground="{DynamicResource TextMutedBrush}" />
+            </Grid>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding Items}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="32" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="90" />
+                                        <ColumnDefinition Width="110" />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                              IsEnabled="{Binding IsSelectable}"
+                                              VerticalAlignment="Center"
+                                              AutomationProperties.Name="{Binding FileName}" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding FileName}"
+                                               FontSize="11"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding FileName}" />
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding OwnerText}"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="3"
+                                               Text="{Binding SizeText}"
+                                               FontSize="10"
+                                               HorizontalAlignment="Right" />
+                                    <TextBlock Grid.Column="4"
+                                               Text="{Binding SuggestionText}"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource WarningBrush}"
+                                               TextWrapping="Wrap" />
+                                </Grid>
+                                <ProgressBar Grid.Row="1"
+                                             Style="{StaticResource StorageItemProgressStyle}"
+                                             Value="{Binding ProgressValue}"
+                                             Visibility="{Binding IsProgressVisible, Converter={StaticResource BoolToVisibility}}" />
+                                <TextBlock Grid.Row="2"
+                                           Text="{Binding ErrorText}"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource DangerBrush}"
+                                           TextWrapping="Wrap"
+                                           Margin="32,4,0,0"
+                                           Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
+
+        <TextBlock Grid.Row="2"
+                   Text="{Binding SummaryText}"
+                   FontSize="10"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,10,0,0" />
+
+        <Grid Grid.Row="3" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding RunningText}"
+                       FontSize="10"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       VerticalAlignment="Center"
+                       TextWrapping="Wrap"
+                       Visibility="{Binding IsExecuting, Converter={StaticResource BoolToVisibility}}" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Content="{Binding CancelText}"
+                        Command="{Binding CloseCommand}"
+                        Style="{StaticResource GhostButton}"
+                        Margin="0,0,8,0"
+                        Visibility="{Binding IsCompleted, Converter={StaticResource InverseBoolToVisibility}}" />
+                <Button Content="{Binding ConfirmText}"
+                        Command="{Binding ConfirmCommand}"
+                        Style="{StaticResource DangerButton}"
+                        IsEnabled="{Binding CanConfirm}" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

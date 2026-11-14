@@ -107,6 +107,13 @@
     <SolidColorBrush x:Key="DangerSoftBrush" Color="{StaticResource DangerSoftColor}" />
     <SolidColorBrush x:Key="DangerBorderBrush" Color="{StaticResource DangerBorderColor}" />
     <SolidColorBrush x:Key="DangerHoverBrush" Color="{StaticResource DangerHoverColor}" />
+
+    <!-- 存储分类图例：分布条与图例圆点必须使用同一组画刷。 -->
+    <SolidColorBrush x:Key="StorageMinecraftBrush" Color="#5B8DEF" />
+    <SolidColorBrush x:Key="StorageEclBrush" Color="#9C7BFF" />
+    <SolidColorBrush x:Key="StorageAdditionsBrush" Color="#4BDA9F" />
+    <SolidColorBrush x:Key="StorageBackupsBrush" Color="#F0A35E" />
+    <SolidColorBrush x:Key="StorageNonEclBrush" Color="#3A3F4B" />
     <SolidColorBrush x:Key="ScrollThumbBrush" Color="{StaticResource ScrollThumbColor}" />
     <SolidColorBrush x:Key="ScrollThumbHoverBrush" Color="{StaticResource ScrollThumbHoverColor}" />
     <SolidColorBrush x:Key="LoaderForgeBrush" Color="{StaticResource LoaderForgeColor}" />

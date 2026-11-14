@@ -650,6 +650,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     private void OpenStorageCenter()
     {
+        _storage.ClearInstanceFocus();
         ActivateDestination("storage");
         _ = ActivateStorageAsync(_storage);
     }
@@ -698,6 +699,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             // 日志页只有会话页自身负责刷新与实时跟随；进入时激活一次，不改变已选会话。
             logs.Activate();
+        }
+        else if (page is StorageViewModel storage)
+        {
+            // 存储页首次进入才扫描；页面切换不触发扫描，也不重置已完成的结果。
+            _ = ActivateStorageAsync(storage);
         }
         else if (page is HomeViewModel home)
         {

@@ -57,6 +57,7 @@ internal static class TestApplication
             application.Resources["NullToVisibility"] = new NullToVisibilityConverter();
             application.Resources["LogLevelBrush"] = new LogLevelToBrushConverter();
             application.Resources["LoaderKindBrush"] = new LoaderKindToBrushConverter();
+            application.Resources["StorageSegmentBrush"] = new StorageSegmentBrushConverter();
         }
     }
 }

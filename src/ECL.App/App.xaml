@@ -27,6 +27,7 @@
             <conv:ContentVersionStatusToBrushConverter x:Key="ContentVersionStatusBrush" />
             <conv:JavaValidationStateToBrushConverter x:Key="JavaValidationStateBrush" />
             <conv:AdditionRowStateToBrushConverter x:Key="AdditionRowStateBrush" />
+            <conv:StorageSegmentBrushConverter x:Key="StorageSegmentBrush" />
 
             <!-- 页面 ViewModel → 视图映射；工作区只切换 DataContext，不直接构造视图。 -->
             <DataTemplate DataType="{x:Type vm:ToolsViewModel}">
@@ -144,6 +145,9 @@
             </DataTemplate>
             <DataTemplate DataType="{x:Type dialogs:LogExportDialogViewModel}">
                 <dviews:LogExportDialogView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type dialogs:StorageDeleteConfirmViewModel}">
+                <dviews:StorageDeleteConfirmView />
             </DataTemplate>
         </ResourceDictionary>
     </Application.Resources>

@@ -104,6 +104,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<GitHubApiClient>();
         services.AddSingleton<StorageAnalysisService>();
         services.AddSingleton<StorageCleanupService>();
+        services.AddSingleton<IStorageInventoryService, StorageInventoryService>();
         services.AddSingleton<ServerPingService>();
         services.AddSingleton<WorldDiagnosticsParser>();
         services.AddSingleton(provider => new RecentAccessStore(
