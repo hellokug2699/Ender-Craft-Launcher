@@ -198,7 +198,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0049：原生 GitHub 项目中心与仓库资源边界](0049-native-github-integration-and-repository-bounded-navigation.md) | Accepted | In Progress | GitHub 项目中心 Addition、ECL 原生渲染、GitHub App 最小权限与仓库内资源解析 |
 | [0050 ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) | Accepted | Not Started | UI 设计系统、Application Shell、全局导航、Right Auxiliary Rail 全局视觉、排版与 DPI 适配（UI 领域最高优先级；Rail 具体职责由 0056 细化） |
 | [0051 统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md) | Accepted | In Progress | Installer / Bootstrapper 独立 UI、首次安装、更新源容灾、发布验证、部署、Repair Mode 与离线恢复 |
-| [0052 Unified Dialog Engine and Incremental Migration](0052-unified-dialog-engine-and-incremental-migration.md) | Accepted | Not Started | 统一弹窗引擎、应用内背景暗化、模态交互与旧弹窗渐进迁移 |
+| [0052 Unified Dialog Engine and Incremental Migration](0052-unified-dialog-engine-and-incremental-migration.md) | Accepted | In Progress | 统一弹窗引擎、应用内背景暗化、模态交互与旧弹窗渐进迁移 |
 | [0053 Additions 能力权限模型与用户授权流程](0053-addition-capability-permission-and-user-consent.md) | Accepted | Not Started | 扩展权限声明、安装前知情授权、宿主能力执行控制与撤销 |
 | [0054 Addition 注册表、清单与生命周期治理](0054-addition-registry-and-manifest-governance.md) | Accepted | Not Started | 官方 Addition 统一目录、Manifest、登记审核、生命周期与既有扩展 ADR 迁移 |
 | [0055 ECL 混合工作区与原生工具平台架构](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md) | Accepted | Not Started | Workspace、Native UI SDK、Addition Runtime、IPC、Event Bus、资源边界与条件式启动恢复 |

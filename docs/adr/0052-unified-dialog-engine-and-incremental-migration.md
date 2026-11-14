@@ -1,7 +1,9 @@
 # ADR 0052: Unified Dialog Engine and Incremental Migration
 
 - Decision: Accepted
-- Implementation: In Progress（Dialog Engine 已实现；旧窗口迁移未完成）
+- Implementation: In Progress
+
+当前已完成 Dialog Engine 基础能力；旧窗口迁移仍在进行中，具体范围与剩余工作见下方实施阶段及修订记录。
 - Date: 2026-11-04
 - Scope: ECL 主程序的弹窗基础设施、弹窗内容承载、窗口模态关系、遮罩与背景强调、生命周期、交互结果及旧弹窗迁移
 - Related: [ADR 0021：WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md)、[ADR 0050: ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md)、[ADR 0051：统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md)

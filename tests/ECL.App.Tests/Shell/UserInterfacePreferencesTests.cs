@@ -275,8 +275,11 @@ public sealed class UserInterfacePreferencesTests
                     // 150% 可能被屏幕可用范围夹住；回到 100% 必须恢复用户原来的窗口尺寸，
                     // 而不是把夹过之后的尺寸当成新基准（实机复现过窗口越缩越小）。
                     environment.Settings.TrySetRaw("launcher.uiScale", "100", null, out _);
-                    Assert.Equal(1600, window.Width);
-                    Assert.Equal(950, window.Height);
+                    // GitHub-hosted Windows runners may expose a 1024×768 work area.
+                    // The logical 1600×950 baseline must be retained, while the actual
+                    // window remains bounded by the current screen's available work area.
+                    Assert.Equal(Math.Min(1600, workArea.Width), window.Width);
+                    Assert.Equal(Math.Min(950, workArea.Height), window.Height);
                     Assert.Equal(1080, window.MinWidth);
                     Assert.Equal(720, window.MinHeight);
                 }
