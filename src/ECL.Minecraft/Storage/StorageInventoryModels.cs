@@ -18,7 +18,12 @@ public enum StorageRiskLevel
     High,
 }
 
-/// <summary>固定预设分类（storage-management.md §6）；顺序即页面顺序。</summary>
+/// <summary>
+/// 页面上的清理分类。只有可安全重建的缓存、临时文件、日志、崩溃报告、截图、
+/// 服务器资源包缓存与存档文件夹进入本列表；模组、配置、资源包、光影包、数据包、
+/// 投影、版本文件与基础运行文件只参与磁盘占用统计，不出现在清理列表里。
+/// 顺序即页面顺序。
+/// </summary>
 public sealed record StorageCategorySpec(string Id, StorageGroup Group)
 {
     public static readonly StorageCategorySpec[] All =
@@ -26,17 +31,9 @@ public sealed record StorageCategorySpec(string Id, StorageGroup Group)
         new("instance.logs", StorageGroup.MinecraftInstance),
         new("instance.crashReports", StorageGroup.MinecraftInstance),
         new("instance.saves", StorageGroup.MinecraftInstance),
-        new("instance.mods", StorageGroup.MinecraftInstance),
-        new("instance.modConfig", StorageGroup.MinecraftInstance),
-        new("instance.resourcePacks", StorageGroup.MinecraftInstance),
-        new("instance.shaderPacks", StorageGroup.MinecraftInstance),
-        new("instance.dataPacks", StorageGroup.MinecraftInstance),
-        new("instance.schematics", StorageGroup.MinecraftInstance),
         new("instance.screenshots", StorageGroup.MinecraftInstance),
         new("instance.serverResourcePacks", StorageGroup.MinecraftInstance),
-        new("instance.versionFiles", StorageGroup.MinecraftInstance),
         new("instance.runtimeCache", StorageGroup.MinecraftInstance),
-        new("instance.other", StorageGroup.MinecraftInstance),
         new("ecl.downloads", StorageGroup.EclOwn),
         new("ecl.installTemp", StorageGroup.EclOwn),
         new("ecl.updateLeftovers", StorageGroup.EclOwn),
@@ -46,21 +43,15 @@ public sealed record StorageCategorySpec(string Id, StorageGroup Group)
         new("ecl.imageCache", StorageGroup.EclOwn),
         new("ecl.metadataCache", StorageGroup.EclOwn),
         new("ecl.tempFiles", StorageGroup.EclOwn),
-        new("ecl.other", StorageGroup.EclOwn),
         new("additions.cache", StorageGroup.Additions),
-        new("additions.database", StorageGroup.Additions),
         new("additions.temp", StorageGroup.Additions),
-        new("additions.other", StorageGroup.Additions),
-        new("backups.instance", StorageGroup.Backups),
-        new("backups.world", StorageGroup.Backups),
-        new("backups.config", StorageGroup.Backups),
-        new("backups.other", StorageGroup.Backups),
     ];
 }
 
 /// <summary>
-/// 一个可呈现在分类表格中的文件。大小未知时不写 0；不在白名单中的项
+/// 一个可呈现在清理列表中的文件或文件夹。大小未知时不写 0；不在白名单中的项
 /// 仍可被列出，但 <see cref="CanClean"/> 为 false，执行层会再次拒绝删除。
+/// 存档以世界文件夹为单位列出（<see cref="IsDirectory"/>），不拆分到 .mca 文件。
 /// </summary>
 public sealed record StorageFileEntry
 {
@@ -74,7 +65,12 @@ public sealed record StorageFileEntry
 
     public required string AllowedRoot { get; init; }
 
-    public string FileName => Path.GetFileName(FullPath);
+    public string FileName => Path.GetFileName(FullPath.TrimEnd(
+        Path.DirectorySeparatorChar,
+        Path.AltDirectorySeparatorChar));
+
+    /// <summary>true 表示这是一整个文件夹（当前只有世界存档）；删除时递归移除。</summary>
+    public bool IsDirectory { get; init; }
 
     public long? Size { get; init; }
 

@@ -10,8 +10,9 @@ using Xunit;
 namespace Ecl.Tests.Minecraft;
 
 /// <summary>
-/// 存储清单（B7 / ADR 0022、storage-management.md）：固定分类、未知大小不当作 0、
-/// 用户数据默认受保护、白名单之外的项目即使勾选也不能删除。
+/// 存储清理清单（ADR 0022）：列表只包含可安全重建的垃圾，模组/配置/资源包等用户内容
+/// 与基础运行文件只计入磁盘占用；崩溃报告、截图、历史日志、服务器资源包缓存与
+/// 世界存档文件夹可清理；存档以文件夹为单位，不拆成 .mca 文件。
 /// </summary>
 public sealed class StorageInventoryTests : IDisposable
 {
@@ -26,36 +27,73 @@ public sealed class StorageInventoryTests : IDisposable
     }
 
     [Fact]
-    public async Task ScanClassifiesFixedCategoriesAndProtectsUserData()
+    public async Task ScanListsOnlyCleanupCategoriesAndProtectsUserData()
     {
         var instance = CreateInstance();
+        var game = instance.GameDirectory!;
         var old = DateTime.UtcNow.AddDays(-30);
-        Touch(Path.Combine(instance.GameDirectory!, "logs", "old.log"), old);
-        Touch(Path.Combine(instance.GameDirectory!, "logs", "new.log"), DateTime.UtcNow.AddDays(-1));
-        Touch(Path.Combine(instance.GameDirectory!, "mods", "a.jar"), DateTime.UtcNow.AddDays(-2));
-        Touch(Path.Combine(instance.GameDirectory!, "saves", "world", "level.dat"), DateTime.UtcNow.AddDays(-2));
-        Touch(Path.Combine(instance.GameDirectory!, "config", "a.txt"), DateTime.UtcNow.AddDays(-2));
-        Touch(Path.Combine(instance.GameDirectory!, "screenshots", "a.png"), DateTime.UtcNow.AddDays(-2));
-        Touch(Path.Combine(instance.GameDirectory!, "crash-reports", "crash-1.txt"), DateTime.UtcNow.AddDays(-2));
+        Touch(Path.Combine(game, "logs", "old.log"), old);
+        Touch(Path.Combine(game, "logs", "latest.log"), DateTime.UtcNow.AddMinutes(-1));
+        Touch(Path.Combine(game, "logs", "debug", "debug.log"), old);
+        Touch(Path.Combine(game, "mods", "a.jar"), old);
+        Touch(Path.Combine(game, "config", "a.txt"), old);
+        Touch(Path.Combine(game, "resourcepacks", "pack.zip"), old);
+        Touch(Path.Combine(game, "shaderpacks", "shader.zip"), old);
+        Touch(Path.Combine(game, "datapacks", "pack.zip"), old);
+        Touch(Path.Combine(game, "schematics", "build.schem"), old);
+        Touch(Path.Combine(game, "versions", "1.20.1", "1.20.1.json"), old);
+        Touch(Path.Combine(game, "screenshots", "a.png"), old);
+        Touch(Path.Combine(game, "crash-reports", "crash-1.txt"), old);
+        Touch(Path.Combine(game, "server-resource-packs", "server.zip"), old);
+        Touch(Path.Combine(game, "saves", "world", "level.dat"), old);
+        Touch(Path.Combine(game, "saves", "world", "region", "r.0.0.mca"), old);
         Touch(Path.Combine(_root, "downloads", "done.zip"), old);
         Touch(Path.Combine(_root, "downloads", "active.part"), old);
         Touch(Path.Combine(_root, "cache", "thumbnails", "a.png"), old);
+        Touch(Path.Combine(_root, "logs", "ecl-20200101.log"), old);
+        Touch(Path.Combine(_root, "logs", "crash-20200101.log"), old);
         Touch(Path.Combine(_root, "logs", "sessions", "20260101-000000-aaaaaa", "manifest.json"), old);
         Touch(Path.Combine(_root, "backups", "worlds", "inst1", "a.zip"), old);
+        Touch(Path.Combine(_root, "config", "global.json"), old);
+        Touch(Path.Combine(_root, "Runtimes", "jdk-21", "bin", "java.exe"), old);
 
         var inventory = await CreateService(instance).ScanAsync();
 
-        Assert.Equal(32, inventory.Categories.Count);
-        var instanceLogs = Category(inventory, "instance.logs");
-        Assert.Equal(2, instanceLogs.Entries.Count);
-        Assert.True(instanceLogs.Entries.Single(entry => entry.FileName == "old.log").CanClean);
-        var newLog = instanceLogs.Entries.Single(entry => entry.FileName == "new.log");
-        Assert.False(newLog.CanClean);
-        Assert.Equal("tooRecent", newLog.ProtectionReason);
+        Assert.Equal(17, inventory.Categories.Count);
+        Assert.Equal(
+            StorageCategorySpec.All.Select(spec => spec.Id).OrderBy(id => id, StringComparer.Ordinal),
+            inventory.Categories.Select(category => category.Id).OrderBy(id => id, StringComparer.Ordinal));
 
-        Assert.False(Category(inventory, "instance.mods").Entries.Single().CanClean);
-        Assert.Equal("userData", Category(inventory, "instance.saves").Entries.Single().ProtectionReason);
-        Assert.False(Category(inventory, "instance.crashReports").Entries.Single().CanClean);
+        var instanceLogs = Category(inventory, "instance.logs");
+        Assert.True(instanceLogs.Entries.Single(entry => entry.FileName == "old.log").CanClean);
+        Assert.True(instanceLogs.Entries.Single(entry => entry.FileName == "latest.log").CanClean);
+
+        // 用户内容与基础运行文件被排除在清理列表之外，但仍计入磁盘占用。
+        var listedNames = inventory.Categories
+            .SelectMany(category => category.Entries)
+            .Select(entry => entry.FileName)
+            .ToArray();
+        Assert.DoesNotContain("a.jar", listedNames);
+        Assert.DoesNotContain("a.txt", listedNames);
+        Assert.DoesNotContain("pack.zip", listedNames);
+        Assert.DoesNotContain("shader.zip", listedNames);
+        Assert.DoesNotContain("build.schem", listedNames);
+        Assert.DoesNotContain("1.20.1.json", listedNames);
+        Assert.DoesNotContain("java.exe", listedNames);
+
+        // 崩溃报告与截图是可清理垃圾。
+        Assert.True(Category(inventory, "instance.crashReports").Entries.Single().CanClean);
+        Assert.True(Category(inventory, "instance.screenshots").Entries.Single().CanClean);
+        Assert.True(Category(inventory, "instance.serverResourcePacks").Entries.Single().CanClean);
+
+        // 存档以世界文件夹为单位列出，不拆成 .mca 文件。
+        var saves = Category(inventory, "instance.saves");
+        var world = Assert.Single(saves.Entries);
+        Assert.Equal("world", world.FileName);
+        Assert.True(world.IsDirectory);
+        Assert.True(world.CanClean);
+        Assert.Equal(14L, world.Size);
+        Assert.DoesNotContain(saves.Entries, entry => entry.FileName.EndsWith(".mca", StringComparison.OrdinalIgnoreCase));
 
         var downloads = Category(inventory, "ecl.downloads");
         Assert.True(downloads.Entries.Single(entry => entry.FileName == "done.zip").CanClean);
@@ -64,10 +102,11 @@ public sealed class StorageInventoryTests : IDisposable
         Assert.Equal("inProgressDownload", partial.ProtectionReason);
 
         Assert.True(Category(inventory, "ecl.imageCache").Entries.Single().CanClean);
+        Assert.True(Category(inventory, "ecl.logs").Entries.Single(entry => entry.FileName == "ecl-20200101.log").CanClean);
+        Assert.True(Category(inventory, "ecl.crashReports").Entries.Single(entry => entry.FileName == "crash-20200101.log").CanClean);
         Assert.Equal(
             "sessionEvidence",
             Category(inventory, "ecl.diagnostics").Entries.Single().ProtectionReason);
-        Assert.Equal("backup", Category(inventory, "backups.world").Entries.Single().ProtectionReason);
 
         Assert.NotEmpty(inventory.Disks);
         Assert.True(inventory.KnownEclBytes > 0);
@@ -75,22 +114,46 @@ public sealed class StorageInventoryTests : IDisposable
     }
 
     [Fact]
-    public async Task DeleteRejectsProtectedRecentAndOutsidePaths()
+    public async Task CurrentSessionLogIsProtectedWhilePastLogsAreCleanable()
     {
         var instance = CreateInstance();
-        var oldLog = Touch(Path.Combine(instance.GameDirectory!, "logs", "old.log"), DateTime.UtcNow.AddDays(-30));
-        var newLog = Touch(Path.Combine(instance.GameDirectory!, "logs", "new.log"), DateTime.UtcNow.AddDays(-1));
-        var mod = Touch(Path.Combine(instance.GameDirectory!, "mods", "a.jar"), DateTime.UtcNow.AddDays(-30));
+        var today = Path.Combine(_root, "logs", $"ecl-{DateTime.Today:yyyyMMdd}.log");
+        var yesterday = Path.Combine(_root, "logs", "ecl-20200101.log");
+        Touch(today, DateTime.UtcNow);
+        Touch(yesterday, DateTime.UtcNow.AddDays(-30));
+
+        var inventory = await CreateService(instance).ScanAsync();
+        var logs = Category(inventory, "ecl.logs");
+
+        var current = logs.Entries.Single(entry => entry.FullPath == today);
+        Assert.False(current.CanClean);
+        Assert.Equal("currentSession", current.ProtectionReason);
+        Assert.True(logs.Entries.Single(entry => entry.FullPath == yesterday).CanClean);
+    }
+
+    [Fact]
+    public async Task DeleteRejectsProtectedAndOutOfScopeEntries()
+    {
+        var instance = CreateInstance();
+        var game = instance.GameDirectory!;
+        var oldLog = Touch(Path.Combine(game, "logs", "old.log"), DateTime.UtcNow.AddDays(-30));
+        var mod = Touch(Path.Combine(game, "mods", "a.jar"), DateTime.UtcNow.AddDays(-30));
+        var today = Touch(Path.Combine(_root, "logs", $"ecl-{DateTime.Today:yyyyMMdd}.log"), DateTime.UtcNow);
+        var world = Path.Combine(game, "saves", "world");
+        Touch(Path.Combine(world, "level.dat"), DateTime.UtcNow.AddDays(-30));
         var outside = Path.Combine(_root, "outside.txt");
         File.WriteAllText(outside, "outside");
+
         var inventory = await CreateService(instance).ScanAsync();
         var entries = inventory.Categories.SelectMany(category => category.Entries).ToArray();
+        var worldEntry = entries.Single(entry => entry.IsDirectory && entry.FullPath == world);
+        var todayEntry = entries.Single(entry => entry.FullPath == today);
 
         var result = await CreateService(instance).DeleteAsync(
         [
-            entries.Single(entry => entry.FullPath == mod),
-            entries.Single(entry => entry.FullPath == newLog),
             entries.Single(entry => entry.FullPath == oldLog),
+            worldEntry,
+            todayEntry,
             new StorageFileEntry
             {
                 Id = "file:" + outside,
@@ -103,12 +166,15 @@ public sealed class StorageInventoryTests : IDisposable
             },
         ]);
 
-        Assert.Equal(1, result.Succeeded);
-        Assert.Equal(3, result.Skipped);
+        Assert.Equal(2, result.Succeeded);
+        Assert.Equal(2, result.Skipped);
         Assert.False(File.Exists(oldLog));
-        Assert.True(File.Exists(newLog));
-        Assert.True(File.Exists(mod));
+        Assert.False(Directory.Exists(world));
+        Assert.True(File.Exists(today));
         Assert.True(File.Exists(outside));
+        Assert.True(File.Exists(mod));
+        Assert.Contains(result.Items, item => item.Reason == "currentSession");
+        Assert.Contains(result.Items, item => item.Reason == "outsideAllowedRoot");
     }
 
     [Fact]
@@ -125,6 +191,31 @@ public sealed class StorageInventoryTests : IDisposable
         Assert.Equal(0, result.Succeeded);
         Assert.Equal(1, result.Skipped);
         Assert.Equal("missing", Assert.Single(result.Items).Reason);
+    }
+
+    [Fact]
+    public async Task NestedDirectoryCannotEscapeTheSavesRoot()
+    {
+        var instance = CreateInstance();
+        var game = instance.GameDirectory!;
+        var nested = Path.Combine(game, "saves", "world", "region");
+        Touch(Path.Combine(nested, "r.0.0.mca"), DateTime.UtcNow.AddDays(-30));
+        var inventory = await CreateService(instance).ScanAsync();
+        var saves = Category(inventory, "instance.saves");
+        var world = Assert.Single(saves.Entries);
+
+        var tampered = world with
+        {
+            FullPath = nested,
+            AllowedRoot = world.AllowedRoot,
+            Id = "dir:" + nested,
+        };
+
+        var result = await CreateService(instance).DeleteAsync([tampered]);
+
+        Assert.Equal(0, result.Succeeded);
+        Assert.Equal(1, result.Skipped);
+        Assert.True(Directory.Exists(nested));
     }
 
     private StorageInventoryService CreateService(GameInstance instance) =>

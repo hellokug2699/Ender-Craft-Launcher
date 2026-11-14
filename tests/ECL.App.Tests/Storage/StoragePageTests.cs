@@ -17,20 +17,20 @@ using Xunit;
 namespace Ecl.App.Tests.Storage;
 
 /// <summary>
-/// 存储管理页（storage-management.md）：固定 32 分类/4 分组、磁盘筛选、实例定位与
-/// 白名单勾选；领域扫描与删除由 IStorageInventoryService 负责，页面只做呈现与确认。
+/// 存储管理页：分类 → 实例（或“全部”）→ 条目，实例行复选框全选该实例在本分类下的内容；
+/// 只列出可清理分类，领域扫描与删除由 IStorageInventoryService 负责。
 /// </summary>
 public sealed class StoragePageTests
 {
     private static readonly ILocalizer Localizer = new JsonLocalizer(CultureInfo.GetCultureInfo("zh-CN"));
 
     [Fact]
-    public async Task ScanBuildsFourGroupsAndAllFixedCategories()
+    public async Task ScanBuildsThreeGroupsAndOnlyCleanupCategories()
     {
         var entries = new[]
         {
-            Entry("instance.logs", StorageGroup.MinecraftInstance, "old.log", 1024, canClean: true),
-            Entry("instance.mods", StorageGroup.MinecraftInstance, "a.jar", 2048, canClean: false),
+            Entry("instance.logs", StorageGroup.MinecraftInstance, "old.log", 1024, canClean: true, "a", "A"),
+            Entry("ecl.downloads", StorageGroup.EclOwn, "old.zip", 2048, canClean: true),
         };
         var inventory = Inventory(entries);
         var vm = CreateViewModel(inventory);
@@ -38,58 +38,112 @@ public sealed class StoragePageTests
         await vm.ScanAsync(force: true);
 
         Assert.True(vm.HasScanned);
-        Assert.Equal(4, vm.Groups.Count);
-        Assert.Equal(32, vm.Categories.Count);
-        Assert.Equal(32, vm.Groups.Sum(group => group.Categories.Count));
+        Assert.Equal(3, vm.Groups.Count);
+        Assert.Equal(17, vm.Categories.Count);
+        Assert.Equal(17, vm.Groups.Sum(group => group.Categories.Count));
         Assert.Contains(vm.Groups, group => group.Title == "Minecraft 实例内容");
+        Assert.Contains(vm.Groups, group => group.Title == "ECL 自身文件");
+        Assert.Contains(vm.Groups, group => group.Title == "扩展数据");
         Assert.Contains(vm.Categories, category => category.Title == "下载缓存");
+        Assert.DoesNotContain(vm.Categories, category => category.Id == "instance.mods");
+        Assert.DoesNotContain(vm.Categories, category => category.Id == "instance.schematics");
+        Assert.DoesNotContain(vm.Categories, category => category.Id == "instance.versionFiles");
     }
 
     [Fact]
-    public void CategorySelectionOnlyCountsCleanableRowsAndUpdatesDeleteText()
+    public void CategoryGroupsByInstanceAndGroupCheckboxSelectsThatInstance()
     {
-        var category = Category("instance.logs", StorageGroup.MinecraftInstance, 1024, 2048);
-        var clean = category.Rows.Single(row => row.FileName == "cleanable.log");
-        var protectedRow = category.Rows.Single(row => row.FileName == "protected.log");
+        var category = Category(
+            "instance.logs",
+            StorageGroup.MinecraftInstance,
+            1024,
+            Entry("instance.logs", StorageGroup.MinecraftInstance, "a1.log", 512, true, "a", "A"),
+            Entry("instance.logs", StorageGroup.MinecraftInstance, "a2.log", 512, true, "a", "A"),
+            Entry("instance.logs", StorageGroup.MinecraftInstance, "b1.log", 256, true, "b", "B"));
 
-        Assert.True(clean.IsSelectable);
-        Assert.False(protectedRow.IsSelectable);
-        Assert.False(category.CanDelete);
+        Assert.Equal(2, category.Groups.Count);
+        var groupA = category.Groups.Single(group => group.Title == "A");
+        var groupB = category.Groups.Single(group => group.Title == "B");
+        Assert.Equal(2, groupA.Rows.Count);
+        Assert.Single(groupB.Rows);
 
-        clean.IsSelected = true;
+        groupA.IsSelected = true;
 
-        Assert.True(category.CanDelete);
-        Assert.Equal(1, category.SelectedCount);
+        Assert.All(groupA.Rows, row => Assert.True(row.IsSelected));
+        Assert.All(groupB.Rows, row => Assert.False(row.IsSelected));
+        Assert.Equal(2, category.SelectedCount);
         Assert.Equal(1024, category.SelectedBytes);
-        Assert.Contains("1 删除", category.DeleteText);
+        Assert.Contains("2 删除", category.DeleteText);
+
+        groupA.IsSelected = false;
+
+        Assert.All(groupA.Rows, row => Assert.False(row.IsSelected));
+        Assert.False(category.CanDelete);
     }
 
     [Fact]
-    public async Task UncheckingAllDisksClearsRowsButKeepsEveryCategory()
+    public void GroupCheckboxReflectsPartialSelection()
+    {
+        var category = Category(
+            "instance.logs",
+            StorageGroup.MinecraftInstance,
+            1024,
+            Entry("instance.logs", StorageGroup.MinecraftInstance, "a1.log", 512, true, "a", "A"),
+            Entry("instance.logs", StorageGroup.MinecraftInstance, "a2.log", 512, true, "a", "A"));
+        var group = Assert.Single(category.Groups);
+
+        Assert.False(group.IsSelected);
+
+        group.Rows[0].IsSelected = true;
+        Assert.Null(group.IsSelected);
+
+        group.Rows[1].IsSelected = true;
+        Assert.True(group.IsSelected);
+
+        group.Rows[0].IsSelected = false;
+        Assert.Null(group.IsSelected);
+    }
+
+    [Fact]
+    public void UngroupedCategoryUsesAllItemsGroup()
+    {
+        var category = Category(
+            "ecl.downloads",
+            StorageGroup.EclOwn,
+            100,
+            Entry("ecl.downloads", StorageGroup.EclOwn, "old.zip", 100, true));
+        var group = Assert.Single(category.Groups);
+
+        Assert.Equal("全部", group.Title);
+        Assert.Single(group.Rows);
+    }
+
+    [Fact]
+    public async Task UncheckingAllDisksClearsGroupsButKeepsEveryCategory()
     {
         var inventory = Inventory([Entry("instance.logs", StorageGroup.MinecraftInstance, "old.log", 1024, true)]);
         var vm = CreateViewModel(inventory);
         await vm.ScanAsync(force: true);
         var category = vm.Categories.Single(item => item.Id == "instance.logs");
-        Assert.Single(category.Rows);
+        Assert.Single(category.Groups);
 
         foreach (var disk in vm.Disks)
         {
             disk.IsSelected = false;
         }
 
-        Assert.Empty(category.Rows);
+        Assert.Empty(category.Groups);
         Assert.True(category.IsEmpty);
-        Assert.Equal(32, vm.Categories.Count);
+        Assert.Equal(17, vm.Categories.Count);
     }
 
     [Fact]
-    public async Task FocusInstanceFiltersRowsWithoutHidingCategories()
+    public async Task FocusInstanceFiltersGroupsWithoutHidingCategories()
     {
         var inventory = Inventory(
         [
-            Entry("instance.logs", StorageGroup.MinecraftInstance, "a.log", 1, true, instanceId: "a", instanceName: "A"),
-            Entry("instance.logs", StorageGroup.MinecraftInstance, "b.log", 1, true, instanceId: "b", instanceName: "B"),
+            Entry("instance.logs", StorageGroup.MinecraftInstance, "a.log", 1, true, "a", "A"),
+            Entry("instance.logs", StorageGroup.MinecraftInstance, "b.log", 1, true, "b", "B"),
         ]);
         var vm = CreateViewModel(inventory);
         await vm.ScanAsync(force: true);
@@ -98,13 +152,25 @@ public sealed class StoragePageTests
 
         var category = vm.Categories.Single(item => item.Id == "instance.logs");
         Assert.True(vm.HasInstanceFocus);
-        Assert.Single(category.Rows);
-        Assert.Equal("A", category.Rows[0].OwnerText);
-        Assert.Equal(32, vm.Categories.Count);
+        var group = Assert.Single(category.Groups);
+        Assert.Equal("A", group.Title);
+        Assert.Equal(17, vm.Categories.Count);
 
         vm.ClearInstanceFocus();
         Assert.False(vm.HasInstanceFocus);
-        Assert.Equal(2, category.Rows.Count);
+        Assert.Equal(2, category.Groups.Count);
+    }
+
+    [Fact]
+    public void DirectoryRowsExposeFolderTag()
+    {
+        var row = new StorageFileRowViewModel(
+            Entry("instance.saves", StorageGroup.MinecraftInstance, "world", 4096, true, "a", "A", isDirectory: true),
+            Localizer);
+
+        Assert.True(row.HasKindTag);
+        Assert.Equal("文件夹", row.KindTag);
+        Assert.Equal("world", row.FileName);
     }
 
     [Fact]
@@ -214,14 +280,16 @@ public sealed class StoragePageTests
         long? size,
         bool canClean,
         string? instanceId = null,
-        string? instanceName = null) =>
+        string? instanceName = null,
+        bool isDirectory = false) =>
         new()
         {
-            Id = "file:" + name,
+            Id = (isDirectory ? "dir:" : "file:") + name,
             CategoryId = categoryId,
             Group = group,
             FullPath = Path.Combine(Path.GetTempPath(), name),
             AllowedRoot = Path.GetTempPath(),
+            IsDirectory = isDirectory,
             Size = size,
             LastWriteTimeUtc = DateTimeOffset.UtcNow.AddDays(-30),
             InstanceId = instanceId,
@@ -235,40 +303,15 @@ public sealed class StoragePageTests
     private static StorageCategoryViewModel Category(
         string categoryId,
         StorageGroup group,
-        long cleanableBytes,
-        long protectedBytes)
+        long totalBytes,
+        params StorageFileEntry[] entries)
     {
         var category = new StorageCategory(
             categoryId,
             group,
-            [
-                new StorageFileEntry
-                {
-                    Id = "cleanable",
-                    CategoryId = categoryId,
-                    Group = group,
-                    FullPath = Path.Combine(Path.GetTempPath(), "cleanable.log"),
-                    AllowedRoot = Path.GetTempPath(),
-                    Size = cleanableBytes,
-                    LastWriteTimeUtc = DateTimeOffset.UtcNow.AddDays(-30),
-                    CanClean = true,
-                    Risk = StorageRiskLevel.Caution,
-                },
-                new StorageFileEntry
-                {
-                    Id = "protected",
-                    CategoryId = categoryId,
-                    Group = group,
-                    FullPath = Path.Combine(Path.GetTempPath(), "protected.log"),
-                    AllowedRoot = Path.GetTempPath(),
-                    Size = protectedBytes,
-                    LastWriteTimeUtc = DateTimeOffset.UtcNow.AddDays(-30),
-                    CanClean = false,
-                    ProtectionReason = "userData",
-                },
-            ],
-            cleanableBytes + protectedBytes,
-            2,
+            entries,
+            totalBytes,
+            entries.Length,
             0,
             false);
         return new StorageCategoryViewModel(category, Localizer, _ => { });

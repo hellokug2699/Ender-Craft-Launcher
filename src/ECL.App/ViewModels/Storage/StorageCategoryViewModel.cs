@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -12,8 +11,9 @@ using Ecl.Minecraft.Storage;
 namespace Ecl.App.ViewModels.Storage;
 
 /// <summary>
-/// 一个固定预设分类的表格。分类标题与顺序来自 <see cref="StorageCategorySpec.All"/>，
-/// 无数据时仍保留标题与空状态；勾选、预计释放空间与删除按钮只作用于本分类。
+/// 一个清理分类。分类标题与顺序来自 <see cref="StorageCategorySpec.All"/>；内容按实例
+/// （或 ECL/扩展归属）分组，实例行可全选该实例在本分类下的内容，每个条目行也有
+/// 独立复选框。无数据时保留标题与空状态；勾选、预计释放空间与删除按钮只作用于本分类。
 /// </summary>
 public sealed partial class StorageCategoryViewModel : ObservableObject
 {
@@ -31,11 +31,15 @@ public sealed partial class StorageCategoryViewModel : ObservableObject
         _requestDelete = requestDelete;
         Title = localizer.Get("storage.category." + category.Id);
         Name = Title;
+        Note = localizer.Get("storage.categoryNote." + category.Id);
+        if (string.Equals(Note, "storage.categoryNote." + category.Id, StringComparison.Ordinal))
+        {
+            Note = string.Empty;
+        }
+
         foreach (var entry in category.Entries)
         {
-            var row = new StorageFileRowViewModel(entry, localizer);
-            row.PropertyChanged += OnRowPropertyChanged;
-            _allRows.Add(row);
+            _allRows.Add(new StorageFileRowViewModel(entry, localizer));
         }
 
         ApplyFilter(null, null);
@@ -52,9 +56,14 @@ public sealed partial class StorageCategoryViewModel : ObservableObject
     /// <summary>供 ItemsControl 显示的分组标题。</summary>
     public string Name { get; }
 
-    public ObservableCollection<StorageFileRowViewModel> Rows { get; } = [];
+    /// <summary>分类说明；没有对应文案时为空。</summary>
+    public string Note { get; }
 
-    public bool IsEmpty => Rows.Count == 0;
+    public bool HasNote => !string.IsNullOrEmpty(Note);
+
+    public ObservableCollection<StorageEntryGroupViewModel> Groups { get; } = [];
+
+    public bool IsEmpty => Groups.Count == 0;
 
     public string EmptyText => _localizer.Get("storage.category.empty");
 
@@ -85,47 +94,70 @@ public sealed partial class StorageCategoryViewModel : ObservableObject
     /// <param name="diskRoots">null 表示不过滤；空集合表示没有选中任何磁盘。</param>
     public void ApplyFilter(IReadOnlyCollection<string>? diskRoots, string? instanceId)
     {
-        Rows.Clear();
-        foreach (var row in _allRows)
-        {
-            if (diskRoots is not null)
-            {
-                var root = Path.GetPathRoot(row.Entry.FullPath);
-                if (root is null || !diskRoots.Contains(root, StringComparer.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-            }
+        var visible = _allRows.Where(row => IsVisible(row, diskRoots, instanceId)).ToArray();
 
-            if (instanceId is not null &&
-                !string.Equals(row.Entry.InstanceId, instanceId, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            Rows.Add(row);
-        }
-
-        // 被磁盘/实例筛选隐藏的项目不能继续保持勾选：删除按钮只作用于当前可见表格。
-        foreach (var row in _allRows.Where(row => !Rows.Contains(row) && row.IsSelected))
+        // 被磁盘/实例筛选隐藏的项目不能继续保持勾选：删除按钮只作用于当前可见内容。
+        foreach (var row in _allRows.Where(row => row.IsSelected && !visible.Contains(row)))
         {
             row.IsSelected = false;
+        }
+
+        foreach (var group in Groups)
+        {
+            group.Detach();
+        }
+
+        Groups.Clear();
+        foreach (var group in visible
+                     .GroupBy(row => row.Entry.InstanceId ?? string.Empty, StringComparer.Ordinal)
+                     .Select(group => new
+                     {
+                         InstanceId = group.Key,
+                         Title = group.Select(row => row.Entry.InstanceName).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)),
+                         Rows = group
+                             .OrderByDescending(row => row.Size ?? -1)
+                             .ThenBy(row => row.FileName, StringComparer.OrdinalIgnoreCase)
+                             .ToArray(),
+                     })
+                     .OrderBy(group => group.InstanceId.Length == 0 ? 0 : 1)
+                     .ThenBy(group => group.Title, StringComparer.OrdinalIgnoreCase))
+        {
+            Groups.Add(new StorageEntryGroupViewModel(group.Title, group.Rows, _localizer, UpdateSelection));
         }
 
         OnPropertyChanged(nameof(IsEmpty));
         UpdateSelection();
     }
 
-    public IReadOnlyList<StorageFileRowViewModel> SelectedRows => Rows
-        .Where(row => row.IsSelected && row.IsSelectable)
+    public IReadOnlyList<StorageFileRowViewModel> SelectedRows => Groups
+        .SelectMany(group => group.SelectedRows)
         .ToArray();
 
-    private void OnRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    [RelayCommand]
+    private void RequestDelete()
     {
-        if (e.PropertyName == nameof(StorageFileRowViewModel.IsSelected))
+        if (CanDelete)
         {
-            UpdateSelection();
+            _requestDelete(this);
         }
+    }
+
+    private static bool IsVisible(
+        StorageFileRowViewModel row,
+        IReadOnlyCollection<string>? diskRoots,
+        string? instanceId)
+    {
+        if (diskRoots is not null)
+        {
+            var root = Path.GetPathRoot(row.Entry.FullPath);
+            if (root is null || !diskRoots.Contains(root, StringComparer.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return instanceId is null ||
+               string.Equals(row.Entry.InstanceId, instanceId, StringComparison.Ordinal);
     }
 
     private void UpdateSelection()
@@ -147,14 +179,5 @@ public sealed partial class StorageCategoryViewModel : ObservableObject
             ? _localizer.Get("storage.delete.buttonUnknown", SelectedCount, size)
             : _localizer.Get("storage.delete.button", SelectedCount, size);
         CanDelete = true;
-    }
-
-    [RelayCommand]
-    private void RequestDelete()
-    {
-        if (CanDelete)
-        {
-            _requestDelete(this);
-        }
     }
 }

@@ -248,7 +248,6 @@ public sealed partial class StorageViewModel : ObservableObject
                      StorageGroup.MinecraftInstance,
                      StorageGroup.EclOwn,
                      StorageGroup.Additions,
-                     StorageGroup.Backups,
                  })
         {
             Groups.Add(new StorageGroupViewModel(
@@ -348,7 +347,6 @@ public sealed partial class StorageViewModel : ObservableObject
         var known = rows.Where(row => row.Size is not null).Sum(row => row.Size!.Value);
         return _localizer.Get(
             "storage.delete.fallbackDetail",
-            rows.Count,
             StorageSizeFormatter.FormatBytes(known));
     }
 

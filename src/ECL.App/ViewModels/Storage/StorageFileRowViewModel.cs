@@ -25,6 +25,11 @@ public sealed partial class StorageFileRowViewModel : ObservableObject
 
     public string FileName => Entry.FileName;
 
+    /// <summary>世界存档条目显示“文件夹”，普通日志/截图等条目留空。</summary>
+    public string KindTag => Entry.IsDirectory ? _localizer.Get("storage.item.folder") : string.Empty;
+
+    public bool HasKindTag => Entry.IsDirectory;
+
     public string OwnerText => Entry.Owner ?? string.Empty;
 
     public string SizeText => Entry.Size is { } size

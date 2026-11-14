@@ -17,29 +17,6 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
-
-        <Style x:Key="StorageRowItemStyle" TargetType="ListBoxItem">
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0,0,0,2" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
-                        <Border x:Name="Bd" Background="Transparent" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceHoverBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -243,7 +220,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- 固定分组与分类表格 -->
+            <!-- 清理分类：分类 → 实例（或“全部”）→ 条目；每行最右侧是复选框。 -->
             <ItemsControl ItemsSource="{Binding Groups}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
@@ -262,10 +239,18 @@
                                                         <ColumnDefinition Width="Auto" />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{Binding Title}"
-                                                               Style="{StaticResource EmphasisText}"
-                                                               FontSize="12"
-                                                               TextWrapping="Wrap" />
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Title}"
+                                                                   Style="{StaticResource EmphasisText}"
+                                                                   FontSize="12"
+                                                                   TextWrapping="Wrap" />
+                                                        <TextBlock Text="{Binding Note}"
+                                                                   FontSize="10"
+                                                                   Foreground="{DynamicResource TextMutedBrush}"
+                                                                   TextWrapping="Wrap"
+                                                                   Margin="0,3,0,0"
+                                                                   Visibility="{Binding HasNote, Converter={StaticResource BoolToVisibility}}" />
+                                                    </StackPanel>
                                                     <TextBlock Grid.Column="1"
                                                                Text="{Binding TotalSizeText}"
                                                                FontSize="10"
@@ -280,82 +265,101 @@
                                                             VerticalAlignment="Center" />
                                                 </Grid>
 
-                                                <Grid Margin="0,10,0,4">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="32" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="140" />
-                                                        <ColumnDefinition Width="90" />
-                                                        <ColumnDefinition Width="100" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Grid.Column="0" FontSize="9" />
-                                                    <TextBlock Grid.Column="1"
-                                                               Text="{loc:Loc Key=storage.column.file}"
-                                                               FontSize="9"
-                                                               Foreground="{DynamicResource TextMutedBrush}" />
-                                                    <TextBlock Grid.Column="2"
-                                                               Text="{loc:Loc Key=storage.column.owner}"
-                                                               FontSize="9"
-                                                               Foreground="{DynamicResource TextMutedBrush}" />
-                                                    <TextBlock Grid.Column="3"
-                                                               Text="{loc:Loc Key=storage.column.size}"
-                                                               FontSize="9"
-                                                               Foreground="{DynamicResource TextMutedBrush}"
-                                                               HorizontalAlignment="Right" />
-                                                    <TextBlock Grid.Column="4"
-                                                               Text="{loc:Loc Key=storage.column.suggestion}"
-                                                               FontSize="9"
-                                                               Foreground="{DynamicResource TextMutedBrush}"
-                                                               HorizontalAlignment="Right" />
-                                                </Grid>
+                                                <Border Height="1"
+                                                        Background="{DynamicResource BorderSoftBrush}"
+                                                        Margin="0,10,0,2" />
 
-                                                <Border Height="1" Background="{DynamicResource BorderSoftBrush}" />
-
-                                                <ListBox ItemsSource="{Binding Rows}"
-                                                         MaxHeight="240"
-                                                         ItemContainerStyle="{StaticResource StorageRowItemStyle}"
-                                                         Background="Transparent"
-                                                         BorderThickness="0"
-                                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                                         Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVisibility}}">
-                                                    <ListBox.ItemTemplate>
+                                                <ItemsControl ItemsSource="{Binding Groups}"
+                                                              Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVisibility}}">
+                                                    <ItemsControl.ItemTemplate>
                                                         <DataTemplate>
-                                                            <Grid Margin="0,4">
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="32" />
-                                                                    <ColumnDefinition Width="*" />
-                                                                    <ColumnDefinition Width="140" />
-                                                                    <ColumnDefinition Width="90" />
-                                                                    <ColumnDefinition Width="100" />
-                                                                </Grid.ColumnDefinitions>
-                                                                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                                                          IsEnabled="{Binding IsSelectable}"
-                                                                          VerticalAlignment="Center"
-                                                                          AutomationProperties.Name="{Binding FileName}" />
-                                                                <TextBlock Grid.Column="1"
-                                                                           Text="{Binding FileName}"
-                                                                           FontSize="11"
-                                                                           TextTrimming="CharacterEllipsis"
-                                                                           ToolTip="{Binding FileName}" />
-                                                                <TextBlock Grid.Column="2"
-                                                                           Text="{Binding OwnerText}"
-                                                                           FontSize="10"
-                                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                                           TextTrimming="CharacterEllipsis" />
-                                                                <TextBlock Grid.Column="3"
-                                                                           Text="{Binding SizeText}"
-                                                                           FontSize="10"
-                                                                           HorizontalAlignment="Right" />
-                                                                <TextBlock Grid.Column="4"
-                                                                           Text="{Binding SuggestionText}"
-                                                                           FontSize="10"
-                                                                           Foreground="{DynamicResource TextMutedBrush}"
-                                                                           TextWrapping="Wrap"
-                                                                           HorizontalAlignment="Right" />
-                                                            </Grid>
+                                                            <StackPanel Margin="0,2,0,4">
+                                                                <!-- 实例行：最右侧复选框全选该实例在此分类下的内容。 -->
+                                                                <Grid Margin="0,4,4,2">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*" />
+                                                                        <ColumnDefinition Width="Auto" />
+                                                                        <ColumnDefinition Width="28" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock Text="{Binding Title}"
+                                                                               FontSize="11"
+                                                                               FontWeight="SemiBold"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               ToolTip="{Binding Title}"
+                                                                               VerticalAlignment="Center" />
+                                                                    <TextBlock Grid.Column="1"
+                                                                               Text="{Binding SummaryText}"
+                                                                               FontSize="10"
+                                                                               Foreground="{DynamicResource TextMutedBrush}"
+                                                                               VerticalAlignment="Center"
+                                                                               Margin="8,0,10,0" />
+                                                                    <CheckBox Grid.Column="2"
+                                                                              IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                                              IsEnabled="{Binding CanSelectAll}"
+                                                                              IsThreeState="True"
+                                                                              HorizontalAlignment="Right"
+                                                                              VerticalAlignment="Center"
+                                                                              AutomationProperties.Name="{Binding Title}" />
+                                                                </Grid>
+
+                                                                <ItemsControl ItemsSource="{Binding Rows}">
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <Grid Margin="16,3,4,3">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="*" />
+                                                                                    <ColumnDefinition Width="Auto" />
+                                                                                    <ColumnDefinition Width="90" />
+                                                                                    <ColumnDefinition Width="28" />
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <StackPanel Grid.Column="0"
+                                                                                            Orientation="Horizontal"
+                                                                                            VerticalAlignment="Center">
+                                                                                    <TextBlock Text="{Binding FileName}"
+                                                                                               FontSize="11"
+                                                                                               TextTrimming="CharacterEllipsis"
+                                                                                               ToolTip="{Binding FileName}"
+                                                                                               VerticalAlignment="Center" />
+                                                                                    <Border Background="{DynamicResource SurfaceAltBrush}"
+                                                                                            BorderBrush="{DynamicResource BorderSoftBrush}"
+                                                                                            BorderThickness="1"
+                                                                                            CornerRadius="4"
+                                                                                            Padding="5,1"
+                                                                                            Margin="8,0,0,0"
+                                                                                            VerticalAlignment="Center"
+                                                                                            Visibility="{Binding HasKindTag, Converter={StaticResource BoolToVisibility}}">
+                                                                                        <TextBlock Text="{Binding KindTag}"
+                                                                                                   FontSize="9"
+                                                                                                   Foreground="{DynamicResource TextMutedBrush}" />
+                                                                                    </Border>
+                                                                                </StackPanel>
+                                                                                <TextBlock Grid.Column="1"
+                                                                                           Text="{Binding SuggestionText}"
+                                                                                           FontSize="10"
+                                                                                           Foreground="{DynamicResource TextMutedBrush}"
+                                                                                           VerticalAlignment="Center"
+                                                                                           Margin="10,0,10,0"
+                                                                                           Visibility="{Binding IsSelectable, Converter={StaticResource InverseBoolToVisibility}}" />
+                                                                                <TextBlock Grid.Column="2"
+                                                                                           Text="{Binding SizeText}"
+                                                                                           FontSize="10"
+                                                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                                           HorizontalAlignment="Right"
+                                                                                           VerticalAlignment="Center" />
+                                                                                <CheckBox Grid.Column="3"
+                                                                                          IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                                                          IsEnabled="{Binding IsSelectable}"
+                                                                                          HorizontalAlignment="Right"
+                                                                                          VerticalAlignment="Center"
+                                                                                          AutomationProperties.Name="{Binding FileName}" />
+                                                                            </Grid>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                            </StackPanel>
                                                         </DataTemplate>
-                                                    </ListBox.ItemTemplate>
-                                                </ListBox>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
                                                 <TextBlock Text="{Binding EmptyText}"
                                                            FontSize="10"
                                                            Foreground="{DynamicResource TextMutedBrush}"
