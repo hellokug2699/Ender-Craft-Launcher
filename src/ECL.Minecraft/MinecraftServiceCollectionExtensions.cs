@@ -123,6 +123,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<ILaunchStep, BuildCommandStep>();
         services.AddSingleton<ILaunchStep, SecurityGateStep>();
         services.AddSingleton<ILaunchStep, StartGameStep>();
+        services.AddSingleton<ILaunchStatusStore, LaunchStatusStore>();
         services.AddSingleton<ILaunchService, LaunchService>();
 
         return services;

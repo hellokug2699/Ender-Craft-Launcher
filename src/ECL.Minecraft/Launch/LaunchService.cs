@@ -13,14 +13,24 @@ namespace Ecl.Minecraft.Launch;
 
 public interface ILaunchService
 {
+    /// <summary>
+    /// 当前注册的启动步骤 ID（按执行顺序）。主页按真实流程展示步骤，不预先硬编码步骤表。
+    /// </summary>
+    IReadOnlyList<string> Steps { get; }
+
     Task<LaunchReport> LaunchAsync(string instanceId, bool dryRun, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// <paramref name="progress"/> 按步骤开始/结束推送实时进度（home.md §3.2）；
+    /// 事件只用于呈现，最终结果仍以 <see cref="LaunchReport"/> 为唯一权威。
+    /// </summary>
     Task<LaunchReport> LaunchAsync(
         string instanceId,
         bool dryRun,
         bool acceptJavaRisk,
         bool acceptSecurityRisk = false,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IProgress<LaunchStepProgress>? progress = null);
 }
 
 public sealed class LaunchService : ILaunchService
@@ -33,6 +43,8 @@ public sealed class LaunchService : ILaunchService
     private readonly ISettingsService _settings;
     private readonly IAppPaths _paths;
     private readonly IReadOnlyList<ILaunchStep> _steps;
+    private readonly IReadOnlyList<string> _stepIds;
+    private readonly ILaunchStatusStore _status;
     private readonly ILocalizer _localizer;
     private readonly ILogger<LaunchService> _logger;
 
@@ -42,6 +54,7 @@ public sealed class LaunchService : ILaunchService
         ISettingsService settings,
         IAppPaths paths,
         IEnumerable<ILaunchStep> steps,
+        ILaunchStatusStore status,
         ILocalizer localizer,
         ILogger<LaunchService> logger)
     {
@@ -50,9 +63,13 @@ public sealed class LaunchService : ILaunchService
         _settings = settings;
         _paths = paths;
         _steps = steps.OrderBy(step => step.Order).ToArray();
+        _stepIds = _steps.Select(step => step.Id).ToArray();
+        _status = status;
         _localizer = localizer;
         _logger = logger;
     }
+
+    public IReadOnlyList<string> Steps => _stepIds;
 
     public Task<LaunchReport> LaunchAsync(
         string instanceId,
@@ -65,7 +82,39 @@ public sealed class LaunchService : ILaunchService
         bool dryRun,
         bool acceptJavaRisk,
         bool acceptSecurityRisk = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<LaunchStepProgress>? progress = null)
+    {
+        // 真实启动才写入“最近一次启动状态”：Dry Run 只预览命令，不是一次启动。
+        var record = !dryRun && AppPaths.IsValidInstanceId(instanceId);
+        if (record)
+        {
+            _status.RecordStarted(instanceId);
+        }
+
+        var report = await LaunchCoreAsync(
+            instanceId,
+            dryRun,
+            acceptJavaRisk,
+            acceptSecurityRisk,
+            cancellationToken,
+            progress).ConfigureAwait(false);
+
+        if (record)
+        {
+            _status.RecordCompleted(instanceId, report);
+        }
+
+        return report;
+    }
+
+    private async Task<LaunchReport> LaunchCoreAsync(
+        string instanceId,
+        bool dryRun,
+        bool acceptJavaRisk,
+        bool acceptSecurityRisk,
+        CancellationToken cancellationToken,
+        IProgress<LaunchStepProgress>? progress)
     {
         var total = Stopwatch.StartNew();
 
@@ -155,11 +204,20 @@ public sealed class LaunchService : ILaunchService
         var results = new List<LaunchStepResult>();
         var success = true;
 
-        foreach (var step in _steps)
+        for (var index = 0; index < _steps.Count; index++)
         {
+            var step = _steps[index];
             cancellationToken.ThrowIfCancellationRequested();
             var stepTimer = Stopwatch.StartNew();
             LaunchStepResult result;
+
+            progress?.Report(new LaunchStepProgress
+            {
+                StepId = step.Id,
+                Phase = LaunchStepProgressPhase.Started,
+                Index = index,
+                Total = _steps.Count,
+            });
 
             try
             {
@@ -177,6 +235,17 @@ public sealed class LaunchService : ILaunchService
             stepTimer.Stop();
             result = result with { Duration = stepTimer.Elapsed };
             results.Add(result);
+
+            progress?.Report(new LaunchStepProgress
+            {
+                StepId = result.StepId,
+                Phase = LaunchStepProgressPhase.Completed,
+                Index = index,
+                Total = _steps.Count,
+                Status = result.Status,
+                Message = result.Message,
+                Duration = result.Duration,
+            });
 
             if (result.Status == LaunchStepStatus.Failed)
             {
