@@ -140,6 +140,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _home.OpenInstanceWorkspace = instanceId => OpenInstanceWorkspace(instanceId);
         // home.md §3.3 + logs.md §7.1：错误日志入口打开同一个 Logs Workspace 并传入准确 SessionId。
         _home.Launch.OpenLogSession = OpenLogSession;
+        // logs.md §7.2：实例工作区快捷入口打开同一个 Logs Workspace 并按实例筛选。
+        _logs.InspectorSelectionChanged += OnLogsInspectorSelectionChanged;
         // home.md §5.3：Multiplayer 卡片的管理入口进入设置 → 扩展管理。
         _home.OpenAdditionsManagement = OpenAdditionsManagement;
         instances.GetModHealthSummary = modsFactory.DescribeHealthAsync;
@@ -596,6 +598,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
                 _instances.CreateRuntimeSettings(instance.Model),
                 _storageAnalysis,
                 OpenStorageForInstance,
+                OpenLogsForInstance,
                 _memoryPressure,
                 _modifyFactory,
                 _contentPackFactory,
@@ -717,6 +720,16 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
         ActivateDestination("logs");
         _logs.FocusSession(sessionId);
+    }
+
+    /// <summary>
+    /// 实例工作区日志快捷入口：打开全局 Logs Workspace 并传递 InstanceId 作为默认筛选，
+    /// 不创建实例私有的第二套日志列表（instance-workspace.md §10、logs.md §7.2）。
+    /// </summary>
+    private void OpenLogsForInstance(string instanceId, string instanceName)
+    {
+        ActivateDestination("logs");
+        _logs.FocusInstance(instanceId, instanceName);
     }
 
     /// <summary>设置 → 扩展管理（Multiplayer 卡片的可行管理入口）。</summary>
@@ -846,8 +859,26 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void OnLogsInspectorSelectionChanged(object? sender, InspectorSelectionContext? context)
+    {
+        if (ActiveWorkspace is not { Page: LogSessionsViewModel })
+        {
+            return;
+        }
+
+        if (context is null)
+        {
+            Inspector.ClearSelection();
+        }
+        else
+        {
+            Inspector.ShowSelection(context);
+        }
+    }
+
     public void Dispose()
     {
+        _logs.InspectorSelectionChanged -= OnLogsInspectorSelectionChanged;
         _workspaceService.Changed -= OnWorkspaceServiceChanged;
         _instances.PropertyChanged -= OnInstancesPropertyChanged;
         _workspaceChanges.Dispose();
@@ -885,6 +916,20 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     private void UpdateInspectorSelection()
     {
+        if (ActiveWorkspace is { Page: LogSessionsViewModel logsPage })
+        {
+            if (logsPage.BuildInspectorContext() is { } context)
+            {
+                Inspector.ShowSelection(context);
+            }
+            else
+            {
+                Inspector.ClearSelection();
+            }
+
+            return;
+        }
+
         if (ActiveWorkspace is { TargetResource: null } workspace
             && string.Equals(workspace.ToolId, "instances", StringComparison.Ordinal)
             && _instances.SelectedInstance is { } instance)

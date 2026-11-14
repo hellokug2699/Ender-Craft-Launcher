@@ -142,6 +142,9 @@
             <DataTemplate DataType="{x:Type dialogs:ModpackModListDialogViewModel}">
                 <dviews:ModpackModListDialogView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type dialogs:LogExportDialogViewModel}">
+                <dviews:LogExportDialogView />
+            </DataTemplate>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

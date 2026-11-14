@@ -32,6 +32,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         InstanceRuntimeSettingsViewModel runtime,
         StorageAnalysisService storageAnalysis,
         Action<string>? manageStorage,
+        Action<string, string>? openLogs,
         IMemoryPressureMonitor memory,
         InstanceModifyPageFactory modifyFactory,
         ContentPackPageFactory contentPackFactory,
@@ -82,6 +83,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
                 [InstanceWorkspacePageKeys.Schematics] = Schematics,
                 [InstanceWorkspacePageKeys.Export] = Export,
             });
+        Navigation.OpenLogs = () => openLogs?.Invoke(State.InstanceId, State.Item.Name);
     }
 
     public InstanceWorkspaceState State { get; }

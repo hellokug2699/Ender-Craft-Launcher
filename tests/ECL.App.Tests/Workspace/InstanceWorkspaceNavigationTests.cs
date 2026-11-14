@@ -82,7 +82,7 @@ public sealed class InstanceWorkspaceNavigationTests
         Assert.Same(modsPage, navigation.Find(InstanceWorkspacePageKeys.Mods)!.Page);
 
         foreach (var key in ExpectedKeys.Except(
-                     [InstanceWorkspacePageKeys.BasicInfo, InstanceWorkspacePageKeys.Mods]))
+                     [InstanceWorkspacePageKeys.BasicInfo, InstanceWorkspacePageKeys.Mods, InstanceWorkspacePageKeys.Logs]))
         {
             var item = navigation.Find(key);
             Assert.NotNull(item);
@@ -91,10 +91,31 @@ public sealed class InstanceWorkspaceNavigationTests
             Assert.Null(item.Page);
         }
 
-        // G-01 已由 Approved 的日志页面规格解除；日志页在 B6 实现前只保留准确的“尚未实现”原因。
-        var logs = navigation.Find(InstanceWorkspacePageKeys.Logs)!.UnavailableReason;
-        Assert.NotEmpty(logs);
-        Assert.DoesNotContain("G-01", logs);
+        // logs.md §7.2 / instance-workspace.md §10：日志是打开全局 Logs Workspace 的快捷入口，
+        // 不是实例私有的第二套日志页面，因此没有 Page 但可用。
+        var logs = navigation.Find(InstanceWorkspacePageKeys.Logs)!;
+        Assert.True(logs.IsAvailable);
+        Assert.True(logs.IsShortcut);
+        Assert.Null(logs.Page);
+        Assert.Equal(string.Empty, logs.UnavailableReason);
+        Assert.DoesNotContain("G-01", logs.UnavailableReason);
+    }
+
+    [Fact]
+    public void LogsShortcutOpensGlobalWorkspaceWithoutChangingTheInstancePage()
+    {
+        var navigation = CreateNavigation(out var basicInfo, out _);
+        var opened = 0;
+        navigation.OpenLogs = () => opened++;
+
+        Assert.True(navigation.TryActivate(InstanceWorkspacePageKeys.Logs));
+        Assert.Equal(1, opened);
+        Assert.Equal(InstanceWorkspacePageKeys.BasicInfo, navigation.CurrentPageKey);
+        Assert.Same(basicInfo, navigation.CurrentPage);
+
+        navigation.SelectedItem = navigation.Find(InstanceWorkspacePageKeys.Logs);
+        Assert.Equal(2, opened);
+        Assert.Equal(InstanceWorkspacePageKeys.BasicInfo, navigation.SelectedItem!.Key);
     }
 
     [Fact]

@@ -9,11 +9,21 @@ using Ecl.Core.Json;
 
 namespace Ecl.Sessions;
 
+/// <summary>
+/// 单会话诊断导出选项。脱敏只作用于导出副本，不修改原始证据（ADR 0015 §8）。
+/// 默认开启安全脱敏；关闭时导出原文，调用方必须在确认弹窗中显式说明。
+/// </summary>
+public sealed record SessionExportOptions
+{
+    public bool Redact { get; init; } = true;
+}
+
 public interface ISessionExportService
 {
     Task<Result<SessionExportResult>> ExportAsync(
         string sessionId,
         string? outputPath = null,
+        SessionExportOptions? options = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -38,11 +48,16 @@ public sealed class SessionExportService : ISessionExportService
     public Task<Result<SessionExportResult>> ExportAsync(
         string sessionId,
         string? outputPath = null,
+        SessionExportOptions? options = null,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => Export(sessionId, outputPath), cancellationToken);
+        Task.Run(() => Export(sessionId, outputPath, options), cancellationToken);
 
-    private Result<SessionExportResult> Export(string sessionId, string? outputPath)
+    private Result<SessionExportResult> Export(
+        string sessionId,
+        string? outputPath,
+        SessionExportOptions? options)
     {
+        options ??= new SessionExportOptions();
         var session = _sessions.Get(sessionId);
         if (session is null)
         {
@@ -72,25 +87,25 @@ public sealed class SessionExportService : ISessionExportService
             using (var archive = ZipFile.Open(staging, ZipArchiveMode.Create))
             {
                 var manifestJson = JsonSerializer.Serialize(session.Manifest, EclJson.Indented);
-                total += AddText(archive, "manifest.json", SecretRedaction.Text(manifestJson), total);
+                total += AddText(archive, "manifest.json", Sanitize(manifestJson, options), total);
 
                 var events = SessionJournal.ReadAll(session.JournalPath, out var torn);
                 var eventLines = string.Join(
                     "\n",
                     events.Select(entry => JsonSerializer.Serialize(entry, EclJson.Default)));
-                total += AddText(archive, "events.jsonl", SecretRedaction.Text(eventLines), total);
+                total += AddText(archive, "events.jsonl", Sanitize(eventLines, options), total);
                 if (torn)
                 {
                     missing.Add("events.jsonl: 最后一条记录不完整，已忽略");
                 }
 
-                total += AddFileIfExists(archive, "logs/game.stdout.log", session.StdoutPath, total);
+                total += AddFileIfExists(archive, "logs/game.stdout.log", session.StdoutPath, total, options);
                 if (!File.Exists(session.StdoutPath))
                 {
                     missing.Add(SessionArtifactKinds.Stdout);
                 }
 
-                total += AddFileIfExists(archive, "logs/game.stderr.log", session.StderrPath, total);
+                total += AddFileIfExists(archive, "logs/game.stderr.log", session.StderrPath, total, options);
                 if (!File.Exists(session.StderrPath))
                 {
                     missing.Add(SessionArtifactKinds.Stderr);
@@ -99,7 +114,7 @@ public sealed class SessionExportService : ISessionExportService
                 var artifactEntries = new List<object>();
                 foreach (var artifact in session.Manifest.Artifacts)
                 {
-                    var captured = ExportArtifact(archive, session, artifact, ref total, missing);
+                    var captured = ExportArtifact(archive, session, artifact, ref total, missing, options);
                     artifactEntries.Add(captured);
                 }
 
@@ -119,9 +134,9 @@ public sealed class SessionExportService : ISessionExportService
                 total += AddText(
                     archive,
                     "artifacts.json",
-                    SecretRedaction.Text(JsonSerializer.Serialize(artifactEntries, EclJson.Indented)),
+                    Sanitize(JsonSerializer.Serialize(artifactEntries, EclJson.Indented), options),
                     total);
-                total += AddText(archive, "session-summary.txt", BuildSummary(session, missing), total);
+                total += AddText(archive, "session-summary.txt", Sanitize(BuildSummary(session, missing), options), total);
             }
 
             var size = new FileInfo(staging).Length;
@@ -150,7 +165,8 @@ public sealed class SessionExportService : ISessionExportService
         GameLogSession session,
         SessionArtifact artifact,
         ref long total,
-        List<string> missing)
+        List<string> missing,
+        SessionExportOptions options)
     {
         var entryName = $"artifacts/{Sanitize(artifact.Kind)}/{Sanitize(Path.GetFileName(artifact.CapturedPath ?? artifact.SourcePath ?? "artifact"))}";
         var source = artifact.CapturedPath ?? artifact.SourcePath;
@@ -163,6 +179,12 @@ public sealed class SessionExportService : ISessionExportService
             try
             {
                 var bytes = ReadCapped(source, Math.Min(MaxEntryBytes, Math.Max(0, MaxTotalBytes - total)));
+                if (options.Redact && IsTextEvidence(source))
+                {
+                    // 脱敏只写导出副本：先解码、再脱敏、重新编码；二进制轮转归档不在此路径。
+                    bytes = Encoding.UTF8.GetBytes(SecretRedaction.Text(Encoding.UTF8.GetString(bytes)));
+                }
+
                 var entry = archive.CreateEntry(entryName, CompressionLevel.Fastest);
                 using var stream = entry.Open();
                 stream.Write(bytes);
@@ -250,7 +272,12 @@ public sealed class SessionExportService : ISessionExportService
         return bytes.Length;
     }
 
-    private static long AddFileIfExists(ZipArchive archive, string name, string path, long usedBytes)
+    private static long AddFileIfExists(
+        ZipArchive archive,
+        string name,
+        string path,
+        long usedBytes,
+        SessionExportOptions options)
     {
         if (!File.Exists(path))
         {
@@ -261,12 +288,22 @@ public sealed class SessionExportService : ISessionExportService
         {
             var bytes = ReadCapped(path, Math.Min(MaxEntryBytes, Math.Max(0, MaxTotalBytes - usedBytes)));
             var text = Encoding.UTF8.GetString(bytes);
-            return AddText(archive, name, SecretRedaction.Text(text), usedBytes);
+            return AddText(archive, name, Sanitize(text, options), usedBytes);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             return 0;
         }
+    }
+
+    private static string Sanitize(string text, SessionExportOptions options) =>
+        options.Redact ? SecretRedaction.Text(text) : text;
+
+    private static bool IsTextEvidence(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return !extension.Equals(".gz", StringComparison.OrdinalIgnoreCase) &&
+               !extension.Equals(".zip", StringComparison.OrdinalIgnoreCase);
     }
 
     private static byte[] ReadCapped(string path, long limit)

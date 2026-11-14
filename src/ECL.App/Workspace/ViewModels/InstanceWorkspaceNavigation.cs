@@ -40,7 +40,8 @@ public sealed class InstanceNavigationItemViewModel
         string groupKey,
         string groupTitle,
         object? page,
-        string unavailableReason = "")
+        string unavailableReason = "",
+        bool isShortcut = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
@@ -52,7 +53,8 @@ public sealed class InstanceNavigationItemViewModel
         GroupKey = groupKey;
         GroupTitle = groupTitle;
         Page = page;
-        UnavailableReason = page is null ? unavailableReason : string.Empty;
+        IsShortcut = isShortcut;
+        UnavailableReason = page is null && !isShortcut ? unavailableReason : string.Empty;
     }
 
     public string Key { get; }
@@ -70,7 +72,13 @@ public sealed class InstanceNavigationItemViewModel
     /// <summary>不可用原因的本地化文案；可用时为空串。</summary>
     public string UnavailableReason { get; }
 
-    public bool IsAvailable => Page is not null;
+    /// <summary>
+    /// 该条目是“打开全局工作区”的快捷入口（例如日志），不是实例私有的二级页面。
+    /// 快捷入口不提供 <see cref="Page"/>，但允许被激活并转交 Shell。
+    /// </summary>
+    public bool IsShortcut { get; }
+
+    public bool IsAvailable => Page is not null || IsShortcut;
 }
 
 /// <summary>
@@ -96,6 +104,7 @@ public sealed class InstanceWorkspaceNavigationViewModel : ObservableObject, IDi
         ItemsView.GroupDescriptions.Add(
             new PropertyGroupDescription(nameof(InstanceNavigationItemViewModel.GroupTitle)));
 
+
         _selectedItem = Items.FirstOrDefault(item =>
                             string.Equals(item.Key, defaultKey, StringComparison.Ordinal) && item.IsAvailable)
                         ?? Items.FirstOrDefault(item => item.IsAvailable);
@@ -114,6 +123,12 @@ public sealed class InstanceWorkspaceNavigationViewModel : ObservableObject, IDi
     public bool IsDisposed { get; private set; }
 
     /// <summary>
+    /// 日志快捷入口的动作（instance-workspace.md §10）：打开全局 Logs Workspace 并带当前 InstanceId，
+    /// 不建立实例私有的日志页面或数据源。
+    /// </summary>
+    public Action? OpenLogs { get; set; }
+
+    /// <summary>
     /// 当前选中的二级页。绑定层（ListBox）只能选中可用项；这里再次拒绝不可用项，
     /// 防止代码或键盘路径绕过禁用状态进入空页。
     /// </summary>
@@ -124,6 +139,14 @@ public sealed class InstanceWorkspaceNavigationViewModel : ObservableObject, IDi
         {
             if (value is { IsAvailable: false })
             {
+                return;
+            }
+
+            if (value is { IsShortcut: true })
+            {
+                // 快捷入口不改变实例工作区的当前二级页；打开全局工作区后仍回到原页。
+                OpenLogs?.Invoke();
+                OnPropertyChanged(nameof(SelectedItem));
                 return;
             }
 
@@ -149,6 +172,12 @@ public sealed class InstanceWorkspaceNavigationViewModel : ObservableObject, IDi
         if (Find(key) is not { IsAvailable: true } item)
         {
             return false;
+        }
+
+        if (item.IsShortcut)
+        {
+            OpenLogs?.Invoke();
+            return true;
         }
 
         SelectedItem = item;
@@ -224,7 +253,8 @@ public static class InstanceWorkspaceNavigationFactory
             foreach (var (key, titleKey) in group.Items)
             {
                 pages.TryGetValue(key, out var page);
-                var unavailableReason = page is null
+                var isShortcut = string.Equals(key, InstanceWorkspacePageKeys.Logs, StringComparison.Ordinal);
+                var unavailableReason = page is null && !isShortcut
                     ? localizer.Get("instance.nav.unavailable.notImplemented")
                     : string.Empty;
 
@@ -234,7 +264,8 @@ public static class InstanceWorkspaceNavigationFactory
                     group.Key,
                     groupTitle,
                     page,
-                    unavailableReason));
+                    unavailableReason,
+                    isShortcut));
             }
         }
 
