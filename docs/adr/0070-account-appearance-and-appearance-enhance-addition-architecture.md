@@ -1,6 +1,6 @@
 # ADR 0070: Account Appearance and Appearance Enhance Addition Architecture
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-15
 - Scope: Core 基础账户外观读取与 2D 展示、Appearance Enhance Addition、3D 外观查看、本地衣柜、账户外观管理及不同账户类型的能力边界
@@ -21,7 +21,7 @@ ECL 的 Additions 体系已经明确采用“原生功能入口、可选功能�
 
 ## 决策
 
-> 本 ADR 当前为 Proposed。以下内容是待评审方案；在 Decision 改为 Accepted 前，不构成已批准的实施约束。
+> 本 ADR 已 Accepted。以下决策作为后续架构与实施的约束；Implementation 状态仍为 Not Started，不代表相关代码已经完成。
 
 ### 1. Core 只提供基础外观读取与 2D 当前皮肤展示
 
@@ -166,7 +166,7 @@ ECL 不因本决策建设自有皮肤托管、外观代理或用户资源云同�
 
 ## 验收标准
 
-以下标准用于未来评审通过后的实施验收；当前 Proposed 状态不表示任何一项已经完成。
+以下标准用于未来评审通过后的实施验收；当前 Implementation: Not Started，以下验收标准均尚待实施与验证。
 
 - 未安装、禁用或损坏 Appearance Enhance Addition 时，Core 仍可读取并展示当前账户的 2D 皮肤；读取失败时显示明确占位状态。
 - Core 的基础外观读取复用现有账户认证上下文，不重复登录、不另存长期令牌。
@@ -185,4 +185,6 @@ ECL 不因本决策建设自有皮肤托管、外观代理或用户资源云同�
 
 ## 修订记录
 
-- 2026-11-15：首次提出 Core 基础外观读取与 2D 展示、Appearance Enhance Addition、第三方 Yggdrasil 只读边界及 Offline/Microsoft 管理能力分层方案。状态为 Proposed，等待项目维护者审查；同时拟取代 ADR 0037 与 ADR 0038。
+- 2026-11-15：首次提出 Core 基础外观读取与 2D 展示、Appearance Enhance Addition、第三方 Yggdrasil 只读边界及 Offline/Microsoft 管理能力分层方案。状态更新为 Accepted；实施仍为 Not Started。ADR 0037 与 ADR 0038 已标记为 Superseded。
+
+- 2026-11-15：项目维护者批准本决策，Decision 更新为 Accepted；Implementation 保持 Not Started。
