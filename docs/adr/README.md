@@ -183,8 +183,8 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0034 ECL 自身完整性与可恢复安装架构](0034-ecl-self-integrity-and-recovery.md) | Superseded | N/A | 历史决策（由 0051 统一取代） |
 | [0035 Offline Minecraft Knowledge Library as an Optional Addition](0035-offline-minecraft-knowledge-library.md) | Superseded | N/A | 离线知识库方向（由 0036 取代主要交付方式） |
 | [0036 Embedded Browser for Minecraft Knowledge Access](0036-embedded-browser-for-minecraft-knowledge.md) | Accepted | In Progress | 受限知识浏览器与站点白名单 |
-| [0037 Account Appearance and Local Wardrobe Architecture](0037-account-appearance-and-local-wardrobe.md) | Accepted | In Progress | 皮肤、披风与账户外观管理 |
-| [0038 Authlib-Injector Texture Upload Protocol Support](0038-authlib-injector-texture-upload-protocol.md) | Accepted | In Progress | 第三方账户皮肤与披风协议上传 |
+| [0037 Account Appearance and Local Wardrobe Architecture](0037-account-appearance-and-local-wardrobe.md) | Superseded | N/A | 历史决策（由 0070 取代） |
+| [0038 Authlib-Injector Texture Upload Protocol Support](0038-authlib-injector-texture-upload-protocol.md) | Superseded | N/A | 历史协议决策（由 0070 取代；技术记录保留） |
 | [0039 Application Runtime Lifecycle and Graceful Shutdown](0039-application-runtime-lifecycle-and-graceful-shutdown.md) | Accepted | Implemented | 应用运行时生命周期与优雅关闭 |
 | [0040 原版工具集作为独立官方 Addition](0040-vanilla-toolkit-addition.md) | Accepted | In Progress | 原版查询、模拟、计算与本地资源解析 |
 | [0041 Minecraft 性能监控与性能分析架构](0041-minecraft-performance-monitoring-and-profiling-architecture.md) | Accepted | In Progress | 性能监控、卡死检测、Profiler 与诊断联动 |
@@ -216,3 +216,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0067 ECL Music Player and Minecraft Audio Bridge Architecture](0067-ecl-music-player-and-minecraft-audio-bridge-architecture.md) | Proposed | Not Started | ECL Music Player、Core 托管音频播放、Java Agent 游戏内音量桥接、跨版本/Loader 兼容性与进程修改授权 |
 | [0068 ECL Media Processing and Editing Architecture](0068-ecl-media-engine-and-format-conversion-architecture.md) | Proposed | Not Started | 独立媒体处理 Addition、图片/音频/视频识别转换与基础编辑、预览可视化、临时工作区与源文件安全提交、可替换后端及平台保护措施边界 |
 | [0069 Server-Side CurseForge Credential Proxy and Adaptive Download Architecture](0069-client-side-curseforge-auth-and-adaptive-download-architecture.md) | Accepted | Blocked | ECL 云端服务端持有 CurseForge API Key 并代理 API 请求、客户端直连 CDN、统一下载协调、全局资源预算、自适应 Range、多源回退及既有 Artifact Lifecycle 保留 |
+| [0070 Account Appearance and Appearance Enhance Addition Architecture](0070-account-appearance-and-appearance-enhance-addition-architecture.md) | Proposed | Not Started | Core 基础外观读取与 2D 展示、Appearance Enhance Addition、衣柜及账户类型能力边界 |
