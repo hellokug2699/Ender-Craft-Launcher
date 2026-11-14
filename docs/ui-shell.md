@@ -547,8 +547,8 @@
   设置项仍全部来自 `ISettingsService.GetDefinitions`，zh-CN/en-US 文案走 Loc Key。
 - **本轮可用页面**：常规、界面偏好、Java 管理（迁移中的过渡页：只保留仍在使用的
   `java.defaultPath` 与 `java.runtimeProvider`，运行时清单/优先级/验证/卸载列在能力缺口）、
-  游戏与启动、下载、网络；存储与路径、扩展管理保留导航项与准确的不可用原因，不构造空页。
-  Java 一级导航暂时保留，直到设置内的完整 Java 管理页通过验收。
+  游戏与启动、下载、网络；**存储与路径已由 §2.16 完成**，扩展管理保留导航项与准确的不可用原因，
+  不构造空页。Java 一级导航暂时保留，直到设置内的完整 Java 管理页通过验收。
   **该过渡页与一级导航已在 §2.12（B3 步骤 3）完成迁移并移除。**
 - **保存策略**（`settings.md` §4.1）：Boolean/Select 在值变化后即时校验并保存；
   Text/Number/Path 提供显式「应用/还原」，非法值不写入配置并在该项下显示真实原因。
@@ -573,10 +573,12 @@
   能力缺口分组、Java 过渡页保留现有选项、代码签名卡归属）。
 
 **B3 尚未完成的子步**（不冒充已实现）：General 的启动/窗口/通知/更新周期能力（需要启动注册、
-系统托盘、通知渠道与更新调度接线）、存储与路径的工作区迁移领域流程、扩展管理的权限执行与生命周期。
+系统托盘、通知渠道与更新调度接线）、扩展管理的权限执行与生命周期。
 界面偏好的字体/字号/缩放/动效、游戏与启动的内存自动策略与全屏、下载的自动重试/限速、
 网络的结构化代理端点与受保护凭据（D-04）已完成；新安装代理默认值迁移（D-02）仍需可靠的安装代际信号。
 Java 管理的运行时清单/优先级/验证/卸载已由 §2.12 完成。
+存储与路径（工作区迁移、路径总览与存储中心入口）已由 §2.16 完成；ECL 数据目录、缓存、
+日志与 Java 运行时目录仍只读显示，不提供迁移入口。
 
 ### 2.12 Java 管理页（B3 步骤 3）
 
@@ -772,6 +774,77 @@ ADR 0005（下载源）、ADR 0020（下载产物生命周期）。本步把「�
   **未使用 ECL 下载/安装流程**，未创建/删除实例，共享 `versions/`、`libraries/`、`assets/`
   在验证窗口内 0 个文件变更；验证后 `global.json` 与实例元数据 SHA256 已还原/一致，
   `proxy-credentials.dat` 已删除。
+
+### 2.16 存储与路径页（B3 步骤 6 / 工作区迁移）
+
+页面规格：`settings-storage-paths.md` §2–§10；ADR 0018（工作区存储与迁移）、ADR 0020
+（下载产物生命周期）、ADR 0022（存储分析/安全清理）、ADR 0050（设计系统）。
+本步把「存储与路径」从不可用分类替换为专用页面：只读路径总览 + Minecraft 工作区的正式迁移流程 +
+存储中心入口。**页面不清理任何文件、不提供伪编辑控件**；ECL 数据目录、下载缓存/产物、日志与
+Java 运行时目录当前架构没有独立迁移能力，因此只读显示并在「固定边界」中说明原因。
+
+- **页面对象与接线**：`SettingsStoragePageViewModel`（实现 `ISettingsPage`）+ `SettingsStoragePathRowViewModel` +
+  `Views/SettingsStoragePageView.xaml(.cs)`（`App.xaml` DataTemplate 注册）。`SettingsPageCatalog`
+  以专用页构造它（依赖 `IAppPaths` / `IWorkspaceService` / `IWorkspaceMigrationService` /
+  `IOperationStore`），`SettingsViewModel` 增加可选的同组依赖参数与 `StoragePage` 属性；
+  `CanResetDefaults=false`（路径不是元数据默认值，恢复默认不会移动文件）。
+- **路径总览**：按真实用途列出工作区、ECL 数据目录、下载缓存、下载产物、日志与诊断、
+  Java 运行时、程序文件共 7 行；每行显示完整路径、用途、真实状态（工作区含可用空间/缺失/不可写/无效，
+  其余显示目录是否存在）与「打开所在位置」（目录不存在时禁用）。打开失败显示真实原因。
+  只读取路径与一次目录探测，**不做体积测量**（分类切换不触发有存储成本的后台任务）。
+- **工作区状态**：未配置工作区时显示“尚未设置”与说明并隐藏迁移入口；主工作区为外部登记目录时
+  显示“只登记引用、不由 ECL 迁移”，不提供会移动外部实例的入口；缺失/不可写/无效按领域校验结果展示。
+- **迁移流程**（唯一入口，调用 `IWorkspaceMigrationService`）：目标位置文本 + 原生文件夹选择器 →
+  「检查目标」调用 `PlanAsync` → 展示迁移计划（源、目标、实例数、文件数、数据体积、目标可用空间、
+  逐条阻塞项与警告、源目录保留说明）→ 「开始迁移」经 Dialog Engine 确认（目标、实例/文件数、体积）→
+  `StartAsync` 执行复制→校验→切换，页面只转发领域真实阶段与文件计数（`正在复制文件：x / y`、
+  `正在校验复制结果：x / y`、`正在切换工作区`），不自行推算进度百分比。
+- **失败与恢复**：分两个独立入口，不混淆：
+  - 可继续状态（`PendingValidation/Validating/ReadyToCopy/Copying/Verifying/Switching/Interrupted`）→
+    「继续迁移」（`ResumeAsync`，会重新复制并校验）与「放弃迁移」（`DiscardAsync`，只清理 staging 与记录）；
+  - `RollbackRequired`（文件已复制、切换工作区配置失败）→ 只提供「重新切换工作区」
+    （新增 `CompleteSwitchAsync`，只重试 `InitializeAsync`，不重新复制）与「放弃迁移」；
+  - `Failed` → 只提供「放弃迁移」；已结束（`Completed/Discarded`）不显示恢复卡。
+  存在可继续/可切换的未完成记录时，页面阻止生成新计划（必须先处理恢复卡）。
+  失败结果使用本次迁移的真实阶段 + 领域错误码映射，**不得把上一次“已完成”记录当成本次失败阶段**
+  （实机复现并修复）。
+- **活动任务阻断**：`IOperationStore` 中存在未结束任务（Pending/Running/Retrying）时，页面显示
+  真实任务标题并禁止检查/开始/继续/切换；生成计划后再次检查，避免复制到一半的工作区。
+  取消确认不产生任何写入；没有计划时开始按钮不可用。
+- **领域补充（最小、语义不变）**
+  - `WorkspaceMigrationPlan.ProblemDetails`：`WorkspaceMigrationProblem(Code, Message)` + `Arguments`，
+    与 `Problems`（原始文案，CLI/日志仍使用）逐项对应；页面按稳定代码本地化，
+    未识别代码回退领域文案。判据仍只在领域服务里。
+  - `IWorkspaceMigrationService.StartAsync/ResumeAsync` 增加可选 `IProgress<WorkspaceMigrationRecord>`：
+    复制/校验/切换与文件计数来自 `Update()` 的真实记录；回调异常只记日志，不影响迁移。
+  - 新增 `CompleteSwitchAsync()`：只处理 `RollbackRequired`，重试切换后把记录置为 `Completed`；
+    其它状态返回 `workspace.migration.not_switchable`/`none`/`target_missing`，不复制、不删除。
+- **存储管理入口**：由 Shell 注入回调，`管理存储空间` 进入既有存储中心（不指定实例）；
+  设置页不重复实现清理、预览或删除（`settings.md` §5 边界、ADR 0022）。
+- **Shell 页脚路径刷新**：工作区迁移在运行期改变主工作区；`ShellViewModel` 订阅
+  `IWorkspaceService.Changed` 并刷新页脚的 `GameDirectory`。注意该事件在
+  `WorkspaceService.InitializeAsync` 中先于 `IAppPaths.SetGameRoot` 触发，因此读取
+  `workspace.Primary?.Path` 而不是当时的 `AppPaths.GameRoot`（实机发现并修复，否则页脚停在旧路径）。
+- **本地化**：新增约 120 个 `settings.page.storage.*` 键（zh/en 成对），删除死键
+  `settings.nav.unavailable.storage`；迁移警告沿用既有 `workspace.warning.*` 键。
+- **测试**：核心 +4 —— `WorkspaceMigrationServiceTests`
+  （结构化问题代码与 `Problems` 对齐、真实阶段/文件计数进度、`RollbackRequired` 只切不复制、
+  其它状态拒绝切换）；应用 +18 —— `StoragePathsPageTests` 17 项（路径总览与唯一可迁移项、未配置工作区、
+  真实计划影响与占用目标阻塞、目标变化使计划失效、空目标拒绝、确认后迁移并保留源、取消零写入、
+  计划后条件变化报告失败且不复用旧阶段、完成迁移后失败阶段不复用“已完成”、中断恢复、
+  放弃只清 staging、`RollbackRequired` 只切换、失败记录只能放弃、活动任务阻断、存储中心接线、
+  搜索定位与行高亮、打开位置的注入与失败提示）+ `SettingsPageTests` 新增存储专用页断言，
+  未实现分类只剩扩展管理。
+- **实机（2026-11-14，见交接文档 §4.2）**：1400×880 / 1080×720、zh-CN / en-US；
+  真实临时工作区（`ECL_DATA_DIR` 隔离）完成小工作区迁移（4 文件）、6004 文件迁移的真实阶段捕获
+  （`正在校验复制结果：6004 / 6004`）、中断记录恢复卡 → 继续迁移完成、计划后目标被占用的失败结果、
+  「管理存储空间」跳转与页脚路径刷新；源目录始终保留，`workspace.json` 主工作区与
+  `workspace-migration.json` 状态一致；验证后临时数据目录已删除，未触碰真实用户配置。
+  **未实机覆盖（自动化覆盖）**：`RollbackRequired` 真实切换失败、放弃迁移、外部工作区主目录
+  （当前 API 无法构造外部主工作区）、文件选择器成功路径、多 DPI/缩放组合。
+- **能力边界**：ECL 数据目录/缓存/下载产物/日志不是可迁移项（由便携模式、`ECL_DATA_DIR` 或安装位置决定）；
+  下载缓存与临时产物是同一数据目录下的固定路径，不拆成两个虚构设置；本页不提供清理；
+  「多安装位置/新建实例到外部目录」仍是既有领域缺口（ADR 0018/0046），不在本页提供假选择器。
 
 ## 3. 共享页面控件（B0）
 B0 只提供 B1 立即需要的三个共享件，其余控件（`DataTable`、`StatusBanner`、`InlineProgress`、
