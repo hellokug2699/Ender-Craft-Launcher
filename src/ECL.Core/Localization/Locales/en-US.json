@@ -1550,6 +1550,7 @@
   "instance.detail.openFolder": "Open instance folder",
   "instance.detail.openMods": "Open Mods",
   "instance.detail.logs": "Logs and diagnostics",
+  "instance.detail.viewLogs": "View logs",
   "instance.detail.exportLog": "Export latest.log",
   "instance.detail.analyzeCrash": "Analyze latest crash",
   "instance.detail.exportDiagnostics": "Export diagnostics",

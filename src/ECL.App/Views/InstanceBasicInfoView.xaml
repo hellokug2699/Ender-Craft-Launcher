@@ -402,6 +402,7 @@
                     <StackPanel>
                         <TextBlock Text="{loc:Loc Key=instance.detail.logs}" Style="{StaticResource SectionText}" />
                         <WrapPanel Margin="0,12,0,0">
+                            <Button Content="{loc:Loc Key=instance.detail.viewLogs}" Command="{Binding OpenLogsCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
                             <Button Content="{loc:Loc Key=instance.detail.exportLog}" Command="{Binding Operations.ExportLatestLogCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
                             <Button Content="{loc:Loc Key=instance.detail.analyzeCrash}" Command="{Binding Operations.AnalyzeCrashCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />
                             <Button Content="{loc:Loc Key=instance.detail.exportDiagnostics}" Command="{Binding Operations.ExportDiagnosticsCommand}" Style="{StaticResource GhostButton}" Margin="0,0,8,8" />

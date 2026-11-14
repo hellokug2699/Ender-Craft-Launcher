@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Services;
 using Ecl.App.ViewModels;
 using Ecl.Core.Localization;
@@ -139,6 +140,13 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
     public string InstanceId => State.InstanceId;
 
     public string InstanceName => State.Item.Name;
+
+    /// <summary>
+    /// 基本信息页的日志快捷入口（logs.md §7.2）：打开全局 Logs Workspace 并传 InstanceId，
+    /// 不创建实例私有日志列表。与二级导航“日志”快捷项使用同一个回调。
+    /// </summary>
+    [RelayCommand]
+    private void OpenLogs() => Navigation.OpenLogs?.Invoke();
 
     public string InstanceMeta => State.Item.VersionText;
 

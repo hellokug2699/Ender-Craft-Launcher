@@ -1551,6 +1551,7 @@
   "instance.detail.openFolder": "打开实例目录",
   "instance.detail.openMods": "打开 Mods",
   "instance.detail.logs": "日志与诊断",
+  "instance.detail.viewLogs": "查看日志",
   "instance.detail.exportLog": "导出 latest.log",
   "instance.detail.analyzeCrash": "分析最近崩溃",
   "instance.detail.exportDiagnostics": "导出诊断包",
