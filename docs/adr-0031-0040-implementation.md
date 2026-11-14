@@ -10,7 +10,7 @@
 | [0034 自完整性](adr/0034-ecl-self-integrity-and-recovery.md) | Accepted | In Progress | 校验、Repair Mode、本地恢复缓存 |
 | [0036 受限知识浏览器](adr/0036-embedded-browser-for-minecraft-knowledge.md) | Accepted | In Progress | 白名单/重定向/子资源策略与本地错误页 |
 | [0037 账户外观与衣柜](adr/0037-account-appearance-and-local-wardrobe.md) | Superseded | N/A | 历史实现记录；后续产品边界由 ADR 0070 提案重新定义 |
-| [0038 Authlib 材质上传](adr/0038-authlib-injector-texture-upload-protocol.md) | Superseded | N/A | 历史协议实现记录；不得据此开放第三方账户外观写入，参见 ADR 0070 Proposed |
+| [0038 Authlib 材质上传](adr/0038-authlib-injector-texture-upload-protocol.md) | Superseded | N/A | 历史协议实现记录；不得据此开放第三方账户外观写入，参见 ADR 0070 Accepted |
 | [0039 运行时生命周期](adr/0039-application-runtime-lifecycle-and-graceful-shutdown.md) | Accepted | Implemented | 关闭协调器、WPF/CLI 接入与超时测试 |
 | [0040 Vanilla Toolkit](adr/0040-vanilla-toolkit-addition.md) | Accepted | In Progress | 数据模板、数据包校验、Registry 查询 |
 
@@ -221,4 +221,4 @@ Remove-Item Env:\ECL_WORLD_VERIFY_DIR
 
 ## ADR 0070 提案说明
 
-ADR 0070 当前为 Proposed + Not Started，等待项目维护者审查。该提案将 Core 基础外观读取/2D 展示与 Appearance Enhance Addition 分离，并规定第三方 Yggdrasil 账户只保留读取展示、不提供衣柜和外观管理。此处不将既有衣柜或 Authlib 协议实现计为新架构已实现。
+ADR 0070 当前为 Accepted + Not Started，等待项目维护者审查。该提案将 Core 基础外观读取/2D 展示与 Appearance Enhance Addition 分离，并规定第三方 Yggdrasil 账户只保留读取展示、不提供衣柜和外观管理。此处不将既有衣柜或 Authlib 协议实现计为新架构已实现。
