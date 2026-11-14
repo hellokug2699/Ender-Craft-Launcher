@@ -682,8 +682,15 @@ public sealed partial class SettingsStoragePageViewModel : ObservableObject, ISe
 
         OnPropertyChanged(nameof(ShowChangeCard));
         OnPropertyChanged(nameof(CanOpenStorage));
-        RefreshActiveOperations();
-        RefreshRecovery();
+
+        // 迁移进行中时不要把当前记录当作“未完成的迁移”重新渲染恢复按钮：
+        // 进度区已经表达本次迁移，恢复动作只属于中断后的下一次进入。
+        if (!_isMigrating)
+        {
+            RefreshActiveOperations();
+            RefreshRecovery();
+        }
+
         NotifyPlanState();
     }
 
@@ -824,6 +831,9 @@ public sealed partial class SettingsStoragePageViewModel : ObservableObject, ISe
         OnPropertyChanged(nameof(IsMigrating));
         IsBusy = true;
         IsChangeHighlighted = false;
+        CanResume = false;
+        CanCompleteSwitch = false;
+        CanDiscard = false;
         HasMigrationProgress = true;
         MigrationProgress = 0;
         MigrationStageText = _localizer.Get("settings.page.storage.stage.starting");
