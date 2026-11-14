@@ -13,6 +13,7 @@ using Ecl.App.Services;
 using Ecl.App.Shell.Inspector;
 using Ecl.App.Shell.Output;
 using Ecl.App.ViewModels;
+using Ecl.App.ViewModels.Settings;
 using Ecl.App.Workspace;
 using Ecl.App.Workspace.ViewModels;
 using Ecl.Core;
@@ -41,6 +42,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly HomeViewModel _home;
     private readonly DownloadViewModel _download;
     private readonly InstancesViewModel _instances;
+    private readonly LogSessionsViewModel _logs;
     private readonly ModsPageFactory _modsFactory;
     private readonly SettingsViewModel _settings;
     private readonly ToolsViewModel _tools;
@@ -55,6 +57,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly ExportPageFactory _exportFactory;
     private readonly IReadOnlyList<string> _navigationKeys;
     private readonly IDisposable _workspaceChanges;
+    private object? _activePage;
     private bool _suppressNavigation;
 
     public ShellViewModel(
@@ -88,6 +91,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _home = home;
         _download = download;
         _instances = instances;
+        _logs = logSessions;
         _modsFactory = modsFactory;
         _modifyFactory = modifyFactory;
         _contentPackFactory = contentPackFactory;
@@ -133,7 +137,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Inspector.CloseWorkspaceCommand = CloseActiveWorkspaceCommand;
 
         _home.Navigate = key => ActivateDestination(key);
-        _home.OpenInstanceWorkspace = OpenSelectedInstanceWorkspace;
+        _home.OpenInstanceWorkspace = instanceId => OpenInstanceWorkspace(instanceId);
+        // home.md §3.3 + logs.md §7.1：错误日志入口打开同一个 Logs Workspace 并传入准确 SessionId。
+        _home.Launch.OpenLogSession = OpenLogSession;
+        // home.md §5.3：Multiplayer 卡片的管理入口进入设置 → 扩展管理。
+        _home.OpenAdditionsManagement = OpenAdditionsManagement;
         instances.GetModHealthSummary = modsFactory.DescribeHealthAsync;
         modsFactory.OpenModBrowser = OpenModBrowser;
         contentPackFactory.OpenPackBrowser = OpenPackBrowser;
@@ -362,17 +370,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     private void NavigateToInstances() => ActivateDestination("instances");
-
-    private void OpenSelectedInstanceWorkspace()
-    {
-        if (_instances.SelectedInstance is { } instance)
-        {
-            OpenInstanceWorkspace(instance.Model.Id);
-            return;
-        }
-
-        ActivateDestination("instances");
-    }
 
     private void OpenModBrowser(string instanceId, string? query) =>
         _ = OpenModBrowserAsync(instanceId, query);
@@ -694,6 +691,39 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             // settings.md §2：首次进入与重新进入设置中心都以“常规”为默认落点。
             settings.Activate();
         }
+        else if (page is LogSessionsViewModel logs)
+        {
+            // 日志页只有会话页自身负责刷新与实时跟随；进入时激活一次，不改变已选会话。
+            logs.Activate();
+        }
+        else if (page is HomeViewModel home)
+        {
+            // 启动可能由实例页或 CLI 发起：重新进入主页时重读最近一次启动状态。
+            home.Activate();
+        }
+    }
+
+    /// <summary>
+    /// 打开 Logs Workspace 并定位到指定会话身份（home.md §3.3）。
+    /// 传的是失败启动的 SessionId，不是实例 ID：页面不得默认打开“最新日志”。
+    /// </summary>
+    private void OpenLogSession(string sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            _logger.LogWarning("错误日志入口没有会话身份，已忽略。");
+            return;
+        }
+
+        ActivateDestination("logs");
+        _logs.FocusSession(sessionId);
+    }
+
+    /// <summary>设置 → 扩展管理（Multiplayer 卡片的可行管理入口）。</summary>
+    private void OpenAdditionsManagement()
+    {
+        _settings.Navigation.TryActivate(SettingsPageKeys.Additions);
+        ActivateDestination("settings");
     }
 
     private async Task ActivateDownloadAsync(DownloadViewModel download)
@@ -755,6 +785,17 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     partial void OnActiveWorkspaceChanged(WorkspaceTabViewModel? value)
     {
+        // 离开日志页时停止它的刷新计时器；采集本身由会话服务负责，页面关闭不影响证据（ADR 0015）。
+        if (!ReferenceEquals(_activePage, value?.Page))
+        {
+            if (_activePage is LogSessionsViewModel previous)
+            {
+                previous.Deactivate();
+            }
+
+            _activePage = value?.Page;
+        }
+
         OnPropertyChanged(nameof(HasActiveWorkspace));
         if (value is null)
         {

@@ -1009,6 +1009,43 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// 移除账号（home.md §5.1 账号菜单）：确认后只删除账户注册记录与受保护凭据，
+    /// 不触碰实例设置、实例目录或其它账户。
+    /// </summary>
+    [RelayCommand]
+    private async Task RemoveAccountAsync()
+    {
+        if (IsBusy || SelectedAccount is not { } account)
+        {
+            return;
+        }
+
+        if (!_dialogs.Confirm(
+                _localizer.Get("accounts.remove.title"),
+                _localizer.Get("accounts.remove.message", account.DisplayName)))
+        {
+            return;
+        }
+
+        try
+        {
+            var result = await _accounts.RemoveAsync(account.Id).ConfigureAwait(true);
+            if (!result.IsSuccess)
+            {
+                StatusMessage = result.Error?.Message ?? string.Empty;
+                return;
+            }
+
+            await RefreshAccountsAsync().ConfigureAwait(true);
+            StatusMessage = _localizer.Get("accounts.removed", account.DisplayName);
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = _localizer.Get("instances.thirdPartySignInFailed", "ui.exception", exception.Message);
+        }
+    }
+
     /// <summary>扫描游戏目录的 versions 文件夹，把其它启动器安装的版本导入为实例。</summary>
     [RelayCommand]
     private async Task ImportVersionsAsync()
@@ -1425,7 +1462,11 @@ public sealed partial class InstancesViewModel : ObservableObject
     /// 启动指定实例（dryRun 只生成命令预览并校验），进度与结果写入调用方自己的状态。
     /// 实例工作区传入自己的实例与状态，因此两个工作区同时启动时结果不会互相覆盖。
     /// </summary>
-    internal async Task LaunchForAsync(InstanceItemViewModel? item, InstanceOperationState state, bool dryRun)
+    internal async Task LaunchForAsync(
+        InstanceItemViewModel? item,
+        InstanceOperationState state,
+        bool dryRun,
+        IProgress<LaunchStepProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         if (item is null)
@@ -1456,7 +1497,9 @@ public sealed partial class InstancesViewModel : ObservableObject
 
         try
         {
-            var report = await _launchService.LaunchAsync(item.Model.Id, dryRun).ConfigureAwait(true);
+            var report = await _launchService
+                .LaunchAsync(item.Model.Id, dryRun, acceptJavaRisk: false, progress: progress)
+                .ConfigureAwait(true);
             foreach (var step in report.Steps)
             {
                 state.LaunchSteps.Add(new LaunchStepItemViewModel(step, _localizer));
@@ -1663,7 +1706,11 @@ public sealed class InstanceItemViewModel
         Model = model;
         Name = model.Name;
         MinecraftVersionText = localizer.Get("instances.minecraftVersion", model.GameVersion);
+        LoaderName = FormatLoaderName(model, localizer);
         LoaderText = FormatLoader(model, localizer);
+        LoaderShortText = string.IsNullOrWhiteSpace(model.LoaderVersion)
+            ? LoaderName
+            : $"{LoaderName} {model.LoaderVersion}";
         VersionText = $"{MinecraftVersionText} · {LoaderText}";
         LastPlayedText = model.LastPlayedAt is null
             ? localizer.Get("instances.neverPlayed")
@@ -1687,8 +1734,14 @@ public sealed class InstanceItemViewModel
     /// <summary>明确的 Minecraft 版本标记，例如“Minecraft 1.21.1”。</summary>
     public string MinecraftVersionText { get; }
 
+    /// <summary>加载器名称（不含版本），例如“Fabric”；原版显示为“原版”。</summary>
+    public string LoaderName { get; }
+
     /// <summary>加载器名称与版本，例如“Fabric 0.16.10”；原版显示为“原版”。</summary>
     public string LoaderText { get; }
+
+    /// <summary>加载器简称与版本，用于主页切换栏等窄空间；Cleanroom 不附带兼容性说明。</summary>
+    public string LoaderShortText { get; }
 
     /// <summary>加载器类型键：fabric / forge / neoforge / cleanroom / unknown（用于颜色标识）。</summary>
     public string LoaderKind { get; }
@@ -1701,6 +1754,17 @@ public sealed class InstanceItemViewModel
     public string CreatedText { get; }
 
     public string PathText { get; }
+
+    private static string FormatLoaderName(GameInstance model, ILocalizer localizer) =>
+        model.Loader.ToLowerInvariant() switch
+        {
+            "fabric" => localizer.Get("instances.loader.fabric"),
+            "forge" => localizer.Get("instances.loader.forge"),
+            "neoforge" => localizer.Get("instances.loader.neoforge"),
+            "cleanroom" => localizer.Get("instances.loader.cleanroomShort"),
+            "vanilla" => localizer.Get("instances.loader.vanilla"),
+            _ => model.Loader,
+        };
 
     private static string FormatLoader(GameInstance model, ILocalizer localizer)
     {
@@ -1733,6 +1797,7 @@ public sealed partial class AccountItemViewModel : ObservableObject
             AccountType.ThirdParty => "accounts.thirdParty",
             _ => "accounts.offline",
         });
+        TypeText = typeLabel;
         DisplayName = model.Type == AccountType.ThirdParty && !string.IsNullOrWhiteSpace(authServerName)
             ? $"{model.Name} · {typeLabel}（{authServerName}）"
             : $"{model.Name} · {typeLabel}";
@@ -1741,6 +1806,9 @@ public sealed partial class AccountItemViewModel : ObservableObject
     public Account Model { get; }
 
     public string Id { get; }
+
+    /// <summary>账户类型标签（离线 / Microsoft / 第三方），用于主页账号卡片的类型行。</summary>
+    public string TypeText { get; }
 
     public string DisplayName { get; }
 

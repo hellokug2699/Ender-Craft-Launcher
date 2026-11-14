@@ -50,6 +50,18 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _showWarnings;
 
+    private string? _targetSessionId;
+    private bool _suppressTargetReset;
+
+    /// <summary>
+    /// 由 Home 或实例工作区带入的目标会话不可用时的说明（logs.md §7.1）。
+    /// 有说明时不自动改看其它会话；用户手动选择会话后清空。
+    /// </summary>
+    [ObservableProperty]
+    private string _targetUnavailableMessage = string.Empty;
+
+    public bool HasTargetUnavailable => !string.IsNullOrWhiteSpace(TargetUnavailableMessage);
+
     public LogSessionsViewModel(
         IGameSessionService sessions,
         ISessionExportService exporter,
@@ -69,6 +81,47 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     {
         RefreshSessions();
         _timer.Start();
+    }
+
+    /// <summary>
+    /// 携带会话身份打开日志页（home.md §3.3、logs.md §7.1）：定位指定 SessionId；
+    /// 会话不存在时保留说明并保持“没有选中会话”，不静默改看最新会话。
+    /// </summary>
+    public void FocusSession(string sessionId)
+    {
+        var target = string.IsNullOrWhiteSpace(sessionId) ? null : sessionId;
+        _targetSessionId = target;
+        TargetUnavailableMessage = string.Empty;
+        OnPropertyChanged(nameof(HasTargetUnavailable));
+
+        // 刷新会临时选中第一行；这不是用户主动切换，不能因此丢掉目标身份。
+        _suppressTargetReset = true;
+        try
+        {
+            Activate();
+        }
+        finally
+        {
+            _suppressTargetReset = false;
+        }
+
+        if (target is null)
+        {
+            return;
+        }
+
+        var row = Sessions.FirstOrDefault(session =>
+            string.Equals(session.Id, target, StringComparison.Ordinal));
+        if (row is not null)
+        {
+            SelectedSession = row;
+            return;
+        }
+
+        SelectedSession = null;
+        _targetSessionId = target;
+        TargetUnavailableMessage = _localizer.Get("logs.targetUnavailable", target);
+        OnPropertyChanged(nameof(HasTargetUnavailable));
     }
 
     public void Deactivate() => _timer.Stop();
@@ -132,6 +185,16 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         {
             SessionDetail = string.Empty;
             return;
+        }
+
+        // 用户手动切到别的会话后，不再保留“目标会话不可用”的说明。
+        if (!_suppressTargetReset
+            && _targetSessionId is { Length: > 0 } target
+            && !string.Equals(value.Id, target, StringComparison.Ordinal))
+        {
+            _targetSessionId = null;
+            TargetUnavailableMessage = string.Empty;
+            OnPropertyChanged(nameof(HasTargetUnavailable));
         }
 
         SessionDetail = value.Detail;

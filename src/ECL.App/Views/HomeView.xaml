@@ -2,261 +2,1055 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:Ecl.App.Localization"
-             xmlns:behaviors="clr-namespace:Ecl.App.Behaviors">
+             xmlns:controls="clr-namespace:Ecl.App.Controls"
+             xmlns:behaviors="clr-namespace:Ecl.App.Behaviors"
+             SizeChanged="OnHomeSizeChanged">
     <UserControl.InputBindings>
         <KeyBinding Key="F5" Command="{Binding Launcher.RefreshCommand}" />
     </UserControl.InputBindings>
 
+    <UserControl.Resources>
+        <!--
+            实例切换项共用按钮样式：整块可点击（键盘可达），加载器类型用底部色条表达，
+            文字颜色不承担加载器类型含义（home.md §4.1）。
+        -->
+        <Style x:Key="HomeSlotButton" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="14"
+                                ClipToBounds="True">
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
+                </DataTrigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 删除模式的中型红色圆形按钮：内部白色 X（home.md §4.4）。 -->
+        <Style x:Key="HomeDeleteBadgeButton" TargetType="Button">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{DynamicResource DangerBrush}" CornerRadius="12">
+                            <TextBlock Text="X"
+                                       FontSize="11"
+                                       FontWeight="Bold"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate x:Key="HomeSlotTemplate">
+            <Grid>
+                <!-- 非空位置：实例名称（3号）、Mod Loader 信息（2号）、右上角加载器名称与底部色条。 -->
+                <Grid Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVisibility}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="3" />
+                    </Grid.RowDefinitions>
+                    <Grid Margin="12,9,12,7">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Name}"
+                                       FontSize="16"
+                                       Style="{StaticResource EmphasisText}"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding Name}" />
+                            <TextBlock Text="{Binding LoaderText}"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Margin="0,4,0,0"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding LoaderName}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   VerticalAlignment="Top"
+                                   Margin="8,2,0,0"
+                                   TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                    <Border Grid.Row="1"
+                            Background="{Binding LoaderKind, Converter={StaticResource LoaderKindBrush}}" />
+                    <!-- 删除模式：只在非空位置显示；点击走与普通删除实例一致的确认流程。 -->
+                    <Button Style="{StaticResource HomeDeleteBadgeButton}"
+                            Margin="0,6,6,0"
+                            Command="{Binding DataContext.Launcher.DeleteInstanceCommand, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                            CommandParameter="{Binding Instance}"
+                            AutomationProperties.Name="{loc:Loc Key=home.switcher.deleteButton}"
+                            Visibility="{Binding DataContext.Switcher.IsDeleteMode, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+
+                <!-- 空位：删除实例后位置保持为空，不自动补位（home.md §4.4）。 -->
+                <Border Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}"
+                        Background="Transparent"
+                        BorderBrush="{DynamicResource BorderSoftBrush}"
+                        BorderThickness="1"
+                        CornerRadius="14">
+                    <TextBlock Text="{Binding EmptyText}"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
+            </Grid>
+        </DataTemplate>
+
+        <!-- 下方区域一：账号切换区域（全局账号选择/管理唯一入口）。 -->
+        <DataTemplate x:Key="AccountCardTemplate">
+            <Border Style="{StaticResource Card}" Padding="16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <!-- 皮肤获取尚未接入：使用问号皮肤占位，不留空白（home.md §5.1）。 -->
+                        <Border Width="56"
+                                Height="56"
+                                CornerRadius="12"
+                                Background="{DynamicResource SurfaceAltBrush}"
+                                BorderBrush="{DynamicResource BorderSoftBrush}"
+                                BorderThickness="1"
+                                ToolTip="{Binding AvatarHint}">
+                            <TextBlock Text="{Binding AvatarPlaceholder}"
+                                       FontSize="26"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding CurrentAccountName}"
+                                       FontSize="16"
+                                       Style="{StaticResource EmphasisText}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding CurrentAccountTypeText}"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Margin="0,4,0,0"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <Button Grid.Column="2"
+                                Content="{Binding AccountMenuText}"
+                                Command="{Binding ToggleAccountMenuCommand}"
+                                Style="{StaticResource GhostButton}"
+                                VerticalAlignment="Top"
+                                Padding="10,4"
+                                MinHeight="0"
+                                FontSize="11" />
+                    </Grid>
+
+                    <TextBlock Grid.Row="1"
+                               Text="{Binding AvatarHint}"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,8,0,0"
+                               Visibility="{Binding IsAccountMenuOpen, Converter={StaticResource InverseBoolToVisibility}}" />
+
+                    <!-- 账号选择/管理菜单：账户注册表与当前默认账号的唯一全局入口。 -->
+                    <Border Grid.Row="1"
+                            Margin="0,8,0,0"
+                            Padding="10"
+                            CornerRadius="10"
+                            Background="{DynamicResource SurfaceAltBrush}"
+                            BorderBrush="{DynamicResource BorderSoftBrush}"
+                            BorderThickness="1"
+                            Visibility="{Binding IsAccountMenuOpen, Converter={StaticResource BoolToVisibility}}">
+                        <ScrollViewer MaxHeight="150"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      behaviors:WheelScroll.IsEnabled="True">
+                            <StackPanel>
+                                <TextBlock Text="{Binding AccountMenuHint}"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,0,0,6" />
+                                <ListBox ItemsSource="{Binding Launcher.Accounts}"
+                                         SelectedItem="{Binding Launcher.SelectedAccount, Mode=TwoWay}"
+                                         AutomationProperties.Name="{loc:Loc Key=home.account.listLabel}"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         MaxHeight="84">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding DisplayName}"
+                                                           FontSize="12"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{loc:Loc Key=home.account.currentTag}"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource AccentBrush}"
+                                                           Margin="8,0,0,0"
+                                                           Visibility="{Binding IsDefault, Converter={StaticResource BoolToVisibility}}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding Launcher.NewAccountName, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.Name="{loc:Loc Key=home.account.nameLabel}"
+                                             ToolTip="{loc:Loc Key=instances.accountNamePlaceholder}" />
+                                    <Button Grid.Column="1"
+                                            Content="{loc:Loc Key=instances.addAccount}"
+                                            Command="{Binding Launcher.AddAccountCommand}"
+                                            Style="{StaticResource PrimaryButton}"
+                                            Margin="8,0,0,0"
+                                            Padding="10,4"
+                                            MinHeight="0"
+                                            FontSize="11" />
+                                </Grid>
+
+                                <WrapPanel Margin="0,8,0,0">
+                                    <Button Content="{loc:Loc Key=instances.signInMicrosoft}"
+                                            Command="{Binding Launcher.SignInMicrosoftCommand}"
+                                            Style="{StaticResource GhostButton}"
+                                            Padding="10,4"
+                                            MinHeight="0"
+                                            FontSize="11"
+                                            Margin="0,0,6,6" />
+                                    <Button Content="{loc:Loc Key=home.account.addAuthlib}"
+                                            Command="{Binding Launcher.AddThirdPartyAccountCommand}"
+                                            Style="{StaticResource GhostButton}"
+                                            Padding="10,4"
+                                            MinHeight="0"
+                                            FontSize="11"
+                                            Margin="0,0,6,6" />
+                                    <Button Content="{loc:Loc Key=home.account.editAuthlib}"
+                                            Command="{Binding Launcher.EditAccountSettingsCommand}"
+                                            Style="{StaticResource GhostButton}"
+                                            Padding="10,4"
+                                            MinHeight="0"
+                                            FontSize="11"
+                                            Margin="0,0,6,6"
+                                            IsEnabled="{Binding Launcher.CanOpenAccountSettings}" />
+                                    <Button Content="{loc:Loc Key=home.account.remove}"
+                                            Command="{Binding Launcher.RemoveAccountCommand}"
+                                            Style="{StaticResource DangerButton}"
+                                            Padding="10,4"
+                                            MinHeight="0"
+                                            FontSize="11"
+                                            Margin="0,0,6,6" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+
+                    <TextBlock Grid.Row="2"
+                               Text="{Binding Launcher.StatusMessage}"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,8,0,0"
+                               Visibility="{Binding Launcher.StatusMessage, Converter={StaticResource StringToVisibility}}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="WorkspaceEntryCardTemplate">
+            <Border Style="{StaticResource Card}" Padding="16">
+                <StackPanel>
+                    <TextBlock Text="{Binding OpenWorkspaceText}"
+                               FontSize="16"
+                               Style="{StaticResource EmphasisText}" />
+                    <TextBlock Text="{Binding OpenWorkspaceDescription}"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,6,0,0" />
+                    <Button Content="{Binding OpenWorkspaceText}"
+                            Command="{Binding OpenWorkspaceCommand}"
+                            Style="{StaticResource GhostButton}"
+                            HorizontalAlignment="Left"
+                            Margin="0,8,0,0"
+                            Padding="10,4"
+                            MinHeight="0"
+                            FontSize="11" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="DownloadsEntryCardTemplate">
+            <Border Style="{StaticResource Card}" Padding="16">
+                <StackPanel>
+                    <TextBlock Text="{Binding OpenDownloadsText}"
+                               FontSize="16"
+                               Style="{StaticResource EmphasisText}" />
+                    <TextBlock Text="{Binding OpenDownloadsDescription}"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,6,0,0" />
+                    <Button Content="{Binding OpenDownloadsText}"
+                            Command="{Binding OpenDownloadsCommand}"
+                            Style="{StaticResource GhostButton}"
+                            HorizontalAlignment="Left"
+                            Margin="0,8,0,0"
+                            Padding="10,4"
+                            MinHeight="0"
+                            FontSize="11" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- 下方区域二：实例工作区与下载中心入口（宽布局上下排列、紧凑布局左右排列）。 -->
+        <DataTemplate x:Key="EntryCardsWideTemplate">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="10" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource WorkspaceEntryCardTemplate}" />
+                <ContentControl Grid.Row="2" Content="{Binding}" ContentTemplate="{StaticResource DownloadsEntryCardTemplate}" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="EntryCardsCompactTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource WorkspaceEntryCardTemplate}" />
+                <ContentControl Grid.Column="2" Content="{Binding}" ContentTemplate="{StaticResource DownloadsEntryCardTemplate}" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- 下方区域三：Multiplayer 私人联机入口，只服务 Multiplayer（home.md §5.3）。 -->
+        <DataTemplate x:Key="MultiplayerCardTemplate">
+            <Border Style="{StaticResource Card}" Padding="16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="{Binding MultiplayerTitle}"
+                                   FontSize="16"
+                                   Style="{StaticResource EmphasisText}" />
+                        <TextBlock Text="{Binding MultiplayerSubtitle}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource AccentBrush}"
+                                   Margin="0,4,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="1" Margin="0,8,0,0">
+                        <TextBlock Text="{Binding MultiplayerDescription}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding MultiplayerStatus}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,8,0,0" />
+                        <TextBlock Text="{Binding MultiplayerDetail}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0" />
+                    </StackPanel>
+                    <Button Grid.Row="2"
+                            Content="{Binding MultiplayerManageText}"
+                            Command="{Binding OpenMultiplayerManagementCommand}"
+                            Style="{StaticResource GhostButton}"
+                            HorizontalAlignment="Left"
+                            Margin="0,8,0,0"
+                            Padding="10,4"
+                            MinHeight="0"
+                            FontSize="11"
+                            Visibility="{Binding ShowMultiplayerManagement, Converter={StaticResource BoolToVisibility}}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <!-- 主页只有一个滚动容器；页面外边距由 PageHost 提供。 -->
     <ScrollViewer VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Disabled"
                   KeyboardNavigation.TabNavigation="Cycle"
                   behaviors:WheelScroll.IsEnabled="True">
         <StackPanel>
-            <!-- Page heading -->
-            <Grid Margin="0,0,0,24">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel>
-                    <TextBlock Text="{loc:Loc Key=home.title}" Style="{StaticResource TitleText}" />
-                    <TextBlock Text="你的 Minecraft 工作台。选择实例，检查环境，然后开始游戏。"
-                               Style="{StaticResource SubtitleText}" Margin="0,6,0,0" />
-                </StackPanel>
-                <Button Grid.Column="1" Content="{loc:Loc Key=common.refresh}"
-                        Command="{Binding Launcher.RefreshCommand}"
-                        Style="{StaticResource GhostButton}" VerticalAlignment="Top" />
-            </Grid>
+            <controls:PageHeader Title="{loc:Loc Key=home.title}"
+                                 Subtitle="{loc:Loc Key=home.subtitle}">
+                <controls:PageHeader.Actions>
+                    <Button Content="{loc:Loc Key=common.refresh}"
+                            Command="{Binding Launcher.RefreshCommand}"
+                            Style="{StaticResource GhostButton}" />
+                </controls:PageHeader.Actions>
+            </controls:PageHeader>
 
-            <!-- Primary action -->
-            <Border Style="{StaticResource HeroCard}" Padding="26" Margin="0,0,0,20">
+            <!-- ==================== 1. 游戏启动卡片 ==================== -->
+            <Border Style="{StaticResource HeroCard}" Padding="20" Margin="0,0,0,14">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="20" />
+                        <ColumnDefinition Width="1.1*" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="当前实例" Style="{StaticResource LabelText}"
-                                   Foreground="{DynamicResource AccentBrush}" />
-                        <TextBlock Text="{Binding Launcher.SelectedInstanceName}"
-                                   FontSize="28" Style="{StaticResource HeadingText}" Margin="0,6,0,0"
+
+                    <!-- 左侧：实例信息、启动操作、总启动进度 -->
+                    <StackPanel>
+                        <TextBlock Text="{Binding Launch.InstanceName}"
+                                   FontSize="16"
+                                   Style="{StaticResource EmphasisText}"
                                    TextTrimming="CharacterEllipsis"
-                                   Visibility="{Binding Launcher.HasSelection, Converter={StaticResource BoolToVisibility}}" />
-                        <TextBlock Text="还没有选择实例" FontSize="24" Style="{StaticResource HeadingText}"
+                                   Visibility="{Binding Launch.HasInstance, Converter={StaticResource BoolToVisibility}}" />
+                        <TextBlock Text="{loc:Loc Key=home.launch.noInstance}"
+                                   FontSize="16"
+                                   Style="{StaticResource EmphasisText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Visibility="{Binding Launch.HasInstance, Converter={StaticResource InverseBoolToVisibility}}" />
+
+                        <TextBlock Text="{Binding Launch.InstanceMeta}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Margin="0,5,0,0"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Launch.InstancePath}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   Margin="0,4,0,0"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding Launch.InstancePath}" />
+
+                        <TextBlock Text="{Binding Launch.LastPlayedText}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   Margin="0,10,0,7" />
+
+                        <Button Content="{Binding Launch.LaunchButtonText}"
+                                Command="{Binding Launch.LaunchCommand}"
+                                Style="{StaticResource PrimaryButton}"
+                                Height="44"
+                                FontSize="14"
+                                IsEnabled="{Binding Launch.CanLaunch}" />
+                        <TextBlock Text="{Binding Launch.LaunchBlockedReason}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource WarningBrush}"
                                    Margin="0,6,0,0"
-                                   Visibility="{Binding Launcher.HasSelection, Converter={StaticResource InverseBoolToVisibility}}" />
-                        <TextBlock Text="{Binding Launcher.SelectedInstanceMeta}"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding Launch.LaunchBlockedReason, Converter={StaticResource StringToVisibility}}" />
+
+                        <Button Content="{Binding Launch.PreviewButtonText}"
+                                Command="{Binding Launch.PreviewCommand}"
+                                Style="{StaticResource GhostButton}"
+                                Margin="0,8,0,0"
+                                IsEnabled="{Binding Launch.CanLaunch}" />
+
+                        <TextBlock Text="{Binding Launch.PreviewNote}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource WarningBrush}"
+                                   Margin="0,6,0,0"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding Launch.PreviewNote, Converter={StaticResource StringToVisibility}}" />
+
+                        <Border Margin="0,8,0,0"
+                                Visibility="{Binding Launch.ShowPreview, Converter={StaticResource BoolToVisibility}}">
+                            <TextBox Style="{StaticResource MonoTextBox}"
+                                     Text="{Binding Launch.PreviewText, Mode=OneWay}"
+                                     Height="56" />
+                        </Border>
+
+                        <!-- 总启动进度：白色进行中 / 绿色成功 / 红色失败并停在失败位置；不显示百分比数字。 -->
+                        <ProgressBar Minimum="0"
+                                     Maximum="100"
+                                     Height="6"
+                                     Margin="0,14,0,0"
+                                     Value="{Binding Launch.TotalProgressValue}">
+                            <ProgressBar.Style>
+                                <Style TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
+                                    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Launch.TotalProgressKind}" Value="success">
+                                            <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Launch.TotalProgressKind}" Value="failed">
+                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ProgressBar.Style>
+                        </ProgressBar>
+                        <TextBlock Text="{Binding Launch.LaunchStatusText}"
+                                   FontSize="12"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
-                                   FontSize="12" Margin="0,7,0,0"
-                                   Visibility="{Binding Launcher.HasSelection, Converter={StaticResource BoolToVisibility}}" />
-                        <TextBlock Text="{Binding Launcher.SelectedInstanceComponents}"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
-                                   Visibility="{Binding Launcher.HasSelection, Converter={StaticResource BoolToVisibility}}" />
-                        <ComboBox ItemsSource="{Binding Launcher.Instances}"
-                                  SelectedItem="{Binding Launcher.SelectedInstance, Mode=TwoWay}"
-                                  ItemTemplate="{StaticResource NameItemTemplate}"
-                                  Margin="0,16,0,0" MaxWidth="380" HorizontalAlignment="Left" />
+                                   Margin="0,7,0,0"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Launch.LaunchStatusDetail}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   Margin="0,4,0,0"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding Launch.LaunchStatusDetail, Converter={StaticResource StringToVisibility}}" />
                     </StackPanel>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="24,0,0,0">
-                        <Button Content="{loc:Loc Key=home.play}" Command="{Binding Launcher.LaunchCommand}"
-                                Style="{StaticResource PrimaryButton}" MinWidth="150" Height="48"
-                                FontSize="14" IsEnabled="{Binding Launcher.HasSelection}" />
-                        <Button Content="预览启动命令" Command="{Binding Launcher.DryRunCommand}"
-                                Style="{StaticResource GhostButton}" MinWidth="150"
-                                Margin="0,9,0,0" IsEnabled="{Binding Launcher.HasSelection}" />
-                    </StackPanel>
+
+                    <!-- 右侧：普通 / 高级两种模式展示同一次启动 -->
+                    <Grid Grid.Column="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <Button Content="{Binding Launch.NormalModeText}"
+                                    Command="{Binding Launch.ShowNormalModeCommand}"
+                                    Padding="12,5"
+                                    MinHeight="0"
+                                    FontSize="12">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource GhostButton}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Launch.IsAdvanced}" Value="False">
+                                                <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                                <Setter Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Content="{Binding Launch.AdvancedModeText}"
+                                    Command="{Binding Launch.ShowAdvancedModeCommand}"
+                                    Padding="12,5"
+                                    MinHeight="0"
+                                    FontSize="12"
+                                    Margin="6,0,0,0">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource GhostButton}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Launch.IsAdvanced}" Value="True">
+                                                <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                                <Setter Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </StackPanel>
+
+                        <!-- 普通模式：真实启动步骤 + 每步进度条 + 当前执行状态 -->
+                        <ScrollViewer Grid.Row="1"
+                                      MaxHeight="168"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      behaviors:WheelScroll.IsEnabled="True"
+                                      Visibility="{Binding Launch.IsAdvanced, Converter={StaticResource InverseBoolToVisibility}}">
+                            <ItemsControl ItemsSource="{Binding Launch.Steps}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="104" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="62" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Title}"
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Title}"
+                                                       VerticalAlignment="Center" />
+                                            <ProgressBar Grid.Column="1"
+                                                         Height="5"
+                                                         Minimum="0"
+                                                         Maximum="100"
+                                                         VerticalAlignment="Center"
+                                                         Margin="0,0,8,0"
+                                                         Value="{Binding ProgressValue}">
+                                                <ProgressBar.Style>
+                                                    <Style TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
+                                                        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsSuccess}" Value="True">
+                                                                <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ProgressBar.Style>
+                                            </ProgressBar>
+                                            <TextBlock Grid.Column="2"
+                                                       Text="{Binding StateText}"
+                                                       FontSize="11"
+                                                       HorizontalAlignment="Right"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <!-- 高级模式：ECL 启动期间的轻量实时输出；错误级别明确着色（§3.2） -->
+                        <Grid Grid.Row="1"
+                              Visibility="{Binding Launch.IsAdvanced, Converter={StaticResource BoolToVisibility}}">
+                            <ScrollViewer x:Name="LaunchLogScroller"
+                                          MaxHeight="168"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          behaviors:WheelScroll.IsEnabled="True"
+                                          Visibility="{Binding Launch.HasLogLines, Converter={StaticResource BoolToVisibility}}">
+                                <ItemsControl ItemsSource="{Binding Launch.LogLines}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,1">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding TimeText}"
+                                                           FontFamily="Consolas"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding LevelText}"
+                                                           FontFamily="Consolas"
+                                                           FontSize="11"
+                                                           Margin="8,0,0,0"
+                                                           Foreground="{Binding Level, Converter={StaticResource LogLevelBrush}}" />
+                                                <TextBlock Grid.Column="2"
+                                                           Text="{Binding Message}"
+                                                           FontSize="11"
+                                                           Margin="8,0,0,0"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            <TextBlock Text="{Binding Launch.LogEmptyHint}"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding Launch.HasLogLines, Converter={StaticResource InverseBoolToVisibility}}" />
+                        </Grid>
+
+                        <!-- 右下角：失败时的错误日志入口；没有会话时说明原因而不是给出不可用按钮 -->
+                        <StackPanel Grid.Row="2" Margin="0,8,0,0">
+                            <TextBlock Text="{Binding Launch.LogTruncatedText}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource WarningBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,6"
+                                       Visibility="{Binding Launch.LogTruncatedText, Converter={StaticResource StringToVisibility}}" />
+                            <TextBlock Text="{Binding Launch.NoSessionNoticeText}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       TextWrapping="Wrap"
+                                       HorizontalAlignment="Right"
+                                       Visibility="{Binding Launch.ShowNoSessionNotice, Converter={StaticResource BoolToVisibility}}" />
+                            <Button Content="{Binding Launch.ErrorLogButtonText}"
+                                    Command="{Binding Launch.OpenErrorLogCommand}"
+                                    Style="{StaticResource GhostButton}"
+                                    HorizontalAlignment="Right"
+                                    Margin="0,6,0,0"
+                                    Visibility="{Binding Launch.ShowErrorLogEntry, Converter={StaticResource BoolToVisibility}}" />
+                        </StackPanel>
+                    </Grid>
                 </Grid>
             </Border>
 
-            <!-- Runtime overview -->
-            <Grid Margin="0,0,0,22">
+            <!-- ==================== 2. 中央实例切换栏 ==================== -->
+            <TextBlock Text="{Binding SwitcherTitle}" Style="{StaticResource SectionText}" Margin="0,0,0,8" />
+
+            <!-- 折叠态（宽布局）：默认前四个实例 + 与实例项等高的展开按钮 -->
+            <Grid Margin="0,0,0,6">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding Switcher.IsExpanded}" Value="False" />
+                                    <Condition Binding="{Binding IsCompactLayout}" Value="False" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ItemsControl ItemsSource="{Binding Switcher.Collapsed}"
+                              Visibility="{Binding Switcher.HasInstances, Converter={StaticResource BoolToVisibility}}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="4" Rows="1" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Style="{StaticResource HomeSlotButton}"
+                                    Margin="0,0,8,0"
+                                    Height="92"
+                                    Command="{Binding DataContext.Switcher.SelectInstanceCommand, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                    CommandParameter="{Binding}"
+                                    IsEnabled="{Binding DataContext.Switcher.CanSwitch, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                    Content="{Binding}"
+                                    AutomationProperties.Name="{Binding Name}"
+                                    ContentTemplate="{StaticResource HomeSlotTemplate}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Border Grid.Column="0"
+                        Visibility="{Binding Switcher.HasInstances, Converter={StaticResource InverseBoolToVisibility}}"
+                        Style="{StaticResource Card}"
+                        Padding="16"
+                        Height="92">
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Switcher.EmptyHint}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" />
+                        <Button Content="{loc:Loc Key=home.switcher.manage}"
+                                Command="{Binding OpenInstancesCommand}"
+                                Style="{StaticResource GhostButton}"
+                                HorizontalAlignment="Left"
+                                Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <Button Grid.Column="2"
+                        Content="{Binding Switcher.ExpandText}"
+                        Command="{Binding Switcher.ToggleExpandedCommand}"
+                        Style="{StaticResource GhostButton}"
+                        Height="92"
+                        MinWidth="88" />
+            </Grid>
+
+            <!-- 折叠态（紧凑布局）：两列 + 下方展开按钮 -->
+            <StackPanel Margin="0,0,0,6">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding Switcher.IsExpanded}" Value="False" />
+                                    <Condition Binding="{Binding IsCompactLayout}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <ItemsControl ItemsSource="{Binding Switcher.Collapsed}"
+                              Visibility="{Binding Switcher.HasInstances, Converter={StaticResource BoolToVisibility}}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="2" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Style="{StaticResource HomeSlotButton}"
+                                    Margin="0,0,8,8"
+                                    Height="92"
+                                    Command="{Binding DataContext.Switcher.SelectInstanceCommand, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                    CommandParameter="{Binding}"
+                                    IsEnabled="{Binding DataContext.Switcher.CanSwitch, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                    Content="{Binding}"
+                                    AutomationProperties.Name="{Binding Name}"
+                                    ContentTemplate="{StaticResource HomeSlotTemplate}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Border Visibility="{Binding Switcher.HasInstances, Converter={StaticResource InverseBoolToVisibility}}"
+                        Style="{StaticResource Card}"
+                        Padding="16">
+                    <StackPanel>
+                        <TextBlock Text="{Binding Switcher.EmptyHint}"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" />
+                        <Button Content="{loc:Loc Key=home.switcher.manage}"
+                                Command="{Binding OpenInstancesCommand}"
+                                Style="{StaticResource GhostButton}"
+                                HorizontalAlignment="Left"
+                                Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <Button Content="{Binding Switcher.ExpandText}"
+                        Command="{Binding Switcher.ToggleExpandedCommand}"
+                        Style="{StaticResource GhostButton}"
+                        HorizontalAlignment="Left"
+                        Margin="0,2,0,0" />
+            </StackPanel>
+
+            <!-- 展开态（宽布局）：全部位置 + 右侧编辑/删除模式按钮 -->
+            <Grid Margin="0,0,0,6">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding Switcher.IsExpanded}" Value="True" />
+                                    <Condition Binding="{Binding IsCompactLayout}" Value="False" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel>
+                    <TextBlock Text="{Binding Switcher.EditHint}"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,6"
+                               Visibility="{Binding Switcher.IsEditMode, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Text="{Binding Switcher.DeleteHint}"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,6"
+                               Visibility="{Binding Switcher.IsDeleteMode, Converter={StaticResource BoolToVisibility}}" />
+                    <ItemsControl x:Name="InstanceLayoutWide"
+                                  ItemsSource="{Binding Switcher.Layout}"
+                                  AllowDrop="True"
+                                  PreviewMouseLeftButtonDown="OnLayoutPreviewMouseLeftButtonDown"
+                                  PreviewMouseMove="OnLayoutPreviewMouseMove"
+                                  PreviewKeyDown="OnLayoutPreviewKeyDown"
+                                  DragOver="OnLayoutDragOver"
+                                  Drop="OnLayoutDrop">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="4" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource HomeSlotButton}"
+                                        Margin="0,0,8,8"
+                                        Height="92"
+                                        Command="{Binding DataContext.Switcher.SelectInstanceCommand, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                        CommandParameter="{Binding}"
+                                        IsEnabled="{Binding DataContext.Switcher.CanSwitch, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                        Content="{Binding}"
+                                        AutomationProperties.Name="{Binding Name}"
+                                    ContentTemplate="{StaticResource HomeSlotTemplate}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2">
+                    <Button Content="{Binding Switcher.ExpandText}"
+                            Command="{Binding Switcher.ToggleExpandedCommand}"
+                            Style="{StaticResource GhostButton}"
+                            MinWidth="88"
+                            MinHeight="30" />
+                    <Button Content="{Binding Switcher.EditModeText}"
+                            Command="{Binding Switcher.ToggleEditModeCommand}"
+                            Style="{StaticResource GhostButton}"
+                            MinWidth="88"
+                            MinHeight="30"
+                            Margin="0,6,0,0" />
+                    <Button Content="{Binding Switcher.DeleteModeText}"
+                            Command="{Binding Switcher.ToggleDeleteModeCommand}"
+                            Style="{StaticResource GhostButton}"
+                            MinWidth="88"
+                            MinHeight="30"
+                            Margin="0,6,0,0" />
+                </StackPanel>
+            </Grid>
+
+            <!-- 展开态（紧凑布局）：两列 + 下方模式按钮 -->
+            <StackPanel Margin="0,0,0,6">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding Switcher.IsExpanded}" Value="True" />
+                                    <Condition Binding="{Binding IsCompactLayout}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <TextBlock Text="{Binding Switcher.EditHint}"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextMutedBrush}"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,6"
+                           Visibility="{Binding Switcher.IsEditMode, Converter={StaticResource BoolToVisibility}}" />
+                <TextBlock Text="{Binding Switcher.DeleteHint}"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextMutedBrush}"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,6"
+                           Visibility="{Binding Switcher.IsDeleteMode, Converter={StaticResource BoolToVisibility}}" />
+                <ItemsControl x:Name="InstanceLayoutCompact"
+                              ItemsSource="{Binding Switcher.Layout}"
+                              AllowDrop="True"
+                              PreviewMouseLeftButtonDown="OnLayoutPreviewMouseLeftButtonDown"
+                              PreviewMouseMove="OnLayoutPreviewMouseMove"
+                              PreviewKeyDown="OnLayoutPreviewKeyDown"
+                              DragOver="OnLayoutDragOver"
+                              Drop="OnLayoutDrop">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <UniformGrid Columns="2" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Style="{StaticResource HomeSlotButton}"
+                                    Margin="0,0,8,8"
+                                    Height="92"
+                                    Command="{Binding DataContext.Switcher.SelectInstanceCommand, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                    CommandParameter="{Binding}"
+                                    IsEnabled="{Binding DataContext.Switcher.CanSwitch, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                    Content="{Binding}"
+                                    AutomationProperties.Name="{Binding Name}"
+                                    ContentTemplate="{StaticResource HomeSlotTemplate}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                    <Button Content="{Binding Switcher.ExpandText}"
+                            Command="{Binding Switcher.ToggleExpandedCommand}"
+                            Style="{StaticResource GhostButton}" />
+                    <Button Content="{Binding Switcher.EditModeText}"
+                            Command="{Binding Switcher.ToggleEditModeCommand}"
+                            Style="{StaticResource GhostButton}"
+                            Margin="6,0,0,0" />
+                    <Button Content="{Binding Switcher.DeleteModeText}"
+                            Command="{Binding Switcher.ToggleDeleteModeCommand}"
+                            Style="{StaticResource GhostButton}"
+                            Margin="6,0,0,0" />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- ==================== 3. 下方三个等高区域 ==================== -->
+            <!-- 宽布局：账号 / 入口卡片 / Multiplayer 并排，等高 -->
+            <Grid Margin="0,10,0,0" MinHeight="200">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsCompactLayout}" Value="False">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.15*" />
+                    <ColumnDefinition Width="12" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="12" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Border Grid.Column="0" Style="{StaticResource Card}" Padding="18">
-                    <StackPanel>
-                        <TextBlock Text="运行环境" Style="{StaticResource SectionText}" />
-                        <TextBlock Text="{loc:Loc Key=instances.java.title}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="11" Style="{StaticResource EmphasisText}" Margin="0,12,0,0" />
-                        <TextBlock Text="{Binding Launcher.JavaStatus}"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   FontSize="12" TextWrapping="Wrap" Margin="0,5,0,0" />
-                    </StackPanel>
-                </Border>
-                <Border Grid.Column="2" Style="{StaticResource Card}" Padding="18">
-                    <StackPanel>
-                        <TextBlock Text="账户与实例位置" Style="{StaticResource SectionText}" />
-                        <TextBlock Text="{Binding Launcher.SelectedAccount.DisplayName}"
-                                   FontSize="12" Style="{StaticResource EmphasisText}"
-                                   Margin="0,12,0,0" TextWrapping="Wrap" />
-                        <TextBlock Text="{Binding Launcher.SelectedInstancePath}"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   FontSize="10" Margin="0,6,0,0"
-                                   TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding Launcher.SelectedInstancePath}" />
-                    </StackPanel>
-                </Border>
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AccountCardTemplate}" />
+                <ContentControl Grid.Column="2" Content="{Binding}" ContentTemplate="{StaticResource EntryCardsWideTemplate}" />
+                <ContentControl Grid.Column="4" Content="{Binding}" ContentTemplate="{StaticResource MultiplayerCardTemplate}" />
             </Grid>
 
-            <!-- Instance picker -->
-            <Grid Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel>
-                    <TextBlock Text="{loc:Loc Key=instances.listTitle}" Style="{StaticResource SectionText}" />
-                    <TextBlock Text="{Binding Launcher.Instances.Count, StringFormat={}{0} 个实例}"
-                               Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,4,0,0" />
-                </StackPanel>
-                <Button Grid.Column="1" Content="管理实例" Command="{Binding OpenInstancesCommand}"
-                        Style="{StaticResource GhostButton}" VerticalAlignment="Center" />
+            <!-- 紧凑布局：三个区域纵向排列并保持等高 -->
+            <Grid Margin="0,10,0,0" Height="596">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsCompactLayout}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="10" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="10" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AccountCardTemplate}" />
+                <ContentControl Grid.Row="2" Content="{Binding}" ContentTemplate="{StaticResource EntryCardsCompactTemplate}" />
+                <ContentControl Grid.Row="4" Content="{Binding}" ContentTemplate="{StaticResource MultiplayerCardTemplate}" />
             </Grid>
-            <ListBox ItemsSource="{Binding Launcher.Instances}"
-                     SelectedItem="{Binding Launcher.SelectedInstance, Mode=TwoWay}"
-                     ItemContainerStyle="{StaticResource InstanceItemStyle}"
-                     Background="Transparent" BorderThickness="0"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                     Margin="0,0,0,22">
-                <ListBox.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel Orientation="Horizontal" />
-                    </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <Border Style="{StaticResource Card}" Width="210" Padding="15"
-                                Margin="0,0,10,10">
-                            <StackPanel>
-                                <TextBlock Text="{Binding Name}" FontSize="13"
-                                           Style="{StaticResource EmphasisText}"
-                                           TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding VersionText}"
-                                           Foreground="{DynamicResource AccentBrush}"
-                                           FontSize="11" Margin="0,7,0,0" />
-                                <TextBlock Text="{Binding LastPlayedText}"
-                                           Foreground="{DynamicResource TextMutedBrush}"
-                                           FontSize="10" Margin="0,9,0,0" />
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-
-            <!-- Main destinations -->
-            <TextBlock Text="快速入口" Style="{StaticResource SectionText}" Margin="0,0,0,10" />
-            <WrapPanel Margin="0,0,0,20">
-                <Border Style="{StaticResource Card}" Width="210" Padding="16"
-                        Margin="0,0,10,10">
-                    <StackPanel>
-                        <TextBlock Text="发现内容" FontSize="14" Style="{StaticResource EmphasisText}" />
-                        <TextBlock Text="搜索 Mod、整合包、数据包、资源包与光影包。"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
-                                   TextWrapping="Wrap" Margin="0,8,0,14" />
-                        <Button Content="打开下载中心" Command="{Binding OpenDownloadsCommand}"
-                                Style="{StaticResource PrimaryButton}" />
-                    </StackPanel>
-                </Border>
-                <Border Style="{StaticResource Card}" Width="210" Padding="16"
-                        Margin="0,0,10,10">
-                    <StackPanel>
-                        <TextBlock Text="实例管理" FontSize="14" Style="{StaticResource EmphasisText}" />
-                        <TextBlock Text="创建实例、安装游戏与加载器，管理 Java 运行环境。"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
-                                   TextWrapping="Wrap" Margin="0,8,0,14" />
-                        <Button Content="管理实例" Command="{Binding OpenInstancesCommand}"
-                                Style="{StaticResource GhostButton}" />
-                    </StackPanel>
-                </Border>
-                <Border Style="{StaticResource Card}" Width="210" Padding="16"
-                        Margin="0,0,10,10">
-                    <StackPanel>
-                        <TextBlock Text="已安装内容" FontSize="14" Style="{StaticResource EmphasisText}" />
-                        <TextBlock Text="检查 Mod 状态、依赖与冲突，管理实例中的内容。"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
-                                   TextWrapping="Wrap" Margin="0,8,0,14" />
-                        <Button Content="打开实例工作区" Command="{Binding OpenWorkspaceCommand}"
-                                Style="{StaticResource GhostButton}" />
-                    </StackPanel>
-                </Border>
-            </WrapPanel>
-
-            <!-- Latest launch activity -->
-            <Border Style="{StaticResource Card}" Padding="18" Margin="0,0,0,18"
-                    Visibility="{Binding Launcher.HasSelection, Converter={StaticResource BoolToVisibility}}">
-                <StackPanel>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="最近一次启动" Style="{StaticResource SectionText}" />
-                        <TextBlock Grid.Column="1" Text="{Binding Launcher.Operation.LaunchStatus}"
-                                   Foreground="{DynamicResource TextMutedBrush}" FontSize="11"
-                                   VerticalAlignment="Center" TextWrapping="Wrap" />
-                    </Grid>
-                    <ItemsControl ItemsSource="{Binding Launcher.Operation.LaunchSteps}" Margin="0,10,0,0">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="0,4">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="64" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding StatusText}"
-                                               Foreground="{Binding Status, Converter={StaticResource LaunchStatusBrush}}"
-                                               FontSize="11" Style="{StaticResource EmphasisText}" />
-                                    <StackPanel Grid.Column="1" Margin="10,0,10,0">
-                                        <TextBlock Text="{Binding Title}" FontSize="12"
-                                                   Style="{StaticResource EmphasisText}" />
-                                        <TextBlock Text="{Binding Message}"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   FontSize="11" TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <TextBlock Grid.Column="2" Text="{Binding DurationText}"
-                                               Foreground="{DynamicResource TextMutedBrush}" FontSize="10" />
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </Border>
-
-            <!-- Recent activity -->
-            <Border Style="{StaticResource Card}" Padding="18" Margin="0,0,0,18"
-                    Visibility="{Binding HasRecent, Converter={StaticResource BoolToVisibility}}">
-                <StackPanel>
-                    <TextBlock Text="最近访问" Style="{StaticResource SectionText}" />
-                    <TextBlock Text="{Binding RecentSummary}"
-                               Foreground="{DynamicResource TextMutedBrush}" FontSize="11"
-                               Margin="0,5,0,10" TextWrapping="Wrap" />
-                    <ItemsControl ItemsSource="{Binding Recent}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="0,5">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="64" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding Kind}"
-                                               Foreground="{DynamicResource TextMutedBrush}" FontSize="11" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Name}"
-                                               FontSize="12" Style="{StaticResource EmphasisText}" />
-                                    <TextBlock Grid.Column="2" Text="{Binding Detail}"
-                                               Foreground="{DynamicResource TextMutedBrush}" FontSize="10" />
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>
+
+

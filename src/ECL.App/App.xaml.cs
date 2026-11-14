@@ -80,6 +80,8 @@ public partial class App : Application
 
             services.AddSingleton<IDialogService, DialogService>();
             services.AddSingleton<IShaderHintStore, ShaderHintStore>();
+            // 主页中央实例切换栏的排列是主页布局偏好，保存在启动器数据目录，不写实例记录。
+            services.AddSingleton<IHomeLayoutStore, HomeLayoutStore>();
             services.AddSingleton<IScreenshotImageLoader, ScreenshotImageLoader>();
             // 界面偏好（字体/字号档位/缩放/动效）在窗口显示前应用，避免首帧抖动。
             services.AddSingleton<IUserInterfacePreferences, UserInterfacePreferences>();
