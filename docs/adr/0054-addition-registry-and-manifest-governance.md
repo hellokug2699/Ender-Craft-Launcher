@@ -224,6 +224,7 @@ Registry 是供发现和管理扩展的入口，不得成为普通用户启动 E
 
 ## 修订记录
 
+- 2026-11-15（事实校正，维护者授权）：`docs/additions` 已完成 22 项首批登记（README + manifest.json 占位），但 JSON Schema、一致性校验器、运行时消费与发布者身份验证仍未实现；Implementation 保持 Not Started。
 - 2026-11-07：维护者确认批准本决策；Implementation 保持 Not Started，批准不代表实现完成。完成首批 Addition Registry 登记时，按已批准规则建立单项 README 与 Manifest。
 
 - 2026-11-04：首次提出统一 Addition Registry 与 Manifest 治理规范；明确以 `docs/additions/README.md` 作为唯一官方扩展目录，并提出既有扩展 ADR 的逐项迁移原则。Decision 保持 Proposed，等待评审。

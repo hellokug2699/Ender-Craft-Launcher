@@ -263,7 +263,7 @@ ECL 提供以下共享服务：
 - ADR 0054 负责 Addition Registry、Manifest 和登记治理。本 ADR 的 Runtime Policy 输入可以读取经验证的 Manifest 声明，但 Manifest 不得直接决定最终隔离等级。
 - ADR 0045、0047、0048 继续约束实例资源、事务、并发、快照和恢复。本 ADR 的 Resource Broker / Document Service 必须遵循这些领域规则。
 
-ADR 0053 和 ADR 0054 当前为 Proposed。本 ADR 与其建立职责关系，不代表将其提案内容提前认定为已实施事实；相关接口细节应在这些 ADR 完成评审后对齐。
+ADR 0053 和 ADR 0054 在本 ADR 撰写时（2026-11-04）为 Proposed；两者已于 2026-11-07 获批（Decision: Accepted），但 Implementation 仍为 Not Started。本 ADR 与其建立职责关系，不代表将其提案内容提前认定为已实施事实；相关接口细节应在这些 ADR 的最终契约与实施落地后对齐。
 
 ### 14. 分阶段实施，先建立宿主边界再开放复杂扩展
 
@@ -354,3 +354,4 @@ ADR 0053 和 ADR 0054 当前为 Proposed。本 ADR 与其建立职责关系，�
 - 2026-11-04：根据 ECL 混合工作区、Native UI SDK、Addition 独立进程、混合 Runtime 隔离、Event Bus 和受控资源访问讨论形成决策。Decision 为 Accepted，Implementation 为 Not Started；具体技术实现和平台隔离能力仍须在实施阶段验证。
 - 2026-11-05：根据 Accepted ADR 0056，右侧 Inspector 由统一 Right Auxiliary Rail 承载；本 ADR 对 Inspector 内容语义、工作区上下文隔离、生命周期与权限的规定不变。
 - 2026-11-05：明确启动恢复只在至少存在一个通过预检的可恢复工作区时询问；无有效恢复候选时直接进入默认目的地，避免每次启动无条件弹出恢复询问。
+- 2026-11-15（事实校正，维护者授权）：将“ADR 0053/0054 当前为 Proposed”更正为“撰写时 Proposed，2026-11-07 已 Accepted，Implementation 仍为 Not Started”；不改变本 ADR 的任何决策、职责边界或实施阶段。

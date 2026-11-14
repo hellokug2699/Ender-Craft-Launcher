@@ -852,7 +852,8 @@ Java 运行时目录当前架构没有独立迁移能力，因此只读显示并
 页面规格：`settings-additions.md` §3–§9；ADR 0032（Additions 生命周期与 Core API）、
 ADR 0045（实例边界）、ADR 0050（设计系统）。本步把「扩展管理」从导航不可用分类替换为专用页面：
 已安装扩展的真实状态、官方目录的可安装/更新条目、两阶段安装计划，以及**如实说明的权限与隔离缺口**。
-`docs/additions` 注册目录（ADR 0054）与逐项能力授权/运行时强制（ADR 0053）均未实现，
+`docs/additions` 目前只有文档登记（22 项 README + Manifest 占位），Manifest Schema、一致性校验器、
+运行时消费与发布者身份验证（ADR 0054）以及逐项能力授权/运行时强制（ADR 0053）均未实现，
 因此页面不显示权限清单、不提供「完全信任」开关、不宣称沙箱隔离。
 
 - **页面对象与接线**：`SettingsAdditionsPageViewModel`（实现 `ISettingsPage`）+
@@ -1275,8 +1276,8 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
   但 125/150/175% 系统 DPI 下的组合验证仍为 NOT RUN。
 - 扩展管理页（§2.17）当前版本不内置官方扩展目录：只有显式配置 `ECL_ADDITIONS_CATALOG`（HTTPS）并随包提供
   `additions-trust.json` 公钥时才会出现“可安装/可更新”条目；未配置或缺少公钥时页面显示真实原因，
-  不构造在线目录。目录与签名缓存沿用 ADR 0032 的既有实现；注册目录与 Manifest 治理（ADR 0054）
-  尚未实现。
+  不构造在线目录。目录与签名缓存沿用 ADR 0032 的既有实现；`docs/additions` 只有文档登记，
+  Manifest Schema、一致性校验器与运行时消费（ADR 0054）尚未实现。
 - 扩展的逐项能力授权、授权记录与运行时强制（ADR 0053, Implementation: Not Started）尚未实现：
   页面不显示“声明能力/授予能力/撤销”，不提供「完全信任」开关，也不宣称扩展被沙箱隔离；扩展与
   ECL 同进程加载（`AssemblyLoadContext`），没有操作系统级隔离或资源限制。安装/更新目前只有
