@@ -99,6 +99,9 @@
             <DataTemplate DataType="{x:Type svm:SettingsNetworkPageViewModel}">
                 <views:SettingsNetworkPageView />
             </DataTemplate>
+            <DataTemplate DataType="{x:Type svm:SettingsStoragePageViewModel}">
+                <views:SettingsStoragePageView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type svm:SettingsOptionGroupViewModel}">
                 <views:SettingsOptionGroupView />
             </DataTemplate>

@@ -53,8 +53,24 @@ public sealed class SettingsPageTests
                 SettingsPageKeys.GameLaunch,
                 SettingsPageKeys.Downloads,
                 SettingsPageKeys.Network,
+                SettingsPageKeys.Storage,
             ],
             host.ViewModel.Navigation.Items.Where(item => item.IsAvailable).Select(item => item.Key));
+    }
+
+    [Fact]
+    public void StorageCategoryUsesTheDedicatedPathsPage()
+    {
+        using var host = new SettingsHost();
+
+        var item = host.ViewModel.Navigation.Find(SettingsPageKeys.Storage)!;
+        Assert.True(item.IsAvailable);
+        var page = Assert.IsType<SettingsStoragePageViewModel>(item.Page);
+
+        // 路径不是元数据默认值：本页不提供“恢复本分类默认值”，也不会移动文件。
+        Assert.False(page.CanResetDefaults);
+        Assert.Same(page, host.ViewModel.StoragePage);
+        Assert.False(page.CanOpenStorage);
     }
 
     [Fact]
@@ -62,7 +78,7 @@ public sealed class SettingsPageTests
     {
         using var host = new SettingsHost();
 
-        foreach (var key in new[] { SettingsPageKeys.Storage, SettingsPageKeys.Additions })
+        foreach (var key in new[] { SettingsPageKeys.Additions })
         {
             var item = host.ViewModel.Navigation.Find(key)!;
             Assert.False(item.IsAvailable);
@@ -451,7 +467,10 @@ public sealed class SettingsPageTests
                 JavaPage,
                 new Ecl.Minecraft.Launch.MemoryAllocationService(
                     Settings,
-                    new FakeSystemMemoryProbe(totalMegabytes: 32 * 1024, availableMegabytes: 16 * 1024)));
+                    new FakeSystemMemoryProbe(totalMegabytes: 32 * 1024, availableMegabytes: 16 * 1024)),
+                paths: paths,
+                workspace: _provider.GetRequiredService<Ecl.Core.Storage.IWorkspaceService>(),
+                migration: _provider.GetRequiredService<Ecl.Core.Storage.IWorkspaceMigrationService>());
         }
 
         public ISettingsService Settings { get; }

@@ -3,10 +3,13 @@
 using Ecl.App.Services;
 using Ecl.Configuration.Network;
 using Ecl.Configuration.Settings;
+using Ecl.Core;
 using Ecl.Core.Localization;
+using Ecl.Core.Storage;
 using Ecl.Deployment;
 using Ecl.Download;
 using Ecl.Minecraft.Launch;
+using Ecl.Operations;
 
 namespace Ecl.App.ViewModels.Settings;
 
@@ -92,7 +95,11 @@ public static class SettingsPageCatalog
         SettingsJavaPageViewModel javaPage,
         IMemoryAllocationService memoryAllocation,
         IProxyCredentialStore? proxyCredentials = null,
-        IProxyConnectionTester? proxyTester = null)
+        IProxyConnectionTester? proxyTester = null,
+        IAppPaths? paths = null,
+        IWorkspaceService? workspace = null,
+        IWorkspaceMigrationService? migration = null,
+        IOperationStore? operations = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(localizer);
@@ -114,6 +121,20 @@ public static class SettingsPageCatalog
             [SettingsPageKeys.Network] = new SettingsNetworkPageViewModel(
                 settings, localizer, dialogs, proxyCredentials, proxyTester),
         };
+
+        if (paths is not null && workspace is not null && migration is not null)
+        {
+            // 存储与路径页：路径总览 + 工作区迁移的正式流程（预览/确认/进度/恢复）；
+            // 没有工作区领域服务时不构造半成品页面，导航项保持准确的不可用状态。
+            pages[SettingsPageKeys.Storage] = new SettingsStoragePageViewModel(
+                paths,
+                workspace,
+                migration,
+                dialogs,
+                localizer,
+                operations);
+        }
+
         foreach (var spec in Specs)
         {
             pages[spec.Key] = CreatePage(spec, settings, localizer, dialogs, codeSigning);
@@ -127,7 +148,7 @@ public static class SettingsPageCatalog
             Item(SettingsPageKeys.GameLaunch, "settings.nav.game"),
             Item(SettingsPageKeys.Downloads, "settings.nav.downloads"),
             Item(SettingsPageKeys.Network, "settings.nav.network"),
-            Item(SettingsPageKeys.Storage, "settings.nav.storage", "settings.nav.unavailable.storage"),
+            Item(SettingsPageKeys.Storage, "settings.nav.storage"),
             Item(SettingsPageKeys.Additions, "settings.nav.additions", "settings.nav.unavailable.additions"),
         };
 

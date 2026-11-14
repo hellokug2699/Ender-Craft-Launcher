@@ -35,7 +35,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         SettingsJavaPageViewModel javaPage,
         IMemoryAllocationService? memoryAllocation = null,
         Ecl.Configuration.Network.IProxyCredentialStore? proxyCredentials = null,
-        Ecl.Download.IProxyConnectionTester? proxyTester = null)
+        Ecl.Download.IProxyConnectionTester? proxyTester = null,
+        Ecl.Core.IAppPaths? paths = null,
+        Ecl.Core.Storage.IWorkspaceService? workspace = null,
+        Ecl.Core.Storage.IWorkspaceMigrationService? migration = null,
+        Ecl.Operations.IOperationStore? operations = null)
     {
         _localizer = localizer;
         Navigation = SettingsPageCatalog.CreateNavigation(
@@ -46,12 +50,20 @@ public sealed partial class SettingsViewModel : ObservableObject
             javaPage,
             memoryAllocation ?? new MemoryAllocationService(settings, new SystemMemoryProbe()),
             proxyCredentials,
-            proxyTester);
+            proxyTester,
+            paths,
+            workspace,
+            migration,
+            operations);
         Navigation.PropertyChanged += OnNavigationPropertyChanged;
     }
 
     /// <summary>8 个固定分类的纵向二级导航；不可用分类保留说明且不可选中。</summary>
     public SettingsNavigationViewModel Navigation { get; }
+
+    /// <summary>存储与路径页；Shell 用它接入「管理存储空间」入口（页面不实现清理）。</summary>
+    public SettingsStoragePageViewModel? StoragePage =>
+        Navigation.Find(SettingsPageKeys.Storage)?.Page as SettingsStoragePageViewModel;
 
     public ObservableCollection<SettingsSearchResultViewModel> SearchResults { get; } = [];
 

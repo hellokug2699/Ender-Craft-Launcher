@@ -17,6 +17,7 @@ using Ecl.App.Workspace;
 using Ecl.App.Workspace.ViewModels;
 using Ecl.Core;
 using Ecl.Core.Localization;
+using Ecl.Core.Storage;
 using Ecl.Core.Workspace;
 using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.Storage;
@@ -32,6 +33,8 @@ namespace Ecl.App.Shell;
 public sealed partial class ShellViewModel : ObservableObject, IDisposable
 {
     private readonly IWorkspaceHost _workspaces;
+    private readonly IAppPaths _paths;
+    private readonly IWorkspaceService _workspaceService;
     private readonly IDialogEngine _dialogs;
     private readonly ILocalizer _localizer;
     private readonly ILogger<ShellViewModel> _logger;
@@ -76,6 +79,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         DialogLayerViewModel dialogLayer,
         IMemoryPressureMonitor memoryPressure,
         IWorkspaceHost workspaces,
+        IWorkspaceService workspaceService,
         IDialogEngine dialogs,
         IAppPaths paths,
         ILocalizer localizer,
@@ -99,6 +103,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _localizer = localizer;
         _logger = logger;
         _workspaces = workspaces;
+        _workspaceService = workspaceService;
+        _paths = paths;
         _dialogs = dialogs;
 
         Inspector = inspector;
@@ -141,6 +147,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _exportFactory.OpenFolder = OpenExportFolder;
         instances.NavigateToDetails = instanceId => OpenInstanceWorkspace(instanceId);
         instances.NavigateBackFromDetails = NavigateToInstances;
+        if (_settings.StoragePage is { } storageSettingsPage)
+        {
+            // 设置 → 存储与路径的「管理存储空间」跳转到既有存储中心；
+            // 设置页不重复实现清理（settings-storage-paths.md §8）。
+            storageSettingsPage.OpenStorage = OpenStorageCenter;
+        }
 
         VersionText = $"ECL {BuildInfo.Version}";
         BuildTimeText = string.IsNullOrWhiteSpace(BuildInfo.BuildTime)
@@ -163,6 +175,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _selectedNavigationItem = NavigationItems.First(item =>
             string.Equals(item.Key, startPage, StringComparison.Ordinal));
         _workspaceChanges = workspaces.Subscribe(OnWorkspaceChanged);
+        _workspaceService.Changed += OnWorkspaceServiceChanged;
         _instances.PropertyChanged += OnInstancesPropertyChanged;
         OpenDestination(_selectedNavigationItem);
     }
@@ -210,7 +223,12 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     public string DataDirectory { get; }
 
-    public string GameDirectory { get; }
+    /// <summary>
+    /// 当前主工作区路径。工作区迁移会在运行期改变 <see cref="IAppPaths.GameRoot"/>，
+    /// 页脚必须显示实际配置而不是启动时的快照（settings-storage-paths.md §7）。
+    /// </summary>
+    [ObservableProperty]
+    private string _gameDirectory = string.Empty;
 
     public async Task InitializeAsync()
     {
@@ -626,6 +644,16 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _ = ActivateStorageAsync(_storage);
     }
 
+    /// <summary>
+    /// 设置 → 存储与路径的「管理存储空间」：只进入存储中心，不指定实例。
+    /// 分类切换与存储扫描的职责仍留在存储中心（ADR 0022）。
+    /// </summary>
+    private void OpenStorageCenter()
+    {
+        ActivateDestination("storage");
+        _ = ActivateStorageAsync(_storage);
+    }
+
     private async Task ActivateStorageAsync(StorageViewModel storage)
     {
         try
@@ -779,8 +807,27 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _workspaceService.Changed -= OnWorkspaceServiceChanged;
         _instances.PropertyChanged -= OnInstancesPropertyChanged;
         _workspaceChanges.Dispose();
+    }
+
+    /// <summary>
+    /// 主工作区在运行期被迁移（存储与路径页）后刷新页脚路径；
+    /// 其它路径消费者直接读取 <see cref="IAppPaths"/>，不需要重建容器。
+    /// </summary>
+    /// <remarks>
+    /// <see cref="IWorkspaceService.Changed"/> 在 <see cref="WorkspaceService.InitializeAsync"/> 里
+    /// 先于 <see cref="IAppPaths.SetGameRoot"/> 触发，因此这里读取服务的当前主工作区，
+    /// 而不是当时的 <see cref="IAppPaths.GameRoot"/>，否则页脚会停在迁移前的位置。
+    /// </remarks>
+    private void OnWorkspaceServiceChanged(object? sender, EventArgs e)
+    {
+        var current = _workspaceService.Primary?.Path ?? _paths.GameRoot;
+        if (!string.Equals(GameDirectory, current, StringComparison.OrdinalIgnoreCase))
+        {
+            GameDirectory = current;
+        }
     }
 
     private void OnInstancesPropertyChanged(object? sender, PropertyChangedEventArgs e)
