@@ -38,6 +38,12 @@ public static class UpdateFeed
 /// </summary>
 public sealed class UpdateClient(HttpClient http, UpdateSignatureVerifier verifier)
 {
+    public static HttpClient CreateNoRedirectHttpClient(TimeSpan? timeout = null) =>
+        new(new HttpClientHandler { AllowAutoRedirect = false })
+        {
+            Timeout = timeout ?? TimeSpan.FromSeconds(30),
+        };
+
     private const int MaxManifestBytes = 1024 * 1024;
     private const int MaxSignatureBytes = 16 * 1024;
 
@@ -124,7 +130,8 @@ public sealed class UpdateClient(HttpClient http, UpdateSignatureVerifier verifi
             using var response = await http
                 .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
                 .ConfigureAwait(false);
-            if (response.RequestMessage?.RequestUri is { } finalUri && finalUri != packageUri)
+            if ((int)response.StatusCode is >= 300 and < 400 ||
+                response.RequestMessage?.RequestUri is { } finalUri && finalUri != packageUri)
             {
                 return Result.Fail("update.package_redirect_rejected", "更新包下载发生未授权重定向，已拒绝。");
             }
@@ -210,7 +217,8 @@ public sealed class UpdateClient(HttpClient http, UpdateSignatureVerifier verifi
         using var response = await http
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
             .ConfigureAwait(false);
-        if (response.RequestMessage?.RequestUri is { } finalUri && finalUri != uri)
+        if ((int)response.StatusCode is >= 300 and < 400 ||
+            response.RequestMessage?.RequestUri is { } finalUri && finalUri != uri)
         {
             return Result<byte[]>.Fail("update.feed_redirect_rejected", "更新源发生未授权重定向，已拒绝。");
         }
