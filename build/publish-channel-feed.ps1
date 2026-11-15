@@ -493,6 +493,9 @@ foreach ($candidate in @("main", "dev", "nightly")) {
         $url = "https://updates.endercraftlauncher.top/$candidate/$file"
         $response = Invoke-WebRequest -Uri $url -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 0
         if ($response.StatusCode -ne 200) { throw "Feed smoke test failed: $url" }
+        if ([string]$response.Headers["Cache-Control"] -notmatch "no-store") {
+            throw "Feed metadata is cacheable; expected Cache-Control: no-store on $url."
+        }
     }
 
     $verifyDirectory = Join-Path $workRoot "deployed-$candidate"
