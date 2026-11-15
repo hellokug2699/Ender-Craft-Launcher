@@ -305,11 +305,13 @@ jobs:
           pwsh -NoProfile -File build/publish-channel-feed.ps1 -Channel $env:ECL_CHANNEL -Version $env:ECL_VERSION -ReleaseDirectory "artifacts/release/$env:ECL_VERSION" -SigningKeyPath $env:ECL_UPDATE_SIGNING_KEY -KeyId "ecl-release-2026-11" -TrustStorePath "build/update-trust.json"
           if ($LASTEXITCODE -ne 0) { throw "Channel Feed publishing failed." }
 
-      - name: Mark stable Release Feed status as published
-        if: steps.freshness.outputs.publish == 'true' && github.ref_type == 'tag'
+      - name: Mark channel Feed status as published
+        if: steps.freshness.outputs.publish == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          ECL_REF_TYPE: ${{ github.ref_type }}
+          ECL_CHANNEL: ${{ env.ECL_CHANNEL }}
         run: |
           $notes = "$env:RUNNER_TEMP/release-notes.md"
           $content = Get-Content $notes -Raw
@@ -317,10 +319,12 @@ jobs:
           if (-not $content.Contains($pending)) {
             throw "Stable Release notes do not contain the pending Feed status marker."
           }
-          $content = $content.Replace($pending, "自动更新 Feed 状态：已发布；main 频道已指向此版本。")
+          $content = $content.Replace($pending, "自动更新 Feed 状态：已发布；$env:ECL_CHANNEL 频道已指向此版本。")
           [System.IO.File]::WriteAllText($notes, $content, [System.Text.UTF8Encoding]::new($false))
-          gh release edit "v$env:ECL_VERSION" --notes-file $notes
-          if ($LASTEXITCODE -ne 0) { throw "Unable to mark stable Release Feed publication as complete." }
+          if ($env:ECL_REF_TYPE -eq "tag") {
+            gh release edit "v$env:ECL_VERSION" --notes-file $notes
+            if ($LASTEXITCODE -ne 0) { throw "Unable to mark stable Release Feed publication as complete." }
+          }
 
       - name: Normalize historical Releases to Installer and Bootstrapper EXEs
         if: steps.freshness.outputs.publish == 'true'
