@@ -1,7 +1,7 @@
 # ADR 0072: Separation of Human-Facing Releases and Channel Update Feeds
 
 - Decision: Accepted
-- Implementation: Not Started
+- Implementation: In Progress
 - Date: 2026-11-15
 - Scope: ECL Windows x64 / ARM64 官方 Release 页面、频道更新 Feed 与自动更新发布链路
 - Related: [ADR 0013: Branch-Based Versioning and Release Channels](0013-branch-based-versioning-and-release-channels.md)、[ADR 0051: Unified Installation, Update and Recovery Architecture](0051-unified-installation-update-and-recovery-architecture.md)、[ADR 0071: Self-Contained Installer Executable and Embedded Deployment Media](0071-self-contained-installer-and-embedded-deployment-media.md)
@@ -74,7 +74,7 @@ packages/
 - `packages` 分支是仅追加的发布对象存储，不承载源代码、Manifest 或签名文件。Package 按 `channel/platform/architecture/version` 分目录，文件名包含 SHA-256；Manifest 中的 URL 必须固定到包含该 Package 的 Git commit SHA，而不是可移动的 `packages` 分支名，以确保 URL 不可变。
 - `main`、`dev`、`nightly` 三个频道使用完全独立的 Package 命名空间和 Manifest 指针。main 仅由正式版本 Tag 推进，dev 仅由 `dev` 分支的受认可发布触发，nightly 仅由 `nightly` 分支的成功构建推进。任何频道都不得引用其他频道目录中的 Package。
 - 已经被任一已发布 Manifest 引用的 Package 永久保留，不得覆盖或删除；失败构建及尚未被任何已发布 Manifest 引用的临时 Package 不提交到 `packages` 分支。回滚只回退频道 Manifest/Signature，不删除 Package。
-- `packages` 分支写入必须采用 append-only 方式，禁止 force-push、历史重写和对已存在路径的覆盖。由于三个频道共享同一分支，所有写入必须具备并发冲突重试与 stale-build 防护；一次发布不得丢失其他频道已经提交的文件或指针。
+- `packages` 分支写入必须采用 append-only 方式，禁止 force-push、历史重写和对已存在路径的覆盖。由于三个频道共享同一分支，写入采用 Git tree/blob plumbing，仅获取必要的对象，避免每次构建检出全部历史 Package；写入具备并发冲突重试与 stale-build 防护。Cloudflare Pages Production 部署由独立 `feed-lock` 分支上的 compare-and-swap 租约锁串行化，避免不同频道的完整站点部署互相覆盖。一次发布不得丢失其他频道已经提交的文件或指针。
 - 频道 Manifest 与其 detached signature 必须作为同一逻辑版本原子切换。Pages 的每次部署是完整静态站点版本；发布流水线必须将所有频道元数据作为一个完整目录一次性部署到 Production，依赖 Pages 部署版本切换保证客户端只看到旧部署或新部署，不得分别上传/覆盖两个文件。不得把 Preview Deployment 当作生产 Feed。
 - 新版本发布顺序为：构建并签名 Package/Manifest → 将 Package 以新路径追加到 `packages` 分支并取得该次 commit SHA → 使用该 commit SHA 生成 Package 绝对 HTTPS URL 并重新签名 Manifest → 从 `raw.githubusercontent.com` 匿名下载并验证 Package 字节数与 SHA-256 → 生成包含三个频道当前 Manifest/Signature 的完整 Pages 静态目录 → 使用 Wrangler Direct Upload 部署 Production → 从正式自定义域名验证 Manifest、Signature、Package 下载与签名/哈希。不得在 Package commit 成功、可匿名下载且哈希验证通过之前推进对应频道 Feed。只有全部步骤成功后，构建才算 Feed 发布成功。
 - 回滚通过恢复上一份已签名的频道 Manifest/Signature 指针完成；不得删除仍被旧 Manifest 引用的 Package。
@@ -117,7 +117,7 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 - Pages 的 Production Deployment 提供整站版本回滚；回滚必须恢复一套完整、此前验证过的频道元数据，而不是手工替换单个文件。
 - Package 与 Feed 元数据由 GitHub 仓库与 Cloudflare Pages 分别提供，发布流水线必须先确认 `packages` 分支中的 commit-pinned Package 可匿名访问，再发布 Pages 元数据，避免出现已发布 Manifest 指向尚不可下载的 Package。
 - `packages` 分支会随历史 Package 永久保留而增长；必须监控仓库体积与 GitHub 单文件限制。不得把该分支作为常规开发分支检出或打包进客户端。若未来 Package 体积或累计仓库体积超出 GitHub 适用限制，应另行提出存储迁移 ADR，不得静默删除历史包。
-- Manifest 当前的 Package 地址字段必须能够表达 GitHub Release 的绝对 HTTPS 下载地址；若现有客户端只支持相对 Feed 路径，必须先扩展并测试 URL 解析与主机/协议约束，再启用 Pages + Releases 分离，不能仅修改托管配置。
+- Manifest 的 `package.file` 继续兼容旧版相对路径，同时允许严格限定的 GitHub Raw 绝对 HTTPS URL。客户端校验主机、仓库、commit SHA、频道、平台、架构、版本、文件名与 SHA-256；更新专用 HTTP 客户端关闭自动重定向，拒绝任何改变最终请求 URI 的响应。
 - 在 Feed 供应商与端点尚未完成验证前，旧 Release Feed 必须保持可用；因此本 ADR 的目标状态不能通过单纯删减 Release 附件提前宣称完成。
 
 ## 验收标准
@@ -141,3 +141,4 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 - 2026-11-15：首次决策。将人工 Release 与自动更新 Feed 分离；人工 Release 仅保留 Installer / Bootstrapper 两个 EXE，日常更新继续使用签名 ECL Package。
 - 2026-11-15：曾决定采用 Cloudflare Pages Direct Upload 托管频道 Manifest/Signature、GitHub Releases 托管不可变 Package；该 Package 托管选择随后由本记录的最新修订取代，保留此条用于追溯决策演进。
 - 2026-11-15：根据三频道独立更新与 Release 页面仅保留两个 EXE 的约束，改为由同一公有仓库的 `packages` 分支以 append-only 方式托管不可变 Package；Manifest 的 Package URL 固定到具体 Git commit SHA。三个频道独立命名空间、独立推进，已发布 Package 永久保留。
+- 2026-11-15：开始实施绝对 Package URL 解析、频道绑定、专用无重定向 HTTP 传输、官方 Feed 默认地址、GitHub Packages 分支写入、三频道迁移与 Cloudflare Pages Direct Upload。Production Feed 使用独立租约锁串行化；端到端生产部署与 GitHub CI 尚待验证。
