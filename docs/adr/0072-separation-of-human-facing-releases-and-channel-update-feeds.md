@@ -71,12 +71,12 @@ nightly-packages  # nightly 频道
 - Feed 必须支持匿名读取，客户端不得依赖 GitHub 登录态、访问令牌或其他用户凭据。
 - Feed 只负责传输，不授予内容信任。Manifest 签名、包哈希和逐文件校验仍是唯一允许进入部署的信任依据。
 - `update-trust.json` 是客户端/安装介质持有的信任材料，不从 Feed 下载后直接建立信任；Feed 不得替换或轮换客户端的信任根。
-- 机器专用 Package Release是仅追加的发布对象存储，不承载源代码、Manifest 或签名文件。Package 按频道分 Release，文件名包含平台架构、版本与 SHA-256，文件名包含 SHA-256；Manifest 中的 URL 必须固定到包含该 Package 的 Git commit SHA，而不是可移动的 机器专用 Package Release名，以确保 URL 不可变。
+- 三个机器专用 Package Release 是仅追加的发布对象存储，不承载源代码、Manifest 或签名文件。Package 按频道分 Release，文件名包含平台架构、版本与完整 SHA-256；Manifest URL 使用固定的频道专用 Release tag 和唯一 asset 文件名。发布流程禁止移动这些 tag、覆盖或删除已发布 asset。
 - `main`、`dev`、`nightly` 三个频道使用完全独立的 Package 命名空间和 Manifest 指针。main 仅由正式版本 Tag 推进，dev 仅由 `dev` 分支的受认可发布触发，nightly 仅由 `nightly` 分支的成功构建推进。任何频道都不得引用其他频道 Release中的 Package。
 - 已经被任一已发布 Manifest 引用的 Package 永久保留，不得覆盖或删除；失败构建及尚未被任何已发布 Manifest 引用的临时 Package 不提交到 机器专用 Package Release。回滚只回退频道 Manifest/Signature，不删除 Package。
 - 机器专用 Package Release写入必须采用 append-only 方式，禁止 force-push、历史重写和对已存在路径的覆盖。由于三个频道共享同一分支，写入采用 Git tree/blob plumbing，仅获取必要的对象，避免每次构建检出全部历史 Package；写入具备并发冲突重试与 stale-build 防护。Cloudflare Pages Production 部署由独立 `feed-lock` 分支上的 compare-and-swap 租约锁串行化，避免不同频道的完整站点部署互相覆盖。一次发布不得丢失其他频道已经提交的文件或指针。
 - 频道 Manifest 与其 detached signature 必须作为同一逻辑版本原子切换。Pages 的每次部署是完整静态站点版本；发布流水线必须将所有频道元数据作为一个完整目录一次性部署到 Production，依赖 Pages 部署版本切换保证客户端只看到旧部署或新部署，不得分别上传/覆盖两个文件。不得把 Preview Deployment 当作生产 Feed。
-- 新版本发布顺序为：构建并签名 Package/Manifest → 将 Package 以新路径追加到 机器专用 Package Release并取得该次 commit SHA → 使用该 commit SHA 生成 Package 绝对 HTTPS URL 并重新签名 Manifest → 从 `github.com` Release asset URL 匿名下载并验证 Package 字节数与 SHA-256 → 生成包含三个频道当前 Manifest/Signature 的完整 Pages 静态目录 → 使用 Wrangler Direct Upload 部署 Production → 从正式自定义域名验证 Manifest、Signature、Package 下载与签名/哈希。不得在 Package asset 上传成功、可匿名下载且哈希验证通过之前推进对应频道 Feed。只有全部步骤成功后，构建才算 Feed 发布成功。
+- 新版本发布顺序为：构建并签名 Package/Manifest → 将 Package 以唯一文件名追加到对应频道的机器专用 Release → 生成 GitHub Release asset 绝对 HTTPS URL 并重新签名 Manifest → 从匿名客户端路径下载 Package 并验证字节数与 SHA-256 → 生成包含三个频道当前 Manifest/Signature 的完整 Pages 静态目录 → 使用 Wrangler Direct Upload 部署 Production → 从正式自定义域名验证 Manifest、Signature、Package 下载与签名/哈希。不得在 Package asset 上传成功、匿名下载且哈希验证通过之前推进对应频道 Feed。只有全部步骤成功后，构建才算 Feed 发布成功。
 - 回滚通过恢复上一份已签名的频道 Manifest/Signature 指针完成；不得删除仍被旧 Manifest 引用的 Package。
 
 Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目名建议为 `ender-craft-launcher-feed`，正式地址为 `https://updates.endercraftlauncher.top/`。该子域名可以由现有 DNS 服务商托管：先在 Pages 项目的 Custom domains 中登记，再在域名 DNS 服务商添加指向 `ender-craft-launcher-feed.pages.dev` 的 CNAME；无需将整个根域名迁移到 Cloudflare。GitHub Actions 使用仅具备目标 Account 下 Cloudflare Pages Edit 权限的 API Token，通过 Wrangler 部署预先生成的静态目录。Token 与 Account ID 只存放于 GitHub Actions Secrets。Pages Free 的文件数、单文件大小和构建配额必须在部署前核对；ECL Feed 只放小体积元数据，Package 不得上传 Pages。GitHub Actions Artifact 仅用于短期构建追溯，不得作为客户端 Feed。
@@ -116,7 +116,7 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 - 频道 Feed 成为自动更新的关键基础设施；Feed 故障不得降低签名验证要求，也不得阻止用户使用 Installer 完整离线恢复。
 - Pages 的 Production Deployment 提供整站版本回滚；回滚必须恢复一套完整、此前验证过的频道元数据，而不是手工替换单个文件。Feed 对象通过 `_headers` 设置 `Cache-Control: no-store`，客户端请求同时要求重新验证缓存，并在两次独立读取跨越部署切换时最多重试一次签名文件与 Manifest 的整对读取。
 - Package 与 Feed 元数据由 GitHub 仓库与 Cloudflare Pages 分别提供，发布流水线必须先确认 机器专用 Package Release中的 commit-pinned Package 可匿名访问，再发布 Pages 元数据，避免出现已发布 Manifest 指向尚不可下载的 Package。
-- 机器专用 Package Release会随历史 Package 永久保留而增长；必须监控仓库体积与 GitHub 单文件限制。不得把该分支作为常规开发分支检出或打包进客户端。若未来 Package 体积或累计仓库体积超出 GitHub 适用限制，应另行提出存储迁移 ADR，不得静默删除历史包。
+- 机器专用 Release assets 与人工 Release 分离，但仍受 GitHub Release 单文件大小限制；发布脚本必须在上传前验证 Package 大小，并拒绝覆盖同名 asset。历史 Package 永久保留；若未来单文件大小或 GitHub 托管策略不再满足需求，应另行提出存储迁移 ADR，不得静默删除历史包。
 - Manifest 的 `package.file` 继续兼容旧版相对路径，同时允许严格限定的 GitHub Release Assets 绝对 HTTPS URL。客户端校验初始主机、仓库、频道专用 Release tag、平台、架构、版本、文件名与 SHA-256；下载时逐跳校验 HTTPS 重定向，只允许 GitHub Release asset 分发主机；更新专用 HTTP 客户端关闭自动重定向，拒绝任何改变最终请求 URI 的响应。
 - 在 Feed 供应商与端点尚未完成验证前，旧 Release Feed 必须保持可用；因此本 ADR 的目标状态不能通过单纯删减 Release 附件提前宣称完成。
 
@@ -125,7 +125,7 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 1. 切换后创建或更新的官方 Release 页面恰好包含两个可下载资产：对应架构的 Installer EXE 与 Bootstrapper EXE；不存在 ZIP、Manifest、Signature、trust store 或 checksum sidecar 附件。切换前仅有 ZIP Installer 的历史 Release 保留原样，不得通过重命名制造虚假的自包含 EXE。
 2. Release Notes 明确说明 Installer 是普通用户入口、Bootstrapper 仅用于必要的独立修复，并分别列出与最终 EXE 字节一致的 SHA-256。
 3. ECL 自动更新仍下载 Manifest 指定的完整 ECL Package，而不是 Installer 或 Bootstrapper。
-4. `main`、`dev`、`nightly` 的 Feed 均可通过 `https://updates.endercraftlauncher.top/<channel>/` 匿名 HTTPS 读取 Manifest 与 Signature；Manifest 指向 机器专用 Package Release中由 commit SHA 固定的不可变 Package。三个频道的 Package 路径严格隔离。
+4. `main`、`dev`、`nightly` 的 Feed 均可通过 `https://updates.endercraftlauncher.top/<channel>/` 匿名 HTTPS 读取 Manifest 与 Signature；Manifest 分别指向 `main-packages`、`dev-packages`、`nightly-packages` 中的唯一命名 Package asset。三个频道的 Package 存储严格隔离。
 5. Manifest 签名、包大小、SHA-256、逐文件哈希和频道/架构约束均通过客户端验证；篡改任一项必须 fail-closed。
 6. Pages 每次 Production 部署必须原子切换完整静态站点，并为频道元数据设置 `Cache-Control: no-store`。由于客户端读取 Manifest 与 Signature 是两个独立请求，若部署切换恰好发生在两次请求之间，验签必须拒绝混配并自动重新读取整对文件一次；不得把未通过验签的 Manifest 交给部署器。
 7. 新 Package 上传失败、签名失败或频道指针切换失败时，不得将频道推进到新版本；旧版本仍可下载和部署。
@@ -133,14 +133,15 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 9. Actions Artifact 过期或不可访问，不影响客户端正常更新。
 10. 旧 Release Feed 资产只能在新 Feed 端到端验证成功且确认没有已分发客户端继续依赖旧 Feed 后移除；若已有用户/已分发客户端，必须保留兼容过渡窗口或旧 Feed。当前 ECL 尚无用户或已分发客户端，因此首次迁移可在新 Feed 验证通过后清理当前滚动 Release 的旧 Feed 附件；ZIP-only 历史版本仍保留。
 11. Feed 发布失败与 GitHub Release 发布成功必须被分别报告；不得把两者合并为单一成功状态。
-12. 机器专用 Package Release写入只追加、不覆盖、不 force-push；并发发布不会丢失任一频道的 Package 或 Manifest 指针，过期构建不得回退较新频道版本。
-13. 任一已发布 Manifest 引用过的 Package 永久保留；失败构建不进入 机器专用 Package Release。
+12. 三个机器专用 Package Release 只追加资产，不覆盖、不删除、不移动 tag；同名 asset 已存在时必须下载并核对 SHA-256 与字节数，只有完全一致才允许复用。过期构建不得回退较新频道版本。
+13. 任一已发布 Manifest 引用过的 Package asset 永久保留；失败构建不得上传 Package asset 或推进频道 Feed。
 
 ## 修订记录
 
 - 2026-11-15：首次决策。将人工 Release 与自动更新 Feed 分离；人工 Release 仅保留 Installer / Bootstrapper 两个 EXE，日常更新继续使用签名 ECL Package。
 - 2026-11-15：曾决定采用 Cloudflare Pages Direct Upload 托管频道 Manifest/Signature、GitHub Releases 托管不可变 Package；该 Package 托管选择随后由本记录的最新修订取代，保留此条用于追溯决策演进。
-- 2026-11-15：根据三频道独立更新与 Release 页面仅保留两个 EXE 的约束，改为由同一公有仓库的 机器专用 Package Release以 append-only 方式托管不可变 Package；Manifest 的 Package URL 固定到频道专用 Release tag 与 SHA-256 唯一资产名。三个频道独立命名空间、独立推进，已发布 Package 永久保留。
-- 2026-11-15：开始实施绝对 Package URL 解析、频道绑定、专用无重定向 HTTP 传输、官方 Feed 默认地址、GitHub Packages 分支写入、三频道迁移与 Cloudflare Pages Direct Upload。Production Feed 使用独立租约锁串行化；端到端生产部署与 GitHub CI 尚待验证。
+- 2026-11-15：根据三频道独立更新与 Release 页面仅保留两个 EXE 的约束，曾改为由同一公有仓库的 `packages` 分支以 append-only 方式托管不可变 Package；Manifest 的 Package URL 固定到具体 Git commit SHA。三个频道独立命名空间、独立推进，已发布 Package 永久保留。
+- 2026-11-15：开始实施绝对 Package URL 解析、频道绑定、专用 HTTP 传输、官方 Feed 默认地址、Package 托管、三频道迁移与 Cloudflare Pages Direct Upload。Production Feed 使用独立租约锁串行化；端到端生产部署与 GitHub CI 尚待验证。
 - 2026-11-15：明确切换前仅含 ZIP Installer 的历史 Release 不做不安全的 EXE 改名，严格的双 EXE 规则适用于切换后的新建/更新 Release；历史记录只在同一 Release 已同时存在对应版本的 Installer 与 Bootstrapper EXE 时才执行资产规范化，禁止从 ZIP 解压生成或伪装自包含 EXE。
 - 2026-11-15：补充 Feed 元数据 `Cache-Control: no-store`，并在 Manifest/Signature 两次独立读取遇到部署切换导致验签失败时，客户端重新读取整对文件一次；持续验签失败仍 fail-closed。
+- 2026-11-15：因 Package ZIP 超过 Git 普通单文件限制，且 Git LFS 免费额度不适合永久追加存储，改用三个机器专用 GitHub Releases（`main-packages`、`dev-packages`、`nightly-packages`）托管 Package。每个频道独立发布，asset 以版本与 SHA-256 唯一命名并只追加；Manifest 指向对应频道 Release asset。客户端仅允许从官方 GitHub Release URL 开始，并逐跳校验 HTTPS 下载重定向，只允许 GitHub Release asset 分发主机。
