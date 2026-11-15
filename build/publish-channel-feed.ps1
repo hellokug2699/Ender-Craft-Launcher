@@ -187,11 +187,15 @@ foreach ($candidate in @("main", "dev", "nightly")) {
         Invoke-WebRequest -Uri "https://updates.endercraftlauncher.top/$candidate/update-manifest.sig" -OutFile $existingSignature -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 0
         Test-ManifestSignature $existingManifest $existingSignature
         $existing = Get-Content $existingManifest -Raw | ConvertFrom-Json
+        $existingPackageUri = [Uri]$existing.package.file
+        $expectedPackagePattern = "^/$([regex]::Escape($Repository))/[0-9a-f]{40}/packages/$candidate/windows/$([regex]::Escape([string]$existing.architecture))/$([regex]::Escape([string]$existing.version))/ECL-$([regex]::Escape([string]$existing.version))-win-$([regex]::Escape([string]$existing.architecture))-$([regex]::Escape([string]$existing.package.sha256))\.zip$"
         if ($existing.channel -ne $candidate -or
-            ([Uri]$existing.package.file).Scheme -ne "https" -or
-            ([Uri]$existing.package.file).Host -ne "raw.githubusercontent.com") {
+            $existingPackageUri.Scheme -ne "https" -or
+            $existingPackageUri.Host -ne "raw.githubusercontent.com" -or
+            $existingPackageUri.AbsolutePath -notmatch $expectedPackagePattern) {
             throw "Existing Production Feed is not a valid migrated channel."
         }
+        Confirm-PackageUrl $existingPackageUri.AbsoluteUri ([long]$existing.package.size) ([string]$existing.package.sha256)
         $isLive = $true
     }
     catch {
@@ -269,6 +273,17 @@ foreach ($candidate in @("main", "dev", "nightly")) {
         $response = Invoke-WebRequest -Uri $url -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 0
         if ($response.StatusCode -ne 200) { throw "Feed smoke test failed: $url" }
     }
+
+    $verifyDirectory = Join-Path $workRoot "deployed-$candidate"
+    New-Item -ItemType Directory -Force -Path $verifyDirectory | Out-Null
+    $verifyManifest = Join-Path $verifyDirectory "update-manifest.json"
+    $verifySignature = Join-Path $verifyDirectory "update-manifest.sig"
+    Invoke-WebRequest -Uri "https://updates.endercraftlauncher.top/$candidate/update-manifest.json" -OutFile $verifyManifest -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 0
+    Invoke-WebRequest -Uri "https://updates.endercraftlauncher.top/$candidate/update-manifest.sig" -OutFile $verifySignature -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 0
+    Test-ManifestSignature $verifyManifest $verifySignature
+    $deployed = Get-Content $verifyManifest -Raw | ConvertFrom-Json
+    if ($deployed.channel -ne $candidate) { throw "Deployed channel mismatch: $candidate." }
+    Confirm-PackageUrl ([string]$deployed.package.file) ([long]$deployed.package.size) ([string]$deployed.package.sha256)
 }
 
 Write-Host "All three signed channel feeds are deployed. Current package URL: $currentUrl"
