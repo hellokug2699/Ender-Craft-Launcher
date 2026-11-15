@@ -1,7 +1,7 @@
 # ADR 0071: Self-Contained Installer Executable and Embedded Deployment Media
 
 - Decision: Accepted
-- Implementation: In Progress
+- Implementation: Implemented
 - Date: 2026-11-15
 - Scope: Windows x64 / ARM64 首次安装介质、Installer 与 Bootstrapper 的单文件构建及人工下载入口
 - Related: [ADR 0013: Branch-Based Versioning and Release Channels](0013-branch-based-versioning-and-release-channels.md)、[ADR 0025: Installer First-Launch Integrity Confirmation](0025-installer-first-launch-integrity-confirmation.md)、[ADR 0029: Installer, Bootstrapper and Uninstaller Lifecycle Boundaries](0029-installer-bootstrapper-uninstaller-lifecycle.md)、[ADR 0051: Unified Installation, Update and Recovery Architecture](0051-unified-installation-update-and-recovery-architecture.md)、[ADR 0072: Separation of Human-Facing Releases and Channel Update Feeds](0072-separation-of-human-facing-releases-and-channel-update-feeds.md)
@@ -59,3 +59,4 @@ ADR 0051 已规定 Installer 负责初始化首次安装介质并部署 Bootstra
 
 - 2026-11-15：首次决策。统一 Installer 单文件分发、嵌入完整安装介质及 Bootstrapper 唯一自包含构建。
 - 2026-11-15：依据 [ADR 0072](0072-separation-of-human-facing-releases-and-channel-update-feeds.md) 修订人工分发约束：Release 仅保留两个 EXE，摘要写入 Release Notes，自动更新 Feed 与人工 Release 分离。
+- 2026-11-15：Installer、嵌入介质、自包含 Bootstrapper、发布产物约束及自动化端到端测试已完成；Implementation 更新为 `Implemented`。干净 Windows 10/11 实机检验由项目维护者在后续自行执行，不作为本次实现完成的阻塞条件；完成后可另行将状态更新为 `Verified`。
