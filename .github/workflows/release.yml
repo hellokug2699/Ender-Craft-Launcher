@@ -325,7 +325,7 @@ jobs:
           $content = Get-Content $notes -Raw
           $pending = "自动更新 Feed 状态：待发布；若该状态未更新，请稍后重试。"
           if (-not $content.Contains($pending)) {
-            throw "Stable Release notes do not contain the pending Feed status marker."
+            throw "Channel Release notes do not contain the pending Feed status marker."
           }
           $content = $content.Replace($pending, "自动更新 Feed 状态：已发布；$env:ECL_CHANNEL 频道已指向此版本。")
           [System.IO.File]::WriteAllText($notes, $content, [System.Text.UTF8Encoding]::new($false))
