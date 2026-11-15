@@ -82,6 +82,7 @@ jobs:
         id: resolve
         shell: pwsh
         env:
+          GH_TOKEN: ${{ github.token }}
           ECL_REF_NAME: ${{ github.ref_name }}
           ECL_REF_TYPE: ${{ github.ref_type }}
           ECL_RUN_NUMBER: ${{ github.run_number }}
@@ -95,6 +96,10 @@ jobs:
           }
 
           if ($env:ECL_REF_TYPE -eq "tag") {
+            $comparison = gh api "repos/$env:GITHUB_REPOSITORY/compare/main...$env:ECL_COMMIT_SHA" --jq '.status'
+            if ($LASTEXITCODE -ne 0 -or $comparison.Trim() -notin @("behind", "identical")) {
+              throw "Stable release tags must point to a commit reachable from main."
+            }
             $version = $env:ECL_REF_NAME -replace '^v', ''
             if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
               throw "Release tags must be stable SemVer tags such as v1.2.3."
