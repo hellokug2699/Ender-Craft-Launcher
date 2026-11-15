@@ -194,6 +194,7 @@ jobs:
           - ECL.Bootstrapper-$env:ECL_VERSION-win-x64.exe: $bootstrapperHash
 
           日常自动更新由 ECL 的签名频道 Feed 提供，不需要手动下载 Package。
+          自动更新 Feed 状态：待发布；若该状态未更新，请稍后重试。
           "@ | Set-Content -Path "$env:RUNNER_TEMP/release-notes.md" -Encoding utf8NoBOM
           Get-ChildItem $dir | Select-Object Name, Length
 
@@ -291,6 +292,23 @@ jobs:
         run: |
           pwsh -NoProfile -File build/publish-channel-feed.ps1 -Channel $env:ECL_CHANNEL -Version $env:ECL_VERSION -ReleaseDirectory "artifacts/release/$env:ECL_VERSION" -SigningKeyPath $env:ECL_UPDATE_SIGNING_KEY -KeyId "ecl-release-2026-11" -TrustStorePath "build/update-trust.json"
           if ($LASTEXITCODE -ne 0) { throw "Channel Feed publishing failed." }
+
+      - name: Mark stable Release Feed status as published
+        if: steps.freshness.outputs.publish == 'true' && github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = "$env:RUNNER_TEMP/release-notes.md"
+          $content = Get-Content $notes -Raw
+          $pending = "自动更新 Feed 状态：待发布；若该状态未更新，请稍后重试。"
+          if (-not $content.Contains($pending)) {
+            throw "Stable Release notes do not contain the pending Feed status marker."
+          }
+          $content = $content.Replace($pending, "自动更新 Feed 状态：已发布；main 频道已指向此版本。")
+          [System.IO.File]::WriteAllText($notes, $content, [System.Text.UTF8Encoding]::new($false))
+          gh release edit "v$env:ECL_VERSION" --notes-file $notes
+          if ($LASTEXITCODE -ne 0) { throw "Unable to mark stable Release Feed publication as complete." }
 
       - name: Normalize historical Releases to Installer and Bootstrapper EXEs
         if: steps.freshness.outputs.publish == 'true'
