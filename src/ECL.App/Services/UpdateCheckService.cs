@@ -61,7 +61,7 @@ public sealed record UpdateCheckEnvironment(string BaseDirectory, string? Feed, 
 {
     public const string FeedEnvironmentVariable = "ECL_UPDATE_FEED";
 
-    public const string OfficialFeed = "https://updates.endercraftlauncher.top/";
+    public const string OfficialFeed = UpdateFeed.OfficialBaseAddress;
 
     public static UpdateCheckEnvironment FromProcess() =>
         new(
