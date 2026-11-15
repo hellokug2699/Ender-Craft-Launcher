@@ -175,7 +175,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0026 实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md) | Accepted | Implemented | 实例工作台 |
 | [0027 原生 C# 世界分析与编辑引擎](0027-native-world-engine.md) | Accepted | In Progress | 世界引擎、NBT 编辑器、语义本地化与编辑校验 |
 | [0028 世界种子与生成规则分析功能提议](0028-world-generation-analysis.md) | Accepted | Not Started | 世界生成分析 Addition |
-| [0029 Installer、Bootstrapper 与 Uninstaller 的生命周期边界](0029-installer-bootstrapper-uninstaller-lifecycle.md) | Accepted | Implemented | 安装与卸载 |
+| [0029 Installer、Bootstrapper 与 Uninstaller 的生命周期边界](0029-installer-bootstrapper-uninstaller-lifecycle.md) | Accepted | Implemented | 安装、离线 Bootstrapper 引导、清洁重装与卸载边界 |
 | [0030 世界诊断与区块异常定位联动](0030-world-diagnostics-and-chunk-fault-workflow.md) | Accepted | In Progress | 世界诊断 |
 | [0031 多维度世界架构与存储解析](0031-multi-dimension-world-architecture.md) | Accepted | Implemented | 多维度架构 |
 | [0032 原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md) | Accepted | In Progress | 功能扩展与数据分发 |
@@ -197,7 +197,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0048 实例快照与恢复架构](0048-instance-snapshots-and-recovery.md) | Accepted | Implemented | 用户快照、事务恢复材料、差异比较与恢复 |
 | [0049：原生 GitHub 项目中心与仓库资源边界](0049-native-github-integration-and-repository-bounded-navigation.md) | Accepted | In Progress | GitHub 项目中心 Addition、ECL 原生渲染、GitHub App 最小权限与仓库内资源解析 |
 | [0050 ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) | Accepted | In Progress | UI 设计系统、Application Shell、全局导航、Right Auxiliary Rail 全局视觉、排版与 DPI 适配（UI 领域最高优先级；Rail 具体职责由 0056 细化） |
-| [0051 统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md) | Accepted | In Progress | Installer / Bootstrapper 独立 UI、首次安装、更新源容灾、发布验证、部署、Repair Mode 与离线恢复 |
+| [0051 统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md) | Accepted | In Progress | Installer 离线释放 Bootstrapper Bootstrap Payload、受控清洁重装、更新源容灾、发布验证、部署、Repair Mode 与离线恢复 |
 | [0052 Unified Dialog Engine and Incremental Migration](0052-unified-dialog-engine-and-incremental-migration.md) | Accepted | In Progress | 统一弹窗引擎、应用内背景暗化、模态交互与旧弹窗渐进迁移 |
 | [0053 Additions 能力权限模型与用户授权流程](0053-addition-capability-permission-and-user-consent.md) | Accepted | Not Started | 扩展权限声明、安装前知情授权、宿主能力执行控制与撤销 |
 | [0054 Addition 注册表、清单与生命周期治理](0054-addition-registry-and-manifest-governance.md) | Accepted | Not Started | 官方 Addition 统一目录、Manifest、登记审核、生命周期与既有扩展 ADR 迁移 |
