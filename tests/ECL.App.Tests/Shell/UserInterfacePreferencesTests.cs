@@ -178,13 +178,16 @@ public sealed class UserInterfacePreferencesTests
 
                 try
                 {
+                    var workArea = SystemParameters.WorkArea;
                     preferences.Attach(window);
 
-                    // 默认 100%：内容不缩放，是恒等变换，窗口尺寸不变。
+                    // 默认 100%：内容不缩放，是恒等变换；窗口与最小尺寸受屏幕工作区约束。
                     Assert.NotNull(content.LayoutTransform);
                     Assert.True(content.LayoutTransform.Value.IsIdentity);
-                    Assert.Equal(1080, window.Width);
-                    Assert.Equal(1080, window.MinWidth);
+                    Assert.Equal(Math.Min(1080, workArea.Width), window.Width);
+                    Assert.Equal(Math.Min(720, workArea.Height), window.Height);
+                    Assert.Equal(Math.Min(1080, workArea.Width), window.MinWidth);
+                    Assert.Equal(Math.Min(720, workArea.Height), window.MinHeight);
 
                     environment.Settings.TrySetRaw("launcher.uiScale", "125", null, out var scaleError);
                     Assert.True(scaleError is null, scaleError);
@@ -192,7 +195,6 @@ public sealed class UserInterfacePreferencesTests
                     Assert.Equal(1.25, ((ScaleTransform)content.LayoutTransform).ScaleY);
 
                     // 布局可用逻辑尺寸保持 1080×720：窗口与最小尺寸也 ×1.25（受屏幕可用范围限制）。
-                    var workArea = SystemParameters.WorkArea;
                     Assert.Equal(Math.Min(1350, workArea.Width), window.Width);
                     Assert.Equal(Math.Min(900, workArea.Height), window.Height);
                     Assert.Equal(Math.Min(1350, workArea.Width), window.MinWidth);
