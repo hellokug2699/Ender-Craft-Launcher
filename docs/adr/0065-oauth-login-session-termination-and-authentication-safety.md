@@ -1,6 +1,6 @@
 # ADR 0065: OAuth Login Session Termination and Authentication Safety
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-08
 - Scope: ECL Microsoft 正版账户 OAuth 登录会话的异常检测、立即终止、回调隔离、令牌交换中止与用户安全提示
@@ -195,3 +195,6 @@ ECL 必须固定自己使用的 OAuth Client ID，并对自己构造的授权请
 ## 修订记录
 
 - 2026-11-08：重写 ADR 方向。将核心从应用名称核对和授权页面提示调整为 OAuth 登录会话终止；明确一次性会话、终态优先、回调与令牌兑换竞态、迟到结果隔离、本地终止与 Microsoft 服务端撤销的边界。保留现有 PKCE + localhost loopback 架构，不要求仅为地址形式更换回环地址。Decision 保持 Proposed，Implementation 保持 Not Started。
+
+
+- 2026-11-16：经维护者明确批准，Decision 由 Proposed 更新为 Accepted。该批准确认架构决策生效，不代表 Implementation 已完成；实施状态与既有验收证据保持不变。
