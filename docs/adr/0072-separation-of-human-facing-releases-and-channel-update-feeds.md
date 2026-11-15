@@ -49,7 +49,7 @@ Bootstrapper 自身的更新属于独立生命周期，不得与 ECL Package 更
 官方频道 Feed 使用 **Cloudflare Pages（Direct Upload）** 提供静态公开 HTTPS 元数据；完整 ECL Package 继续由 GitHub Releases 托管。Pages 不运行 Pages Functions、Workers 或其他动态 API，也不需要 R2。其逻辑目录结构保持稳定：
 
 ```text
-https://updates.endercraftlauncher.top/
+https://ender-craft-launcher-feed.pages.dev/
 ├─ main/
 │  ├─ update-manifest.json
 │  └─ update-manifest.sig
@@ -72,7 +72,7 @@ https://updates.endercraftlauncher.top/
 - 新版本发布顺序为：构建并签名 Package/Manifest → 创建带不可变版本标签的 GitHub Release 并上传 Package → 验证 Release Package 可匿名下载且其字节与 Manifest 哈希一致 → 生成包含所有频道当前元数据的 Pages 静态目录 → 使用 Wrangler Direct Upload 部署 Production → 从正式自定义域名验证 Manifest、Signature、Package 下载与签名/哈希。只有全部步骤成功后，构建才算 Feed 发布成功。
 - 回滚通过恢复上一份已签名的频道 Manifest/Signature 指针完成；不得删除仍被旧 Manifest 引用的 Package。
 
-Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目名建议为 `ender-craft-launcher-feed`，生产域名为 `updates.endercraftlauncher.top`。GitHub Actions 使用仅具备目标 Account 下 Cloudflare Pages Edit 权限的 API Token，通过 Wrangler 部署预先生成的静态目录。Token 与 Account ID 只存放于 GitHub Actions Secrets。Pages Free 的文件数、单文件大小和构建配额必须在部署前核对；ECL Feed 只放小体积元数据，Package 不得上传 Pages。GitHub Actions Artifact 仅用于短期构建追溯，不得作为客户端 Feed。
+Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目名建议为 `ender-craft-launcher-feed`，使用 Cloudflare 自动分配的 `ender-craft-launcher-feed.pages.dev` 地址；不要求购买或绑定自定义域名，也不要求将现有域名接入 Cloudflare Zone。GitHub Actions 使用仅具备目标 Account 下 Cloudflare Pages Edit 权限的 API Token，通过 Wrangler 部署预先生成的静态目录。Token 与 Account ID 只存放于 GitHub Actions Secrets。Pages Free 的文件数、单文件大小和构建配额必须在部署前核对；ECL Feed 只放小体积元数据，Package 不得上传 Pages。GitHub Actions Artifact 仅用于短期构建追溯，不得作为客户端 Feed。
 
 ### 4. 发布记录与频道更新状态相互独立
 
@@ -116,7 +116,7 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 1. 每个官方 Release 页面恰好包含两个可下载资产：对应架构的 Installer EXE 与 Bootstrapper EXE；不存在 ZIP、Manifest、Signature、trust store 或 checksum sidecar 附件。
 2. Release Notes 明确说明 Installer 是普通用户入口、Bootstrapper 仅用于必要的独立修复，并分别列出与最终 EXE 字节一致的 SHA-256。
 3. ECL 自动更新仍下载 Manifest 指定的完整 ECL Package，而不是 Installer 或 Bootstrapper。
-4. `main`、`dev`、`nightly` 的 Feed 均可通过 `https://updates.endercraftlauncher.top/<channel>/` 匿名 HTTPS 读取 Manifest 与 Signature；Manifest 指向 GitHub Releases 中不可变版本 Package。
+4. `main`、`dev`、`nightly` 的 Feed 均可通过 `https://ender-craft-launcher-feed.pages.dev/<channel>/` 匿名 HTTPS 读取 Manifest 与 Signature；Manifest 指向 GitHub Releases 中不可变版本 Package。
 5. Manifest 签名、包大小、SHA-256、逐文件哈希和频道/架构约束均通过客户端验证；篡改任一项必须 fail-closed。
 6. Pages Production 部署不存在 Manifest 与 Signature 混配窗口；模拟中断发布后，客户端仍只能看到完整的旧部署或完整的新部署。
 7. 新 Package 上传失败、签名失败或频道指针切换失败时，不得将频道推进到新版本；旧版本仍可下载和部署。
