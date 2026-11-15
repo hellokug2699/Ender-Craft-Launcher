@@ -236,13 +236,14 @@ Direct Upload 项目的 Production branch 若需显式设置，通过 Pages Upda
 Feed 发布检查：
 
 - 发布脚本先获取独立 `feed-lock` 分支中的短期租约，串行化 Cloudflare Pages Production 部署；并发更新通过 Git compare-and-swap 重试，租约释放失败时会在到期后自动恢复。
+- 发布脚本在静态目录写入 Pages `_headers` 文件，对频道元数据设置 `Cache-Control: no-store`；客户端跨部署版本读取 Manifest/Signature 时验签失败会重取整对文件一次。
 - `packages` 分支只允许 `packages/<channel>/...` 路径；写入使用 Git tree/blob plumbing，不检出完整历史 Package。Package commit 只追加，不 force-push、不覆盖、不删除。
 - 部署后分别请求 `https://updates.endercraftlauncher.top/main/update-manifest.json`、`https://updates.endercraftlauncher.top/dev/update-manifest.json`、`https://updates.endercraftlauncher.top/nightly/update-manifest.json` 及对应 `.sig`。
 - 使用与客户端相同的信任根验证签名，并检查 Manifest 的 channel、platform、architecture、version 与 Package URL。
 - 从匿名网络下载 Manifest 指向的 commit-pinned GitHub Raw Package，验证字节数、SHA-256 和逐文件清单。
 - 任何一步失败都不得将该次发布报告为 Feed 成功；保留上一个已验证 Pages Production Deployment 以便回滚。
 
-Package URL 兼容性已在当前分支实现：`package.file` 保留旧相对路径兼容，同时允许 `raw.githubusercontent.com/hellokug2699/Ender-Craft-Launcher/<commit-sha>/packages/<channel>/windows/<arch>/<version>/ECL-<version>-win-<arch>-<sha256>.zip`。解析器会校验 HTTPS、精确主机、仓库、40 位 commit SHA、频道、平台、架构、版本、文件名摘要与 Manifest SHA-256；更新专用 `SocketsHttpHandler` 禁用自动重定向，客户端拒绝 3xx 响应；Bootstrapper 远程修复也使用禁用重定向的 HTTP Handler。CI 与首次生产下载仍需验证。
+Package URL 兼容性已在当前分支实现：`package.file` 保留旧相对路径兼容，同时允许 `raw.githubusercontent.com/hellokug2699/Ender-Craft-Launcher/<commit-sha>/packages/<channel>/windows/<arch>/<version>/ECL-<version>-win-<arch>-<sha256>.zip`。解析器会校验 HTTPS、精确主机、仓库、40 位 commit SHA、频道、平台、架构、版本、文件名摘要与 Manifest SHA-256；更新专用 `SocketsHttpHandler` 禁用自动重定向，客户端拒绝 3xx 响应；Bootstrapper 远程修复也使用禁用重定向的 HTTP Handler。Pages Feed 使用 `_headers` 设置 `Cache-Control: no-store`，客户端请求要求缓存重新验证；若部署切换恰好发生在 Manifest 与 Signature 两次请求之间，客户端会重新读取整对文件一次，持续验签失败仍 fail-closed。CI 与首次生产下载仍需验证。
 
 Pages Free 的单文件大小上限为 25 MiB、单站点最多 20,000 个文件；本方案只放小体积元数据，不把 ZIP Package 上传到 Pages。部署前应以 Cloudflare 当前官方限制再次核对。
 
