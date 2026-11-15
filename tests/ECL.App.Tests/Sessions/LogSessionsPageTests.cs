@@ -123,6 +123,42 @@ public sealed class LogSessionsPageTests : IDisposable
     }
 
     [Fact]
+    public async Task PollingWaitsForInitialSourceLoadToFinish()
+    {
+        using var ui = new UiThread();
+        var session = CreateSession("a", "1.21.1");
+        File.WriteAllText(
+            Path.Combine(session.DirectoryPath, "game.log"),
+            "[10:00:00] [main/INFO]: alpha needle\n" +
+            "[10:00:01] [main/WARN]: beta needle\n" +
+            "[10:00:02] [main/ERROR]: gamma needle\n" +
+            "unparsed needle line\n");
+        var reader = new BlockingSessionLogReader(new SessionLogReader());
+        var vm = await ui.InvokeAsync(() => CreateViewModel(reader));
+
+        ui.Invoke(() => vm.Activate());
+        await reader.WaitUntilInitialReadStartsAsync();
+
+        // The timer can fire while ReadLatestAsync is still pending. It must not
+        // read from offset zero and append a duplicate copy of the same file.
+        await ui.InvokeAsync(() => vm.PollAsync()).Unwrap();
+        Assert.Equal(0, reader.ReadFromCallCount);
+
+        reader.ReleaseInitialRead();
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+        Assert.Equal(4, vm.Lines.Count);
+
+        ui.Invoke(() =>
+        {
+            vm.SearchText = "needle";
+            vm.SearchCommand.Execute(null);
+        });
+        Assert.Equal("4 条命中", vm.SearchStatus);
+
+        ui.Invoke(() => vm.Dispose());
+    }
+
+    [Fact]
     public async Task SearchAndLevelFilterAreViewOnlyAndHonest()
     {
         using var ui = new UiThread();
@@ -143,7 +179,7 @@ public sealed class LogSessionsPageTests : IDisposable
             vm.SearchCommand.Execute(null);
         });
 
-        Assert.Contains("4", vm.SearchStatus);
+        Assert.Equal("4 条命中", vm.SearchStatus);
         Assert.Equal(4, vm.Lines.Count(line => line.IsMatch));
 
         ui.Invoke(() => vm.FilterInfo = false);
@@ -221,10 +257,10 @@ public sealed class LogSessionsPageTests : IDisposable
             LogIsolation = "direct",
         });
 
-    private LogSessionsViewModel CreateViewModel() =>
+    private LogSessionsViewModel CreateViewModel(ISessionLogReader? reader = null) =>
         new(
             _sessions,
-            new SessionLogReader(),
+            reader ?? new SessionLogReader(),
             new SessionExportService(_sessions, _paths),
             new JsonLocalizer(CultureInfo.GetCultureInfo("zh-CN")),
             new TestMemoryPressureMonitor(),
@@ -248,6 +284,63 @@ public sealed class LogSessionsPageTests : IDisposable
         {
             // 清理失败不影响断言。
         }
+    }
+
+    private sealed class BlockingSessionLogReader(ISessionLogReader inner) : ISessionLogReader
+    {
+        private readonly TaskCompletionSource<bool> _initialReadStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _releaseInitialRead =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int ReadFromCallCount { get; private set; }
+
+        public Task WaitUntilInitialReadStartsAsync() => _initialReadStarted.Task;
+
+        public void ReleaseInitialRead() => _releaseInitialRead.TrySetResult(true);
+
+        public IReadOnlyList<SessionLogSourceInfo> DescribeSources(GameLogSession session) =>
+            inner.DescribeSources(session);
+
+        public IReadOnlyList<SessionEvidenceItem> DescribeEvidence(GameLogSession session) =>
+            inner.DescribeEvidence(session);
+
+        public async Task<SessionLogChunk> ReadLatestAsync(
+            GameLogSession session,
+            SessionLogSourceKind kind,
+            int maxBytes = SessionLogReader.DefaultChunkBytes,
+            CancellationToken cancellationToken = default)
+        {
+            _initialReadStarted.TrySetResult(true);
+            await _releaseInitialRead.Task.WaitAsync(cancellationToken);
+            return await inner.ReadLatestAsync(session, kind, maxBytes, cancellationToken);
+        }
+
+        public Task<SessionLogChunk> ReadFromAsync(
+            GameLogSession session,
+            SessionLogSourceKind kind,
+            long offset,
+            int maxBytes = SessionLogReader.DefaultChunkBytes,
+            CancellationToken cancellationToken = default)
+        {
+            ReadFromCallCount++;
+            return inner.ReadFromAsync(session, kind, offset, maxBytes, cancellationToken);
+        }
+
+        public Task<SessionLogChunk> ReadBeforeAsync(
+            GameLogSession session,
+            SessionLogSourceKind kind,
+            long beforeOffset,
+            int maxBytes = SessionLogReader.DefaultChunkBytes,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadBeforeAsync(session, kind, beforeOffset, maxBytes, cancellationToken);
+
+        public Task<SessionLogChunk> ReadEvidenceAsync(
+            GameLogSession session,
+            SessionArtifact artifact,
+            int maxBytes = SessionLogReader.DefaultChunkBytes,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadEvidenceAsync(session, artifact, maxBytes, cancellationToken);
     }
 
     private sealed class TestMemoryPressureMonitor : IMemoryPressureMonitor
