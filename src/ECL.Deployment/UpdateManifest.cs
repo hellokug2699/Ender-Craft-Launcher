@@ -285,7 +285,7 @@ public static class UpdateManifestParser
 
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
             !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(uri.Host, "raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase) ||
             uri.Port != 443 || !string.IsNullOrEmpty(uri.UserInfo) ||
             !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
         {
@@ -294,22 +294,12 @@ public static class UpdateManifestParser
 
         var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
         var architectureValue = architecture.ToApiValue();
-        var prefix = $"ECL-{version}-win-{architectureValue}-";
-        if (segments.Length != 9 ||
+        var expectedFileName = $"ECL-{version}-win-{architectureValue}-{sha256}.zip";
+        if (segments.Length != 6 ||
             segments[0] != "hellokug2699" || segments[1] != "Ender-Craft-Launcher" ||
-            segments[2].Length != 40 || !segments[2].All(Uri.IsHexDigit) ||
-            segments[3] != "packages" || segments[4] != channel.ToApiValue() ||
-            segments[5] != "windows" || segments[6] != architectureValue ||
-            segments[7] != version.ToString() ||
-            !segments[8].StartsWith(prefix, StringComparison.Ordinal) ||
-            !segments[8].EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        var hash = segments[8].Substring(prefix.Length, segments[8].Length - prefix.Length - 4);
-        if (hash.Length != 64 || !hash.All(Uri.IsHexDigit) ||
-            !string.Equals(hash, sha256, StringComparison.OrdinalIgnoreCase))
+            segments[2] != "releases" || segments[3] != "download" ||
+            segments[4] != $"{channel.ToApiValue()}-packages" ||
+            !string.Equals(segments[5], expectedFileName, StringComparison.Ordinal))
         {
             return false;
         }
