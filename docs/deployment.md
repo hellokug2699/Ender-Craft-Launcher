@@ -135,7 +135,7 @@ ecl update check --json
 ```
 
 - `launcher.checkUpdates=false` 时直接跳过，不访问网络；
-- 没有 `--feed` 且未设置 `ECL_UPDATE_FEED` 时只提示未配置，不发起请求；
+- Feed 地址优先级为 CLI `--feed` > 环境变量 `ECL_UPDATE_FEED` > 官方默认地址 `https://updates.endercraftlauncher.top/`；未显式配置时也会检查当前设置的频道；
 - `--install-root` 可指定读取 `current.json` 的安装目录；否则使用 CLI 程序集版本。
 - 主程序 UI 内的启动检查/下载入口尚未接入，属于下一阶段。
 
@@ -170,16 +170,16 @@ artifacts/release/1.0.1/
 
 ### GitHub Actions：版本发布与滚动构建
 
-[release.yml](../.github/workflows/release.yml) 当前仍处于迁移前状态；目标分工遵循 [ADR 0072](adr/0072-separation-of-human-facing-releases-and-channel-update-feeds.md)。
+[release.yml](../.github/workflows/release.yml) 已实现 ADR 0072 的主要发布链路；首次生产发布仍待 CI 与真实 Pages 部署验证。目标分工遵循 [ADR 0072](adr/0072-separation-of-human-facing-releases-and-channel-update-feeds.md)。
 
 | 触发来源 | 构建追溯 | 人工 GitHub Release（目标） | 独立 Channel Feed（目标） | Package 存储（目标） |
 |---|---|---|---|---|
 | 推送 `nightly` | Actions Artifact，保留 14 天 | 更新唯一 Nightly 滚动 Release，仅两个 EXE | 更新 `nightly` Feed | 追加到 `packages/nightly/...` |
 | 推送 `dev` | Actions Artifact，保留 14 天 | 更新唯一 Dev 滚动 Release，仅两个 EXE | 更新 `dev` Feed | 追加到 `packages/dev/...` |
 | 推送 `vMAJOR.MINOR.PATCH` | Actions Artifact，保留 14 天 | 创建不可变版本 Release，并更新 `main` 滚动 Release；均仅两个 EXE | 更新 `main` Feed | 追加到 `packages/main/...` |
-| 手动运行 | Actions Artifact，保留 14 天 | 根据所选分支更新对应人工 Release | 更新对应频道 Feed | 追加到所选频道目录（须通过发布资格检查） |
+| 手动运行（仅 dev/nightly） | Actions Artifact，保留 14 天 | 更新对应滚动 Release | 更新对应频道 Feed | 追加到所选频道目录（须通过发布资格检查） |
 
-发布实现已提交到当前 PR：客户端支持严格限定的 commit-pinned GitHub Raw Package URL、频道绑定和无自动重定向的更新 HTTP 客户端；发布脚本会将三个频道的 Package 追加到 `packages` 分支、签名并部署完整 Pages 站点，再更新人工 Release。Cloudflare Pages 项目/域名/Secrets 已由维护者确认配置完成。**尚未完成首次生产运行**：需要 CI 通过并在 nightly 上首次触发发布，验证匿名下载、签名、三频道 Feed 和 Release 资产后，才能认定迁移完成。
+发布实现已提交到当前 PR：客户端支持严格限定的 commit-pinned GitHub Raw Package URL、频道绑定和无自动重定向的更新 HTTP 客户端；发布脚本会迁移或验证其他频道的现有 Feed，将新 Package 追加到 `packages` 分支，签名并部署完整 Pages 站点。Feed 成功后再完成历史 Release 清理与频道滚动 Release 更新；正式版不可变 Release 会先以“Feed 待发布”状态创建，Feed 验证成功后才更新为“已发布”。Cloudflare Pages 项目与自定义域名已由 API 确认存在且域名状态为 active；目前尚无 Production Deployment。**尚未完成首次生产运行**：需要 CI 通过并在 nightly 上首次触发发布，验证匿名下载、签名、三频道 Feed 和 Release 资产后，才能认定迁移完成。
 
 - Nightly 每次成功构建都会产生独立的 Actions Artifact，便于高级用户追溯特定构建；Artifact 保留 14 天，过期后不保证可取回。
 - 普通用户下载 `ECL.Installer-<version>-win-x64.exe` 并直接运行；不需要下载 ZIP 或手工解压。
@@ -189,7 +189,8 @@ artifacts/release/1.0.1/
 - Installer 内嵌完整离线介质并在临时目录释放；实际签名验证、包解压和逐文件校验仍由 Bootstrapper 执行。
 - Nightly 不为每次提交创建新的人工 Release；每个频道只维护一个滚动入口。
 - Release tag 与 Feed 频道指针分别管理；只有 Feed 的 Package、Manifest、Signature 全部验证并原子切换后，才算自动更新发布成功。
-- 同一分支的构建按队列执行；过期构建不得覆盖较新的 Release 或 Feed 版本。
+- 同一分支的构建按队列执行；过期构建不得覆盖较新的 Release 或 Feed 版本。Cloudflare Pages Production 部署使用独立 `feed-lock` 分支租约串行化，避免跨频道完整站点互相覆盖。
+- `packages` 分支仅允许 `packages/<channel>/...` 路径；单个 Package 必须小于 90 MiB，路径与文件名包含频道、架构、版本及 SHA-256，写入只追加且已发布包永久保留。
 - 手动运行 workflow 时选择 `dev` 或 `nightly` 分支；正式版只能通过版本 Tag 发布。
 
 构建流程执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 保留 14 天用于追溯。发布脚本先迁移/验证三个频道 Feed，再更新人工 Release；人工 Release 只上传 Installer 与 Bootstrapper 两个 EXE，并在 Feed 成功后清理当前滚动 Release 的其他资产。首次生产部署前，旧 Release Feed 资产仍须保留。
@@ -216,7 +217,7 @@ Feed 项目采用 Direct Upload，不绑定 Git Integration：
 6. 在 GitHub 仓库 Settings → Secrets and variables → Actions 添加：
    - `CLOUDFLARE_ACCOUNT_ID`：Cloudflare Account ID。
    - `CLOUDFLARE_API_TOKEN`：上述 Pages 专用 Token。
-8. 将 Token 视为部署凭据，不得写入仓库、日志、Artifact 或客户端。
+7. 将 Token 视为部署凭据，不得写入仓库、日志、Artifact 或客户端。
 
 CI 使用 Wrangler Direct Upload。静态目录必须在部署步骤前完整生成，并且只在 Package 已上传、可匿名下载且 SHA-256 校验成功后部署：
 
@@ -241,7 +242,7 @@ Feed 发布检查：
 - 从匿名网络下载 Manifest 指向的 commit-pinned GitHub Raw Package，验证字节数、SHA-256 和逐文件清单。
 - 任何一步失败都不得将该次发布报告为 Feed 成功；保留上一个已验证 Pages Production Deployment 以便回滚。
 
-Package URL 兼容性已在当前分支实现：`package.file` 保留旧相对路径兼容，同时允许 `raw.githubusercontent.com/hellokug2699/Ender-Craft-Launcher/<commit-sha>/packages/<channel>/windows/<arch>/<version>/ECL-<version>-win-<arch>-<sha256>.zip`。解析器会校验 HTTPS、精确主机、仓库、40 位 commit SHA、频道、平台、架构、版本、文件名摘要与 Manifest SHA-256；更新专用 `SocketsHttpHandler` 禁用自动重定向，客户端拒绝重定向响应。CI 与首次生产下载仍需验证。
+Package URL 兼容性已在当前分支实现：`package.file` 保留旧相对路径兼容，同时允许 `raw.githubusercontent.com/hellokug2699/Ender-Craft-Launcher/<commit-sha>/packages/<channel>/windows/<arch>/<version>/ECL-<version>-win-<arch>-<sha256>.zip`。解析器会校验 HTTPS、精确主机、仓库、40 位 commit SHA、频道、平台、架构、版本、文件名摘要与 Manifest SHA-256；更新专用 `SocketsHttpHandler` 禁用自动重定向，客户端拒绝 3xx 响应；Bootstrapper 远程修复也使用禁用重定向的 HTTP Handler。CI 与首次生产下载仍需验证。
 
 Pages Free 的单文件大小上限为 25 MiB、单站点最多 20,000 个文件；本方案只放小体积元数据，不把 ZIP Package 上传到 Pages。部署前应以 Cloudflare 当前官方限制再次核对。
 
@@ -301,7 +302,7 @@ git checkout <commit-or-tag>
 - `--cleanup` 与部署前自动清理只删除 `staging/`；自动化测试确认 `versions/` 与 `current.json` 不受影响。
 - 未完成：全新 Windows 无 .NET SDK、无 .NET 运行时的安装验收；Authenticode 签名；GUI 自动化（当前 GUI 仅人工冒烟）。
 - 2026-11-15，ADR 0071 分发重构：官方构建切换为自包含单文件 Installer，完整部署介质嵌入 Installer；Bootstrapper 统一为单文件自包含构建，独立下载与 Installer 内嵌副本共用同一二进制。该项需等待 PR CI 与干净 Windows 实机验收后才能标记 Verified。
-- 2026-11-15，ADR 0072 决定将人工 Release 与自动更新 Feed 分离：Cloudflare Pages Direct Upload 托管 Manifest/Signature，同一公有仓库的 `packages` 分支以 append-only 方式托管不可变 Package，Package URL 固定到 Git commit SHA。当前 release workflow、客户端绝对 Package URL 支持及端到端验证尚未完成；旧 GitHub Release Feed 资产必须保留，直到新 Feed 通过端到端验证。
+- 2026-11-15，ADR 0072 决定将人工 Release 与自动更新 Feed 分离：Cloudflare Pages Direct Upload 托管 Manifest/Signature，同一公有仓库的 `packages` 分支以 append-only 方式托管不可变 Package，Package URL 固定到 Git commit SHA。当前 PR 已实现发布脚本、三频道迁移、客户端绝对 Package URL 支持、无重定向请求及历史 Release 资产规范化；首次生产部署、匿名下载和真实安装器验收仍待完成。旧 GitHub Release Feed 资产在新 Feed 端到端验证成功前不得清理。
 
 ## 9. 用户数据与卸载边界
 
