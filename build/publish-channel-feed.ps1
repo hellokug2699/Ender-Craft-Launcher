@@ -76,6 +76,18 @@ function Get-PublishedFeedFile([string]$Url, [string]$Destination) {
     return $true
 }
 
+function Test-ProductionDeploymentExists {
+    $endpoint = "https://api.cloudflare.com/client/v4/accounts/$env:CLOUDFLARE_ACCOUNT_ID/pages/projects/ender-craft-launcher-feed/deployments"
+    $response = Invoke-RestMethod -Method Get -Uri $endpoint -Headers @{ "Authorization" = "Bearer $env:CLOUDFLARE_API_TOKEN"; "User-Agent" = "EnderCraftLauncher/0.9.1" } -ErrorAction Stop
+
+    if (-not $response.success) {
+        throw "Cloudflare Pages deployment inventory query failed: $($response.errors | ConvertTo-Json -Compress)"
+    }
+
+    $productionDeployments = @($response.result | Where-Object { $_.environment -eq "production" })
+    return $productionDeployments.Count -gt 0
+}
+
 function Write-SignedManifest([object]$Manifest, [string]$Directory) {
     New-Item -ItemType Directory -Force -Path $Directory | Out-Null
     $manifestPath = Join-Path $Directory "update-manifest.json"
@@ -335,6 +347,14 @@ if ($LASTEXITCODE -ne 0) { throw "Unable to clone package repository metadata." 
 Acquire-FeedLock
 try {
 Assert-ChannelFreshness
+# Determine first-deployment state from Cloudflare's authenticated deployment
+# inventory, not from a failed request to the public hostname. A network error
+# must never be mistaken for an absent Feed.
+$hasProductionDeployment = Test-ProductionDeploymentExists
+if (-not $hasProductionDeployment) {
+    Write-Host "Cloudflare Pages has no Production deployment; bootstrapping all channels from signed legacy Releases."
+}
+
 # Preserve all existing channels. On the first deployment, migrate each channel's
 # current signed Release package into the immutable package store before Pages is
 # switched. Later deployments reuse the already verified Production Feed.
@@ -344,8 +364,14 @@ foreach ($candidate in @("main", "dev", "nightly")) {
     $existingManifest = Join-Path $channelDirectory "update-manifest.json"
     $existingSignature = Join-Path $channelDirectory "update-manifest.sig"
     New-Item -ItemType Directory -Force -Path $channelDirectory | Out-Null
-    $manifestExists = Get-PublishedFeedFile "https://updates.endercraftlauncher.top/$candidate/update-manifest.json" $existingManifest
-    $signatureExists = Get-PublishedFeedFile "https://updates.endercraftlauncher.top/$candidate/update-manifest.sig" $existingSignature
+    if ($hasProductionDeployment) {
+        $manifestExists = Get-PublishedFeedFile "https://updates.endercraftlauncher.top/$candidate/update-manifest.json" $existingManifest
+        $signatureExists = Get-PublishedFeedFile "https://updates.endercraftlauncher.top/$candidate/update-manifest.sig" $existingSignature
+    }
+    else {
+        $manifestExists = $false
+        $signatureExists = $false
+    }
     if ($manifestExists -xor $signatureExists) {
         throw "Production Feed for $candidate is incomplete; refusing to replace a partial or tampered deployment."
     }
