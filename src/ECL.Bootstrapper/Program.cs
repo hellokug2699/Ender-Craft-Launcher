@@ -308,7 +308,7 @@ internal static class Program
                 else
                 {
                     var client = new UpdateClient(
-                        new HttpClient { Timeout = TimeSpan.FromSeconds(60) },
+                        UpdateClient.CreateNoRedirectHttpClient(TimeSpan.FromSeconds(60)),
                         new UpdateSignatureVerifier(trust.Value!));
                     remote = new UpdateFeedRepairSource(
                         client,
