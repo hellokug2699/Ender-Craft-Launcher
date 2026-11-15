@@ -191,7 +191,7 @@ artifacts/release/1.0.1/
 - Release tag 与 Feed 频道指针分别管理；只有 Feed 的 Package、Manifest、Signature 全部验证并原子切换后，才算自动更新发布成功。
 - 同一分支的构建按队列执行；过期构建不得覆盖较新的 Release 或 Feed 版本。Cloudflare Pages Production 部署使用独立 `feed-lock` 分支租约串行化，避免跨频道完整站点互相覆盖。
 - `packages` 分支仅允许 `packages/<channel>/...` 路径；单个 Package 必须小于 90 MiB，路径与文件名包含频道、架构、版本及 SHA-256，写入只追加且已发布包永久保留。
-- 手动运行 workflow 时选择 `dev` 或 `nightly` 分支；正式版只能通过版本 Tag 发布。
+- 手动运行 workflow 时选择 `dev` 或 `nightly` 分支；正式版只能通过版本 Tag 发布，且 Tag 指向的提交必须已位于 `main` 分支历史中。
 
 构建流程执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 保留 14 天用于追溯。发布脚本先迁移/验证三个频道 Feed，再更新人工 Release；切换后的新建/更新 Release 只上传 Installer 与 Bootstrapper 两个 EXE，并在 Feed 成功后清理对应滚动 Release 的其他资产。已有可独立验证的 EXE 的历史 Release 可规范化；仅含旧 ZIP Installer 的历史 Release 保留原样，不能通过改名伪装成自包含 EXE。首次生产部署前，旧 Release Feed 资产仍须保留。当前尚无已分发客户端，因此在 Pages 三频道端到端验证成功后，可清理当前滚动 Release 的旧 Feed 附件；若未来已有用户，后续迁移必须提供兼容过渡窗口。
 
