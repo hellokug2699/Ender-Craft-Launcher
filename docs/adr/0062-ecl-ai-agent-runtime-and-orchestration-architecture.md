@@ -1,6 +1,6 @@
 # ADR 0062: ECL AI Agent Runtime and Orchestration Architecture
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-08
 - Scope: ECL AI Agent Runtime Addition 的目标管理、计划与任务编排、受控执行、变更管理、验证恢复及 Core 安全边界
@@ -345,3 +345,6 @@ Agent Runtime 独立管理 AI 执行编排、工具循环和证据追踪；Core 
 - 2026-11-08：补充 Read-Before-Write、Read-State Consistency 与 Read-Coverage Sufficiency 强制规则；采用按需扩展读取范围的策略，避免将局部修改一律要求为全文件读取，同时禁止以节省 Token 为由省略必要上下文。Decision 与 Implementation 状态不变。
 - 2026-11-08：补充 Execution Feedback、Error Classification、Self-Correction Loop、Verification 与 Honest Completion，明确工具执行成功不等于任务成功，并为自动修正设置预算、授权和副作用状态边界。Decision 与 Implementation 状态不变。
 - 2026-11-08：在 Proposed 阶段扩展架构范围并更名为 ECL AI Agent Runtime and Orchestration Architecture；Addition ID 从 `ecl.ai-harness` 调整为 `ecl.ai-agent-runtime`。新增 Target、Plan、Task Graph/Scheduler、Change Set/Changes Review、Checkpoint 与恢复语义；Decision 仍为 Proposed，Implementation 仍为 Not Started。
+
+
+- 2026-11-16：经维护者明确批准，Decision 由 Proposed 更新为 Accepted。该批准确认架构决策生效，不代表 Implementation 已完成；实施状态与既有验收证据保持不变。
