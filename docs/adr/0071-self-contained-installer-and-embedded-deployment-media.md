@@ -4,7 +4,7 @@
 - Implementation: In Progress
 - Date: 2026-11-15
 - Scope: Windows x64 / ARM64 首次安装介质、Installer 与 Bootstrapper 的单文件构建及人工下载入口
-- Related: [ADR 0013: Branch-Based Versioning and Release Channels](0013-branch-based-versioning-and-release-channels.md)、[ADR 0025: Installer First-Launch Integrity Confirmation](0025-installer-first-launch-integrity-confirmation.md)、[ADR 0029: Installer, Bootstrapper and Uninstaller Lifecycle Boundaries](0029-installer-bootstrapper-uninstaller-lifecycle.md)、[ADR 0051: Unified Installation, Update and Recovery Architecture](0051-unified-installation-update-and-recovery-architecture.md)
+- Related: [ADR 0013: Branch-Based Versioning and Release Channels](0013-branch-based-versioning-and-release-channels.md)、[ADR 0025: Installer First-Launch Integrity Confirmation](0025-installer-first-launch-integrity-confirmation.md)、[ADR 0029: Installer, Bootstrapper and Uninstaller Lifecycle Boundaries](0029-installer-bootstrapper-uninstaller-lifecycle.md)、[ADR 0051: Unified Installation, Update and Recovery Architecture](0051-unified-installation-update-and-recovery-architecture.md)、[ADR 0072: Separation of Human-Facing Releases and Channel Update Feeds](0072-separation-of-human-facing-releases-and-channel-update-feeds.md)
 
 ## 背景
 
