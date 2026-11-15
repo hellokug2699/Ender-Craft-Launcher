@@ -114,7 +114,7 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 - 自动更新仍然使用签名 ECL Package，不会因为人工下载入口变化而改变部署协议。
 - 发布系统需要同时维护人工 Release 与独立 Feed 两条发布结果，并为 Feed 托管增加持久性、带宽、缓存与可用性监控。
 - 频道 Feed 成为自动更新的关键基础设施；Feed 故障不得降低签名验证要求，也不得阻止用户使用 Installer 完整离线恢复。
-- Pages 的 Production Deployment 提供整站版本回滚；回滚必须恢复一套完整、此前验证过的频道元数据，而不是手工替换单个文件。
+- Pages 的 Production Deployment 提供整站版本回滚；回滚必须恢复一套完整、此前验证过的频道元数据，而不是手工替换单个文件。Feed 对象通过 `_headers` 设置 `Cache-Control: no-store`，客户端请求同时要求重新验证缓存，并在两次独立读取跨越部署切换时最多重试一次签名文件与 Manifest 的整对读取。
 - Package 与 Feed 元数据由 GitHub 仓库与 Cloudflare Pages 分别提供，发布流水线必须先确认 `packages` 分支中的 commit-pinned Package 可匿名访问，再发布 Pages 元数据，避免出现已发布 Manifest 指向尚不可下载的 Package。
 - `packages` 分支会随历史 Package 永久保留而增长；必须监控仓库体积与 GitHub 单文件限制。不得把该分支作为常规开发分支检出或打包进客户端。若未来 Package 体积或累计仓库体积超出 GitHub 适用限制，应另行提出存储迁移 ADR，不得静默删除历史包。
 - Manifest 的 `package.file` 继续兼容旧版相对路径，同时允许严格限定的 GitHub Raw 绝对 HTTPS URL。客户端校验主机、仓库、commit SHA、频道、平台、架构、版本、文件名与 SHA-256；更新专用 HTTP 客户端关闭自动重定向，拒绝任何改变最终请求 URI 的响应。
@@ -127,7 +127,7 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 3. ECL 自动更新仍下载 Manifest 指定的完整 ECL Package，而不是 Installer 或 Bootstrapper。
 4. `main`、`dev`、`nightly` 的 Feed 均可通过 `https://updates.endercraftlauncher.top/<channel>/` 匿名 HTTPS 读取 Manifest 与 Signature；Manifest 指向 `packages` 分支中由 commit SHA 固定的不可变 Package。三个频道的 Package 路径严格隔离。
 5. Manifest 签名、包大小、SHA-256、逐文件哈希和频道/架构约束均通过客户端验证；篡改任一项必须 fail-closed。
-6. Pages Production 部署不存在 Manifest 与 Signature 混配窗口；模拟中断发布后，客户端仍只能看到完整的旧部署或完整的新部署。
+6. Pages 每次 Production 部署必须原子切换完整静态站点，并为频道元数据设置 `Cache-Control: no-store`。由于客户端读取 Manifest 与 Signature 是两个独立请求，若部署切换恰好发生在两次请求之间，验签必须拒绝混配并自动重新读取整对文件一次；不得把未通过验签的 Manifest 交给部署器。
 7. 新 Package 上传失败、签名失败或频道指针切换失败时，不得将频道推进到新版本；旧版本仍可下载和部署。
 8. 回滚可恢复上一份已签名 Manifest/Signature，且不会删除仍被有效 Manifest 引用的 Package。
 9. Actions Artifact 过期或不可访问，不影响客户端正常更新。
@@ -142,3 +142,4 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 - 2026-11-15：曾决定采用 Cloudflare Pages Direct Upload 托管频道 Manifest/Signature、GitHub Releases 托管不可变 Package；该 Package 托管选择随后由本记录的最新修订取代，保留此条用于追溯决策演进。
 - 2026-11-15：根据三频道独立更新与 Release 页面仅保留两个 EXE 的约束，改为由同一公有仓库的 `packages` 分支以 append-only 方式托管不可变 Package；Manifest 的 Package URL 固定到具体 Git commit SHA。三个频道独立命名空间、独立推进，已发布 Package 永久保留。
 - 2026-11-15：开始实施绝对 Package URL 解析、频道绑定、专用无重定向 HTTP 传输、官方 Feed 默认地址、GitHub Packages 分支写入、三频道迁移与 Cloudflare Pages Direct Upload。Production Feed 使用独立租约锁串行化；端到端生产部署与 GitHub CI 尚待验证。
+- 2026-11-15：补充 Feed 元数据 `Cache-Control: no-store`，并在 Manifest/Signature 两次独立读取遇到部署切换导致验签失败时，客户端重新读取整对文件一次；持续验签失败仍 fail-closed。
