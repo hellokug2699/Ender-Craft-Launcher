@@ -41,7 +41,8 @@ ECL 采用“原生功能入口、可选功能能力”的产品模型：页面�
 | Performance Profiler | [`ecl.performance-profiler`](ecl.performance-profiler/README.md) | In Development | 按需高级性能分析 | [ADR 0041](../adr/0041-minecraft-performance-monitoring-and-profiling-architecture.md) |
 | Network Diagnostics | [`ecl.network-diagnostics`](ecl.network-diagnostics/README.md) | In Development | 本地优先网络诊断 | [ADR 0044](../adr/0044-local-first-network-diagnostics-and-data-sovereignty.md) |
 | GitHub Project Center | [`ecl.github-project-center`](ecl.github-project-center/README.md) | In Development | ECL 原生 GitHub 项目协作中心 | [ADR 0049](../adr/0049-native-github-integration-and-repository-bounded-navigation.md) |
-| ECL Multiplayer | [`ecl.multiplayer`](ecl.multiplayer/README.md) | Planned | ECL 自研私人联机体验与会话管理；不提供公共大厅 | [ADR 0057](../adr/0057-ecl-multiplayer-session-architecture.md)（Accepted） |
+| ECL Multiplayer | [`ecl.multiplayer`](ecl.multiplayer/README.md) | Planned | ECL 自研私人联机体验与会话管理；不提供公共大厅 | [ADR 0057](../adr/0057-ecl-multiplayer-session-architecture.md)（Accepted）
+| Appearance Enhance | [`ecl.appearance-enhance`](ecl.appearance-enhance/README.md) | Planned | 完整本地衣柜、3D 玩家模型查看与受账户类型约束的外观管理；Core 基础读取与 2D 展示不依赖此 Addition | [ADR 0070](../adr/0070-account-appearance-and-appearance-enhance-addition-architecture.md) |
 | ECL Music Player | [`ecl.music-player`](ecl.music-player/README.md) | Proposed | Core 托管本地音乐播放；用户授权后通过随附 Java Agent 控制 Minecraft `MUSIC` 分类 | [ADR 0067](../adr/0067-ecl-music-player-and-minecraft-audio-bridge-architecture.md)（Proposed） |
 | ECL Media Engine | [`ecl.media-engine`](ecl.media-engine/README.md) | Proposed | 通用图片、音频、视频格式处理、基础编辑与预览；Core 临时工作区保护源文件并管理最终提交；采用可替换后端，不将 FFmpeg 设为强制依赖 | [ADR 0068](../adr/0068-ecl-media-engine-and-format-conversion-architecture.md)（Proposed） |
 | Resource Pack Studio | [`ecl.resource-pack-studio`](ecl.resource-pack-studio/README.md) | Proposed | 资源包原始浏览、材质/模型/动画与状态变体预览；不模拟 Minecraft 世界 | [ADR 0058](../adr/0058-resource-pack-studio-architecture.md)（Proposed） |
@@ -75,7 +76,7 @@ ECL 采用“原生功能入口、可选功能能力”的产品模型：页面�
 - **World Workbench**：原生 Workspace/工具入口；不是一个大型 Addition。
 - **Instance File Explorer**：基础实例文件浏览由 ECL 原生提供；NBT/Region 等高级处理能力由对应 Addition 提供。
 - **Security Center / Threat Protection**：原生安全中心与安全分析工作流；Publisher Trust Database 是可选数据扩展，不等于安全中心本身。
-- **Wardrobe**：ECL 原生 Tool，不是 Addition。
+- **Core Account Appearance**：账户当前外观基础读取与原生 2D 皮肤展示属于 Core，不是 Addition；完整衣柜、3D 查看与外观管理归上方 `ecl.appearance-enhance` Feature Addition。
 
 ## 历史方向
 
