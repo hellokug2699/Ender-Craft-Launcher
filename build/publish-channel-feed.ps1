@@ -142,7 +142,10 @@ function Add-PackageToStore(
     }
 
     if (-not $releaseExists) {
-        & gh release create $releaseTag --title "ECL $PackageChannel update packages (machine-only)" --notes "Machine-only immutable update Package storage for the $PackageChannel channel. Not intended for manual downloads." --prerelease --target $env:GITHUB_SHA
+        # gh writes the Release page URL to stdout. This function returns the
+        # immutable asset URL, so suppress CLI output to keep the function's
+        # success pipeline free of unrelated URLs.
+        & gh release create $releaseTag --title "ECL $PackageChannel update packages (machine-only)" --notes "Machine-only immutable update Package storage for the $PackageChannel channel. Not intended for manual downloads." --prerelease --target $env:GITHUB_SHA | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Unable to create machine-only Package Release $releaseTag." }
     }
 
@@ -151,7 +154,7 @@ function Add-PackageToStore(
     if ($fileName -in $assets) {
         $verifyDirectory = Join-Path $workRoot "existing-package-$([Guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Force -Path $verifyDirectory | Out-Null
-        & gh release download $releaseTag --pattern $fileName --dir $verifyDirectory
+        & gh release download $releaseTag --pattern $fileName --dir $verifyDirectory | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Unable to download existing immutable Package $fileName." }
         $existingPath = Join-Path $verifyDirectory $fileName
         $existingHash = (Get-FileHash $existingPath -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -164,7 +167,7 @@ function Add-PackageToStore(
     else {
         $assetPath = Join-Path $workRoot $fileName
         Copy-Item $SourcePath $assetPath -Force
-        & gh release upload $releaseTag $assetPath
+        & gh release upload $releaseTag $assetPath | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Unable to append Package asset $fileName to $releaseTag." }
         Remove-Item $assetPath -Force
     }
