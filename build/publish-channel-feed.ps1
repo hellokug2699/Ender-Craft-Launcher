@@ -405,8 +405,12 @@ foreach ($candidate in @("main", "dev", "nightly")) {
         $legacyTagExists = $false
         $selectedLegacyTag = $null
         foreach ($legacyTag in $legacyTags) {
-            & gh release view $legacyTag --json tagName *> $null
-            if ($LASTEXITCODE -ne 0) { continue }
+            $releaseLookup = & gh api "repos/$Repository/releases/tags/$legacyTag" --jq ".tag_name" 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                $lookupError = $releaseLookup -join " "
+                if ($lookupError -match "HTTP 404") { continue }
+                throw "Unable to determine whether legacy Release $legacyTag exists: $lookupError"
+            }
             $legacyTagExists = $true
             $attemptDirectory = Join-Path $legacyDirectory $legacyTag
             New-Item -ItemType Directory -Force -Path $attemptDirectory | Out-Null
