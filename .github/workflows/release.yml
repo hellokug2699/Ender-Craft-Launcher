@@ -210,11 +210,39 @@ jobs:
           $dir = "artifacts/release/$env:ECL_VERSION"
           $installer = Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.exe"
           $bootstrapper = Join-Path $dir "bootstrapper/ECL.Bootstrapper.exe"
-          gh release create "v$env:ECL_VERSION" $installer $bootstrapper `
-            --title "ECL $env:ECL_VERSION" `
-            --notes-file "$env:RUNNER_TEMP/release-notes.md" `
-            --target $env:GITHUB_SHA
-          if ($LASTEXITCODE -ne 0) { throw "Failed to create immutable stable Release." }
+          $tag = "v$env:ECL_VERSION"
+          $assets = @($installer, $bootstrapper)
+          gh release view $tag --json assets 2>$null
+          $exists = ($LASTEXITCODE -eq 0)
+          if ($exists) {
+            $tagSha = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha'
+            if ($LASTEXITCODE -ne 0 -or $tagSha.Trim() -ne $env:GITHUB_SHA) {
+              throw "Existing stable tag $tag does not point to this exact build commit."
+            }
+            $oldAssets = @(gh release view $tag --json assets --jq '.assets[].name')
+            if ($LASTEXITCODE -ne 0) { throw "Unable to enumerate existing assets for $tag." }
+            gh release upload $tag @assets --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Unable to refresh the two stable EXEs." }
+            gh release edit $tag --title "ECL $env:ECL_VERSION" --notes-file "$env:RUNNER_TEMP/release-notes.md"
+            if ($LASTEXITCODE -ne 0) { throw "Unable to update stable Release notes." }
+            $allowed = @(
+              "ECL.Installer-$env:ECL_VERSION-win-x64.exe",
+              "ECL.Bootstrapper-$env:ECL_VERSION-win-x64.exe"
+            )
+            foreach ($oldAsset in $oldAssets) {
+              if ($oldAsset -and $oldAsset -notin $allowed) {
+                gh release delete-asset $tag $oldAsset --yes
+                if ($LASTEXITCODE -ne 0) { throw "Unable to remove obsolete stable asset $oldAsset." }
+              }
+            }
+          }
+          else {
+            gh release create $tag @assets `
+              --title "ECL $env:ECL_VERSION" `
+              --notes-file "$env:RUNNER_TEMP/release-notes.md" `
+              --target $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create immutable stable Release." }
+          }
 
       - name: Setup Node.js for Wrangler
         if: steps.freshness.outputs.publish == 'true'
