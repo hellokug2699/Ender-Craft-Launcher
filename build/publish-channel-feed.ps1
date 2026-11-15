@@ -468,6 +468,8 @@ foreach ($candidate in @("main", "dev", "nightly")) {
     Confirm-PackageUrl ([string]$deployed.package.file) ([long]$deployed.package.size) ([string]$deployed.package.sha256)
 }
 
+Assert-ChannelFreshness
+
 Write-Host "All three signed channel feeds are deployed. Current package URL: $currentUrl"
 }
 finally {
