@@ -1,7 +1,7 @@
 # ADR 0050: ECL UI Architecture and Design System Overhaul
 
 - Decision: Accepted
-- Implementation: Not Started
+- Implementation: In Progress
 - Date: 2026-11-03
 - Scope: ECL 桌面应用的视觉设计系统、主窗口 Shell、主导航与工具入口、页面信息架构、排版、DPI/分辨率适配及所有原生页面的交互呈现
 - Related: [ADR 0056: Right Auxiliary Rail and Inspector Integration](0056-right-auxiliary-rail-and-inspector-integration.md)、[ADR 0021：WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md)、[ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0040：原版工具集作为独立官方 Addition](0040-vanilla-toolkit-addition.md)、[ADR 0045：原生 Instance Engine 架构与能力边界](0045-native-instance-engine-architecture.md)
@@ -189,6 +189,8 @@ DPI awareness 声明只是必要条件，不等同于界面已完成 DPI 适配�
 12. 验收证据记录在对应 PR、测试结果或实机验证记录中；未完成的项目不得以视觉截图代替。
 
 ## 修订记录
+
+- 2026-11-15：页面重写已进入实质实施，B1–B7 已按交接记录完成；全局 UI 设计系统、Right Auxiliary Rail 完整验收、B8–B11 与 DPI/可访问性矩阵仍未全部完成，因此状态从 Not Started 更新为 In Progress，不代表 Verified。
 
 - 2026-11-03：首次建立。将 ECL UI 重构确定为 UI 领域最高优先级架构约束，明确 Design System、Application Shell、右侧工具栏、信息架构、排版和 DPI 适配的统一方向。
 - 2026-11-05：根据 Accepted ADR 0056，将原「右侧可折叠工具栏」的容器/交互要求协调为 Right Auxiliary Rail；工具发现与 Inspector 共用同一区域。其余全局 UI 约束不变。
