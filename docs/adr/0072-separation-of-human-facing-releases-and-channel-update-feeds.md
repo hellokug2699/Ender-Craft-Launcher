@@ -131,10 +131,10 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 7. 新 Package 上传失败、签名失败或频道指针切换失败时，不得将频道推进到新版本；旧版本仍可下载和部署。
 8. 回滚可恢复上一份已签名 Manifest/Signature，且不会删除仍被有效 Manifest 引用的 Package。
 9. Actions Artifact 过期或不可访问，不影响客户端正常更新。
-12. `packages` 分支写入只追加、不覆盖、不 force-push；并发发布不会丢失任一频道的 Package 或 Manifest 指针，过期构建不得回退较新频道版本。
-13. 任一已发布 Manifest 引用过的 Package 永久保留；失败构建不进入 `packages` 分支。
 10. 从旧 Release Feed 迁移时，只有在新 Feed 的端到端验证通过且受支持客户端完成切换后，才移除旧 Release Feed 资产。
 11. Feed 发布失败与 GitHub Release 发布成功必须被分别报告；不得把两者合并为单一成功状态。
+12. `packages` 分支写入只追加、不覆盖、不 force-push；并发发布不会丢失任一频道的 Package 或 Manifest 指针，过期构建不得回退较新频道版本。
+13. 任一已发布 Manifest 引用过的 Package 永久保留；失败构建不进入 `packages` 分支。
 
 ## 修订记录
 
