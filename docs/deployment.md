@@ -179,7 +179,7 @@ artifacts/release/1.0.1/
 | 推送 `vMAJOR.MINOR.PATCH` | Actions Artifact，保留 14 天 | 创建不可变版本 Release，并更新 `main` 滚动 Release；均仅两个 EXE | 更新 `main` Feed | 追加到 `packages/main/...` |
 | 手动运行（仅 dev/nightly） | Actions Artifact，保留 14 天 | 更新对应滚动 Release | 更新对应频道 Feed | 追加到所选频道目录（须通过发布资格检查） |
 
-发布实现已提交到当前 PR：客户端支持严格限定的 commit-pinned GitHub Raw Package URL、频道绑定和无自动重定向的更新 HTTP 客户端；发布脚本会迁移或验证其他频道的现有 Feed，将新 Package 追加到 `packages` 分支，签名并部署完整 Pages 站点。Feed 成功后再完成历史 Release 清理与频道滚动 Release 更新；正式版不可变 Release 会先以“Feed 待发布”状态创建，Feed 验证成功后才更新为“已发布”。Cloudflare Pages 项目与自定义域名已由 API 确认存在且域名状态为 active；目前尚无 Production Deployment。**尚未完成首次生产运行**：需要 CI 通过并在 nightly 上首次触发发布，验证匿名下载、签名、三频道 Feed 和 Release 资产后，才能认定迁移完成。
+发布实现已提交到当前 PR：客户端支持严格限定的 commit-pinned GitHub Raw Package URL、频道绑定和无自动重定向的更新 HTTP 客户端；发布脚本会迁移或验证其他频道的现有 Feed，将新 Package 追加到 `packages` 分支，签名并部署完整 Pages 站点。Feed 成功后再规范化符合条件的历史版本 Release，并只更新本次触发频道的滚动 Release；其他频道的滚动 Release 会在其各自分支/正式 Tag 下一次发布时更新。正式版不可变 Release 会先以“Feed 待发布”状态创建，Feed 验证成功后才更新为“已发布”。Cloudflare Pages 项目与自定义域名已由 API 确认存在且域名状态为 active；目前尚无 Production Deployment。**尚未完成首次生产运行**：需要 CI 通过并在 nightly 上首次触发发布，验证匿名下载、签名、三频道 Feed 和 Release 资产后，才能认定迁移完成。
 
 - Nightly 每次成功构建都会产生独立的 Actions Artifact，便于高级用户追溯特定构建；Artifact 保留 14 天，过期后不保证可取回。
 - 普通用户下载 `ECL.Installer-<version>-win-x64.exe` 并直接运行；不需要下载 ZIP 或手工解压。
