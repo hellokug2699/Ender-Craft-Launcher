@@ -267,6 +267,17 @@ function Acquire-FeedLock {
     throw "Timed out waiting for the Cloudflare Pages Production lock."
 }
 
+function Assert-ChannelFreshness {
+    if ($env:ECL_REF_TYPE -eq "tag") { return }
+    $head = & gh api "repos/$Repository/branches/$Channel" --jq ".commit.sha"
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($head)) {
+        throw "Unable to verify current branch head for $Channel."
+    }
+    if ($head.Trim() -ne $env:GITHUB_SHA) {
+        throw "Refusing stale publication for $env:GITHUB_SHA; current $Channel head is $head."
+    }
+}
+
 function Release-FeedLock {
     if ([string]::IsNullOrWhiteSpace($script:feedLockOwner)) { return }
     for ($attempt = 1; $attempt -le 8; $attempt++) {
@@ -306,6 +317,7 @@ if ($LASTEXITCODE -ne 0) { throw "Unable to clone package repository metadata." 
 
 Acquire-FeedLock
 try {
+Assert-ChannelFreshness
 # Preserve all existing channels. On the first deployment, migrate each channel's
 # current signed Release package into the immutable package store before Pages is
 # switched. Later deployments reuse the already verified Production Feed.
@@ -394,6 +406,8 @@ foreach ($candidate in @("main", "dev", "nightly")) {
         if (-not (Test-Path $path)) { throw "Feed deployment is incomplete: $candidate/$file is missing." }
     }
 }
+
+Assert-ChannelFreshness
 
 # Wrangler Direct Upload replaces the complete static site in one Production
 # deployment. No Pages Functions, Workers, or Package binaries are uploaded.
