@@ -112,6 +112,10 @@ function Add-PackageToStore(
             Invoke-Git @("read-tree", $parent)
             & git -C $storeRoot update-ref refs/heads/packages $parent
             if ($LASTEXITCODE -ne 0) { throw "Unable to set local package branch head." }
+            $unexpectedPaths = @(& git -C $storeRoot ls-tree -r --name-only $parent | Where-Object { $_ -notlike "packages/*" })
+            if ($LASTEXITCODE -ne 0 -or $unexpectedPaths.Count -gt 0) {
+                throw "The packages branch must contain only immutable files under packages/."
+            }
 
             $existingEntry = & git -C $storeRoot ls-tree --name-only $parent -- $relative
             if ($LASTEXITCODE -ne 0) { throw "Unable to inspect immutable Package path." }
