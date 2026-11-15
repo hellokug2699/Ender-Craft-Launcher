@@ -49,7 +49,7 @@ public partial class IntegrityWindow : Window
 
         if (matches)
         {
-            StatusText.Text = "官方摘要与本机独立计算结果一致。可以确认继续安装。";
+            StatusText.Text = "官方摘要与程序计算的本机文件哈希一致。请仍使用 PowerShell 独立计算并逐字符核对后再确认。";
             StatusText.Foreground = System.Windows.Media.Brushes.LightGreen;
         }
         else if (officialHash.Length > 0)
