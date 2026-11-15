@@ -197,7 +197,7 @@ public static class UpdateManifestParser
 
         var package = dto.Package;
         if (package is null ||
-            !TryNormalizePackageReference(package.File, channel, architecture, version, out var packageFile) ||
+            !TryNormalizePackageReference(package.File, package.Sha256, channel, architecture, version, out var packageFile) ||
             package.Size <= 0 ||
             !UpdateHash.IsSha256(package.Sha256))
         {
@@ -264,6 +264,7 @@ public static class UpdateManifestParser
 
     private static bool TryNormalizePackageReference(
         string? value,
+        string? sha256,
         UpdateChannel channel,
         UpdateArchitecture architecture,
         ReleaseVersion version,
@@ -301,7 +302,8 @@ public static class UpdateManifestParser
         }
 
         var hash = segments[8].Substring(prefix.Length, segments[8].Length - prefix.Length - 4);
-        if (hash.Length != 64 || !hash.All(Uri.IsHexDigit))
+        if (hash.Length != 64 || !hash.All(Uri.IsHexDigit) ||
+            !string.Equals(hash, sha256, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
