@@ -181,6 +181,120 @@ function Confirm-PackageUrl([string]$Url, [long]$ExpectedSize, [string]$Expected
     }
 }
 
+
+function Write-BranchFile([string]$Branch, [string]$Path, [string]$Content, [string]$Message) {
+    for ($attempt = 1; $attempt -le 8; $attempt++) {
+        $remote = & git -C $storeRoot ls-remote --heads origin $Branch
+        if ($LASTEXITCODE -ne 0) { throw "Unable to inspect $Branch branch." }
+        $parent = ""
+        if ($remote) {
+            Invoke-Git @("fetch", "--depth=1", "origin", $Branch)
+            $parent = (& git -C $storeRoot rev-parse FETCH_HEAD).Trim()
+            Invoke-Git @("read-tree", $parent)
+            & git -C $storeRoot update-ref "refs/heads/$Branch" $parent
+        }
+        else {
+            & git -C $storeRoot update-ref -d "refs/heads/$Branch" 2>$null
+            Invoke-Git @("read-tree", "--empty")
+        }
+
+        $temp = Join-Path $workRoot "branch-file-$([Guid]::NewGuid().ToString('N')).json"
+        [System.IO.File]::WriteAllText($temp, $Content, [System.Text.UTF8Encoding]::new($false))
+        $blob = (& git -C $storeRoot hash-object -w $temp).Trim()
+        Remove-Item $temp -Force
+        if ($LASTEXITCODE -ne 0) { throw "Unable to create branch metadata blob." }
+        Invoke-Git @("update-index", "--add", "--cacheinfo", "100644", $blob, $Path)
+        $tree = (& git -C $storeRoot write-tree).Trim()
+        if ($LASTEXITCODE -ne 0) { throw "Unable to create branch metadata tree." }
+        $args = @("commit-tree", $tree, "-m", $Message)
+        if ($parent) { $args = @("commit-tree", $tree, "-p", $parent, "-m", $Message) }
+        $commit = (& git -C $storeRoot @args).Trim()
+        if ($LASTEXITCODE -ne 0) { throw "Unable to create branch metadata commit." }
+        if ($parent) {
+            & git -C $storeRoot update-ref "refs/heads/$Branch" $commit $parent
+        }
+        else {
+            & git -C $storeRoot update-ref "refs/heads/$Branch" $commit
+        }
+        if ($LASTEXITCODE -ne 0) { throw "Unable to update local $Branch ref." }
+        $refspec = "refs/heads/" + $Branch + ":refs/heads/" + $Branch
+        & git -C $storeRoot push origin $refspec
+        if ($LASTEXITCODE -eq 0) { return $commit }
+        if ($attempt -eq 8) { throw "Unable to update $Branch after concurrent writes." }
+    }
+    throw "Unable to update $Branch."
+}
+
+function Acquire-FeedLock {
+    $script:feedLockOwner = "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+    for ($attempt = 1; $attempt -le 180; $attempt++) {
+        $remote = & git -C $storeRoot ls-remote --heads origin feed-lock
+        if ($LASTEXITCODE -ne 0) { throw "Unable to inspect feed-lock branch." }
+        $parent = ""
+        $locked = $false
+        if ($remote) {
+            Invoke-Git @("fetch", "--depth=1", "origin", "feed-lock")
+            $parent = (& git -C $storeRoot rev-parse FETCH_HEAD).Trim()
+            $objectPath = $parent + ":lock.json"
+            $lockText = (& git -C $storeRoot show $objectPath) -join [Environment]::NewLine
+            if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($lockText)) {
+                $state = $lockText | ConvertFrom-Json
+                if ($state.owner -and [DateTimeOffset]::Parse([string]$state.expiresAt) -gt [DateTimeOffset]::UtcNow) {
+                    $locked = $true
+                }
+            }
+        }
+        if ($locked) {
+            Write-Host "Another channel publication owns the Pages lock; waiting (attempt $attempt/180)."
+            Start-Sleep -Seconds 15
+            continue
+        }
+
+        $state = [ordered]@{
+            owner = $script:feedLockOwner
+            expiresAt = [DateTimeOffset]::UtcNow.AddMinutes(45).ToString("o")
+        }
+        $json = $state | ConvertTo-Json -Compress
+        try {
+            $null = Write-BranchFile "feed-lock" "lock.json" $json "ci(feed): acquire Production deployment lock"
+            return
+        }
+        catch {
+            if ($attempt -eq 180) { throw }
+            Start-Sleep -Seconds 3
+        }
+    }
+    throw "Timed out waiting for the Cloudflare Pages Production lock."
+}
+
+function Release-FeedLock {
+    if ([string]::IsNullOrWhiteSpace($script:feedLockOwner)) { return }
+    for ($attempt = 1; $attempt -le 8; $attempt++) {
+        $remote = & git -C $storeRoot ls-remote --heads origin feed-lock
+        if ($LASTEXITCODE -ne 0 -or -not $remote) { return }
+        Invoke-Git @("fetch", "--depth=1", "origin", "feed-lock")
+        $parent = (& git -C $storeRoot rev-parse FETCH_HEAD).Trim()
+        $objectPath = $parent + ":lock.json"
+        $lockText = (& git -C $storeRoot show $objectPath) -join [Environment]::NewLine
+        if ($LASTEXITCODE -ne 0) { return }
+        $state = $lockText | ConvertFrom-Json
+        if ($state.owner -ne $script:feedLockOwner) { return }
+
+        $released = [ordered]@{
+            owner = ""
+            expiresAt = [DateTimeOffset]::UtcNow.AddMinutes(-1).ToString("o")
+        }
+        try {
+            $null = Write-BranchFile "feed-lock" "lock.json" ($released | ConvertTo-Json -Compress) "ci(feed): release Production deployment lock"
+            $script:feedLockOwner = ""
+            return
+        }
+        catch {
+            if ($attempt -eq 8) { Write-Warning "Could not release feed lock cleanly: $_" }
+        }
+    }
+}
+
 # Clone repository metadata only. Package commits are assembled with Git's
 # index/tree plumbing, avoiding checkout/download of the entire immutable package history.
 $cloneArgs = @("-c", "http.extraheader=AUTHORIZATION: basic $auth", "clone", "--filter=blob:none", "--no-checkout", "https://github.com/$Repository.git", $storeRoot)
@@ -190,6 +304,8 @@ if ($LASTEXITCODE -ne 0) { throw "Unable to clone package repository metadata." 
 & git -C $storeRoot config user.name "github-actions[bot]"
 & git -C $storeRoot config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+Acquire-FeedLock
+try {
 # Preserve all existing channels. On the first deployment, migrate each channel's
 # current signed Release package into the immutable package store before Pages is
 # switched. Later deployments reuse the already verified Production Feed.
@@ -305,3 +421,7 @@ foreach ($candidate in @("main", "dev", "nightly")) {
 }
 
 Write-Host "All three signed channel feeds are deployed. Current package URL: $currentUrl"
+}
+finally {
+    Release-FeedLock
+}
