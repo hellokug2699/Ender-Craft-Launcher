@@ -319,7 +319,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ECL_REF_TYPE: ${{ github.ref_type }}
-          ECL_CHANNEL: ${{ env.ECL_CHANNEL }}
+          ECL_CHANNEL: ${{ steps.resolve.outputs.channel }}
         run: |
           $notes = "$env:RUNNER_TEMP/release-notes.md"
           $content = Get-Content $notes -Raw
