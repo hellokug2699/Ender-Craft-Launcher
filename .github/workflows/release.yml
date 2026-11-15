@@ -127,6 +127,7 @@ jobs:
             -SigningKeyPath $env:ECL_UPDATE_SIGNING_KEY `
             -KeyId "ecl-release-2026-11" `
             -TrustStorePath "build/update-trust.json" `
+            -SelfContained `
             -ReleaseNotes (Get-Content "$env:RUNNER_TEMP/release-notes.md" -Raw)
           if ($LASTEXITCODE -ne 0) { throw "pack-release failed" }
 
@@ -136,8 +137,15 @@ jobs:
           $dir = "artifacts/release/$env:ECL_VERSION"
           $boot = Join-Path $dir "ECL.Bootstrapper-$env:ECL_VERSION-win-x64.zip"
           Compress-Archive -Path (Join-Path $dir "bootstrapper/*") -DestinationPath $boot -Force
-          $installerMedia = Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.zip"
-          Compress-Archive -Path (Join-Path $dir "installer/*") -DestinationPath $installerMedia -Force
+          $installer = Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.exe"
+          $checksum = "$installer.sha256"
+          $bootstrapper = Join-Path $dir "bootstrapper/ECL.Bootstrapper.exe"
+          foreach ($required in @($installer, $checksum, $bootstrapper, (Join-Path $dir "ECL-$env:ECL_VERSION-win-x64.zip"))) {
+            if (-not (Test-Path $required)) { throw "Release asset missing: $required" }
+          }
+          $expected = (Get-Content $checksum -Raw).Trim().Split()[0]
+          $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($expected -ne $actual) { throw "Installer checksum does not match final executable." }
           Get-ChildItem $dir | Select-Object Name, Length
 
       # Every build remains independently downloadable for a limited period.
@@ -185,7 +193,8 @@ jobs:
           $assets = @(
             (Join-Path $dir "ECL-$env:ECL_VERSION-win-x64.zip"),
             (Join-Path $dir "ECL.Bootstrapper-$env:ECL_VERSION-win-x64.zip"),
-            (Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.zip"),
+            (Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.exe"),
+            (Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.exe.sha256"),
             (Join-Path $dir "update-manifest.json"),
             (Join-Path $dir "update-manifest.sig"),
             (Join-Path $dir "update-trust.json")
