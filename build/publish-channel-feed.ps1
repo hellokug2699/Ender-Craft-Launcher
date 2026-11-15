@@ -154,7 +154,7 @@ function Add-PackageToStore(
         }
         if ($LASTEXITCODE -ne 0) { throw "Unable to update local package branch ref." }
 
-        & git -C $storeRoot push origin "HEAD:refs/heads/packages"
+        & git -C $storeRoot push origin "refs/heads/packages:refs/heads/packages"
         if ($LASTEXITCODE -eq 0) {
             return "https://raw.githubusercontent.com/$Repository/$commit/$relative"
         }
