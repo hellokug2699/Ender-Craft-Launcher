@@ -3,7 +3,7 @@
 - Decision: Accepted
 - Implementation: In Progress
 - Date: 2026-11-15
-- Scope: Windows x64 / ARM64 首次安装介质、Installer 与 Bootstrapper 的公开 Release 分发
+- Scope: Windows x64 / ARM64 首次安装介质、Installer 与 Bootstrapper 的单文件构建及人工下载入口
 - Related: [ADR 0013: Branch-Based Versioning and Release Channels](0013-branch-based-versioning-and-release-channels.md)、[ADR 0025: Installer First-Launch Integrity Confirmation](0025-installer-first-launch-integrity-confirmation.md)、[ADR 0029: Installer, Bootstrapper and Uninstaller Lifecycle Boundaries](0029-installer-bootstrapper-uninstaller-lifecycle.md)、[ADR 0051: Unified Installation, Update and Recovery Architecture](0051-unified-installation-update-and-recovery-architecture.md)
 
 ## 背景
@@ -20,9 +20,9 @@ ADR 0051 已规定 Installer 负责初始化首次安装介质并部署 Bootstra
 4. **Bootstrapper 只有一种正式分发构建。** 发布为自包含单文件 EXE；独立 Bootstrapper 下载项与 Installer 内嵌介质必须使用同一个已构建二进制，不得分别发布 framework-dependent 与 self-contained 两套同名产物。
 5. **Uninstaller 独立自包含。** 首次安装介质中的 Uninstaller 同样为单文件自包含程序，避免卸载流程依赖目标机运行时。
 6. **完整 ECL 程序包按发布频道构建为自包含包。** 官方 CI 发布构建显式启用 `SelfContained`，确保在干净 Windows 环境中完成安装后，ECL 主程序及 LogHost 不再要求用户另行安装 .NET Desktop Runtime。开发者本地打包仍可显式选择 framework-dependent 产物，但不得将其作为官方 Release。
-7. **Installer 完整性摘要独立发布。** Installer 文件不能把自身 SHA-256 嵌入自身，因此官方 Release 同时发布对应的 `.exe.sha256` sidecar。首次启动完整性向导要求用户从同版本官方 Release 复制摘要，并与 PowerShell 独立计算的本地 SHA-256 逐字符比较；未提供或不匹配时不得显示为已验证。用户仍可显式跳过，但必须明确显示未验证状态。
-8. **Release 资产语义清晰。** 普通用户入口是 Installer EXE；完整 ECL ZIP 是更新协议使用的部署包；Bootstrapper ZIP 是高级用户的独立恢复入口。Release 说明必须解释用途，不能把普通 ECL ZIP 描述为首次安装程序。
-9. **频道发布契约保持 ADR 0013。** `nightly`、`dev` 和 `main` 的滚动 Release 与不可变 stable 版本 Release 规则不变；只调整资产形态与说明，不额外创建每次构建的 Release。
+7. **Installer 完整性摘要通过 Release Notes 提供。** Installer 文件不能把自身 SHA-256 嵌入自身。官方 Release 不再发布 checksum sidecar；发布流水线必须在最终 EXE 签名和复制完成后计算 SHA-256，并将摘要写入同一 Release Notes。首次启动完整性向导要求用户从同版本官方 Release 页面复制摘要，并与 PowerShell 独立计算的本地 SHA-256 逐字符比较；未提供或不匹配时不得显示为已验证。用户仍可显式跳过，但必须明确显示未验证状态。
+8. **人工 Release 页面严格只提供两个 EXE。** Installer EXE 是普通用户唯一推荐入口；独立 Bootstrapper EXE 仅供需要单独修复入口的高级用户。完整 ECL ZIP、Manifest、Signature、trust store 与其他更新材料不得作为 GitHub Release 附件；它们由 ADR 0072 定义的独立频道 Feed 提供。Release Notes 必须列出 Installer 与 Bootstrapper 的 SHA-256，并解释两者用途。
+9. **频道更新 Feed 与人工 Release 分离。** `nightly`、`dev` 和 `main` 的版本与频道规则继续遵循 ADR 0013；人工 Release 只承载两个 EXE，日常更新所需 ECL Package 与签名 Feed 由 ADR 0072 管理。
 
 ## 备选方案
 
@@ -37,19 +37,19 @@ ADR 0051 已规定 Installer 负责初始化首次安装介质并部署 Bootstra
 - Installer、Bootstrapper、Uninstaller 和官方 ECL 包均可在未预装 .NET Runtime 的 Windows 环境中运行。
 - Installer EXE 会明显增大，因为其中包含完整 ECL 安装包及自包含部署组件；这是独立安装能力的预期成本。
 - Installer 临时释放介质会占用额外磁盘空间；安装完成或退出后应尽力清理，清理失败不得影响安装结果。
-- Installer 的自身哈希不能内嵌，因此需要独立 checksum Release 资产和人工核对流程；这不是 Manifest 签名的替代品。
+- Installer 的自身哈希不能内嵌，因此 Release Notes 必须提供独立摘要；摘要不再作为第三个下载资产，也不是 Manifest 签名的替代品。
 - 官方发布体积增加，CI 构建时间也会增加；应通过构建日志和 Release 资产大小监控回归。
 
 ## 验收标准
 
-1. 官方 Release 只提供一个普通用户 Installer EXE 入口，不再要求用户下载并手工解压 Installer ZIP。
+1. 官方 Release 页面恰好提供 Installer 与 Bootstrapper 两个 EXE；不发布 ZIP、Manifest、Signature、trust store 或 checksum sidecar 附件。
 2. 在未安装 .NET Desktop Runtime 的干净 Windows 10/11 x64 环境中，Installer 能启动并显示完整安装 UI。
 3. Installer 可从嵌入资源释放完整介质；路径穿越、符号链接或缺失必要文件时必须拒绝继续。
 4. 用户不手工解压、不预先放置 Bootstrapper 或 Manifest 文件，Installer 仍能完成介质检查并调用 Bootstrapper。
-5. Installer 释放并部署的 Bootstrapper 与独立 Bootstrapper Release ZIP 中的 EXE SHA-256 完全一致。
+5. Installer 释放并部署的 Bootstrapper 与独立 Bootstrapper Release EXE 的 SHA-256 完全一致。
 6. Installer 不实现 Manifest 验签、包解压和逐文件验证；篡改 Manifest、签名或包仍由 Bootstrapper fail-closed 拒绝。
 7. 官方发布的 ECL 主程序、LogHost、Bootstrapper、Installer 和 Uninstaller 均为 self-contained；干净 Windows 环境完成安装后可以启动 ECL。
-8. `.exe.sha256` 与最终发布 Installer EXE 的 SHA-256 一致；向导只在用户输入匹配的 64 位摘要后启用“确认”。
+8. Release Notes 中列出的 Installer SHA-256 与最终发布 EXE 完全一致；向导只在用户输入匹配的 64 位摘要后启用“确认”。
 9. 用户选择跳过完整性核对时，状态必须保持“未验证”，静默安装必须显式传入 `--accept-unverified`。
 10. 安装、升级、回滚和卸载不删除或修改 Minecraft 实例、账户、配置及用户数据。
 11. Release notes 清楚区分 Installer、ECL Package 和 Bootstrapper 的用途。
@@ -57,4 +57,5 @@ ADR 0051 已规定 Installer 负责初始化首次安装介质并部署 Bootstra
 
 ## 修订记录
 
-- 2026-11-15：首次决策。统一 Installer 单文件分发、嵌入完整安装介质、Bootstrapper 唯一自包含构建及官方 Release 资产语义。
+- 2026-11-15：首次决策。统一 Installer 单文件分发、嵌入完整安装介质及 Bootstrapper 唯一自包含构建。
+- 2026-11-15：依据 [ADR 0072](0072-separation-of-human-facing-releases-and-channel-update-feeds.md) 修订人工分发约束：Release 仅保留两个 EXE，摘要写入 Release Notes，自动更新 Feed 与人工 Release 分离。

@@ -180,9 +180,9 @@ artifacts/release/1.0.1/
 | 手动运行 | Actions Artifact，保留 14 天 | 根据所选分支更新对应滚动 Release | 对应通道 |
 
 - Nightly 每次成功构建都会产生独立的 Actions Artifact，便于高级用户下载特定构建；Artifact 保留 14 天，过期后不保证可取回。
-- 普通用户应下载 `ECL.Installer-<version>-win-x64.exe` 并直接运行；不需要下载 ZIP 或手工解压。对应 `.exe.sha256` 是 ADR 0025 的独立官方摘要来源。
-- `ECL-<version>-win-x64.zip` 是 Bootstrapper 更新/部署使用的完整程序包，不是面向普通用户的首次安装入口。
-- `ECL.Bootstrapper-<version>-win-x64.zip` 是高级用户独立恢复入口；它与 Installer 内嵌的 Bootstrapper 使用同一个自包含单文件构建。
+- 普通用户应下载 `ECL.Installer-<version>-win-x64.exe` 并直接运行；不需要下载 ZIP 或手工解压。目标 Release 还提供独立的 `ECL.Bootstrapper-<version>-win-x64.exe`，仅供需要单独修复入口的高级用户。两个 EXE 的 SHA-256 写在 Release Notes，不作为额外附件。
+- `ECL-<version>-win-x64.zip` 是 Bootstrapper 日常更新/部署使用的完整程序包，不是面向普通用户的首次安装入口；它应由独立 Channel Feed 提供，不出现在人工 Release 页面。
+- `ECL.Bootstrapper-<version>-win-x64.exe` 是高级用户独立恢复入口；它与 Installer 内嵌的 Bootstrapper 使用同一个自包含单文件构建。
 - Installer 内嵌完整介质并在临时目录释放；实际签名验证、包解压和逐文件校验仍由 Bootstrapper 执行。
 - Nightly 不再为每次提交创建新的 GitHub Release。公开 Release 列表中只保留一个 `nightly` 滚动入口，资产以 `--clobber` 更新。
 - `nightly`、`dev`、`main` 是可移动的通道 Tag。工作流在所有资产上传成功后才移动 Tag，避免 Tag 指向尚未完整发布的构建。
@@ -190,24 +190,25 @@ artifacts/release/1.0.1/
 - 同一分支的构建按队列执行，避免在上传资产或移动通道 Tag 时被强制取消；旧提交仍可作为短期 Actions Artifact 追溯，但只有检查时仍是分支最新 HEAD 的构建才能更新滚动源。
 - 手动运行 workflow 时选择 `dev` 或 `nightly` 分支；正式版只能通过版本 Tag 发布。
 
-构建流程仍然执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 包含完整构建中间产物；滚动 Release 发布完整包、Bootstrapper ZIP、单文件 Installer EXE、Installer SHA-256 sidecar、Manifest、签名与信任库。
+构建流程仍然执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 包含完整构建中间产物。目标发布形态由 ADR 0072 规定：人工 Release 仅发布 Installer 与 Bootstrapper 两个 EXE，自动更新 Feed 单独发布完整 ECL Package、Manifest 与 Signature；Release Notes 列出两个 EXE 的 SHA-256。
 
 ### 当前实现与目标架构
 
-当前自动更新/远程修复实现仍使用配置的单一 HTTPS Feed：
+**当前实现仍处于迁移前状态：**自动更新/远程修复默认使用 GitHub Release 下载路径：
 
 ```text
 https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/<channel>/
 ```
 
-其中 `<channel>` 为 `main`、`dev` 或 `nightly`。对应文件为 `update-manifest.json`、`update-manifest.sig` 与 Manifest 指定的完整包。Feed 可通过 CLI 参数或 `ECL_UPDATE_FEED` 指定；当前尚未实现多来源自动发现、代理候选管理或来源健康状态。
+其中 `<channel>` 为 `main`、`dev` 或 `nightly`。对应文件为 `update-manifest.json`、`update-manifest.sig` 与 Manifest 指定的完整 ECL Package。Feed 可通过 CLI 参数或 `ECL_UPDATE_FEED` 指定。
+
+**目标状态由 [ADR 0072](adr/0072-separation-of-human-facing-releases-and-channel-update-feeds.md) 定义：**GitHub Release 页面只提供 Installer 与 Bootstrapper 两个 EXE；Manifest、Signature 与完整 ECL Package 从独立的匿名 HTTPS Channel Feed 获取。独立 Feed 的供应商与正式端点尚未选定，因此当前不得提前从 GitHub Release 删除这些旧 Feed 资产，否则现有客户端自动更新会中断。切换必须先完成独立 Feed 的匿名下载、签名验证、包哈希、频道发布原子性与回滚验收，再更新客户端默认 Feed 并清理旧资产。
 
 根据 [ADR 0051：统一安装、更新与恢复架构](adr/0051-unified-installation-update-and-recovery-architecture.md)，目标架构将由 Update Source Resolver 按有界策略尝试多个来源：
 
-1. 官方 GitHub Release 直连；
-2. 经允许列表配置的 GitHub 代理 / gh-proxy 类传输来源；
-3. 提供相同签名发布资产的独立镜像；
-4. 本地 Recovery Cache 与用户手动导入的完整离线介质。
+1. 独立官方 Channel Feed 直连；
+2. 经允许列表配置的 Feed 镜像或代理传输来源；
+3. 本地 Recovery Cache 与用户手动导入的完整离线介质。
 
 上述顺序是目标策略，不代表这些来源当前均已实现或已配置。GitHub Actions Artifact 仍只用于构建追溯和人工下载，不作为客户端自动更新源：Artifact 有保留期限，下载也可能要求 GitHub 权限。
 
@@ -247,6 +248,7 @@ git checkout <commit-or-tag>
 - `--cleanup` 与部署前自动清理只删除 `staging/`；自动化测试确认 `versions/` 与 `current.json` 不受影响。
 - 未完成：全新 Windows 无 .NET SDK、无 .NET 运行时的安装验收；Authenticode 签名；GUI 自动化（当前 GUI 仅人工冒烟）。
 - 2026-11-15，ADR 0071 分发重构：官方构建切换为自包含单文件 Installer，完整部署介质嵌入 Installer；Bootstrapper 统一为单文件自包含构建，独立下载与 Installer 内嵌副本共用同一二进制。该项需等待 PR CI 与干净 Windows 实机验收后才能标记 Verified。
+- 2026-11-15，ADR 0072 决定将人工 Release 与自动更新 Feed 分离。当前 release workflow 尚未完成迁移，旧 GitHub Release Feed 资产必须保留，直到独立 Feed 通过端到端验证。
 
 ## 9. 用户数据与卸载边界
 
