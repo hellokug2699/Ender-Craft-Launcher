@@ -51,6 +51,103 @@ public sealed class UpdateClientTests
     }
 
     [Fact]
+    public async Task ResolvesAbsoluteImmutablePackageUrlWithoutJoiningFeedPath()
+    {
+        var keys = DeploymentTestData.CreateKeys();
+        var digest = new string('a', 64);
+        var commit = new string('b', 40);
+        var packageUrl = $"https://raw.githubusercontent.com/hellokug2699/Ender-Craft-Launcher/{commit}/packages/nightly/windows/x64/1.0.1/ECL-1.0.1-win-x64-{digest}.zip";
+        var manifest = DeploymentTestData.CreateManifest("1.0.1", "unused.zip", 1, digest) with
+        {
+            Channel = UpdateChannel.Nightly,
+            Package = new UpdatePackage(packageUrl, 1, digest),
+        };
+        var manifestBytes = DeploymentTestData.Serialize(manifest);
+        var signatureBytes = Encoding.UTF8.GetBytes(
+            DeploymentTestData.Sign(manifestBytes, keys.PrivateKeyPem, keys.KeyId));
+        using var handler = new StubHandler(request =>
+            request.RequestUri!.AbsolutePath.EndsWith(".sig", StringComparison.Ordinal)
+                ? Bytes(signatureBytes)
+                : Bytes(manifestBytes));
+        using var http = new HttpClient(handler);
+        var client = new UpdateClient(http, new UpdateSignatureVerifier(DeploymentTestData.TrustStore(keys.TrustJson)));
+
+        var result = await client.CheckAsync(new Uri("https://updates.endercraftlauncher.top/"), UpdateChannel.Nightly);
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        Assert.Equal(new Uri(packageUrl), result.Value!.PackageUri);
+    }
+
+    [Fact]
+    public async Task RejectsFeedRedirectWithoutFollowingIt()
+    {
+        using var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.Redirect)
+        {
+            Headers = { Location = new Uri("https://attacker.example/collect") },
+        });
+        using var http = new HttpClient(handler);
+        var client = new UpdateClient(http, new UpdateSignatureVerifier(UpdateTrustStore.Empty));
+
+        var result = await client.CheckAsync(new Uri("https://updates.endercraftlauncher.top/"), UpdateChannel.Nightly);
+
+        Assert.Equal("update.feed_redirect_rejected", result.Error?.Code);
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
+    public async Task RetriesSignedFeedPairWhenDeploymentChangesBetweenRequests()
+    {
+        var keys = DeploymentTestData.CreateKeys();
+        var oldManifest = DeploymentTestData.CreateManifest("1.0.0", "old.zip", 1, new string('a', 64));
+        var newManifest = DeploymentTestData.CreateManifest("1.0.1", "new.zip", 1, new string('b', 64));
+        var oldBytes = DeploymentTestData.Serialize(oldManifest);
+        var newBytes = DeploymentTestData.Serialize(newManifest);
+        var oldSignature = Encoding.UTF8.GetBytes(
+            DeploymentTestData.Sign(oldBytes, keys.PrivateKeyPem, keys.KeyId));
+        var newSignature = Encoding.UTF8.GetBytes(
+            DeploymentTestData.Sign(newBytes, keys.PrivateKeyPem, keys.KeyId));
+        var signatureRequests = 0;
+        using var handler = new StubHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith(".sig", StringComparison.Ordinal))
+            {
+                signatureRequests++;
+                return Bytes(signatureRequests == 1 ? oldSignature : newSignature);
+            }
+
+            return Bytes(newBytes);
+        });
+        using var http = new HttpClient(handler);
+        var client = new UpdateClient(http, new UpdateSignatureVerifier(DeploymentTestData.TrustStore(keys.TrustJson)));
+
+        var result = await client.CheckAsync(new Uri("https://updates.endercraftlauncher.top/"), UpdateChannel.Stable);
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        Assert.Equal("1.0.1", result.Value!.Manifest.Version.ToString());
+        Assert.Equal(4, handler.Calls);
+    }
+
+    [Fact]
+    public async Task RejectsManifestFromAnotherChannel()
+    {
+        var keys = DeploymentTestData.CreateKeys();
+        var manifest = DeploymentTestData.CreateManifest("1.0.1", "ECL.zip", 1, new string('a', 64));
+        var manifestBytes = DeploymentTestData.Serialize(manifest);
+        var signatureBytes = Encoding.UTF8.GetBytes(
+            DeploymentTestData.Sign(manifestBytes, keys.PrivateKeyPem, keys.KeyId));
+        using var handler = new StubHandler(request =>
+            request.RequestUri!.AbsolutePath.EndsWith(".sig", StringComparison.Ordinal)
+                ? Bytes(signatureBytes)
+                : Bytes(manifestBytes));
+        using var http = new HttpClient(handler);
+        var client = new UpdateClient(http, new UpdateSignatureVerifier(DeploymentTestData.TrustStore(keys.TrustJson)));
+
+        var result = await client.CheckAsync(new Uri("https://updates.endercraftlauncher.top/"), UpdateChannel.Nightly);
+
+        Assert.Equal("update.channel_mismatch", result.Error?.Code);
+    }
+
+    [Fact]
     public async Task RejectsInsecureFeed()
     {
         using var handler = new StubHandler(_ => Bytes([]));

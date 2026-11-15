@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace Ecl.Deployment;
@@ -49,16 +50,69 @@ public static class InstallerIntegrity
         }
 
         var fileName = Path.GetFileName(executable);
+        var version = File.Exists(executable)
+            ? FileVersionInfo.GetVersionInfo(executable).ProductVersion
+            : null;
         var localHash = File.Exists(executable)
             ? await UpdateHash.ComputeSha256Async(executable, cancellationToken).ConfigureAwait(false)
             : string.Empty;
+
+        var sidecarPath = executable + ".sha256";
+        if (File.Exists(sidecarPath))
+        {
+            try
+            {
+                var sidecar = await File.ReadAllTextAsync(sidecarPath, cancellationToken).ConfigureAwait(false);
+                var fields = sidecar.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                var sidecarHash = fields.FirstOrDefault();
+                var sidecarFile = fields.Length > 1 ? Path.GetFileName(fields[1]) : fileName;
+                if (sidecarHash is null ||
+                    sidecarHash.Length != 64 ||
+                    !sidecarHash.All(Uri.IsHexDigit) ||
+                    !string.Equals(sidecarFile, fileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return new InstallerIntegrityResult(
+                        executable,
+                        fileName,
+                        version,
+                        localHash,
+                        null,
+                        InstallerIntegrityState.Unavailable,
+                        "旁置 SHA-256 文件格式无效，或摘要对应的文件名与当前安装程序不一致。");
+                }
+
+                var sidecarMatches = string.Equals(localHash, sidecarHash, StringComparison.OrdinalIgnoreCase);
+                return new InstallerIntegrityResult(
+                    executable,
+                    fileName,
+                    version,
+                    localHash,
+                    sidecarHash,
+                    sidecarMatches ? InstallerIntegrityState.Unverified : InstallerIntegrityState.Mismatch,
+                    sidecarMatches
+                        ? "已读取旁置摘要，但它可能与安装程序来自同一下载来源。请从同版本官方 GitHub Release 独立获取 .sha256 资产，并使用 PowerShell 核对后再确认。"
+                        : "本地 SHA-256 与旁置摘要不一致。建议取消安装并从官方 Release 重新下载。");
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                return new InstallerIntegrityResult(
+                    executable,
+                    fileName,
+                    version,
+                    localHash,
+                    null,
+                    InstallerIntegrityState.Unavailable,
+                    $"读取旁置 SHA-256 文件失败：{exception.Message}");
+            }
+        }
+
         var checksumPath = Path.Combine(mediaDirectory, ChecksumFileName);
         if (!File.Exists(checksumPath))
         {
             return new InstallerIntegrityResult(
                 executable,
                 fileName,
-                null,
+                version,
                 localHash,
                 null,
                 InstallerIntegrityState.Unavailable,
@@ -78,7 +132,7 @@ public static class InstallerIntegrity
                 return new InstallerIntegrityResult(
                     executable,
                     fileName,
-                    record?.Version,
+                    record?.Version ?? version,
                     localHash,
                     null,
                     InstallerIntegrityState.Unavailable,
@@ -90,7 +144,7 @@ public static class InstallerIntegrity
                 return new InstallerIntegrityResult(
                     executable,
                     fileName,
-                    record.Version,
+                    record.Version ?? version,
                     localHash,
                     record.Sha256,
                     InstallerIntegrityState.Unavailable,
@@ -101,7 +155,7 @@ public static class InstallerIntegrity
             return new InstallerIntegrityResult(
                 executable,
                 fileName,
-                record.Version,
+                record.Version ?? version,
                 localHash,
                 record.Sha256,
                 matches ? InstallerIntegrityState.Confirmed : InstallerIntegrityState.Mismatch,
@@ -114,7 +168,7 @@ public static class InstallerIntegrity
             return new InstallerIntegrityResult(
                 executable,
                 fileName,
-                null,
+                version,
                 localHash,
                 null,
                 InstallerIntegrityState.Unavailable,

@@ -24,7 +24,7 @@ public partial class App : Application
     private static async Task<int> RunSilentAsync(string[] args)
     {
         var installRoot = ReadValue(args, "--install-root");
-        var mediaDirectory = ReadValue(args, "--media") ?? AppContext.BaseDirectory;
+        var explicitMediaDirectory = ReadValue(args, "--media");
         var package = ReadValue(args, "--package");
 
         if (string.IsNullOrWhiteSpace(installRoot) || !Path.IsPathFullyQualified(installRoot))
@@ -38,6 +38,17 @@ public partial class App : Application
         {
             Console.Error.WriteLine(
                 "静默安装未执行首次完整性核对。若确认已通过官方 Release 核对，请显式传入 --accept-unverified。");
+            return 2;
+        }
+
+        string mediaDirectory;
+        try
+        {
+            mediaDirectory = explicitMediaDirectory ?? InstallerBundle.Extract();
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            WriteLog(installRoot, $"无法释放安装介质：{exception.Message}");
             return 2;
         }
 
@@ -71,6 +82,12 @@ public partial class App : Application
         }
 
         return null;
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        InstallerBundle.Cleanup();
+        base.OnExit(e);
     }
 
     private static void WriteLog(string installRoot, string message)

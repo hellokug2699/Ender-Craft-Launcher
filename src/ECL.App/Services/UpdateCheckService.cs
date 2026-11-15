@@ -61,8 +61,14 @@ public sealed record UpdateCheckEnvironment(string BaseDirectory, string? Feed, 
 {
     public const string FeedEnvironmentVariable = "ECL_UPDATE_FEED";
 
+    public const string OfficialFeed = UpdateFeed.OfficialBaseAddress;
+
     public static UpdateCheckEnvironment FromProcess() =>
-        new(AppContext.BaseDirectory, Environment.GetEnvironmentVariable(FeedEnvironmentVariable));
+        new(
+            AppContext.BaseDirectory,
+            Environment.GetEnvironmentVariable(FeedEnvironmentVariable) is { Length: > 0 } configured
+                ? configured
+                : OfficialFeed);
 
     public string ResolveTrustFile() =>
         string.IsNullOrWhiteSpace(TrustFile) ? Path.Combine(BaseDirectory, "update-trust.json") : TrustFile;
@@ -133,7 +139,7 @@ public sealed class UpdateCheckService : IUpdateCheckService
             return Unavailable(channel, trust.Error!.Code, trust.Error.Message);
         }
 
-        using var http = _http.CreateClient();
+        using var http = _http.CreateUpdateClient();
         http.Timeout = RequestTimeout;
         var client = new UpdateClient(http, new UpdateSignatureVerifier(trust.Value!));
 

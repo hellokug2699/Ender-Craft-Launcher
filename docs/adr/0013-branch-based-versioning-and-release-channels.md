@@ -43,16 +43,19 @@ ECL 同时维护 `main`、`dev`、`nightly` 三条长期分支。此前版本号
 
 不得在 UI、打包脚本或更新器中另行拼接独立版本字符串。预发布后缀必须保留，版本比较必须遵循 SemVer 预发布排序规则。
 
-### 4. 构建、发布与更新源分离
+### 4. 构建、人工 Release 与频道更新 Feed 分离
 
-- **Build** 是一次 CI 执行及其可追溯产物；**Release** 是面向用户的发布记录；**Channel** 是客户端选择更新源的策略。三者不得混为一谈。
-- `dev` 与 `nightly` 分支的每次推送都执行签名构建，并上传有期限的 Actions Artifact，供高级用户下载指定构建。
-- `dev` 与 `nightly` 不为每次提交创建独立 GitHub Release；每个频道只维护一个滚动 Release，固定 Tag 分别为 `dev`、`nightly`。
-- `main` 只接受 `vMAJOR.MINOR.PATCH` 标签作为正式版本发布入口；正式版本 Release 不可变，同时维护唯一的 `main` 滚动 Release 供自动更新客户端读取。
-- 滚动频道资产更新完成后才移动对应 Tag；清理旧版本资产必须发生在新 Manifest 与签名发布后，避免遗留资产无限累积。
-- 分支构建按队列执行，只有仍对应当前分支 HEAD 的构建可以更新滚动源；过期构建可以保留为短期 Actions Artifact，但不得覆盖较新的频道版本。
-- `main`、`dev`、`nightly` 滚动源必须分别提供 `update-manifest.json`、`update-manifest.sig` 与 Manifest 指定的完整包。
-- 发布工作流必须拒绝未知分支、格式错误版本和频道不匹配的标签。安装包、更新 Manifest 和 Release 元数据必须一致；发布前应验证所有预期文件存在。
+- **Build** 是一次 CI 执行及其可追溯产物；**Release** 是面向用户的下载记录；**Channel Feed** 是客户端选择更新源的策略。三者不得混为一谈。
+- `dev` 与 `nightly` 分支的每次推送都执行签名构建，并上传有期限的 Actions Artifact，供高级用户追溯指定构建；Artifact 不作为长期下载源或客户端更新源。
+- `dev` 与 `nightly` 各维护一个滚动人工 Release，固定 Tag 分别为 `dev`、`nightly`；每个 Release 页面只提供 Installer EXE 与 Bootstrapper EXE。
+- `main` 只接受 `vMAJOR.MINOR.PATCH` 标签作为正式版本发布入口；正式版本 Release 不可变，同时维护唯一的 `main` 滚动人工 Release。所有人工 Release 页面均只提供两个 EXE。
+- 普通用户下载 Installer；Bootstrapper 仅作为需要独立修复入口时的高级下载。Release Notes 必须解释用途，并列出最终 EXE 的 SHA-256；摘要不作为额外下载附件。
+- 日常 ECL 更新下载的是 Manifest 指定的完整 ECL Package ZIP，不是 Installer 或 Bootstrapper。Manifest、detached Signature 与版本化 Package 由独立的公开 HTTPS Channel Feed 提供，遵循 [ADR 0072](0072-separation-of-human-facing-releases-and-channel-update-feeds.md)。
+- `main`、`dev`、`nightly` Feed 必须分别提供 `update-manifest.json`、`update-manifest.sig` 与 Manifest 指定的完整包；Feed 不是 GitHub Release 附件集合，也不是 Actions Artifact。
+- Feed 发布先上传不可变版本 Package，再验证签名材料，最后原子切换频道 Manifest/Signature。发布中断不得让客户端读到混配状态；频道切换失败不得覆盖上一份可用 Feed。
+- 分支构建按队列执行，只有仍对应当前分支 HEAD 的构建可以更新频道 Feed；过期构建可以保留为短期 Actions Artifact，但不得覆盖较新的频道版本。
+- GitHub Release 发布成功与 Channel Feed 发布成功必须分别报告。Feed 尚未部署或验证时，不得清理旧 Release Feed 资产，也不得宣称自动更新分发已迁移完成。
+- 发布工作流必须拒绝未知分支、格式错误版本和频道不匹配的标签。安装包、更新 Manifest、Release Notes 与 EXE 文件名必须使用同一版本与频道元数据。
 
 ## 后果
 
@@ -68,7 +71,7 @@ ECL 同时维护 `main`、`dev`、`nightly` 三条长期分支。此前版本号
 - 发布工作流需要维护版本注入、签名密钥和 Release 权限。
 - 修改 `VersionPrefix` 会影响后续所有分支构建，版本升级应通过代码审查。
 - GitHub Actions 环境审批、Secrets 和仓库权限属于部署前置条件，不应通过跳过签名或降低安全要求来规避。
-- 滚动 Release 只保留最新频道资产；指定历史构建通过短期 Actions Artifact 获取，Artifact 过期后不保证继续提供。正式版本仍保留不可变 Release。
+- 人工滚动 Release 只保留当前版本的 Installer 与 Bootstrapper 两个 EXE；自动更新所需 Package 由独立 Feed 按版本保留。指定历史构建通过短期 Actions Artifact 获取，Artifact 过期后不保证继续提供。正式版本仍保留不可变人工 Release。
 
 ## 验收标准
 
@@ -78,7 +81,10 @@ ECL 同时维护 `main`、`dev`、`nightly` 三条长期分支。此前版本号
 4. 预发布版本比较遵循 SemVer。
 5. 未配置签名密钥、签名公钥不匹配、缺失资产或频道错误时，发布必须失败关闭。
 6. CI 与 Release 工作流均有可检查的成功结果。
-7. Nightly 每次提交不会增加独立 Release 条目；滚动 Tag、Manifest 与包必须指向同一构建。
+7. Nightly 每次提交不会增加独立 Release 条目；滚动 Release 与 Channel Feed 必须对应同一构建版本。
+8. 每个人工 Release 恰好包含 Installer 与 Bootstrapper 两个 EXE；两者 SHA-256 写入 Release Notes。
+9. 更新 Feed 独立于 GitHub Release，且 Package、Manifest 与 Signature 的发布/回滚满足 ADR 0072 的原子性约束。
 
 ## 修订记录
 - 2026-11-03：实施状态更新为 Implemented。版本/频道解析、滚动 Release、签名资产、过期构建跳过与标签移动已由 release workflow 与 pack-release 脚本实现；当前会话未重新运行 CI，因此不标记 Verified。
+- 2026-11-15：新增人工 Release 与 Channel Feed 分离约束。该分发迁移尚未实施；旧 Release Feed 必须保留至独立 Feed 端到端验证完成。

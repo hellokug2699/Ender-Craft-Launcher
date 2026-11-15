@@ -35,14 +35,14 @@
             <StackPanel>
                 <TextBlock Text="当前文件" FontWeight="Bold" Margin="0,0,0,4" />
                 <TextBox x:Name="FileText" IsReadOnly="True" Background="#1B1824" Foreground="#F3F2F7" BorderBrush="#2B2539" Padding="10,7" />
-                <TextBlock Text="官方摘要" FontWeight="Bold" Margin="0,14,0,4" />
-                <TextBox x:Name="OfficialHashText" IsReadOnly="True" FontFamily="Consolas" Background="#1B1824" Foreground="#F3F2F7" BorderBrush="#2B2539" Padding="10,7" />
+                <TextBlock Text="官方 SHA-256（从同版本 GitHub Release Notes 复制）" FontWeight="Bold" Margin="0,14,0,4" />
+                <TextBox x:Name="OfficialHashText" FontFamily="Consolas" Background="#1B1824" Foreground="#F3F2F7" BorderBrush="#2B2539" Padding="10,7" />
                 <TextBlock Text="本机文件 SHA-256（程序自检）" FontWeight="Bold" Margin="0,14,0,4" />
                 <TextBox x:Name="LocalHashText" IsReadOnly="True" FontFamily="Consolas" Background="#1B1824" Foreground="#F3F2F7" BorderBrush="#2B2539" Padding="10,7" />
 
                 <TextBlock Text="请在 PowerShell 中执行（复制命令后替换为你下载的文件路径）：" FontWeight="Bold" Margin="0,16,0,4" />
                 <TextBox x:Name="CommandText" IsReadOnly="True" FontFamily="Consolas" Background="#1B1824" Foreground="#F3F2F7" BorderBrush="#2B2539" Padding="10,7" TextWrapping="Wrap" />
-                <TextBlock Text="步骤：打开 PowerShell → 执行上方命令 → 读取 Hash 字段 → 与官方摘要逐字符比较。仅打开 PowerShell 或复制命令不代表验证通过。"
+                <TextBlock Text="步骤：从当前版本的官方 GitHub Release 下载 .sha256 资产，复制其中 64 位摘要；打开 PowerShell 独立计算本地文件哈希，并确认两者逐字符一致后再点击确认。仅打开 PowerShell 或复制命令不代表验证通过。"
                            Foreground="#A6A2B5" FontSize="12" Margin="0,8,0,0" />
 
                 <Border x:Name="StatusBorder" Background="#271E3D" BorderBrush="#3D2C63" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,16,0,0">
