@@ -77,7 +77,7 @@ function Get-PublishedFeedFile([string]$Url, [string]$Destination) {
 }
 
 function Test-ProductionDeploymentExists {
-    $endpoint = "https://api.cloudflare.com/client/v4/accounts/$env:CLOUDFLARE_ACCOUNT_ID/pages/projects/ender-craft-launcher-feed/deployments"
+    $endpoint = "https://api.cloudflare.com/client/v4/accounts/$env:CLOUDFLARE_ACCOUNT_ID/pages/projects/ender-craft-launcher-feed/deployments?env=production&per_page=1&page=1"
     $response = Invoke-RestMethod -Method Get -Uri $endpoint -Headers @{ "Authorization" = "Bearer $env:CLOUDFLARE_API_TOKEN"; "User-Agent" = "EnderCraftLauncher/0.9.1" } -ErrorAction Stop
 
     if (-not $response.success) {
