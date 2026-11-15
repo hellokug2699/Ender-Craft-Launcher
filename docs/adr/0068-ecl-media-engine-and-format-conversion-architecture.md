@@ -1,6 +1,6 @@
 # ADR 0068: ECL Media Processing and Editing Architecture
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-09
 - Scope: ECL Media Engine Addition、图片/音频/视频读取、转换、编辑、预览与可视化、临时工作区及安全提交、媒体处理后端治理、许可与技术保护措施边界
@@ -218,3 +218,6 @@ Media Engine 是独立可选 Addition，不是所有媒体消费者的强制依�
 
 - 2026-11-09：首次提出 ECL Media Engine，确定以独立 Addition 提供普通图片、音频和视频格式处理与转换能力；不将 FFmpeg 设为强制架构依赖，采用可替换后端和按需能力交付，并明确排除平台专有加密格式解密及绕过技术保护措施的能力。Decision 保持 Proposed，Implementation 保持 Not Started。
 - 2026-11-09：将定位从“标准媒体格式转换”扩展为统一媒体处理与编辑；纳入图片尺寸调整/裁剪/拼接、音频裁剪/分段/合并/波形与试听、视频尺寸调整/片段裁剪/合并/播放预览等能力方向。明确 Core 管理独立临时工作区、源文件默认不变、导出与破坏性替换分离、提交前冲突检测、失败恢复、多文件输出集合和异常退出恢复。未新增 Addition，Decision 继续保持 Proposed，Implementation 继续保持 Not Started。
+
+
+- 2026-11-16：经维护者明确批准，Decision 由 Proposed 更新为 Accepted。该批准确认架构决策生效，不代表 Implementation 已完成；实施状态与既有验收证据保持不变。
