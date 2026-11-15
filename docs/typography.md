@@ -32,7 +32,7 @@ WPF 在不存在 SemiBold 字面时合成粗细。字体大小与布局保持不
 ## 3. 许可证与归属
 
 - 许可证原文：[HarmonyOS_Sans_LICENSE.txt](../src/ECL.App/Fonts/HarmonyOS_Sans_LICENSE.txt)
-- 关于页展示 HarmonyOS Sans SC 与许可证名称，并列出 Regular / Medium / Bold。
+- 关于页在「第三方组件与许可证」中列出随包字体 HarmonyOS Sans SC 的许可证名称、版权与许可证文本入口（版本未声明）。
 - 字体文件随程序资源打包，不单独分发、不修改；许可证文本复制到输出与发布目录。
 
 ## 4. 验证记录

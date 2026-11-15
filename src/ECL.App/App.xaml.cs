@@ -79,6 +79,9 @@ public partial class App : Application
             services.AddEclMinecraft();
 
             services.AddSingleton<IDialogService, DialogService>();
+            // 关于页的外部链接与只读更新检查：只读取并校验，不下载或替换程序文件。
+            services.AddSingleton<IExternalLinkService, ExternalLinkService>();
+            services.AddSingleton<IUpdateCheckService, UpdateCheckService>();
             services.AddSingleton<IShaderHintStore, ShaderHintStore>();
             // 主页中央实例切换栏的排列是主页布局偏好，保存在启动器数据目录，不写实例记录。
             services.AddSingleton<IHomeLayoutStore, HomeLayoutStore>();
@@ -104,7 +107,8 @@ public partial class App : Application
             services.AddSingleton<LogSessionsViewModel>();
             // 扩展生命周期与目录读取收敛到领域入口；设置 → 扩展管理页只做呈现与确认。
             services.AddSingleton<Ecl.App.Services.IAdditionsService, Ecl.App.Services.AdditionsService>();
-            services.AddSingleton<WardrobeViewModel>();
+            // 工具中心的原生条目只在 NativeToolsCenterCatalog 登记一次；工具内容仍是既有页面对象。
+            services.AddSingleton<IToolsCenterCatalog, NativeToolsCenterCatalog>();
             services.AddSingleton<DiagnosticsViewModel>();
             services.AddSingleton<EngineToolsViewModel>();
             services.AddSingleton<ToolsViewModel>();

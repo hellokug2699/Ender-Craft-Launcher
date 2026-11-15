@@ -4,358 +4,199 @@ using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Ecl.Additions;
 using Ecl.App.Services;
-using Ecl.Core;
-using Ecl.Diagnostics;
-using Ecl.Minecraft.Instances;
-using Ecl.Wardrobe;
+using Ecl.Core.Localization;
+using Microsoft.Extensions.Logging;
 
 namespace Ecl.App.ViewModels;
 
-/// <summary>工具箱页：原生承载衣柜与诊断入口；知识和原版工具展示真实可用状态。</summary>
+/// <summary>
+/// 工具中心（迁移规划 §4.2 / §6.2 #12）：<c>tools</c> 目的地不再是一个大型多 Tab 容器，
+/// 而是工具入口清单——名称、用途、真实可用性与打开入口。
+///
+/// 本批按维护者 2026-11-15 指示只完成页面模板与布局：
+/// 原生工具条目来自 <see cref="IToolsCenterCatalog"/>，扩展条目来自本机真实安装记录；
+/// 未发布的扩展、尚未补齐的 G-02/G-03/G-10 工具以及 Appearance Enhance 都不制造占位入口。
+/// 新增 Extension 发布并安装后会出现在扩展区域，不需要改动本页面。
+/// </summary>
 public sealed partial class ToolsViewModel : ObservableObject
 {
+    private readonly IAdditionsService _additions;
+    private readonly ILocalizer _localizer;
+    private readonly ILogger<ToolsViewModel> _logger;
+
     public ToolsViewModel(
-        WardrobeViewModel wardrobe,
-        DiagnosticsViewModel diagnostics,
-        EngineToolsViewModel engine)
+        IAdditionsService additions,
+        IToolsCenterCatalog catalog,
+        ILocalizer localizer,
+        ILogger<ToolsViewModel>? logger = null)
     {
-        Wardrobe = wardrobe;
-        Diagnostics = diagnostics;
-        Engine = engine;
+        ArgumentNullException.ThrowIfNull(additions);
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(localizer);
+
+        _additions = additions;
+        _localizer = localizer;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ToolsViewModel>.Instance;
+        Tools = catalog.GetTools();
+        AdditionsStatus = _localizer.Get("tools.additions.status.loading");
     }
 
-    public WardrobeViewModel Wardrobe { get; }
+    /// <summary>打开设置中心「扩展管理」的入口；由 Shell 注入，页面不自行导航。</summary>
+    public Action? OpenAdditionsManagement { get; set; }
 
-    public DiagnosticsViewModel Diagnostics { get; }
+    /// <summary>本机可用的 ECL 原生工具；由实现处登记一次，页面不硬编码清单。</summary>
+    public IReadOnlyList<ToolsCenterTool> Tools { get; }
 
-    public EngineToolsViewModel Engine { get; }
+    /// <summary>本机真实安装的扩展记录；没有安装、状态损坏或读取失败都如实呈现。</summary>
+    public ObservableCollection<AdditionToolRow> InstalledAdditions { get; } = [];
 
-    public string KnowledgeStatus =>
-        "受限知识浏览器策略已实现：仅允许 zh.minecraft.wiki、mcmod.cn 及其子域名的 HTTPS 页面。"
-        + "WebView2 宿主尚未实现，因此当前不提供网页导航；不会用普通浏览器或代理绕过边界。";
+    [ObservableProperty]
+    private ToolsCenterTool? _selectedTool;
 
-    public string VanillaStatus =>
-        "原版工具集是独立 Addition，数据包尚未安装。数据模板位于 additions/vanilla-toolkit/data-template/；"
-        + "安装官方数据包后才能进行 Registry 查询等离线工具操作。";
+    [ObservableProperty]
+    private string _additionsStatus;
 
-    public string WorldAnalysisStatus =>
-        "世界种子与生成规则分析（ADR 0028）仍是 Proposed，尚未实现。"
-        + "当前不会根据 Seed 或版本信息伪造生成结果；请使用只读世界地图、NBT 浏览与诊断证据。";
+    [ObservableProperty]
+    private bool _hasAdditionsError;
 
-    public string WorldEditingStatus =>
-        "NBT 编辑、区块修复与诊断修复工作流（ADR 0027 / 0030）尚未完成。"
-        + "当前只提供只读 NBT 树、地图与诊断标记；不会自动修改存档，也不提供未经备份的破坏性修复。";
+    [ObservableProperty]
+    private string _additionsErrorText = string.Empty;
 
-    public async Task ActivateAsync()
+    public bool HasSelectedTool => SelectedTool is not null;
+
+    public object? SelectedToolContent => SelectedTool?.Content;
+
+    public bool HasInstalledAdditions => InstalledAdditions.Count > 0;
+
+    /// <summary>既没有安装记录、也没有读取错误时才显示空态，不把错误伪装成“没有扩展”。</summary>
+    public bool ShowAdditionsEmpty => !HasAdditionsError && !HasInstalledAdditions;
+
+    /// <summary>
+    /// 进入工具中心时的有限读取：只读本机安装记录，不请求官方目录、不发起网络。
+    /// 重复进入会重新读取一次，安装/移除扩展后无需重启即可看到真实状态。
+    /// </summary>
+    public Task ActivateAsync()
     {
-        await Wardrobe.ActivateAsync().ConfigureAwait(true);
-        await Diagnostics.ActivateAsync().ConfigureAwait(true);
-        await Engine.ActivateAsync().ConfigureAwait(true);
-    }
-}
-
-
-public sealed partial class WardrobeViewModel : ObservableObject
-{
-    private readonly WardrobeStore _store;
-    private readonly IDialogService _dialogs;
-    private bool _activated;
-
-    public WardrobeViewModel(IAppPaths paths, IDialogService dialogs)
-    {
-        _dialogs = dialogs;
-        _store = new WardrobeStore(Path.Combine(paths.Root, "wardrobe"));
-        TextureTypes = [WardrobeTextureType.Skin, WardrobeTextureType.Cape];
-        _selectedType = WardrobeTextureType.Skin;
+        LoadInstalledAdditions();
+        return Task.CompletedTask;
     }
 
-    public ObservableCollection<WardrobeRowViewModel> Items { get; } = [];
-
-    public IReadOnlyList<WardrobeTextureType> TextureTypes { get; }
-
-    [ObservableProperty]
-    private WardrobeTextureType _selectedType;
-
-    [ObservableProperty]
-    private WardrobeRowViewModel? _selectedItem;
-
-    [ObservableProperty]
-    private string _status = "尚未读取衣柜。";
-
-    [ObservableProperty]
-    private bool _isBusy;
-
-    public async Task ActivateAsync()
+    [RelayCommand]
+    private async Task OpenToolAsync(ToolsCenterTool? tool)
     {
-        if (_activated)
+        if (tool is null)
         {
             return;
         }
 
-        _activated = true;
-        await RefreshAsync().ConfigureAwait(true);
-    }
-
-    [RelayCommand]
-    private async Task RefreshAsync()
-    {
-        var load = _store.LoadIndex();
-        Items.Clear();
-        foreach (var item in load.Index.Items
-                     .OrderByDescending(item => item.IsFavorite)
-                     .ThenByDescending(item => item.ImportedAt))
-        {
-            Items.Add(new WardrobeRowViewModel(item, _store.ResolveResourcePath(item)));
-        }
-
-        SelectedItem = Items.FirstOrDefault();
-        Status = load.RecoveredFromCorruption
-            ? load.Warning ?? "衣柜索引损坏，已按空索引恢复。"
-            : Items.Count == 0
-                ? "衣柜为空。导入 PNG 皮肤或披风后在此管理。"
-                : $"共 {Items.Count} 项资源。";
-        await Task.CompletedTask;
-    }
-
-    [RelayCommand]
-    private async Task ImportAsync()
-    {
-        var dialog = new Microsoft.Win32.OpenFileDialog
-        {
-            Title = "导入皮肤或披风 PNG",
-            Filter = "PNG 图片 (*.png)|*.png",
-            CheckFileExists = true,
-        };
-        if (dialog.ShowDialog() != true)
-        {
-            return;
-        }
-
-        IsBusy = true;
+        SelectedTool = tool;
         try
         {
-            var result = await _store
-                .ImportAsync(
-                    dialog.FileName,
-                    SelectedType,
-                    Path.GetFileNameWithoutExtension(dialog.FileName))
-                .ConfigureAwait(true);
-            if (!result.IsSuccess)
-            {
-                Status = result.Error!.Message;
-                return;
-            }
-
-            Status = result.Value!.Created
-                ? $"已导入 {result.Value.Item.Name}。"
-                : "相同内容已在衣柜中，未重复导入。";
-            await RefreshAsync().ConfigureAwait(true);
+            await tool.ActivateAsync().ConfigureAwait(true);
         }
-        finally
+        catch (Exception exception)
         {
-            IsBusy = false;
+            // 工具自身的加载失败不应把用户困在空白页：保留工具入口并记录原因，
+            // 工具内容仍负责显示自己的真实状态。
+            _logger.LogWarning(exception, "工具激活失败：{Tool}", tool.Key);
         }
     }
 
     [RelayCommand]
-    private async Task ToggleFavoriteAsync(WardrobeRowViewModel? row)
-    {
-        if (row is null)
-        {
-            return;
-        }
-
-        var result = await _store.SetFavoriteAsync(row.Item.Id, !row.Item.IsFavorite).ConfigureAwait(true);
-        Status = result.IsSuccess
-            ? (result.Value!.IsFavorite ? "已收藏。" : "已取消收藏。")
-            : result.Error!.Message;
-        await RefreshAsync().ConfigureAwait(true);
-    }
+    private void BackToTools() => SelectedTool = null;
 
     [RelayCommand]
-    private async Task DeleteAsync(WardrobeRowViewModel? row)
+    private void ManageAdditions() => OpenAdditionsManagement?.Invoke();
+
+    [RelayCommand]
+    private void RefreshAdditions() => LoadInstalledAdditions();
+
+    partial void OnSelectedToolChanged(ToolsCenterTool? value)
     {
-        if (row is null)
-        {
-            return;
-        }
-
-        if (!_dialogs.Confirm("删除衣柜资源", $"将删除衣柜中的“{row.Item.Name}”。此操作不会删除账户或实例配置。", $"wardrobe.delete.{row.Item.Id}"))
-        {
-            return;
-        }
-
-        var result = await _store.DeleteAsync(row.Item.Id).ConfigureAwait(true);
-        Status = result.IsSuccess ? "已删除衣柜资源。" : result.Error!.Message;
-        await RefreshAsync().ConfigureAwait(true);
-    }
-}
-
-public sealed partial class WardrobeRowViewModel : ObservableObject
-{
-    public WardrobeRowViewModel(WardrobeItem item, string path)
-    {
-        Item = item;
-        Preview = LoadPreview(path);
+        OnPropertyChanged(nameof(HasSelectedTool));
+        OnPropertyChanged(nameof(SelectedToolContent));
     }
 
-    public WardrobeItem Item { get; }
-
-    public System.Windows.Media.ImageSource? Preview { get; }
-
-    public string Name => Item.Name;
-
-    public string KindText => Item.Type == WardrobeTextureType.Skin ? "皮肤" : "披风";
-
-    public string ModelText => Item.SkinModel switch
+    private void LoadInstalledAdditions()
     {
-        SkinModel.Classic => "Classic",
-        SkinModel.Slim => "Slim",
-        _ => "模型未知",
-    };
+        InstalledAdditions.Clear();
+        HasAdditionsError = false;
+        AdditionsErrorText = string.Empty;
 
-    public string SizeText => $"{Item.Width}×{Item.Height}";
-
-    public string HashText => Item.Sha256[..12];
-
-    public string FavoriteText => Item.IsFavorite ? "已收藏" : "收藏";
-
-    private static System.Windows.Media.ImageSource? LoadPreview(string path)
-    {
+        AdditionStateLoad load;
         try
         {
-            if (!File.Exists(path))
-            {
-                return null;
-            }
-
-            var image = new System.Windows.Media.Imaging.BitmapImage();
-            image.BeginInit();
-            image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-            image.UriSource = new Uri(path, UriKind.Absolute);
-            image.EndInit();
-            image.Freeze();
-            return image;
+            load = _additions.LoadState();
         }
-        catch (Exception exception) when (exception is IOException or NotSupportedException or UriFormatException)
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
-            return null;
-        }
-    }
-}
-
-public sealed partial class DiagnosticsViewModel : ObservableObject
-{
-    private readonly IInstanceService _instances;
-    private readonly IAppPaths _paths;
-    private readonly DiagnosticEngine _engine = new();
-    private bool _activated;
-
-    public DiagnosticsViewModel(IInstanceService instances, IAppPaths paths)
-    {
-        _instances = instances;
-        _paths = paths;
-    }
-
-    public ObservableCollection<InstanceChoice> Instances { get; } = [];
-
-    [ObservableProperty]
-    private InstanceChoice? _selectedInstance;
-
-    [ObservableProperty]
-    private string _status = "选择实例后分析本地 latest.log 与崩溃报告。";
-
-    [ObservableProperty]
-    private string _summary = string.Empty;
-
-    [ObservableProperty]
-    private string _uncertainty = string.Empty;
-
-    [ObservableProperty]
-    private string _knowledgeNote = "未安装诊断知识库（Data Addition）：当前只做本地日志/崩溃结构化解析，不进行规则匹配，也不会给出确定根因。";
-
-    [ObservableProperty]
-    private bool _isBusy;
-
-    public async Task ActivateAsync()
-    {
-        if (_activated)
-        {
+            _logger.LogWarning(exception, "读取扩展安装记录失败。");
+            ApplyAdditionsError(_localizer.Get("tools.additions.error.read", exception.Message));
             return;
         }
 
-        _activated = true;
-        var instances = await _instances.GetInstancesAsync().ConfigureAwait(true);
-        Instances.Clear();
-        foreach (var instance in instances)
+        if (load.IsCorrupt)
         {
-            Instances.Add(new InstanceChoice(instance.Id, $"{instance.Name} · {instance.GameVersion}"));
-        }
-
-        SelectedInstance = Instances.FirstOrDefault();
-        Status = Instances.Count == 0 ? "尚未创建实例。" : "选择实例后开始分析。";
-    }
-
-    [RelayCommand]
-    private async Task AnalyzeAsync()
-    {
-        if (SelectedInstance is null)
-        {
+            // 状态文件损坏时如实报告，不猜测已安装列表（ADR 0032 §7）。
+            var detail = string.IsNullOrWhiteSpace(load.Error)
+                ? string.Empty
+                : load.Error;
+            AdditionsStatus = _localizer.Get("tools.additions.status.corrupt");
+            ApplyAdditionsError(_localizer.Get("tools.additions.error.corrupt", detail));
             return;
         }
 
-        IsBusy = true;
-        try
+        foreach (var addition in load.Document.Additions.OrderBy(
+                     addition => addition.Id.Value,
+                     StringComparer.Ordinal))
         {
-            var instance = await _instances.GetAsync(SelectedInstance.Id).ConfigureAwait(true);
-            if (instance is null)
-            {
-                Status = "实例不存在。";
-                return;
-            }
-
-            var gameDirectory = InstancePaths.GetGameDirectory(_paths, instance);
-            var logFiles = new List<string>();
-            var latest = Path.Combine(gameDirectory, "logs", "latest.log");
-            if (File.Exists(latest))
-            {
-                logFiles.Add(latest);
-            }
-
-            var crashFiles = new List<string>();
-            var crashDirectory = Path.Combine(gameDirectory, "crash-reports");
-            if (Directory.Exists(crashDirectory))
-            {
-                crashFiles.AddRange(Directory.EnumerateFiles(crashDirectory, "*.txt").Take(5));
-            }
-
-            var input = new DiagnosticInputLoader().Load(logFiles, crashFiles);
-            var report = _engine.Analyze(new DiagnosticAnalysisRequest
-            {
-                Events = input.Events,
-                CrashReports = input.CrashReports,
-                InputIssues = input.Issues,
-                Environment = new DiagnosticEnvironment
-                {
-                    MinecraftVersion = instance.GameVersion,
-                    Loader = instance.Loader,
-                    LoaderVersion = instance.LoaderVersion,
-                },
-            });
-
-            Summary = $"事件 {input.Events.Count} 条 · 崩溃报告 {input.CrashReports.Count} 份 · 结论 {report.Findings.Count} 条 · 置信度 {report.OverallConfidence}";
-            Uncertainty = report.UncertaintyNote ?? string.Empty;
-            Status = report.Findings.Count == 0
-                ? "已完成本地解析；没有安装知识库，因此不输出猜测性根因。"
-                : "分析完成。请结合证据链逐条核对。";
-            KnowledgeNote = report.KnowledgeBase is null
-                ? "未安装诊断知识库（Data Addition）：当前只做本地日志/崩溃结构化解析，不进行规则匹配。"
-                : $"知识库 {report.KnowledgeVersion} 已参与分析。";
+            InstalledAdditions.Add(CreateRow(addition));
         }
-        finally
+
+        AdditionsStatus = InstalledAdditions.Count == 0
+            ? _localizer.Get("tools.additions.status.none")
+            : _localizer.Get("tools.additions.status.count", InstalledAdditions.Count);
+        OnPropertyChanged(nameof(HasInstalledAdditions));
+        OnPropertyChanged(nameof(ShowAdditionsEmpty));
+    }
+
+    private void ApplyAdditionsError(string message)
+    {
+        HasAdditionsError = true;
+        AdditionsErrorText = message;
+        if (string.IsNullOrEmpty(AdditionsStatus))
         {
-            IsBusy = false;
+            AdditionsStatus = _localizer.Get("tools.additions.status.corrupt");
         }
+
+        OnPropertyChanged(nameof(HasInstalledAdditions));
+        OnPropertyChanged(nameof(ShowAdditionsEmpty));
+    }
+
+    private AdditionToolRow CreateRow(InstalledAddition addition)
+    {
+        var typeText = addition.Type == AdditionType.Data
+            ? _localizer.Get("tools.additions.type.data")
+            : _localizer.Get("tools.additions.type.feature");
+        var statusText = addition.Enabled
+            ? _localizer.Get("tools.additions.state.enabled")
+            : _localizer.Get("tools.additions.state.disabled");
+        return new AdditionToolRow(
+            addition.Id.Value,
+            addition.Version.ToString(),
+            typeText,
+            statusText,
+            _localizer.Get("tools.additions.runtimeUnavailable"));
     }
 }
+
+/// <summary>扩展区域的一行：只陈述安装记录里的真实字段，不补造名称、用途或能力。</summary>
+public sealed record AdditionToolRow(
+    string Id,
+    string VersionText,
+    string TypeText,
+    string StatusText,
+    string Note);

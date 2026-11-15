@@ -144,6 +144,10 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _logs.InspectorSelectionChanged += OnLogsInspectorSelectionChanged;
         // home.md §5.3：Multiplayer 卡片的管理入口进入设置 → 扩展管理。
         _home.OpenAdditionsManagement = OpenAdditionsManagement;
+        // tools 目的地的扩展区域与管理入口进入设置 → 扩展管理，不自行导航或安装扩展。
+        _tools.OpenAdditionsManagement = OpenAdditionsManagement;
+        // 关于页的「项目协作」未安装扩展时同样进入扩展管理，不跳转 GitHub 网页替代。
+        about.OpenAdditionsManagement = OpenAdditionsManagement;
         instances.GetModHealthSummary = modsFactory.DescribeHealthAsync;
         modsFactory.OpenModBrowser = OpenModBrowser;
         contentPackFactory.OpenPackBrowser = OpenPackBrowser;
@@ -709,6 +713,28 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             // 启动可能由实例页或 CLI 发起：重新进入主页时重读最近一次启动状态。
             home.Activate();
+        }
+        else if (page is ToolsViewModel tools)
+        {
+            // 进入工具中心只重读本机扩展安装记录；不请求官方目录、不发起网络。
+            _ = ActivateToolsAsync(tools);
+        }
+        else if (page is AboutViewModel aboutPage)
+        {
+            // 关于页只刷新离线可读取的频道与扩展状态；检查更新只由用户显式触发。
+            aboutPage.Activate();
+        }
+    }
+
+    private async Task ActivateToolsAsync(ToolsViewModel tools)
+    {
+        try
+        {
+            await tools.ActivateAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "工具中心激活失败。");
         }
     }
 

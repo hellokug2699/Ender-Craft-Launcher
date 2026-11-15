@@ -190,7 +190,7 @@ DPI awareness 声明只是必要条件，不等同于界面已完成 DPI 适配�
 
 ## 修订记录
 
-- 2026-11-15：页面重写已进入实质实施，B1–B7 已按交接记录完成；全局 UI 设计系统、Right Auxiliary Rail 完整验收、B8–B11 与 DPI/可访问性矩阵仍未全部完成，因此状态从 Not Started 更新为 In Progress，不代表 Verified。
+- 2026-11-15：页面重写已进入实质实施，B1–B7 已按交接记录完成；B9 关于页完成主体重写并接入真实只读更新检查；B8 工具中心按维护者指示先完成入口清单模板（G-02/G-03/G-04/G-10 与 Appearance Enhance 仍未实现）。全局 UI 设计系统、Right Auxiliary Rail 完整验收、B10/B11 与 DPI/可访问性矩阵仍未全部完成，因此状态从 Not Started 更新为 In Progress，不代表 Verified。
 
 - 2026-11-03：首次建立。将 ECL UI 重构确定为 UI 领域最高优先级架构约束，明确 Design System、Application Shell、右侧工具栏、信息架构、排版和 DPI 适配的统一方向。
 - 2026-11-05：根据 Accepted ADR 0056，将原「右侧可折叠工具栏」的容器/交互要求协调为 Right Auxiliary Rail；工具发现与 Inspector 共用同一区域。其余全局 UI 约束不变。
