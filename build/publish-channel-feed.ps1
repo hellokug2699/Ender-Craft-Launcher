@@ -64,8 +64,8 @@ function Test-ManifestSignature([string]$ManifestPath, [string]$SignaturePath) {
 }
 
 function Get-PublishedFeedFile([string]$Url, [string]$Destination) {
-    $statusCode = 0
-    Invoke-WebRequest -Uri $Url -OutFile $Destination -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 0 -SkipHttpErrorCheck -StatusCodeVariable statusCode
+    $response = Invoke-WebRequest -Uri $Url -OutFile $Destination -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 0 -SkipHttpErrorCheck
+    $statusCode = [int]$response.StatusCode
     if ($statusCode -eq 404) {
         Remove-Item $Destination -Force -ErrorAction SilentlyContinue
         return $false
