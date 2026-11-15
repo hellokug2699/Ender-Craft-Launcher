@@ -26,6 +26,7 @@ $workRoot = Join-Path $env:RUNNER_TEMP "ecl-feed-publish"
 $storeRoot = Join-Path $workRoot "packages-store"
 $legacyRoot = Join-Path $workRoot "legacy"
 if (Test-Path $workRoot) { Remove-Item $workRoot -Recurse -Force }
+if (Test-Path $FeedRoot) { Remove-Item $FeedRoot -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $workRoot, $legacyRoot, $FeedRoot | Out-Null
 
 $trust = Get-Content $TrustStorePath -Raw | ConvertFrom-Json
@@ -112,9 +113,10 @@ function Add-PackageToStore(
             & git -C $storeRoot update-ref refs/heads/packages $parent
             if ($LASTEXITCODE -ne 0) { throw "Unable to set local package branch head." }
 
-            $objectPath = $parent + ":" + $relative
-            & git -C $storeRoot cat-file -e $objectPath 2>$null
-            if ($LASTEXITCODE -eq 0) {
+            $existingEntry = & git -C $storeRoot ls-tree --name-only $parent -- $relative
+            if ($LASTEXITCODE -ne 0) { throw "Unable to inspect immutable Package path." }
+            if ($existingEntry) {
+                $objectPath = $parent + ":" + $relative
                 $existingPath = Join-Path $workRoot "existing-$([Guid]::NewGuid().ToString('N')).zip"
                 & git -C $storeRoot show $objectPath > $existingPath
                 if ($LASTEXITCODE -ne 0) { throw "Unable to read existing immutable Package." }
