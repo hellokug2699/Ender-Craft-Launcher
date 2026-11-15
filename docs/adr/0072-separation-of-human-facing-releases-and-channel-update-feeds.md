@@ -71,7 +71,7 @@ nightly-packages  # nightly 频道
 - Feed 必须支持匿名读取，客户端不得依赖 GitHub 登录态、访问令牌或其他用户凭据。
 - Feed 只负责传输，不授予内容信任。Manifest 签名、包哈希和逐文件校验仍是唯一允许进入部署的信任依据。
 - `update-trust.json` 是客户端/安装介质持有的信任材料，不从 Feed 下载后直接建立信任；Feed 不得替换或轮换客户端的信任根。
-- 三个机器专用 Package Release 是仅追加的发布对象存储，不承载源代码、Manifest 或签名文件。Package 按频道分 Release，文件名包含平台架构、版本与完整 SHA-256；Manifest URL 使用固定的频道专用 Release tag 和唯一 asset 文件名。发布流程禁止移动这些 tag、覆盖或删除已发布 asset。
+- 三个机器专用 Package Release 是仅追加的发布对象存储，不承载源代码、Manifest 或签名文件。Package 按频道分 Release，文件名包含平台架构、版本与完整 SHA-256；Manifest URL 使用固定的频道专用 Release tag 和唯一 asset 文件名。三个 Release 均标记为 prerelease，避免成为 GitHub 的 Latest 人工版本。发布流程禁止移动这些 tag、覆盖或删除已发布 asset。
 - `main`、`dev`、`nightly` 三个频道使用完全独立的 Package 命名空间和 Manifest 指针。main 仅由正式版本 Tag 推进，dev 仅由 `dev` 分支的受认可发布触发，nightly 仅由 `nightly` 分支的成功构建推进。任何频道都不得引用其他频道 Release中的 Package。
 - 已经被任一已发布 Manifest 引用的 Package 永久保留，不得覆盖或删除；失败构建及尚未被任何已发布 Manifest 引用的临时 Package 不得上传到机器专用 Package Release。回滚只回退频道 Manifest/Signature，不删除 Package。
 - 三个机器专用 Package Release 分别由 `main-packages`、`dev-packages`、`nightly-packages` 三个固定 tag 标识。上传前必须检查同名 asset；若已存在，下载后核对字节数与 SHA-256，完全一致才允许复用，否则拒绝发布。上传时禁止 `--clobber`，不得删除任何已发布 asset，也不得移动机器专用 Release tag。发布前执行频道 freshness 检查，拒绝过期构建。Cloudflare Pages Production 部署由独立 `feed-lock` 分支上的 compare-and-swap 租约锁串行化，避免不同频道的完整站点部署互相覆盖。
