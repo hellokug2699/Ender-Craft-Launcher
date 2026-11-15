@@ -402,19 +402,30 @@ foreach ($candidate in @("main", "dev", "nightly")) {
             default { @("nightly") }
         }
         $legacyDownloaded = $false
+        $legacyTagExists = $false
         $selectedLegacyTag = $null
         foreach ($legacyTag in $legacyTags) {
+            & gh release view $legacyTag --json tagName *> $null
+            if ($LASTEXITCODE -ne 0) { continue }
+            $legacyTagExists = $true
             $attemptDirectory = Join-Path $legacyDirectory $legacyTag
             New-Item -ItemType Directory -Force -Path $attemptDirectory | Out-Null
             & gh release download $legacyTag --pattern "update-manifest.json" --pattern "update-manifest.sig" --dir $attemptDirectory
-            if ($LASTEXITCODE -eq 0) {
-                $legacyDirectory = $attemptDirectory
-                $selectedLegacyTag = $legacyTag
-                $legacyDownloaded = $true
-                break
+            if ($LASTEXITCODE -ne 0) {
+                throw "Legacy Release $legacyTag exists but its signed Feed assets could not be downloaded."
             }
+            $legacyDirectory = $attemptDirectory
+            $selectedLegacyTag = $legacyTag
+            $legacyDownloaded = $true
+            break
         }
-        if (-not $legacyDownloaded) { throw "No existing signed Release feed is available to seed channel $candidate." }
+        if (-not $legacyDownloaded) {
+            if ($candidate -eq "main" -and -not $legacyTagExists) {
+                Write-Host "Channel main has no published legacy Release; keeping its Feed intentionally empty until the first main release."
+                continue
+            }
+            throw "No existing signed Release feed is available to seed channel $candidate."
+        }
         $legacyManifestPath = Join-Path $legacyDirectory "update-manifest.json"
         $legacySignaturePath = Join-Path $legacyDirectory "update-manifest.sig"
         Test-ManifestSignature $legacyManifestPath $legacySignaturePath
@@ -469,9 +480,19 @@ Test-ManifestSignature (Join-Path $currentDirectory "update-manifest.json") (Joi
 Confirm-PackageUrl $currentUrl ([long]$currentManifest.package.size) ([string]$currentManifest.package.sha256)
 
 foreach ($candidate in @("main", "dev", "nightly")) {
-    foreach ($file in @("update-manifest.json", "update-manifest.sig")) {
-        $path = Join-Path (Join-Path $FeedRoot $candidate) $file
-        if (-not (Test-Path $path)) { throw "Feed deployment is incomplete: $candidate/$file is missing." }
+    $channelDirectory = Join-Path $FeedRoot $candidate
+    $manifestPath = Join-Path $channelDirectory "update-manifest.json"
+    $signaturePath = Join-Path $channelDirectory "update-manifest.sig"
+    $hasManifest = Test-Path $manifestPath
+    $hasSignature = Test-Path $signaturePath
+    if ($hasManifest -xor $hasSignature) {
+        throw "Feed deployment is incomplete: $candidate has only one of Manifest/Signature."
+    }
+    if (-not $hasManifest -and $candidate -ne "main") {
+        throw "Feed deployment is incomplete: required channel $candidate has no Manifest/Signature."
+    }
+    if (-not $hasManifest) {
+        Write-Host "Channel main is intentionally unpublished; deploying it without Feed metadata."
     }
 }
 
@@ -484,6 +505,17 @@ npx --yes wrangler@4 pages deploy $FeedRoot --project-name=ender-craft-launcher-
 if ($LASTEXITCODE -ne 0) { throw "Cloudflare Pages Production deployment failed." }
 
 foreach ($candidate in @("main", "dev", "nightly")) {
+    $localManifest = Join-Path (Join-Path $FeedRoot $candidate) "update-manifest.json"
+    if (-not (Test-Path $localManifest)) {
+        if ($candidate -ne "main") { throw "Required channel $candidate was not included in the deployed Feed." }
+        $response = Invoke-WebRequest -Uri "https://updates.endercraftlauncher.top/main/update-manifest.json" -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 0 -SkipHttpErrorCheck
+        if ([int]$response.StatusCode -ne 404) {
+            throw "Unpublished main channel must remain absent (HTTP 404 expected, got $([int]$response.StatusCode))."
+        }
+        Write-Host "Verified main has no published Feed yet (HTTP 404)."
+        continue
+    }
+
     foreach ($extension in @("json", "sig")) {
         $file = if ($extension -eq "json") { "update-manifest.json" } else { "update-manifest.sig" }
         $url = "https://updates.endercraftlauncher.top/$candidate/$file"
@@ -508,7 +540,7 @@ foreach ($candidate in @("main", "dev", "nightly")) {
 
 Assert-ChannelFreshness
 
-Write-Host "All three signed channel feeds are deployed. Current package URL: $currentUrl"
+Write-Host "All published channel feeds are deployed and verified; unpublished main remains intentionally empty when no main release exists. Current package URL: $currentUrl"
 }
 finally {
     Release-FeedLock
