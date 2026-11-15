@@ -167,9 +167,9 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0018 Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md) | Accepted | Verified | 工作区与实例存储 |
 | [0019 内存压力下的进程保活与诊断连续性](0019-memory-pressure-process-survival-and-diagnostic-continuity.md) | Accepted | Verified | 进程生存与诊断 |
 | [0020 下载临时产物生命周期与失败清理](0020-download-artifact-lifecycle-and-cleanup.md) | Accepted | Implemented | 下载临时文件 |
-| [0021 WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md) | Proposed | In Progress | WPF 交互、统一操作确认与影响说明 |
+| [0021 WPF 交互反馈与轻量动效系统](0021-wpf-interaction-and-motion-system.md) | Accepted | In Progress | WPF 交互、统一操作确认与影响说明 |
 | [0022 存储空间分析与安全清理中心](0022-storage-analysis-and-safe-cleanup-center.md) | Accepted | Implemented | 存储分析与清理 |
-| [0023 多实例来源目录登记与统一扫描](0023-multi-root-instance-discovery.md) | Proposed | In Progress | 多实例发现 |
+| [0023 多实例来源目录登记与统一扫描](0023-multi-root-instance-discovery.md) | Accepted | In Progress | 多实例发现 |
 | [0024 用户授权的自签名代码证书信任](0024-user-authorized-self-signed-code-signing.md) | Accepted | Implemented | 代码签名信任 |
 | [0025 Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md) | Accepted | Implemented | 安装前完整性确认 |
 | [0026 实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md) | Accepted | Implemented | 实例工作台 |
@@ -204,17 +204,17 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0055 ECL 混合工作区与原生工具平台架构](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md) | Accepted | Not Started | Workspace、Native UI SDK、Addition Runtime、IPC、Event Bus、资源边界与条件式启动恢复 |
 | [0056 Right Auxiliary Rail and Inspector Integration](0056-right-auxiliary-rail-and-inspector-integration.md) | Accepted | Not Started | Right Auxiliary Rail：协调右侧 Tools 与 Inspector 两种模式 |
 | [0057 ECL Multiplayer Session Architecture](0057-ecl-multiplayer-session-architecture.md) | Accepted | Not Started | ECL Multiplayer Addition、私人会话、网络传输适配、环境兼容检查与模组安全边界 |
-| [0058 Resource Pack Studio Architecture](0058-resource-pack-studio-architecture.md) | Proposed | Not Started | Resource Pack Studio Addition、资源发现、状态变体预览、按需渲染与安全能力复用 |
-| [0059 Shader Studio and Standard Scene Environment Architecture](0059-shader-studio-and-standard-scene-environment-architecture.md) | Proposed | Not Started | Shader Studio Addition、光影包分析与预览、固定标准场景、时间段取景及官方场景库治理 |
-| [0060 Multi-Addition Visual Preview Composition Architecture](0060-multi-addition-visual-preview-composition.md) | Proposed | Not Started | Schematic Preview、Resource Pack Studio、Shader Studio 的独立与组合预览模式、统一会话及跨 Addition 协作规范 |
+| [0058 Resource Pack Studio Architecture](0058-resource-pack-studio-architecture.md) | Accepted | Not Started | Resource Pack Studio Addition、资源发现、状态变体预览、按需渲染与安全能力复用 |
+| [0059 Shader Studio and Standard Scene Environment Architecture](0059-shader-studio-and-standard-scene-environment-architecture.md) | Accepted | Not Started | Shader Studio Addition、光影包分析与预览、固定标准场景、时间段取景及官方场景库治理 |
+| [0060 Multi-Addition Visual Preview Composition Architecture](0060-multi-addition-visual-preview-composition.md) | Accepted | Not Started | Schematic Preview、Resource Pack Studio、Shader Studio 的独立与组合预览模式、统一会话及跨 Addition 协作规范 |
 | [0061 ECL AI Conversation and Capability Architecture](0061-ecl-ai-conversation-and-capability-architecture.md) | Accepted | Not Started | ECL AI：Chat、Knowledge、Diagnostic、推理后端、受控搜索、对话/上下文、数据隐私与安全边界（Harness 执行层由 0062 细化） |
-| [0062 ECL AI Agent Runtime and Orchestration Architecture](0062-ecl-ai-agent-runtime-and-orchestration-architecture.md) | Proposed | Not Started | 独立 Agent Runtime Addition、Target/Plan/Task Scheduler、受控执行、Changes 审查、验证与恢复 |
-| [0063 ECL Player Workspace Architecture](0063-ecl-player-workspace-architecture.md) | Proposed | Not Started | 不限定用途的通用玩家工作空间：表格、目标与任务、项目资料、数据导入导出及玩家数据自主权 |
-| [0064 Map Art Studio Architecture](0064-map-art-studio-architecture.md) | Proposed | Not Started | Map Art Studio Addition、单张/多地图画布、图片与地图数据导入、颜色映射、材料优化及可选投影预览组合 |
-| [0065 OAuth Login Session Termination and Authentication Safety](0065-oauth-login-session-termination-and-authentication-safety.md) | Proposed | Not Started | Microsoft 正版登录 OAuth 会话异常检测与立即终止、回调隔离、令牌兑换中止及安全边界 |
-| [0066 Non-Elevated Execution Requirement and Bootstrap Enforcement](0066-non-elevated-execution-requirement-and-bootstrap-enforcement.md) | Proposed | Not Started | ECL 非提权运行原则、Bootstrapper 最早期权限检查、管理员账户与提升令牌区分及拒绝启动 |
-| [0067 ECL Music Player and Minecraft Audio Bridge Architecture](0067-ecl-music-player-and-minecraft-audio-bridge-architecture.md) | Proposed | Not Started | ECL Music Player、Core 托管音频播放、Java Agent 游戏内音量桥接、跨版本/Loader 兼容性与进程修改授权 |
-| [0068 ECL Media Processing and Editing Architecture](0068-ecl-media-engine-and-format-conversion-architecture.md) | Proposed | Not Started | 独立媒体处理 Addition、图片/音频/视频识别转换与基础编辑、预览可视化、临时工作区与源文件安全提交、可替换后端及平台保护措施边界 |
+| [0062 ECL AI Agent Runtime and Orchestration Architecture](0062-ecl-ai-agent-runtime-and-orchestration-architecture.md) | Accepted | Not Started | 独立 Agent Runtime Addition、Target/Plan/Task Scheduler、受控执行、Changes 审查、验证与恢复 |
+| [0063 ECL Player Workspace Architecture](0063-ecl-player-workspace-architecture.md) | Accepted | Not Started | 不限定用途的通用玩家工作空间：表格、目标与任务、项目资料、数据导入导出及玩家数据自主权 |
+| [0064 Map Art Studio Architecture](0064-map-art-studio-architecture.md) | Accepted | Not Started | Map Art Studio Addition、单张/多地图画布、图片与地图数据导入、颜色映射、材料优化及可选投影预览组合 |
+| [0065 OAuth Login Session Termination and Authentication Safety](0065-oauth-login-session-termination-and-authentication-safety.md) | Accepted | Not Started | Microsoft 正版登录 OAuth 会话异常检测与立即终止、回调隔离、令牌兑换中止及安全边界 |
+| [0066 Non-Elevated Execution Requirement and Bootstrap Enforcement](0066-non-elevated-execution-requirement-and-bootstrap-enforcement.md) | Accepted | Not Started | ECL 非提权运行原则、Bootstrapper 最早期权限检查、管理员账户与提升令牌区分及拒绝启动 |
+| [0067 ECL Music Player and Minecraft Audio Bridge Architecture](0067-ecl-music-player-and-minecraft-audio-bridge-architecture.md) | Accepted | Not Started | ECL Music Player、Core 托管音频播放、Java Agent 游戏内音量桥接、跨版本/Loader 兼容性与进程修改授权 |
+| [0068 ECL Media Processing and Editing Architecture](0068-ecl-media-engine-and-format-conversion-architecture.md) | Accepted | Not Started | 独立媒体处理 Addition、图片/音频/视频识别转换与基础编辑、预览可视化、临时工作区与源文件安全提交、可替换后端及平台保护措施边界 |
 | [0069 Server-Side CurseForge Credential Proxy and Adaptive Download Architecture](0069-client-side-curseforge-auth-and-adaptive-download-architecture.md) | Accepted | Blocked | ECL 云端服务端持有 CurseForge API Key 并代理 API 请求、客户端直连 CDN、统一下载协调、全局资源预算、自适应 Range、多源回退及既有 Artifact Lifecycle 保留 |
 | [0070 Account Appearance and Appearance Enhance Addition Architecture](0070-account-appearance-and-appearance-enhance-addition-architecture.md) | Accepted | Not Started | Core 基础外观读取与 2D 展示、Appearance Enhance Addition、衣柜及账户类型能力边界 |
 | [0071 Self-Contained Installer Executable and Embedded Deployment Media](0071-self-contained-installer-and-embedded-deployment-media.md) | Accepted | Implemented | Installer 单文件分发、嵌入完整介质、自包含 Bootstrapper 与无运行时安装 |
