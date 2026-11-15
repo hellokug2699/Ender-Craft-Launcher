@@ -16,7 +16,7 @@ DECISION_RE = re.compile(
     re.MULTILINE,
 )
 IMPLEMENTATION_RE = re.compile(
-    r"^- Implementation: (?P<value>Not Started|In Progress|Implemented|Verified|N/A)$",
+    r"^- Implementation: (?P<value>Not Started|In Progress|Implemented|Blocked|Verified|N/A)$",
     re.MULTILINE,
 )
 DATE_RE = re.compile(r"^- Date: (?P<value>\d{4}-\d{2}-\d{2}|Unknown)$", re.MULTILINE)
