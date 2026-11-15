@@ -179,7 +179,7 @@ artifacts/release/1.0.1/
 | 推送 `vMAJOR.MINOR.PATCH` | Actions Artifact，保留 14 天 | 创建不可变版本 Release，并更新 `main` 滚动 Release；均仅两个 EXE | 更新 `main` Feed |
 | 手动运行 | Actions Artifact，保留 14 天 | 根据所选分支更新对应人工 Release | 更新对应频道 Feed |
 
-当前 workflow 仍把更新资产放在 GitHub Release；独立 Feed 尚未选定供应商与端点。表格描述的是迁移目标，不代表现有流水线已经完成切换。
+当前 workflow 仍把更新资产放在 GitHub Release；Cloudflare Pages Feed 已选定为目标方案，但尚未创建 Pages 项目、配置 Secrets 或完成客户端 Package URL 兼容性验证。表格描述的是迁移目标，不代表现有流水线已经完成切换。
 
 - Nightly 每次成功构建都会产生独立的 Actions Artifact，便于高级用户追溯特定构建；Artifact 保留 14 天，过期后不保证可取回。
 - 普通用户下载 `ECL.Installer-<version>-win-x64.exe` 并直接运行；不需要下载 ZIP 或手工解压。
@@ -250,7 +250,7 @@ git checkout <commit-or-tag>
 - `--cleanup` 与部署前自动清理只删除 `staging/`；自动化测试确认 `versions/` 与 `current.json` 不受影响。
 - 未完成：全新 Windows 无 .NET SDK、无 .NET 运行时的安装验收；Authenticode 签名；GUI 自动化（当前 GUI 仅人工冒烟）。
 - 2026-11-15，ADR 0071 分发重构：官方构建切换为自包含单文件 Installer，完整部署介质嵌入 Installer；Bootstrapper 统一为单文件自包含构建，独立下载与 Installer 内嵌副本共用同一二进制。该项需等待 PR CI 与干净 Windows 实机验收后才能标记 Verified。
-- 2026-11-15，ADR 0072 决定将人工 Release 与自动更新 Feed 分离。当前 release workflow 尚未完成迁移，旧 GitHub Release Feed 资产必须保留，直到独立 Feed 通过端到端验证。
+- 2026-11-15，ADR 0072 决定将人工 Release 与自动更新 Feed 分离，并选定 Cloudflare Pages Direct Upload 托管 Manifest/Signature、GitHub Releases 托管不可变 Package。当前 release workflow 尚未完成迁移，旧 GitHub Release Feed 资产必须保留，直到新 Feed 通过端到端验证。
 
 ## 9. 用户数据与卸载边界
 
