@@ -133,7 +133,7 @@ public sealed class UpdateCheckService : IUpdateCheckService
             return Unavailable(channel, trust.Error!.Code, trust.Error.Message);
         }
 
-        using var http = _http.CreateClient();
+        using var http = _http.CreateUpdateClient();
         http.Timeout = RequestTimeout;
         var client = new UpdateClient(http, new UpdateSignatureVerifier(trust.Value!));
 
