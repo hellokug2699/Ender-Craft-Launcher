@@ -136,7 +136,9 @@ jobs:
         run: |
           $dir = "artifacts/release/$env:ECL_VERSION"
           $installer = Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.exe"
-          $bootstrapper = Join-Path $dir "bootstrapper/ECL.Bootstrapper.exe"
+          $bootstrapperSource = Join-Path $dir "bootstrapper/ECL.Bootstrapper.exe"
+          $bootstrapper = Join-Path $dir "ECL.Bootstrapper-$env:ECL_VERSION-win-x64.exe"
+          Copy-Item $bootstrapperSource $bootstrapper -Force
           $package = Join-Path $dir "ECL-$env:ECL_VERSION-win-x64.zip"
           foreach ($required in @($installer, $bootstrapper, $package, (Join-Path $dir "update-manifest.json"), (Join-Path $dir "update-manifest.sig"))) {
             if (-not (Test-Path $required)) { throw "Release artifact missing: $required" }
@@ -209,7 +211,7 @@ jobs:
         run: |
           $dir = "artifacts/release/$env:ECL_VERSION"
           $installer = Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.exe"
-          $bootstrapper = Join-Path $dir "bootstrapper/ECL.Bootstrapper.exe"
+          $bootstrapper = Join-Path $dir "ECL.Bootstrapper-$env:ECL_VERSION-win-x64.exe"
           $tag = "v$env:ECL_VERSION"
           $assets = @($installer, $bootstrapper)
           gh release view $tag --json assets 2>$null
