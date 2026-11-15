@@ -77,7 +77,10 @@ public static class UpdateChannels
     }
 }
 
-public sealed record UpdatePackage(string FileName, long Size, string Sha256);
+public sealed record UpdatePackage(string FileName, long Size, string Sha256)
+{
+    public bool IsAbsoluteUrl => Uri.TryCreate(FileName, UriKind.Absolute, out _);
+}
 
 public sealed record UpdateFile(string Path, long Size, string Sha256)
 {
@@ -194,8 +197,8 @@ public static class UpdateManifestParser
 
         var package = dto.Package;
         if (package is null ||
-            !UpdatePathSafety.TryNormalizeRelativePath(package.File, out var packageFile) ||
-            package.Size < 0 ||
+            !TryNormalizePackageReference(package.File, channel, architecture, version, out var packageFile) ||
+            package.Size <= 0 ||
             !UpdateHash.IsSha256(package.Sha256))
         {
             return Result<UpdateManifest>.Fail(
@@ -259,6 +262,53 @@ public static class UpdateManifestParser
             dto.PublishedAt));
     }
 
+    private static bool TryNormalizePackageReference(
+        string? value,
+        UpdateChannel channel,
+        UpdateArchitecture architecture,
+        ReleaseVersion version,
+        out string normalized)
+    {
+        normalized = string.Empty;
+        if (UpdatePathSafety.TryNormalizeRelativePath(value, out var relative))
+        {
+            normalized = relative;
+            return true;
+        }
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
+            !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(uri.Host, "raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
+            uri.Port != 443 || !string.IsNullOrEmpty(uri.UserInfo) ||
+            !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
+        {
+            return false;
+        }
+
+        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var architectureValue = architecture.ToApiValue();
+        var prefix = $"ECL-{version}-win-{architectureValue}-";
+        if (segments.Length != 9 ||
+            segments[0] != "hellokug2699" || segments[1] != "Ender-Craft-Launcher" ||
+            segments[2].Length != 40 || !segments[2].All(Uri.IsHexDigit) ||
+            segments[3] != "packages" || segments[4] != channel.ToApiValue() ||
+            segments[5] != "windows" || segments[6] != architectureValue ||
+            segments[7] != version.ToString() ||
+            !segments[8].StartsWith(prefix, StringComparison.Ordinal) ||
+            !segments[8].EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var hash = segments[8].Substring(prefix.Length, segments[8].Length - prefix.Length - 4);
+        if (hash.Length != 64 || !hash.All(Uri.IsHexDigit))
+        {
+            return false;
+        }
+
+        normalized = uri.AbsoluteUri;
+        return true;
+    }
     public static byte[] Serialize(UpdateManifest manifest)
     {
         var dto = new ManifestDto
