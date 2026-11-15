@@ -1,6 +1,6 @@
 # ADR 0058: Resource Pack Studio Architecture
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-07
 - Scope: Resource Pack Studio Addition 的产品与架构边界、资源发现与解析、状态变体预览、渲染资源管理、安全能力复用及兼容性
@@ -230,3 +230,6 @@ Resource Pack Studio 的专业解析、模型构建和渲染代码不得加载�
 
 - 2026-11-07：根据资源包预览、状态变体、自定义资源结构、按需解析、Security Center 能力复用及 ECL Core 轻量化讨论形成提案。Decision 为 Proposed，Implementation 为 Not Started；尚未批准或实现。
 - 2026-11-08：将跨 Addition 视觉组合规范集中迁移至 ADR 0060；本 ADR 仅保留 Resource Pack Studio 自身职责与边界，组合模式遵循 ADR 0060。
+
+
+- 2026-11-16：经维护者明确批准，Decision 由 Proposed 更新为 Accepted。该批准确认架构决策生效，不代表 Implementation 已完成；实施状态与既有验收证据保持不变。
