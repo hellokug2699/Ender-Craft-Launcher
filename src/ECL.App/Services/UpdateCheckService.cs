@@ -61,8 +61,14 @@ public sealed record UpdateCheckEnvironment(string BaseDirectory, string? Feed, 
 {
     public const string FeedEnvironmentVariable = "ECL_UPDATE_FEED";
 
+    public const string OfficialFeed = "https://updates.endercraftlauncher.top/";
+
     public static UpdateCheckEnvironment FromProcess() =>
-        new(AppContext.BaseDirectory, Environment.GetEnvironmentVariable(FeedEnvironmentVariable));
+        new(
+            AppContext.BaseDirectory,
+            Environment.GetEnvironmentVariable(FeedEnvironmentVariable) is { Length: > 0 } configured
+                ? configured
+                : OfficialFeed);
 
     public string ResolveTrustFile() =>
         string.IsNullOrWhiteSpace(TrustFile) ? Path.Combine(BaseDirectory, "update-trust.json") : TrustFile;
