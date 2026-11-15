@@ -1,6 +1,6 @@
 # ADR 0060: Multi-Addition Visual Preview Composition Architecture
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-08
 - Scope: Schematic Preview、Resource Pack Studio 与 Shader Studio 的可组合视觉预览模式，以及 Map Art Studio 与 Schematic Preview 的可选结构预览组合、Addition 能力协作、统一预览会话及降级边界
@@ -215,3 +215,6 @@ A+B+C 必须作为一个协调后的组合预览会话运行，而不是将 A+B 
 ## 修订记录
 
 - 2026-11-08：根据 Schematic Preview、Resource Pack Studio 与 Shader Studio 的组合预览讨论形成 Proposed 架构提案；明确 A、B、C 独立模式，支持 A+B、A+C、A+B+C，并将 B+C 排除在产品支持模式之外。组合规范集中于本 ADR，专项 ADR 通过引用复用；尚未批准或实现。
+
+
+- 2026-11-16：经维护者明确批准，Decision 由 Proposed 更新为 Accepted。该批准确认架构决策生效，不代表 Implementation 已完成；实施状态与既有验收证据保持不变。
