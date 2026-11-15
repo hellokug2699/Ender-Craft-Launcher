@@ -214,10 +214,13 @@ Feed 项目采用 Direct Upload，不绑定 Git Integration：
 3. 在项目 Custom domains 中添加 `updates.endercraftlauncher.top`。
 4. 确认 `endercraftlauncher.top` 已加入当前 Cloudflare 账户的有效 Zone，并按界面提示完成 DNS/域名激活。
 5. 在 Account API Tokens 创建自定义 Token，只授予目标 Account 的 Cloudflare Pages: Edit 权限；不授予 Zone、DNS、Workers、R2 或账户管理权限。
-6. 在 GitHub 仓库 Settings → Secrets and variables → Actions 添加：
+6. 在 GitHub 仓库或 `release` Environment 的 Secrets 中配置签名密钥读取方式（二选一）：
+   - `ECL_UPDATE_SIGNING_KEY`：完整 PEM 私钥内容；或
+   - `ECL_CORE_READ_TOKEN`：仅授予 private Core 仓库 Contents: Read 的 fine-grained Token，供 workflow 临时读取 `signing/update-signing.key`。
+7. 在 GitHub 仓库 Settings → Secrets and variables → Actions 添加：
    - `CLOUDFLARE_ACCOUNT_ID`：Cloudflare Account ID。
    - `CLOUDFLARE_API_TOKEN`：上述 Pages 专用 Token。
-7. 将 Token 视为部署凭据，不得写入仓库、日志、Artifact 或客户端。
+8. 所有 Token 与私钥都视为部署凭据，不得写入仓库、日志、Artifact 或客户端；workflow 仅在 runner 临时目录使用私钥，并在 `always()` 步骤清理。
 
 CI 使用 Wrangler Direct Upload。静态目录必须在部署步骤前完整生成，并且只在 Package 已上传、可匿名下载且 SHA-256 校验成功后部署：
 
