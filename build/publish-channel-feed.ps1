@@ -173,21 +173,47 @@ function Add-PackageToStore(
 
 function Confirm-PackageUrl([string]$Url, [long]$ExpectedSize, [string]$ExpectedHash) {
     Renew-FeedLock
-    $uri = [Uri]$Url
-    if ($uri.Scheme -ne "https" -or $uri.Host -ne "github.com" -or
-        $uri.AbsolutePath -notmatch "^/$([regex]::Escape($Repository))/releases/download/(main|dev|nightly)-packages/ECL-.+-win-(x64|arm64)-$([regex]::Escape($ExpectedHash))\.zip$") {
-        throw "Package URL is outside the immutable GitHub Release asset namespace."
+    $uri = $null
+    if (-not [Uri]::TryCreate($Url, [UriKind]::Absolute, [ref]$uri)) {
+        throw "Package URL is not a valid absolute URI."
     }
+
+    $normalizedHash = $ExpectedHash.Trim().ToLowerInvariant()
+    if ($normalizedHash -notmatch "^[0-9a-f]{64}$") {
+        throw "Manifest Package SHA-256 is not a 64-character hexadecimal digest."
+    }
+
+    # Match the canonical URL shape explicitly. Keep the path visible in the
+    # failure message so migration failures can be diagnosed without weakening
+    # the GitHub host, repository, channel, architecture, or digest boundary.
+    $packagePathPattern = "^/$([regex]::Escape($Repository))/releases/download/(main|dev|nightly)-packages/ECL-[A-Za-z0-9][A-Za-z0-9.-]*-win-(x64|arm64)-$normalizedHash\.zip$"
+    $validUri = $uri.Scheme -eq "https" -and
+        [string]::Equals($uri.Host, "github.com", [StringComparison]::OrdinalIgnoreCase) -and
+        $uri.IsDefaultPort -and
+        [string]::IsNullOrEmpty($uri.UserInfo) -and
+        [string]::IsNullOrEmpty($uri.Query) -and
+        [string]::IsNullOrEmpty($uri.Fragment)
+    $validPath = [regex]::IsMatch(
+        $uri.AbsolutePath,
+        $packagePathPattern,
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::CultureInvariant)
+    if (-not ($validUri -and $validPath)) {
+        throw "Package URL is outside the immutable GitHub Release asset namespace. Host='$($uri.Host)'; Path='$($uri.AbsolutePath)'; ExpectedPathPattern='$packagePathPattern'."
+    }
+
     $download = Join-Path $workRoot "verify-$([Guid]::NewGuid().ToString('N')).zip"
-    Invoke-WebRequest -Uri $Url -OutFile $download -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 5
-    $file = Get-Item $download
-    $hash = (Get-FileHash $download -Algorithm SHA256).Hash.ToLowerInvariant()
-    Remove-Item $download -Force
-    if ($file.Length -ne $ExpectedSize -or $hash -ne $ExpectedHash) {
-        throw "Anonymous Package download did not match the signed size/SHA-256."
+    try {
+        Invoke-WebRequest -Uri $uri.AbsoluteUri -OutFile $download -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 5
+        $file = Get-Item $download
+        $hash = (Get-FileHash $download -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($file.Length -ne $ExpectedSize -or $hash -ne $normalizedHash) {
+            throw "Anonymous Package download did not match the signed size/SHA-256."
+        }
+    }
+    finally {
+        Remove-Item $download -Force -ErrorAction SilentlyContinue
     }
 }
-
 function Write-BranchFile([string]$Branch, [string]$Path, [string]$Content, [string]$Message, [string]$ExpectedOwner = "") {
     for ($attempt = 1; $attempt -le 8; $attempt++) {
         $remote = & git -C $storeRoot ls-remote --heads origin $Branch
