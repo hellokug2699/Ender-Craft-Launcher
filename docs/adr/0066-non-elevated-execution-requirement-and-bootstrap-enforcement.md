@@ -1,6 +1,6 @@
 # ADR 0066: Non-Elevated Execution Requirement and Bootstrap Enforcement
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-08
 - Scope: ECL 在 Windows 上的非提权运行要求、Bootstrapper 最早期权限检查、主程序纵深防御与拒绝启动行为
@@ -167,3 +167,6 @@ Installer、Bootstrapper、Uninstaller 及 ECL 官方辅助进程不得默认要
 ## 修订记录
 
 - 2026-11-08：新增非提权运行要求。明确区分管理员账户与提升后的进程令牌；要求 Bootstrapper 在最早阶段拒绝提升权限启动，主程序保留纵深防御；拒绝后直接退出，不自动降权或重新启动。Decision 保持 Proposed，Implementation 保持 Not Started。
+
+
+- 2026-11-16：经维护者明确批准，Decision 由 Proposed 更新为 Accepted。该批准确认架构决策生效，不代表 Implementation 已完成；实施状态与既有验收证据保持不变。
