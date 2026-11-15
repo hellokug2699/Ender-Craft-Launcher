@@ -79,6 +79,26 @@ public sealed class UpdateClientTests
     }
 
     [Fact]
+    public async Task RejectsManifestFromAnotherChannel()
+    {
+        var keys = DeploymentTestData.CreateKeys();
+        var manifest = DeploymentTestData.CreateManifest("1.0.1", "ECL.zip", 1, new string('a', 64));
+        var manifestBytes = DeploymentTestData.Serialize(manifest);
+        var signatureBytes = Encoding.UTF8.GetBytes(
+            DeploymentTestData.Sign(manifestBytes, keys.PrivateKeyPem, keys.KeyId));
+        using var handler = new StubHandler(request =>
+            request.RequestUri!.AbsolutePath.EndsWith(".sig", StringComparison.Ordinal)
+                ? Bytes(signatureBytes)
+                : Bytes(manifestBytes));
+        using var http = new HttpClient(handler);
+        var client = new UpdateClient(http, new UpdateSignatureVerifier(DeploymentTestData.TrustStore(keys.TrustJson)));
+
+        var result = await client.CheckAsync(new Uri("https://updates.endercraftlauncher.top/"), UpdateChannel.Nightly);
+
+        Assert.Equal("update.channel_mismatch", result.Error?.Code);
+    }
+
+    [Fact]
     public async Task RejectsInsecureFeed()
     {
         using var handler = new StubHandler(_ => Bytes([]));
