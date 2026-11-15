@@ -200,7 +200,7 @@ Feed 项目采用 Direct Upload，不绑定 Git Integration：
 
 - Cloudflare Pages 项目名：`ender-craft-launcher-feed`
 - Production branch：`main`
-- 正式域名：`updates.endercraftlauncher.top`
+- 默认公开地址：`https://ender-craft-launcher-feed.pages.dev`
 - Feed 根目录：`/<channel>/`，频道为 `main`、`dev`、`nightly`
 - 仅部署静态文件；不包含 `functions/`、`_worker.js` 或动态 API。
 - Pages 仅承载 Manifest 与 detached Signature；完整 ECL Package 保留在 GitHub Releases。
@@ -215,7 +215,7 @@ Feed 项目采用 Direct Upload，不绑定 Git Integration：
 6. 在 GitHub 仓库 Settings → Secrets and variables → Actions 添加：
    - `CLOUDFLARE_ACCOUNT_ID`：Cloudflare Account ID。
    - `CLOUDFLARE_API_TOKEN`：上述 Pages 专用 Token。
-7. 将 Token 视为部署凭据，不得写入仓库、日志、Artifact 或客户端。
+6. 将 Token 视为部署凭据，不得写入仓库、日志、Artifact 或客户端。
 
 CI 使用 Wrangler Direct Upload。静态目录必须在部署步骤前完整生成，并且只在 Package 已上传、可匿名下载且 SHA-256 校验成功后部署：
 
@@ -231,7 +231,7 @@ Direct Upload 项目的 Production branch 若需显式设置，通过 Pages Upda
 
 Feed 发布检查：
 
-- 部署后分别请求 `https://updates.endercraftlauncher.top/main/update-manifest.json`、`/dev/update-manifest.json`、`/nightly/update-manifest.json` 及对应 `.sig`。
+- 部署后分别请求 `https://ender-craft-launcher-feed.pages.dev/main/update-manifest.json`、`/dev/update-manifest.json`、`/nightly/update-manifest.json` 及对应 `.sig`。
 - 使用与客户端相同的信任根验证签名，并检查 Manifest 的 channel、platform、architecture、version 与 Package URL。
 - 从匿名网络下载 Manifest 指向的 GitHub Release Package，验证字节数、SHA-256 和逐文件清单。
 - 任何一步失败都不得将该次发布报告为 Feed 成功；保留上一个已验证 Pages Production Deployment 以便回滚。
