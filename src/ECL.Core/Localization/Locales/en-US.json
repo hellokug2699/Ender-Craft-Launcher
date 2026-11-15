@@ -2545,6 +2545,7 @@
   "security.scan.completed": "Security scan complete",
   "security.scan.coverage": "Scanned {0}/{1} instances · {2} files · {3} archives",
   "security.scan.coverageIncomplete": "{0} coverage issue(s); the result is incomplete.",
+  "security.scan.coverageIncompleteGeneric": "The scan reached a limit or could not read some files; the result is incomplete.",
   "security.scan.coverageTitle": "Coverage",
   "security.scan.pathHidden": "For privacy, the Security Center does not show file paths; handle specific files on the instance content pages.",
   "security.category.mods": "Mods",

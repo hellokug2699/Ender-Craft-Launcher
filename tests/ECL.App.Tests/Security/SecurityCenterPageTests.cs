@@ -112,6 +112,21 @@ public sealed class SecurityCenterPageTests
     }
 
     [Fact]
+    public async Task AnIncompleteReportWithoutFailuresStillExplainsWhyItIsNotGreen()
+    {
+        var host = new Host();
+        host.Instances.Instances.Add(Instance("a", "Instance A"));
+        var report = FakeSecurityService.Report("a") with { IsComplete = false };
+        host.Security.Scan = (_, _) => Task.FromResult(Ecl.Core.Result<ThreatScanReport>.Ok(report));
+
+        await host.Page.StartScanCommand.ExecuteAsync(null);
+
+        Assert.Equal(SecurityOverallState.Incomplete, host.Page.OverallState);
+        Assert.Contains("结果不完整", host.Page.CoverageText);
+        Assert.DoesNotContain("0 项", host.Page.CoverageText);
+    }
+
+    [Fact]
     public async Task IgnoringUsesTheExistingRiskAcceptanceRecordAndGraysTheRow()
     {
         var host = new Host();

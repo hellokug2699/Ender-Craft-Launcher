@@ -534,7 +534,9 @@ public sealed partial class SecurityCenterViewModel : ObservableObject
         var text = _localizer.Get("security.scan.coverage", scanned, _instanceTotal, files, archives);
         if (!_isScanComplete)
         {
-            text += Environment.NewLine + _localizer.Get("security.scan.coverageIncomplete", failures.Count);
+            text += Environment.NewLine + (failures.Count > 0
+                ? _localizer.Get("security.scan.coverageIncomplete", failures.Count)
+                : _localizer.Get("security.scan.coverageIncompleteGeneric"));
         }
 
         return text;

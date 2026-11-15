@@ -2546,6 +2546,7 @@
   "security.scan.completed": "安全扫描完成",
   "security.scan.coverage": "已扫描 {0}/{1} 个实例 · {2} 个文件 · {3} 个归档",
   "security.scan.coverageIncomplete": "另有 {0} 项覆盖问题，结果不完整。",
+  "security.scan.coverageIncompleteGeneric": "扫描达到上限或有文件无法读取，结果不完整。",
   "security.scan.coverageTitle": "覆盖范围",
   "security.scan.pathHidden": "为保护隐私，安全中心不展示具体文件路径；可在实例内容页面处理具体文件。",
   "security.category.mods": "模组",
