@@ -23,7 +23,7 @@ public partial class IntegrityWindow : Window
         FileText.Text = $"{integrity.FileName}（{integrity.Version ?? "版本未知"}）";
         // 不自动填入与 EXE 同目录的摘要；用户必须从官方 Release 独立取得并粘贴。
         OfficialHashText.Text = string.Empty;
-        OfficialHashText.ToolTip = "粘贴对应 Release 的 .sha256 资产中的 64 位 SHA-256 摘要。";
+        OfficialHashText.ToolTip = "粘贴对应版本 GitHub Release Notes 中列出的 64 位 SHA-256 摘要。";
         OfficialHashText.TextChanged += (_, _) => UpdateIntegrityState();
         LocalHashText.Text = integrity.LocalSha256;
         CommandText.Text = integrity.PowerShellCommand;
