@@ -277,7 +277,7 @@ Agent Runtime 与 ECL AI、其他 Addition 之间遵循 ADR 0055 的隔离约束
 
 ### 方案 C：独立 Agent Runtime Addition + Core 强制权限与资源执行
 
-Agent Runtime 独立管理 AI 执行编排、工具循环和证据追踪；Core 保留身份校验、权限裁决、用户授权、资源访问和文件事务的最终控制权。该方案兼顾 Addition 生命周期隔离、可复用性和 ECL 统一安全规范，作为本 ADR 的 Proposed 方向。
+Agent Runtime 独立管理 AI 执行编排、工具循环和证据追踪；Core 保留身份校验、权限裁决、用户授权、资源访问和文件事务的最终控制权。该方案兼顾 Addition 生命周期隔离、可复用性和 ECL 统一安全规范，作为本 ADR 已批准的架构决策。
 
 ## 后果
 
@@ -302,9 +302,9 @@ Agent Runtime 独立管理 AI 执行编排、工具循环和证据追踪；Core 
 
 ## 验收标准
 
-本 ADR 当前为 Proposed，以下为评审与未来实现基线，不表示功能已经实现：
+本 ADR 已 Accepted；以下为未来实现基线，不表示功能已经实现：
 
-本 ADR 当前为 Proposed，以下为评审与未来实现基线，不表示功能已经实现：
+本 ADR 已 Accepted；以下为未来实现基线，不表示功能已经实现：
 
 - Registry 中存在独立 Addition `ecl.ai-agent-runtime`，类型为 Feature，登记状态与本 ADR 生命周期一致。
 - `ecl.ai` 执行模型工具任务时声明对 `ecl.ai-agent-runtime` 的必需依赖；缺失时明确显示能力不可用，不得静默绕过 Agent Runtime。
