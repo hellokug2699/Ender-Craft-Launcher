@@ -185,6 +185,8 @@ ECL 不因本决策建设自有皮肤托管、外观代理或用户资源云同�
 
 ## 修订记录
 
+- 2026-11-15：维护者明确选择重写旧衣柜实现，不将旧 Core Wardrobe UI/领域实现整体迁移或复用；旧代码仅供行为审计与底层组件逐项评估。并将 ADR 0070 §8 的提案阶段措辞更新为 Accepted 决策措辞。
+
 - 2026-11-15：首次提出 Core 基础外观读取与 2D 展示、Appearance Enhance Addition、第三方 Yggdrasil 只读边界及 Offline/Microsoft 管理能力分层方案。状态更新为 Accepted；实施仍为 Not Started。ADR 0037 与 ADR 0038 已标记为 Superseded。
 
 - 2026-11-15：项目维护者批准本决策，Decision 更新为 Accepted；Implementation 保持 Not Started。
