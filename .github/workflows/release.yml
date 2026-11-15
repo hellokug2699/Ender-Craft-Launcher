@@ -364,8 +364,8 @@ jobs:
 
             $releaseBody = gh release view $tag --json body --jq '.body'
             if ($LASTEXITCODE -ne 0) { throw "Unable to read Release notes for $tag." }
-            $hasInstallerHash = [regex]::IsMatch([string]$releaseBody, [regex]::Escape($installerName) + ':\\s*[0-9a-fA-F]{64}')
-            $hasBootstrapperHash = [regex]::IsMatch([string]$releaseBody, [regex]::Escape($bootstrapperName) + ':\\s*[0-9a-fA-F]{64}')
+            $hasInstallerHash = [regex]::IsMatch([string]$releaseBody, [regex]::Escape($installerName) + ':\s*[0-9a-fA-F]{64}')
+            $hasBootstrapperHash = [regex]::IsMatch([string]$releaseBody, [regex]::Escape($bootstrapperName) + ':\s*[0-9a-fA-F]{64}')
             if (-not ($hasInstallerHash -and $hasBootstrapperHash)) {
               $hashDirectory = Join-Path $env:RUNNER_TEMP "ecl-release-hashes-$([Guid]::NewGuid().ToString('N'))"
               New-Item -ItemType Directory -Force -Path $hashDirectory | Out-Null
