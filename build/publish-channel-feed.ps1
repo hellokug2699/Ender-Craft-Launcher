@@ -10,6 +10,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/package-url-validation.ps1"
 $ProgressPreference = "SilentlyContinue"
 if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) { throw "GH_TOKEN is required." }
 if ([string]::IsNullOrWhiteSpace($env:CLOUDFLARE_ACCOUNT_ID) -or
@@ -173,21 +174,21 @@ function Add-PackageToStore(
 
 function Confirm-PackageUrl([string]$Url, [long]$ExpectedSize, [string]$ExpectedHash) {
     Renew-FeedLock
-    $uri = [Uri]$Url
-    if ($uri.Scheme -ne "https" -or $uri.Host -ne "github.com" -or
-        $uri.AbsolutePath -notmatch "^/$([regex]::Escape($Repository))/releases/download/(main|dev|nightly)-packages/ECL-.+-win-(x64|arm64)-$([regex]::Escape($ExpectedHash))\.zip$") {
-        throw "Package URL is outside the immutable GitHub Release asset namespace."
-    }
+    $uri = Assert-ImmutablePackageUrl -Url $Url -Repository $Repository -ExpectedHash $ExpectedHash
+    $normalizedHash = $ExpectedHash.Trim().ToLowerInvariant()
     $download = Join-Path $workRoot "verify-$([Guid]::NewGuid().ToString('N')).zip"
-    Invoke-WebRequest -Uri $Url -OutFile $download -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 5
-    $file = Get-Item $download
-    $hash = (Get-FileHash $download -Algorithm SHA256).Hash.ToLowerInvariant()
-    Remove-Item $download -Force
-    if ($file.Length -ne $ExpectedSize -or $hash -ne $ExpectedHash) {
-        throw "Anonymous Package download did not match the signed size/SHA-256."
+    try {
+        Invoke-WebRequest -Uri $uri.AbsoluteUri -OutFile $download -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 5
+        $file = Get-Item $download
+        $hash = (Get-FileHash $download -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($file.Length -ne $ExpectedSize -or $hash -ne $normalizedHash) {
+            throw "Anonymous Package download did not match the signed size/SHA-256."
+        }
+    }
+    finally {
+        Remove-Item $download -Force -ErrorAction SilentlyContinue
     }
 }
-
 function Write-BranchFile([string]$Branch, [string]$Path, [string]$Content, [string]$Message, [string]$ExpectedOwner = "") {
     for ($attempt = 1; $attempt -le 8; $attempt++) {
         $remote = & git -C $storeRoot ls-remote --heads origin $Branch

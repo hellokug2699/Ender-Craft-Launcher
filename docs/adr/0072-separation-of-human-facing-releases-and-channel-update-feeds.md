@@ -75,6 +75,7 @@ nightly-packages  # nightly 频道
 - `main`、`dev`、`nightly` 三个频道使用完全独立的 Package 命名空间和 Manifest 指针。main 仅由正式版本 Tag 推进，dev 仅由 `dev` 分支的受认可发布触发，nightly 仅由 `nightly` 分支的成功构建推进。任何频道都不得引用其他频道 Release中的 Package。
 - 已经被任一已发布 Manifest 引用的 Package 永久保留，不得覆盖或删除；失败构建及尚未被任何已发布 Manifest 引用的临时 Package 不得上传到机器专用 Package Release。回滚只回退频道 Manifest/Signature，不删除 Package。
 - 三个机器专用 Package Release 分别由 `main-packages`、`dev-packages`、`nightly-packages` 三个固定 tag 标识。上传前必须检查同名 asset；若已存在，下载后核对字节数与 SHA-256，完全一致才允许复用，否则拒绝发布。上传时禁止 `--clobber`，不得删除任何已发布 asset，也不得移动机器专用 Release tag。发布前执行频道 freshness 检查，拒绝过期构建。Cloudflare Pages Production 部署由独立 `feed-lock` 分支上的 compare-and-swap 租约锁串行化，避免不同频道的完整站点部署互相覆盖。
+- Package URL 校验必须基于解析后的绝对 URI 与规范化 SHA-256：仅接受 HTTPS、默认 443 端口、无 userinfo/query/fragment 的 `github.com` URL，路径必须精确落在本仓库的 `releases/download/<channel>-packages/` 命名空间，资产名必须包含受支持的版本格式、Windows 架构与 Manifest 中的完整 SHA-256。SHA-256 比较前统一转换为小写；拒绝其他主机、频道、架构、路径及摘要。校验失败日志应输出主机、路径和预期路径模式等非敏感诊断信息，不得输出凭据。
 - 频道 Manifest 与其 detached signature 必须作为同一逻辑版本原子切换。Pages 的每次部署是完整静态站点版本；发布流水线必须将所有频道元数据作为一个完整目录一次性部署到 Production，依赖 Pages 部署版本切换保证客户端只看到旧部署或新部署，不得分别上传/覆盖两个文件。不得把 Preview Deployment 当作生产 Feed。
 - 新版本发布顺序为：构建并签名 Package/Manifest → 将 Package 以唯一文件名追加到对应频道的机器专用 Release → 生成 GitHub Release asset 绝对 HTTPS URL 并重新签名 Manifest → 从匿名客户端路径下载 Package 并验证字节数与 SHA-256 → 生成包含三个频道当前 Manifest/Signature 的完整 Pages 静态目录 → 使用 Wrangler Direct Upload 部署 Production → 从正式自定义域名验证 Manifest、Signature、Package 下载与签名/哈希。不得在 Package asset 上传成功、匿名下载且哈希验证通过之前推进对应频道 Feed。只有全部步骤成功后，构建才算 Feed 发布成功。
 - 回滚通过恢复上一份已签名的频道 Manifest/Signature 指针完成；不得删除仍被旧 Manifest 引用的 Package。
@@ -150,3 +151,4 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 - 2026-11-15：补充 Feed 元数据 `Cache-Control: no-store`，并在 Manifest/Signature 两次独立读取遇到部署切换导致验签失败时，客户端重新读取整对文件一次；持续验签失败仍 fail-closed。
 - 2026-11-15：因 Package ZIP 超过 Git 普通单文件限制，且 Git LFS 免费额度不适合永久追加存储，改用三个机器专用 GitHub Releases（`main-packages`、`dev-packages`、`nightly-packages`）托管 Package。每个频道独立发布，asset 以版本与 SHA-256 唯一命名并只追加；Manifest 指向对应频道 Release asset。客户端仅允许从官方 GitHub Release URL 开始，并逐跳校验 HTTPS 下载重定向，只允许 GitHub Release asset 分发主机。
 - 2026-11-15：修正首次 Feed 迁移的频道前置假设：尚无正式 Release 的 `main` 可以保持无 Manifest/Signature 的未发布状态；只有明确确认 `main`/`stable` Release tag 不存在时才允许跳过，Release 查询错误或已有 Release 缺少签名资产仍必须失败。`dev` 与 `nightly` 仍要求有效历史签名 Feed。
+- 2026-11-15：补充 Package URL 的规范化校验规则与安全诊断要求：统一 SHA-256 大小写处理，拒绝非标准 URI 组成部分，并在校验失败时输出不含凭据的实际路径与预期模式，便于定位首次迁移中的 URL 不匹配，同时不放宽仓库、频道、架构或摘要白名单。
