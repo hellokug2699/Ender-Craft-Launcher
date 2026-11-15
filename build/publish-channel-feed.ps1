@@ -149,8 +149,11 @@ function Add-PackageToStore(
         }
     }
     else {
-        & gh release upload $releaseTag $SourcePath
+        $assetPath = Join-Path $workRoot $fileName
+        Copy-Item $SourcePath $assetPath -Force
+        & gh release upload $releaseTag $assetPath
         if ($LASTEXITCODE -ne 0) { throw "Unable to append Package asset $fileName to $releaseTag." }
+        Remove-Item $assetPath -Force
     }
 
     return "https://github.com/$Repository/releases/download/$releaseTag/$fileName"
@@ -160,7 +163,7 @@ function Confirm-PackageUrl([string]$Url, [long]$ExpectedSize, [string]$Expected
     Renew-FeedLock
     $uri = [Uri]$Url
     if ($uri.Scheme -ne "https" -or $uri.Host -ne "github.com" -or
-        $uri.AbsolutePath -notmatch "^/$([regex]::Escape($Repository))/releases/download/(main|dev|nightly)-packages/ECL-") {
+        $uri.AbsolutePath -notmatch "^/$([regex]::Escape($Repository))/releases/download/(main|dev|nightly)-packages/ECL-.+-win-(x64|arm64)-$([regex]::Escape($ExpectedHash))\.zip$") {
         throw "Package URL is outside the immutable GitHub Release asset namespace."
     }
     $download = Join-Path $workRoot "verify-$([Guid]::NewGuid().ToString('N')).zip"
