@@ -98,12 +98,13 @@ public sealed class UpdateClientTests
     public async Task FollowsOnlyAllowlistedGitHubReleaseAssetRedirects()
     {
         var keys = DeploymentTestData.CreateKeys();
-        var digest = new string('a', 64);
+        var payload = Encoding.UTF8.GetBytes("x");
+        var digest = UpdateHash.ComputeSha256(payload);
         var packageUrl = $"https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/nightly-packages/ECL-1.0.1-win-x64-{digest}.zip";
-        var manifest = DeploymentTestData.CreateManifest("1.0.1", "unused.zip", 1, digest) with
+        var manifest = DeploymentTestData.CreateManifest("1.0.1", "unused.zip", payload.Length, digest) with
         {
             Channel = UpdateChannel.Nightly,
-            Package = new UpdatePackage(packageUrl, 1, digest),
+            Package = new UpdatePackage(packageUrl, payload.Length, digest),
         };
         var manifestBytes = DeploymentTestData.Serialize(manifest);
         var signatureBytes = Encoding.UTF8.GetBytes(
