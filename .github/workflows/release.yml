@@ -74,10 +74,9 @@ jobs:
           This is the latest rolling $channel build. Older build history is available
           in GitHub Actions artifacts and workflow runs.
 
-          First installation: download and run ECL.Installer-$version-win-x64.exe directly.
-          Verify it with the matching .exe.sha256 asset before confirming installation.
-          ECL-$version-win-x64.zip is the signed deployment package used by Bootstrapper,
-          not the normal first-install download. The Bootstrapper ZIP is for advanced recovery.
+          普通用户只需下载并运行 ECL.Installer-$version-win-x64.exe。
+          只有需要独立修复入口时才下载 ECL.Bootstrapper-$version-win-x64.exe。
+          日常自动更新由签名频道 Feed 提供；Package 不作为人工 Release 附件。
           "@ | Set-Content -Path "$env:RUNNER_TEMP/release-notes.md" -Encoding utf8NoBOM
 
       - name: Materialize update signing key
@@ -201,6 +200,21 @@ jobs:
           [void][scriptblock]::Create((Get-Content "build/publish-channel-feed.ps1" -Raw))
           Write-Host "Channel feed publishing script parsed successfully."
 
+      - name: Publish immutable stable Release
+        if: steps.freshness.outputs.publish == 'true' && env.ECL_CHANNEL == 'main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $dir = "artifacts/release/$env:ECL_VERSION"
+          $installer = Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.exe"
+          $bootstrapper = Join-Path $dir "bootstrapper/ECL.Bootstrapper.exe"
+          gh release create "v$env:ECL_VERSION" $installer $bootstrapper `
+            --title "ECL $env:ECL_VERSION" `
+            --notes-file "$env:RUNNER_TEMP/release-notes.md" `
+            --target $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "Failed to create immutable stable Release." }
+
       - name: Setup Node.js for Wrangler
         if: steps.freshness.outputs.publish == 'true'
         uses: actions/setup-node@v4
@@ -239,9 +253,7 @@ jobs:
           $assets = @($installer, $bootstrapper)
 
           if ($env:ECL_CHANNEL -eq "main") {
-            $versionTag = "v$env:ECL_VERSION"
-            gh release create $versionTag @assets --title "ECL $env:ECL_VERSION" --notes-file $notes --target $env:GITHUB_SHA
-            if ($LASTEXITCODE -ne 0) { throw "Failed to create immutable stable Release $versionTag." }
+            # The immutable versioned Release was published before Feed deployment.
             $tag = "main"
             $releaseTitle = "ECL main (latest: $env:ECL_VERSION)"
           }
