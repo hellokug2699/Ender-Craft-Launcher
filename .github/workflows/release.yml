@@ -68,15 +68,35 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File build/validate-installer.ps1
 
-      - name: Validate release PowerShell syntax
+      - name: Validate release PowerShell syntax and Package URL policy
         shell: pwsh
         run: |
           [void][scriptblock]::Create((Get-Content "build/publish-channel-feed.ps1" -Raw))
+          [void][scriptblock]::Create((Get-Content "build/package-url-validation.ps1" -Raw))
           [void][scriptblock]::Create((Get-Content "build/validate-installer.ps1" -Raw))
           [void][scriptblock]::Create((Get-Content "build/validate-release-workflow.ps1" -Raw))
+          . "build/package-url-validation.ps1"
+          $hash = "a" * 64
+          $validUrl = "https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/dev-packages/ECL-0.9.1-dev.20261115.456.1-win-x64-$hash.zip"
+          $parsed = Assert-ImmutablePackageUrl -Url $validUrl -Repository "hellokug2699/Ender-Craft-Launcher" -ExpectedHash $hash.ToUpperInvariant()
+          if ($parsed.Host -ne "github.com") { throw "Valid immutable Package URL was not accepted." }
+          $invalidUrls = @(
+            "https://example.com/hellokug2699/Ender-Craft-Launcher/releases/download/dev-packages/ECL-0.9.1-win-x64-$hash.zip",
+            "https://github.com/other/repository/releases/download/dev-packages/ECL-0.9.1-win-x64-$hash.zip",
+            "https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/main-packages/ECL-0.9.1-win-x64-$hash.zip?redirect=1",
+            "https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/dev-packages/ECL-0.9.1-win-x64-$("b" * 64).zip"
+          )
+          foreach ($invalidUrl in $invalidUrls) {
+            $rejected = $false
+            try {
+              Assert-ImmutablePackageUrl -Url $invalidUrl -Repository "hellokug2699/Ender-Craft-Launcher" -ExpectedHash $hash | Out-Null
+            }
+            catch { $rejected = $true }
+            if (-not $rejected) { throw "Unsafe Package URL was accepted: $invalidUrl" }
+          }
           pwsh -NoProfile -File build/validate-release-workflow.ps1
           if ($LASTEXITCODE -ne 0) { throw "Release workflow PowerShell validation failed." }
-          Write-Host "Release PowerShell scripts and workflow blocks parsed successfully."
+          Write-Host "Release PowerShell scripts, workflow blocks, and immutable Package URL policy validated."
 
       - name: Resolve version and channel from branch
         id: resolve
