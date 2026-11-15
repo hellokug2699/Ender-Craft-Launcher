@@ -364,14 +364,34 @@ foreach ($candidate in @("main", "dev", "nightly")) {
 
     if (-not $isLive) {
         $legacyDirectory = Join-Path $legacyRoot $candidate
-        New-Item -ItemType Directory -Force -Path $legacyDirectory | Out-Null
-        & gh release download $candidate --pattern "update-manifest.json" --pattern "update-manifest.sig" --dir $legacyDirectory
-        if ($LASTEXITCODE -ne 0) { throw "No existing signed release feed is available to seed channel $candidate." }
+        $legacyTags = switch ($candidate) {
+            "main" { @("main", "stable") }
+            "dev" { @("dev", "beta") }
+            default { @("nightly") }
+        }
+        $legacyDownloaded = $false
+        foreach ($legacyTag in $legacyTags) {
+            $attemptDirectory = Join-Path $legacyDirectory $legacyTag
+            New-Item -ItemType Directory -Force -Path $attemptDirectory | Out-Null
+            & gh release download $legacyTag --pattern "update-manifest.json" --pattern "update-manifest.sig" --dir $attemptDirectory
+            if ($LASTEXITCODE -eq 0) {
+                $legacyDirectory = $attemptDirectory
+                $legacyDownloaded = $true
+                break
+            }
+        }
+        if (-not $legacyDownloaded) { throw "No existing signed Release feed is available to seed channel $candidate." }
         $legacyManifestPath = Join-Path $legacyDirectory "update-manifest.json"
         $legacySignaturePath = Join-Path $legacyDirectory "update-manifest.sig"
         Test-ManifestSignature $legacyManifestPath $legacySignaturePath
         $legacyManifest = Get-Content $legacyManifestPath -Raw | ConvertFrom-Json
-        if ($legacyManifest.channel -ne $candidate) { throw "Legacy Release channel mismatch for $candidate." }
+        $legacyChannel = switch ([string]$legacyManifest.channel) {
+            "stable" { "main" }
+            "beta" { "dev" }
+            default { [string]$legacyManifest.channel }
+        }
+        if ($legacyChannel -ne $candidate) { throw "Legacy Release channel mismatch for $candidate." }
+        $legacyManifest.channel = $candidate
         $legacyPackageName = [string]$legacyManifest.package.file
         if ([System.IO.Path]::GetFileName($legacyPackageName) -ne $legacyPackageName) {
             throw "Legacy Manifest package filename is not a leaf name."
