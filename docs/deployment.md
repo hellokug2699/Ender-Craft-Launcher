@@ -234,6 +234,8 @@ Direct Upload 项目的 Production branch 若需显式设置，通过 Pages Upda
 
 Feed 发布检查：
 
+- 发布脚本先获取独立 `feed-lock` 分支中的短期租约，串行化 Cloudflare Pages Production 部署；并发更新通过 Git compare-and-swap 重试，租约释放失败时会在到期后自动恢复。
+- `packages` 分支只允许 `packages/<channel>/...` 路径；写入使用 Git tree/blob plumbing，不检出完整历史 Package。Package commit 只追加，不 force-push、不覆盖、不删除。
 - 部署后分别请求 `https://updates.endercraftlauncher.top/main/update-manifest.json`、`https://updates.endercraftlauncher.top/dev/update-manifest.json`、`https://updates.endercraftlauncher.top/nightly/update-manifest.json` 及对应 `.sig`。
 - 使用与客户端相同的信任根验证签名，并检查 Manifest 的 channel、platform、architecture、version 与 Package URL。
 - 从匿名网络下载 Manifest 指向的 commit-pinned GitHub Raw Package，验证字节数、SHA-256 和逐文件清单。
