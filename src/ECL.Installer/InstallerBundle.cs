@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using System;
+using System.IO;
 using System.IO.Compression;
 using System.Reflection;
 using Ecl.Deployment;
@@ -13,7 +15,8 @@ internal static class InstallerBundle
 
     public static string Extract()
     {
-        if (_extractedDirectory is { } existing && Directory.Exists(existing))
+        var existing = _extractedDirectory;
+        if (existing is not null && Directory.Exists(existing))
         {
             return existing;
         }
