@@ -345,7 +345,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Unable to inspect Release $tag." }
             $installerName = $assets | Where-Object { $_ -match '^ECL\.Installer-.+-win-x64\.exe$' } | Select-Object -First 1
             if (-not $installerName) {
-              Write-Warning "Skipping $tag: no standalone Installer EXE exists."
+              Write-Warning "Skipping ${tag}: no standalone Installer EXE exists."
               continue
             }
             $version = $installerName -replace '^ECL\.Installer-(.+)-win-x64\.exe$', '$1'
@@ -353,7 +353,7 @@ jobs:
             if ($bootstrapperName -notin $assets) {
               $bootstrapperZip = $assets | Where-Object { $_ -eq "ECL.Bootstrapper-$version-win-x64.zip" } | Select-Object -First 1
               if (-not $bootstrapperZip) {
-                Write-Warning "Skipping $tag: no matching standalone Bootstrapper or Bootstrapper ZIP exists."
+                Write-Warning "Skipping ${tag}: no matching standalone Bootstrapper or Bootstrapper ZIP exists."
                 continue
               }
               $temp = Join-Path $env:RUNNER_TEMP "ecl-release-clean-$([Guid]::NewGuid().ToString('N'))"
