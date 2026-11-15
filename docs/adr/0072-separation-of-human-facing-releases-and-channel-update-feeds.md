@@ -73,8 +73,8 @@ nightly-packages  # nightly 频道
 - `update-trust.json` 是客户端/安装介质持有的信任材料，不从 Feed 下载后直接建立信任；Feed 不得替换或轮换客户端的信任根。
 - 三个机器专用 Package Release 是仅追加的发布对象存储，不承载源代码、Manifest 或签名文件。Package 按频道分 Release，文件名包含平台架构、版本与完整 SHA-256；Manifest URL 使用固定的频道专用 Release tag 和唯一 asset 文件名。发布流程禁止移动这些 tag、覆盖或删除已发布 asset。
 - `main`、`dev`、`nightly` 三个频道使用完全独立的 Package 命名空间和 Manifest 指针。main 仅由正式版本 Tag 推进，dev 仅由 `dev` 分支的受认可发布触发，nightly 仅由 `nightly` 分支的成功构建推进。任何频道都不得引用其他频道 Release中的 Package。
-- 已经被任一已发布 Manifest 引用的 Package 永久保留，不得覆盖或删除；失败构建及尚未被任何已发布 Manifest 引用的临时 Package 不提交到 机器专用 Package Release。回滚只回退频道 Manifest/Signature，不删除 Package。
-- 机器专用 Package Release写入必须采用 append-only 方式，禁止 force-push、历史重写和对已存在路径的覆盖。由于三个频道共享同一分支，写入采用 Git tree/blob plumbing，仅获取必要的对象，避免每次构建检出全部历史 Package；写入具备并发冲突重试与 stale-build 防护。Cloudflare Pages Production 部署由独立 `feed-lock` 分支上的 compare-and-swap 租约锁串行化，避免不同频道的完整站点部署互相覆盖。一次发布不得丢失其他频道已经提交的文件或指针。
+- 已经被任一已发布 Manifest 引用的 Package 永久保留，不得覆盖或删除；失败构建及尚未被任何已发布 Manifest 引用的临时 Package 不得上传到机器专用 Package Release。回滚只回退频道 Manifest/Signature，不删除 Package。
+- 三个机器专用 Package Release 分别由 `main-packages`、`dev-packages`、`nightly-packages` 三个固定 tag 标识。上传前必须检查同名 asset；若已存在，下载后核对字节数与 SHA-256，完全一致才允许复用，否则拒绝发布。上传时禁止 `--clobber`，不得删除任何已发布 asset，也不得移动机器专用 Release tag。发布前执行频道 freshness 检查，拒绝过期构建。Cloudflare Pages Production 部署由独立 `feed-lock` 分支上的 compare-and-swap 租约锁串行化，避免不同频道的完整站点部署互相覆盖。
 - 频道 Manifest 与其 detached signature 必须作为同一逻辑版本原子切换。Pages 的每次部署是完整静态站点版本；发布流水线必须将所有频道元数据作为一个完整目录一次性部署到 Production，依赖 Pages 部署版本切换保证客户端只看到旧部署或新部署，不得分别上传/覆盖两个文件。不得把 Preview Deployment 当作生产 Feed。
 - 新版本发布顺序为：构建并签名 Package/Manifest → 将 Package 以唯一文件名追加到对应频道的机器专用 Release → 生成 GitHub Release asset 绝对 HTTPS URL 并重新签名 Manifest → 从匿名客户端路径下载 Package 并验证字节数与 SHA-256 → 生成包含三个频道当前 Manifest/Signature 的完整 Pages 静态目录 → 使用 Wrangler Direct Upload 部署 Production → 从正式自定义域名验证 Manifest、Signature、Package 下载与签名/哈希。不得在 Package asset 上传成功、匿名下载且哈希验证通过之前推进对应频道 Feed。只有全部步骤成功后，构建才算 Feed 发布成功。
 - 回滚通过恢复上一份已签名的频道 Manifest/Signature 指针完成；不得删除仍被旧 Manifest 引用的 Package。
@@ -83,7 +83,7 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 
 ### 4. 发布记录与频道更新状态相互独立
 
-- GitHub Release 负责人工下载、版本说明和两个 EXE 的摘要展示；完整 ECL Package 不得作为 Release 附件。
+- 人工版本 GitHub Release 负责用户下载、版本说明和两个 EXE 的摘要展示；完整 ECL Package 不得作为人工版本 Release 附件。机器专用 Package Releases 仅用于客户端自动更新，必须明确标注 machine-only，不得混入人工版本 Release。
 - Channel Feed 负责自动更新所需的 Manifest、Signature 和 ECL Package。
 - Actions Artifact 负责短期构建追溯，不作为人工长期下载入口，也不作为客户端更新源。
 - Release tag 与 Feed 的频道指针可以共享同一构建版本元数据，但两者不是同一个存储对象；不得因为 Release 创建成功就认定 Feed 发布成功。
@@ -102,7 +102,7 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 ## 备选方案
 
 - **继续把所有文件放在 GitHub Release：**实现简单且当前客户端兼容，但 Release 页面持续暴露所有内部更新文件，无法满足只提供两个 EXE 的目标，因此不采用。
-- **使用同一仓库的 机器专用 Package Release：**可以匿名提供静态文件、无需新增仓库或额外对象存储服务，并可用 commit SHA 固定不可变 URL；代价是仓库历史与体积持续增长，且需要 append-only 写入、并发冲突处理和存储容量监控。考虑到当前 Package 分发规模与避免新增仓库/付费存储的约束，采用此方案。
+- **使用同一仓库的机器专用 GitHub Releases：**可以匿名提供大体积静态文件，无需新增仓库或额外对象存储服务；每个频道独立 Release，Package asset 以版本和 SHA-256 命名，发布流程只追加、不覆盖、不删除。代价是客户端必须安全处理 GitHub 下载重定向，并依赖 GitHub Releases 的可用性与资产限制。考虑到 Package ZIP 超过 Git 普通单文件限制、Git LFS 免费额度不适合长期追加存储，且当前不引入付费对象存储，采用此方案。
 - **将更新文件改为 GitHub Actions Artifact：**Artifact 有保留期限，且客户端下载可能需要 GitHub 权限，不适合作为长期匿名更新源，因此不采用。
 - **GitHub Pages + GitHub Releases：**可实现相同职责分离，但Cloudflare Pages 支持将子域名通过 CNAME 指向 Pages 项目；域名 DNS 可以继续由现有服务商托管，因此无需为了 Feed 迁移整个 Zone。
 - **Cloudflare R2：**适合托管大型静态对象，但当前不作为前置依赖；Feed 元数据体积小，Pages 已足够，避免 R2 开通可能涉及的支付验证障碍。
@@ -115,9 +115,9 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 - 发布系统需要同时维护人工 Release 与独立 Feed 两条发布结果，并为 Feed 托管增加持久性、带宽、缓存与可用性监控。
 - 频道 Feed 成为自动更新的关键基础设施；Feed 故障不得降低签名验证要求，也不得阻止用户使用 Installer 完整离线恢复。
 - Pages 的 Production Deployment 提供整站版本回滚；回滚必须恢复一套完整、此前验证过的频道元数据，而不是手工替换单个文件。Feed 对象通过 `_headers` 设置 `Cache-Control: no-store`，客户端请求同时要求重新验证缓存，并在两次独立读取跨越部署切换时最多重试一次签名文件与 Manifest 的整对读取。
-- Package 与 Feed 元数据由 GitHub 仓库与 Cloudflare Pages 分别提供，发布流水线必须先确认 机器专用 Package Release中的 commit-pinned Package 可匿名访问，再发布 Pages 元数据，避免出现已发布 Manifest 指向尚不可下载的 Package。
-- 机器专用 Release assets 与人工 Release 分离，但仍受 GitHub Release 单文件大小限制；发布脚本必须在上传前验证 Package 大小，并拒绝覆盖同名 asset。历史 Package 永久保留；若未来单文件大小或 GitHub 托管策略不再满足需求，应另行提出存储迁移 ADR，不得静默删除历史包。
-- Manifest 的 `package.file` 继续兼容旧版相对路径，同时允许严格限定的 GitHub Release Assets 绝对 HTTPS URL。客户端校验初始主机、仓库、频道专用 Release tag、平台、架构、版本、文件名与 SHA-256；下载时逐跳校验 HTTPS 重定向，只允许 GitHub Release asset 分发主机；更新专用 HTTP 客户端关闭自动重定向，拒绝任何改变最终请求 URI 的响应。
+- Package 与 Feed 元数据由 GitHub Releases 与 Cloudflare Pages 分别提供，发布流水线必须先确认对应频道 Release asset 可匿名访问，再发布 Pages 元数据，避免出现已发布 Manifest 指向尚不可下载的 Package。
+- 机器专用 Release assets 与人工版本 Release 分离，但仍受 GitHub Release 单文件大小限制；发布脚本必须在上传前验证 Package 大小，并拒绝覆盖同名 asset。历史 Package 永久保留；若未来单文件大小或 GitHub 托管策略不再满足需求，应另行提出存储迁移 ADR，不得静默删除历史包。
+- Manifest 的 `package.file` 继续兼容旧版相对路径，同时允许严格限定的 GitHub Release Assets 绝对 HTTPS URL。客户端校验初始主机、仓库、频道专用 Release tag、平台、架构、版本、文件名与 SHA-256；下载时逐跳校验 HTTPS 重定向，只允许 `release-assets.githubusercontent.com` 与 `objects.githubusercontent.com`，并拒绝任何自动跟随或跳出白名单的重定向。
 - 在 Feed 供应商与端点尚未完成验证前，旧 Release Feed 必须保持可用；因此本 ADR 的目标状态不能通过单纯删减 Release 附件提前宣称完成。
 
 ## 验收标准
