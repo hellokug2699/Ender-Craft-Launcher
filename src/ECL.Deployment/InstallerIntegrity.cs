@@ -88,10 +88,10 @@ public static class InstallerIntegrity
                     version,
                     localHash,
                     sidecarHash,
-                    sidecarMatches ? InstallerIntegrityState.Confirmed : InstallerIntegrityState.Mismatch,
+                    sidecarMatches ? InstallerIntegrityState.Unverified : InstallerIntegrityState.Mismatch,
                     sidecarMatches
-                        ? "旁置官方 SHA-256 与本地文件一致。请仍使用 PowerShell 独立计算并逐字符核对后再确认。"
-                        : "本地 SHA-256 与旁置官方摘要不一致。建议取消安装并从官方 Release 重新下载。");
+                        ? "已读取旁置摘要，但它可能与安装程序来自同一下载来源。请从同版本官方 GitHub Release 独立获取 .sha256 资产，并使用 PowerShell 核对后再确认。"
+                        : "本地 SHA-256 与旁置摘要不一致。建议取消安装并从官方 Release 重新下载。");
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
