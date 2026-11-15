@@ -194,6 +194,52 @@ artifacts/release/1.0.1/
 
 构建流程仍然执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 包含完整构建中间产物。迁移完成后，人工 Release 只包含 Installer 与 Bootstrapper 两个 EXE；独立 Feed 提供完整 ECL Package、Manifest 与 Signature。当前发布流水线尚未完成该迁移，旧 Feed 资产必须保留。
 
+### Cloudflare Pages Feed 配置（目标部署方案）
+
+Feed 项目采用 Direct Upload，不绑定 Git Integration：
+
+- Cloudflare Pages 项目名：`ender-craft-launcher-feed`
+- Production branch：`main`
+- 正式域名：`updates.endercraftlauncher.top`
+- Feed 根目录：`/<channel>/`，频道为 `main`、`dev`、`nightly`
+- 仅部署静态文件；不包含 `functions/`、`_worker.js` 或动态 API。
+- Pages 仅承载 Manifest 与 detached Signature；完整 ECL Package 保留在 GitHub Releases。
+
+首次控制台配置：
+
+1. Cloudflare Dashboard → Workers & Pages → Create application → Pages → Direct Upload。
+2. 创建项目 `ender-craft-launcher-feed`，先部署临时静态目录完成初始化。
+3. 在项目 Custom domains 中添加 `updates.endercraftlauncher.top`。
+4. 确认 `endercraftlauncher.top` 已加入当前 Cloudflare 账户的有效 Zone，并按界面提示完成 DNS/域名激活。
+5. 在 Account API Tokens 创建自定义 Token，只授予目标 Account 的 Cloudflare Pages: Edit 权限；不授予 Zone、DNS、Workers、R2 或账户管理权限。
+6. 在 GitHub 仓库 Settings → Secrets and variables → Actions 添加：
+   - `CLOUDFLARE_ACCOUNT_ID`：Cloudflare Account ID。
+   - `CLOUDFLARE_API_TOKEN`：上述 Pages 专用 Token。
+7. 将 Token 视为部署凭据，不得写入仓库、日志、Artifact 或客户端。
+
+CI 使用 Wrangler Direct Upload。静态目录必须在部署步骤前完整生成，并且只在 Package 已上传、可匿名下载且 SHA-256 校验成功后部署：
+
+```bash
+npx wrangler pages deploy artifacts/channel-feed \
+  --project-name=ender-craft-launcher-feed \
+  --branch=main
+```
+
+GitHub Actions 需要将 `CLOUDFLARE_ACCOUNT_ID` 与 `CLOUDFLARE_API_TOKEN` 作为环境变量注入部署步骤。建议固定 Wrangler 主版本/精确版本，并在 CI 中使用 lockfile，避免不受控的 CLI 版本漂移。
+
+Direct Upload 项目的 Production branch 若需显式设置，通过 Pages Update Project API 将 `production_branch` 设为 `main`；不要假设 Dashboard 的 Git Integration 设置适用于 Direct Upload 项目。Preview 部署不得成为客户端 Feed 地址。
+
+Feed 发布检查：
+
+- 部署后分别请求 `https://updates.endercraftlauncher.top/main/update-manifest.json`、`/dev/update-manifest.json`、`/nightly/update-manifest.json` 及对应 `.sig`。
+- 使用与客户端相同的信任根验证签名，并检查 Manifest 的 channel、platform、architecture、version 与 Package URL。
+- 从匿名网络下载 Manifest 指向的 GitHub Release Package，验证字节数、SHA-256 和逐文件清单。
+- 任何一步失败都不得将该次发布报告为 Feed 成功；保留上一个已验证 Pages Production Deployment 以便回滚。
+
+重要兼容性前置条件：当前 Manifest 示例使用 `package.file` 相对文件名，现有客户端可能会把它拼接到 Feed Base URL。由于 Package 实际位于 GitHub Releases，切换前必须确认客户端协议支持绝对 HTTPS Package URL，并对 URL scheme、主机允许列表、重定向逐跳校验和哈希验证进行测试。若当前实现不支持，先扩展 Manifest/下载器并完成兼容测试；不得只更改 Pages 部署而让客户端错误地从 Pages 下载 Package。
+
+Pages Free 的单文件大小上限为 25 MiB、单站点最多 20,000 个文件；本方案只放小体积元数据，不把 ZIP Package 上传到 Pages。部署前应以 Cloudflare 当前官方限制再次核对。
+
 ### 当前实现与目标架构
 
 **当前实现仍处于迁移前状态：**自动更新/远程修复默认使用 GitHub Release 下载路径：
