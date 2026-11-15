@@ -62,6 +62,10 @@ jobs:
           dotnet test tests/ECL.App.Tests/ECL.App.Tests.csproj -c Release --no-build
           if ($LASTEXITCODE -ne 0) { throw "WPF shell tests failed." }
 
+      - name: Verify standalone Installer end-to-end
+        shell: pwsh
+        run: pwsh -NoProfile -File build/validate-installer.ps1
+
       - name: Resolve version and channel from branch
         shell: pwsh
         env:
@@ -233,7 +237,8 @@ jobs:
         shell: pwsh
         run: |
           [void][scriptblock]::Create((Get-Content "build/publish-channel-feed.ps1" -Raw))
-          Write-Host "Channel feed publishing script parsed successfully."
+          [void][scriptblock]::Create((Get-Content "build/validate-installer.ps1" -Raw))
+          Write-Host "Release PowerShell scripts parsed successfully."
 
       - name: Publish immutable stable Release
         if: steps.freshness.outputs.publish == 'true' && env.ECL_CHANNEL == 'main'
