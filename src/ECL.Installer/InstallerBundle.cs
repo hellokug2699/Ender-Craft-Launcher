@@ -11,6 +11,8 @@ namespace Ecl.Installer;
 internal static class InstallerBundle
 {
     private const string ResourceName = "ECL.Installer.Bundle.zip";
+    private const int MaxEntryCount = 64;
+    private const long MaxExpandedBytes = 2L * 1024 * 1024 * 1024;
     private static string? _extractedDirectory;
 
     public static string Extract()
@@ -38,8 +40,14 @@ internal static class InstallerBundle
         try
         {
             using var archive = new ZipArchive(resource, ZipArchiveMode.Read, leaveOpen: false);
+            if (archive.Entries.Count > MaxEntryCount)
+            {
+                throw new InvalidDataException("安装介质包含过多文件条目。");
+            }
+
             var root = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
             var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            long expandedBytes = 0;
 
             foreach (var entry in archive.Entries)
             {
@@ -60,10 +68,26 @@ internal static class InstallerBundle
                     throw new InvalidDataException($"安装介质路径越界：{entry.FullName}");
                 }
 
+                if (entry.Length < 0 || entry.Length > MaxExpandedBytes - expandedBytes)
+                {
+                    throw new InvalidDataException("安装介质解压后的总大小超过允许上限。");
+                }
+
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 using var input = entry.Open();
                 using var output = new FileStream(target, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                input.CopyTo(output);
+                var buffer = new byte[81920];
+                int read;
+                while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    expandedBytes += read;
+                    if (expandedBytes > MaxExpandedBytes)
+                    {
+                        throw new InvalidDataException("安装介质解压后的总大小超过允许上限。");
+                    }
+
+                    output.Write(buffer, 0, read);
+                }
             }
 
             var inspected = InstallMedia.Inspect(destination);
