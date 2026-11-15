@@ -47,6 +47,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly SettingsViewModel _settings;
     private readonly ToolsViewModel _tools;
     private readonly StorageViewModel _storage;
+    private readonly Ecl.App.ViewModels.Security.SecurityViewModel _security;
     private readonly StorageAnalysisService _storageAnalysis;
     private readonly IMemoryPressureMonitor _memoryPressure;
     private readonly InstanceModifyPageFactory _modifyFactory;
@@ -76,6 +77,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         SettingsViewModel settings,
         LogSessionsViewModel logSessions,
         ToolsViewModel tools,
+        Ecl.App.ViewModels.Security.SecurityViewModel security,
         AboutViewModel about,
         InspectorViewModel inspector,
         OutputPanelViewModel output,
@@ -102,6 +104,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _settings = settings;
         _tools = tools;
         _storage = storage;
+        _security = security;
         _storageAnalysis = storageAnalysis;
         _memoryPressure = memoryPressure;
         _localizer = localizer;
@@ -126,6 +129,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
             new ShellNavigationItem("tools", "tools", localizer.Get("nav.tools"), toolGroup, tools),
             new ShellNavigationItem("storage", "storage", localizer.Get("nav.storage"), toolGroup, storage),
             new ShellNavigationItem("logs", "logs", localizer.Get("nav.logs"), toolGroup, logSessions),
+            // 维护者 D4-1：安全区域作为独立一级目的地；承载安全中心与状态中心。
+            new ShellNavigationItem("security", "security", localizer.Get("nav.security"), toolGroup, _security),
             new ShellNavigationItem("about", "about", localizer.Get("nav.about"), toolGroup, about),
         ];
 
@@ -723,6 +728,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         {
             // 关于页只刷新离线可读取的频道与扩展状态；检查更新只由用户显式触发。
             aboutPage.Activate();
+        }
+        else if (page is Ecl.App.ViewModels.Security.SecurityViewModel securityPage)
+        {
+            // 安全中心不因进入而重扫或读取历史结果；状态中心在首次进入时执行一次真实检查。
+            securityPage.Activate();
         }
     }
 

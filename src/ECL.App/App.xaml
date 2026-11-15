@@ -5,6 +5,7 @@
              xmlns:vm="clr-namespace:Ecl.App.ViewModels"
              xmlns:svm="clr-namespace:Ecl.App.ViewModels.Settings"
              xmlns:wsvm="clr-namespace:Ecl.App.Workspace.ViewModels"
+             xmlns:secvm="clr-namespace:Ecl.App.ViewModels.Security"
              xmlns:dialogs="clr-namespace:Ecl.App.Dialogs.ViewModels"
              xmlns:dviews="clr-namespace:Ecl.App.Dialogs.Views"
              xmlns:conv="clr-namespace:Ecl.App.Converters"
@@ -19,6 +20,7 @@
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
             <conv:LaunchStatusToBrushConverter x:Key="LaunchStatusBrush" />
             <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibility" />
+            <conv:InverseBooleanConverter x:Key="InverseBoolean" />
             <conv:StringToVisibilityConverter x:Key="StringToVisibility" />
             <conv:NullToVisibilityConverter x:Key="NullToVisibility" />
             <conv:LogLevelToBrushConverter x:Key="LogLevelBrush" />
@@ -119,6 +121,16 @@
             <DataTemplate DataType="{x:Type vm:AboutViewModel}">
                 <views:AboutView />
             </DataTemplate>
+            <!-- B11：安全目的地与区域内两个二级页。 -->
+            <DataTemplate DataType="{x:Type secvm:SecurityViewModel}">
+                <views:SecurityView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type secvm:SecurityCenterViewModel}">
+                <views:SecurityCenterView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type secvm:RuntimeStatusViewModel}">
+                <views:RuntimeStatusView />
+            </DataTemplate>
 
             <!-- 统一弹窗内容：新增弹窗只需提供内容 ViewModel，不创建窗口。 -->
             <DataTemplate DataType="{x:Type dialogs:MessageDialogViewModel}">
@@ -148,6 +160,13 @@
             </DataTemplate>
             <DataTemplate DataType="{x:Type dialogs:StorageDeleteConfirmViewModel}">
                 <dviews:StorageDeleteConfirmView />
+            </DataTemplate>
+            <!-- B10：旧弹窗内容迁移到 Dialog Engine；首次启动向导仍保留独立窗口。 -->
+            <DataTemplate DataType="{x:Type dialogs:VersionImportDialogViewModel}">
+                <dviews:VersionImportDialogView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type dialogs:AuthlibAccountDialogViewModel}">
+                <dviews:AuthlibAccountDialogView />
             </DataTemplate>
         </ResourceDictionary>
     </Application.Resources>

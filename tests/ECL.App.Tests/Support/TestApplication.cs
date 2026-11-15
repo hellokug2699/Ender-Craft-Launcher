@@ -53,6 +53,7 @@ internal static class TestApplication
             // 与 App.xaml 保持同一组应用级转换器：页面与弹窗视图在测试环境中也必须能完整加载。
             application.Resources["BoolToVisibility"] = new BooleanToVisibilityConverter();
             application.Resources["InverseBoolToVisibility"] = new InverseBooleanToVisibilityConverter();
+            application.Resources["InverseBoolean"] = new InverseBooleanConverter();
             application.Resources["StringToVisibility"] = new StringToVisibilityConverter();
             application.Resources["NullToVisibility"] = new NullToVisibilityConverter();
             application.Resources["LogLevelBrush"] = new LogLevelToBrushConverter();

@@ -35,6 +35,8 @@
 - 实例工作区的页面对象持有 `InstanceWorkspaceState`（打开时捕获的实例快照）；工作区关闭时由 Shell 释放。
 - 切换标签只改变活动工作区，不销毁页面 ViewModel；关闭标签才会移除工作区。
 - 导航高亮跟随活动工作区；实例工作区没有独立导航项，因此导航不显示选中态。
+- 当前导航顺序（`Ctrl+1…9` 同序）：主页、实例、下载、设置、工具中心、存储与清理、日志、**安全**、关于。
+  `Ctrl+8` 打开安全中心，`Ctrl+9` 打开关于；安全目的地由维护者 D4-1 批准新增。
 
 ### 2.1 工作区身份与去重（B0）
 
@@ -1135,6 +1137,61 @@ G-02（世界工作台）、G-03（NBT Addition）、G-04（工具中心清单�
   更新检查通过 UIA `Invoke` 触发真实服务；窗口画面通过 `PrintWindow` 抓取（会话为锁屏状态）。
   Windows 125% / 150% 与多 DPI 移动仍为 NOT RUN。
 
+### 2.23 旧弹窗迁移与首次启动向导 ViewModel（B10）
+
+页面规格：无独立页面页；ADR 0052（Dialog Engine）、ADR 0018（首次启动工作区）、
+ADR 0065（OAuth/凭据安全）；迁移规划 §6.2 #13。
+
+- **首次启动向导**：`WorkspaceSetupWindow` 仍是 Shell 创建前的独立窗口（ADR 0052 §11），
+  但业务状态全部迁入 `WorkspaceSetupViewModel`：推荐位置、旧版数据探测、路径校验（含 350ms 去抖与
+  并发结果版本号）、“采用旧版”、接受与稍后配置。窗口只保留主题化显示、系统目录选择器与关闭结果；
+  `App` 通过 DI 取得页面对象后构造窗口。语言/主题资源与主窗口相同，结果通过 `Completed` 事件回传。
+- **版本导入**：`VersionImportDialog` 窗口已删除；`VersionImportDialogViewModel` + `VersionImportDialogView`
+  通过 `App.xaml` 的 DataTemplate 进入 Dialog Engine。只建立版本引用、不复制文件；已导入/不可用版本
+  不可勾选。批量导入登记统一 `Operation`（Kind=Import，可取消），逐版本报告进度，结果写入进度面板；
+  部分失败保留对话框并列出失败项，成功才以 `Primary` + `VersionImportResult(ImportedCount)` 关闭。
+- **Authlib 账户**：`AuthlibAccountDialog` 窗口已删除；`AuthlibAccountDialogViewModel` +
+  `AuthlibAccountDialogView` 走同一个 Dialog Engine。新建与账户设置共用内容对象；密码只作为
+  `SubmitAsync(string password)` 的局部参数从 `PasswordBox.Password` 传入，不进入绑定属性、日志或页面状态；
+  修改服务器地址时先校验元数据、用密码完成重认证、再提交服务器与凭据，凭据提交失败时回滚地址。
+  入口保持在 Home 账号菜单，不在实例工作区复制全局账号区。
+- **结果契约**：取消、关闭、业务失败与成功可区分；忙碌状态由 `IDialogSession` 拒绝普通关闭；
+  弹窗宿主不可用时命令写回页面状态，不静默失败。
+- **本地化/主题**：新增 `workspace.setup.freeSpace`、`workspace.setup.legacySummary`、
+  `instances.importWorking/Completed/Cancelled`、`instances.dialogUnavailable`、`authlib.openRegisterFailed`；
+  弹窗内容不再自带窗口外壳，标题由 Dialog Engine 统一提供。
+
+### 2.24 安全区域：安全中心与状态中心（B11）
+
+页面规格：`hints/ui/pages/security-center.md`、`hints/ui/pages/runtime-status.md`；ADR 0043（威胁防护）、
+ADR 0051（安装/更新/恢复）、维护者 D4-1…D4-4。
+
+- **目的地与二级导航**：新增第 9 个一级目的地 `security`，区域采用横向二级导航「安全中心 / 状态中心」；
+  切换二级页不新开工作区、不改变工作区标题。两页共用 `SecurityStatusCircle`：白色实心圆、
+  仅描边的盾牌、圆边框与盾牌同色；状态中心在盾牌内显示 ✓ / ? / X。
+- **安全中心（真实数据）**：手动「开始扫描」逐实例串行调用既有 `IThreatProtectionService.ScanAsync`
+  （扫描根：mods / resourcepacks / shaderpacks / config / scripts），不读取历史扫描记录，因此重启后
+  回到未扫描。结果按扫描根分区，固定顺序、分类独立计数；顶部按最高风险着色：红=HighRisk/ConfirmedThreat、
+  黄=Notice/Suspicious/Unknown、绿=完整扫描且无活动发现、蓝=未扫描/检查中/未完成。扫描登记
+  `Operation`（Kind=Verification，可取消），覆盖范围、失败实例与不完全结果如实显示；部分结果绝不显示为绿色。
+  页面不显示文件路径。
+- **忽略与删除**：忽略写入 ADR 0043 的现有风险接受记录（`AcceptRiskAsync`），按危险程度显示信息/警告/错误级
+  确认；忽略不把检测结论改成 Clean，条目保留并灰显、不计入当前异常数量。删除复用现有类型化隔离操作
+  （`QuarantineAsync`，经实例事务、可恢复），确认框明确说明“移入隔离区”；启动参数类发现没有文件目标，
+  删除按钮不可用并说明原因。页面不新增任意路径删除 API。
+- **状态中心（真实数据）**：`RuntimeStatusService` 用 `SelfIntegrityVerifier` 核对安装布局的签名更新清单，
+  读取扩展安装记录；组件健康（绿/黄/红）与运行状态（运行中/已停止）分开表达，未知原因明确写“未知原因”。
+  不可用（开发构建没有 `current.json`、清单缺失/损坏等）显示真实原因与灰色未知状态，不列伪造组件。
+  「进行修复」只在黄/红时出现，但因 Bootstrapper 修复交接协议（ADR 0051）尚未实现而禁用，并在页面说明；
+  ECL 不会自行修复或在未确认接管时关闭。
+- **旧入口收束**：工具中心的实例引擎工具保留 Inventory 与快照，安全扫描从工具中心移除，唯一入口是安全中心；
+  `EngineToolsViewModel` 不再注入 `IThreatProtectionService`。
+- **全局辅助区域命名**：进度面板页签由「任务」改为「进度」（en-US `Progress`），与「状态中心」区分；
+  面板仍复用 `OperationCenterViewModel`，没有第二套任务列表。
+- **本地化**：新增 `nav.security`、`security.*`、`runtime.*` 键（zh/en 成对）；顶部状态、分类、忽略/删除、
+  覆盖范围、组件原因、修复不可用说明均本地化。
+- **主题**：新增 `OnLightTextBrush`（白色实心圆上的深色文字），避免深色主题把按钮文字渲染成白色而不可读。
+
 ## 3. 共享页面控件（B0）
 B0 只提供 B1 立即需要的三个共享件，其余控件（`DataTable`、`StatusBanner`、`InlineProgress`、
 `SearchBox`、`FilterPill`、`SortSelector`、`SeverityBadge`、`MonoText`、扩展图标集）在第一个真实消费者批次实现，
@@ -1145,6 +1202,7 @@ B0 只提供 B1 立即需要的三个共享件，其余控件（`DataTable`、`S
 | `PageHeader` | `src/ECL.App/Controls/PageHeader.xaml` | 目的地页面的标题 + 副标题 + 标题行右侧操作槽；不可见项自动折叠 |
 | `PageStateView` | `src/ECL.App/Controls/PageStateView.xaml` | 加载 / 空 / 错误 / 不可用四态；状态用文字标签 + 颜色双重表达 |
 | `ToolbarButton` | `Themes/Theme.xaml` | 页面标题行与工具条的次级操作，紧凑但仍保留 32px 高度与焦点环 |
+| `SecurityStatusCircle` | `src/ECL.App/Controls/SecurityStatusCircle.xaml` | 安全中心/状态中心共用的顶部圆形状态、盾牌描边、两枚圆内操作按钮（B11） |
 
 - `PageHeader` 与 `PageStateView` 的默认文案走本地化键 `page.state.*`；页面覆盖说明时必须写清“为什么”和“怎样解除”。
 - 四态视图只呈现状态，不自行发起命令；可执行入口通过 `ActionContent` 由页面提供。
@@ -1169,6 +1227,8 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
 
 ## 5. Output / Task 面板
 
+- 面板有两个页签：「进度」（`output.tab.tasks`，后台任务进度）与「输出」（应用日志）；进度页签不复用
+  「状态中心」名称，避免与安全区域页面混淆。
 - 任务视图直接复用既有 `OperationCenterViewModel`（`IOperationStore` 快照）；没有第二套任务登记。
 - 输出视图读取 `AppLogBuffer`：固定容量 2000 行、UI 最多显示 500 行，按日志级别着色，支持清空。
   它只是应用级日志观察窗，不替代文件日志或游戏进程日志会话。
@@ -1192,18 +1252,20 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
 
 ### 迁移状态
 
-已迁移到 Dialog Engine 的弹窗入口（`Services/DialogService.cs`）：
+已迁移到 Dialog Engine 的弹窗入口（`Services/DialogService.cs` 与页面命令）：
 
 - `Confirm`（确认、破坏性操作确认）
 - `ChooseInstanceDeletion`（三选一删除模式）
 - `ShowInfo` / `ShowError`
+- 版本导入（`VersionImportDialogViewModel`，B10）
+- Authlib 账户新建/设置（`AuthlibAccountDialogViewModel`，B10）
 
 暂时保留的兼容路径：
 
 - 主窗口弹窗宿主尚未附加（首次启动向导、启动失败）时回退到系统 `MessageBox`，避免丢失用户操作。
 - 文件选择继续使用 Windows 原生对话框。
-- `WorkspaceSetupWindow`、`NbtExplorerWindow`、`WorldWorkbenchWindow`、`VersionImportDialog`、
-  `AuthlibAccountDialog` 仍是旧窗口实现，尚未迁移。
+- `WorkspaceSetupWindow` 仍是 Shell 创建前的独立窗口（B10 已抽离 ViewModel，窗口只承载视图）；
+  `NbtExplorerWindow`、`WorldWorkbenchWindow` 仍是未迁移的旧窗口，分别受 G-03 / G-02 规格门槛约束。
 
 ## 7. 线程与状态通知契约
 
@@ -1471,3 +1533,34 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
   团队规模不显示，避免把未确认数据写成事实。
 - **DPI 与多显示器**：实机覆盖 100% 缩放下的 1400×880 与 1080×720；Windows 125% / 150%、
   多 DPI 显示器间移动的关于页组合行为为 NOT RUN（与其它批次一致）。
+
+### 8.6 旧弹窗迁移（B10）相关限制
+
+- **首次启动向导仍是独立窗口**：流程发生在 Shell / Dialog Engine 宿主创建之前，ADR 0052 §11 允许保留窗口；
+  本批只抽取 ViewModel 与统一主题，不把它改造成弹窗。
+- **版本导入不复制、不迁移文件**：只把游戏目录 `versions` 中已存在且结构完整的版本登记为实例；
+  需要复制/迁移目录的导入属于独立能力。
+- **导入取消是条间取消**：取消只阻止后续版本继续导入，已完成的版本保持已导入；部分失败时对话框保留，
+  失败项可重试，成功项不会重复导入。
+- **Authlib 实际登录未在实机执行**：实机只验证了弹窗结构、字段与本地校验；真实服务器登录、重认证与
+  地址回滚由自动化测试替身覆盖，未连接外部认证服务器。
+- **密码边界**：密码从 `PasswordBox.Password` 直接交给页面对象的方法参数，不进入绑定属性、日志或页面状态；
+  凭据持久化仍由 `IAccountService` 与 DPAPI 凭据存储负责。
+
+### 8.7 安全区域（B11）相关限制
+
+- **安全中心扫描是逐实例串行**：扫描对象为 ECL 已加载实例的默认扫描根，不提供范围选择器（后续功能轨道）；
+  外部不可访问实例与扫描上限会作为覆盖问题显示，结果不完整时不显示绿色。
+- **忽略的跨重启显示不完整**：忽略写入 ADR 0043 风险接受记录；同一会话内重新扫描会沿用页面的忽略身份
+  （实例 + 路径 + 哈希 + 规则 + 等级），但页面不读取历史接受记录（领域尚无读取 API），因此重启后重新扫描
+  的条目不会自动显示为已忽略。持久忽略身份、接受记录读取与类型化删除仍属功能轨道 F-03。
+- **删除实际是隔离**：页面按钮沿用已批准的「删除」交互，执行的是既有 `QuarantineAsync`（移入隔离区、可恢复、
+  经实例事务）；不提供永久删除，也不新增任意路径删除 API。启动参数类发现没有文件目标，按钮保持不可用。
+- **状态中心修复不可用**：Bootstrapper 修复 UI / 交接协议（ADR 0051）尚未实现，因此「进行修复」只在黄/红时
+  出现且禁用，页面明确说明不会自行修复或提前关闭；组件健康与运行状态来自本机清单与已加载程序集，
+  开发构建没有 `current.json` 时显示真实不可用原因，不伪造组件列表。
+- **状态中心只检查一次**：每次启动器运行首次进入时检查一次，页面没有刷新、行级修复/启动/停止/删除入口；
+  运行状态按需停止的健康组件显示绿色 + 已停止，不把停止当异常。
+- **实机覆盖**：zh-CN 1400×880 与 1080×720、en-US 1080×720；覆盖蓝/黄/红状态、扫描、忽略确认与灰显、
+  删除确认与隔离落盘、状态中心不可用状态；状态中心的绿/黄/红组件表只由自动化测试覆盖（未构造真实损坏安装），
+  Windows 125% / 150% 与多 DPI 移动为 NOT RUN。

@@ -56,6 +56,8 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly Ecl.Core.Storage.InstanceSourceService _instanceSources;
     private readonly Ecl.Core.Storage.IWorkspaceService _workspace;
     private readonly IDialogEngine _dialogsEngine;
+    private readonly Ecl.Operations.IOperationService _operations;
+    private readonly Ecl.App.Services.IExternalLinkService _links;
     private bool _initialized;
     private bool _suppressAccountSelection;
 
@@ -210,7 +212,9 @@ public sealed partial class InstancesViewModel : ObservableObject
         Ecl.Minecraft.World.WorldWorkbenchService worldWorkbench,
         Ecl.Core.Storage.InstanceSourceService instanceSources,
         Ecl.Core.Storage.IWorkspaceService workspace,
-        IDialogEngine dialogsEngine)
+        IDialogEngine dialogsEngine,
+        Ecl.Operations.IOperationService operations,
+        Ecl.App.Services.IExternalLinkService links)
     {
         _instances = instances;
         _accounts = accounts;
@@ -235,6 +239,8 @@ public sealed partial class InstancesViewModel : ObservableObject
         _instanceSources = instanceSources;
         _workspace = workspace;
         _dialogsEngine = dialogsEngine;
+        _operations = operations;
+        _links = links;
 
         DownloadPauseButtonText = _localizer.Get("instances.download.pause");
     }
@@ -946,20 +952,32 @@ public sealed partial class InstancesViewModel : ObservableObject
 
         try
         {
-            var dialog = new AuthlibAccountDialog(_authServers, _accounts, _localizer)
+            var result = await _dialogsEngine.ShowAsync(new DialogRequest
             {
-                Owner = Application.Current?.MainWindow,
-            };
+                Title = _localizer.Get("authlib.dialog.newTitle"),
+                Content = new AuthlibAccountDialogViewModel(
+                    _authServers,
+                    _accounts,
+                    _links,
+                    _localizer),
+                MinWidth = 460,
+                MaxWidth = 560,
+            }).ConfigureAwait(true);
 
-            if (dialog.ShowDialog() != true || dialog.ResultAccount is null)
+            if (!result.IsPrimary || result.Value is not AuthlibAccountResult authenticated)
             {
                 return;
             }
 
             await RefreshAuthServersAsync().ConfigureAwait(true);
             await RefreshAccountsAsync().ConfigureAwait(true);
-            SelectedAccount = Accounts.FirstOrDefault(item => item.Id == dialog.ResultAccount.Id) ?? SelectedAccount;
-            StatusMessage = _localizer.Get("instances.thirdPartySignedIn", dialog.ResultAccount.Name);
+            SelectedAccount = Accounts.FirstOrDefault(item => item.Id == authenticated.Account.Id)
+                              ?? SelectedAccount;
+            StatusMessage = _localizer.Get("instances.thirdPartySignedIn", authenticated.Account.Name);
+        }
+        catch (DialogHostUnavailableException)
+        {
+            StatusMessage = _localizer.Get("instances.dialogUnavailable");
         }
         catch (Exception exception)
         {
@@ -988,12 +1006,21 @@ public sealed partial class InstancesViewModel : ObservableObject
                 return;
             }
 
-            var dialog = new AuthlibAccountDialog(_authServers, _accounts, _localizer, server, account)
+            var result = await _dialogsEngine.ShowAsync(new DialogRequest
             {
-                Owner = Application.Current?.MainWindow,
-            };
+                Title = _localizer.Get("authlib.dialog.settingsTitle"),
+                Content = new AuthlibAccountDialogViewModel(
+                    _authServers,
+                    _accounts,
+                    _links,
+                    _localizer,
+                    server,
+                    account),
+                MinWidth = 460,
+                MaxWidth = 560,
+            }).ConfigureAwait(true);
 
-            if (dialog.ShowDialog() != true)
+            if (!result.IsPrimary || result.Value is not AuthlibAccountResult)
             {
                 return;
             }
@@ -1002,6 +1029,10 @@ public sealed partial class InstancesViewModel : ObservableObject
             await RefreshAccountsAsync().ConfigureAwait(true);
             SelectedAccount = Accounts.FirstOrDefault(item => item.Id == account.Id) ?? SelectedAccount;
             StatusMessage = _localizer.Get("instances.accountSettingsSaved");
+        }
+        catch (DialogHostUnavailableException)
+        {
+            StatusMessage = _localizer.Get("instances.dialogUnavailable");
         }
         catch (Exception exception)
         {
@@ -1062,18 +1093,30 @@ public sealed partial class InstancesViewModel : ObservableObject
             return;
         }
 
-        var dialog = new VersionImportDialog(_instances, detected, _localizer)
+        try
         {
-            Owner = Application.Current?.MainWindow,
-        };
+            var result = await _dialogsEngine.ShowAsync(new DialogRequest
+            {
+                Title = _localizer.Get("instances.importTitle"),
+                Content = new VersionImportDialogViewModel(_instances, _operations, _localizer, detected),
+                MinWidth = 480,
+                MaxWidth = 660,
+                MinHeight = 360,
+                MaxHeight = 560,
+            }).ConfigureAwait(true);
 
-        if (dialog.ShowDialog() != true)
-        {
-            return;
+            if (!result.IsPrimary || result.Value is not VersionImportResult imported)
+            {
+                return;
+            }
+
+            await RefreshInstancesAsync().ConfigureAwait(true);
+            StatusMessage = _localizer.Get("instances.imported", imported.ImportedCount);
         }
-
-        await RefreshInstancesAsync().ConfigureAwait(true);
-        StatusMessage = _localizer.Get("instances.imported", dialog.ImportedCount);
+        catch (DialogHostUnavailableException)
+        {
+            StatusMessage = _localizer.Get("instances.dialogUnavailable");
+        }
     }
 
     private static Task OpenBrowserAsync(Uri uri)

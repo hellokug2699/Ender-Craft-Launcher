@@ -65,7 +65,7 @@ public interface IToolsCenterCatalog
 
 /// <summary>
 /// ECL 原生工具入口。本批只登记已实现且此前由旧「工具箱」承载的能力：
-/// 实例引擎工具（Inventory / 快照 / 安全体检）与本地诊断。
+/// 实例引擎工具（Inventory / 快照）与本地诊断；安全扫描的唯一入口是安全中心（B11）。
 /// </summary>
 /// <remarks>
 /// 旧工具箱的「知识浏览」「世界工具」占位卡片按迁移规划 §6.2 #12 下线；

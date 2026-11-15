@@ -115,6 +115,13 @@ public partial class App : Application
             services.AddSingleton<IMemoryPressureMonitor, MemoryPressureMonitor>();
             services.AddSingleton<AboutViewModel>();
             services.AddSingleton<OperationCenterViewModel>();
+            // B11：安全目的地、两份页面与真实运行时状态数据源。
+            services.AddSingleton<IRuntimeStatusService, RuntimeStatusService>();
+            services.AddSingleton<Ecl.App.ViewModels.Security.RuntimeStatusViewModel>();
+            services.AddSingleton<Ecl.App.ViewModels.Security.SecurityCenterViewModel>();
+            services.AddSingleton<Ecl.App.ViewModels.Security.SecurityViewModel>();
+            // B10：首次启动向导在 Shell / Dialog Engine 创建前运行；窗口只承载视图，状态在页面对象中。
+            services.AddTransient<WorkspaceSetupViewModel>();
 
             // Shell / Workspace Host / Inspector / Output / Dialog Engine
             // 弹窗层与输出面板绑定到创建主窗口的 UI Dispatcher；Core 保持 UI 无关。
@@ -154,7 +161,7 @@ public partial class App : Application
             var workspace = _services.GetRequiredService<IWorkspaceService>();
             if (!workspace.IsConfigured)
             {
-                var setup = new WorkspaceSetupWindow(workspace, _services.GetRequiredService<ILocalizer>());
+                var setup = new WorkspaceSetupWindow(_services.GetRequiredService<WorkspaceSetupViewModel>());
                 setup.ShowDialog();
             }
 
