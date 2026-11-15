@@ -28,6 +28,11 @@ $legacyRoot = Join-Path $workRoot "legacy"
 if (Test-Path $workRoot) { Remove-Item $workRoot -Recurse -Force }
 if (Test-Path $FeedRoot) { Remove-Item $FeedRoot -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $workRoot, $legacyRoot, $FeedRoot | Out-Null
+$feedHeaders = "/*`n  Cache-Control: no-store`n"
+[System.IO.File]::WriteAllText(
+    (Join-Path $FeedRoot "_headers"),
+    $feedHeaders,
+    [System.Text.UTF8Encoding]::new($false))
 
 $trust = Get-Content $TrustStorePath -Raw | ConvertFrom-Json
 $privatePem = Get-Content $SigningKeyPath -Raw
