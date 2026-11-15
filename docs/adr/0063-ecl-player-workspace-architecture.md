@@ -1,6 +1,6 @@
 # ADR 0063: ECL Player Workspace Architecture
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-08
 - Scope: ECL Player Workspace 的产品定位、独立 Addition 边界、玩家数据自主权、通用组织能力、导入导出与跨 Addition 集成边界
@@ -196,3 +196,6 @@ Player Workspace 可以与 ECL 的其他原生能力和 Additions 协作，例�
 ## 修订记录
 
 - 2026-11-08：首次提出 ECL Player Workspace，明确其为不限定用途的通用玩家工作空间；建立独立 Feature Addition 登记方向，涵盖表格、目标与任务、项目资料、导入导出、玩家数据自主权及跨 Addition 集成边界。Decision 保持 Proposed，Implementation 为 Not Started。
+
+
+- 2026-11-16：经维护者明确批准，Decision 由 Proposed 更新为 Accepted。该批准确认架构决策生效，不代表 Implementation 已完成；实施状态与既有验收证据保持不变。
