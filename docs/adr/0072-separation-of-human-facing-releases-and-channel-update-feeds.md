@@ -22,14 +22,14 @@ GitHub Release 的附件都会显示在 Release 页面中，无法将部分附�
 
 ### 1. 人工 Release 只提供两个可执行文件
 
-每个面向用户的官方 Release（包括频道滚动 Release 与不可变版本 Release）只提供以下两个下载资产：
+从本决策切换完成后创建或更新的面向用户 Release（包括频道滚动 Release 与新的不可变版本 Release）只提供以下两个下载资产：
 
 1. `ECL.Installer-<version>-win-x64.exe`：普通用户的唯一推荐下载入口，负责首次安装和完整离线恢复。
 2. `ECL.Bootstrapper-<version>-win-x64.exe`：高级用户在需要独立修复入口时使用；普通用户无需单独下载。
 
 ARM64 构建按相同命名规则提供对应架构的两个 EXE。Release 页面不得附带 Installer ZIP、Bootstrapper ZIP、ECL Package、Manifest、signature、trust store、checksum sidecar 或其他构建中间产物。
 
-Release Notes 必须明确提示普通用户只下载 Installer；只有在需要独立修复入口时才下载 Bootstrapper。Release Notes 同时列出两个 EXE 的 SHA-256，作为可从官方 Release 页面独立获取的摘要。摘要不作为第三个下载资产。
+Release Notes 必须明确提示普通用户只下载 Installer；只有在需要独立修复入口时才下载 Bootstrapper。切换前的历史 ZIP-only Release 保留为历史记录：旧 Installer ZIP 可能依赖外置介质，不能仅改名为 EXE 伪装成新的自包含 Installer；只有已存在可独立验证的 Installer EXE 与 Bootstrapper EXE 时，自动迁移步骤才可清理其余附件并补齐摘要。Release Notes 同时列出两个 EXE 的 SHA-256，作为可从官方 Release 页面独立获取的摘要。摘要不作为第三个下载资产。
 
 ### 2. 自动更新继续使用 ECL Package
 
@@ -122,7 +122,7 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 
 ## 验收标准
 
-1. 每个官方 Release 页面恰好包含两个可下载资产：对应架构的 Installer EXE 与 Bootstrapper EXE；不存在 ZIP、Manifest、Signature、trust store 或 checksum sidecar 附件。
+1. 切换后创建或更新的官方 Release 页面恰好包含两个可下载资产：对应架构的 Installer EXE 与 Bootstrapper EXE；不存在 ZIP、Manifest、Signature、trust store 或 checksum sidecar 附件。切换前仅有 ZIP Installer 的历史 Release 保留原样，不得通过重命名制造虚假的自包含 EXE。
 2. Release Notes 明确说明 Installer 是普通用户入口、Bootstrapper 仅用于必要的独立修复，并分别列出与最终 EXE 字节一致的 SHA-256。
 3. ECL 自动更新仍下载 Manifest 指定的完整 ECL Package，而不是 Installer 或 Bootstrapper。
 4. `main`、`dev`、`nightly` 的 Feed 均可通过 `https://updates.endercraftlauncher.top/<channel>/` 匿名 HTTPS 读取 Manifest 与 Signature；Manifest 指向 `packages` 分支中由 commit SHA 固定的不可变 Package。三个频道的 Package 路径严格隔离。
@@ -142,4 +142,5 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 - 2026-11-15：曾决定采用 Cloudflare Pages Direct Upload 托管频道 Manifest/Signature、GitHub Releases 托管不可变 Package；该 Package 托管选择随后由本记录的最新修订取代，保留此条用于追溯决策演进。
 - 2026-11-15：根据三频道独立更新与 Release 页面仅保留两个 EXE 的约束，改为由同一公有仓库的 `packages` 分支以 append-only 方式托管不可变 Package；Manifest 的 Package URL 固定到具体 Git commit SHA。三个频道独立命名空间、独立推进，已发布 Package 永久保留。
 - 2026-11-15：开始实施绝对 Package URL 解析、频道绑定、专用无重定向 HTTP 传输、官方 Feed 默认地址、GitHub Packages 分支写入、三频道迁移与 Cloudflare Pages Direct Upload。Production Feed 使用独立租约锁串行化；端到端生产部署与 GitHub CI 尚待验证。
+- 2026-11-15：明确切换前仅含 ZIP Installer 的历史 Release 不做不安全的 EXE 改名，严格的双 EXE 规则适用于切换后的新建/更新 Release；历史记录只在已有可验证独立 EXE 时才执行资产规范化。
 - 2026-11-15：补充 Feed 元数据 `Cache-Control: no-store`，并在 Manifest/Signature 两次独立读取遇到部署切换导致验签失败时，客户端重新读取整对文件一次；持续验签失败仍 fail-closed。
