@@ -2601,6 +2601,7 @@
   "runtime.repair.button": "进行修复",
   "runtime.repair.unavailable": "修复不可用：ECL 尚未实现 Bootstrapper 修复交接协议（ADR 0051）。本页不会自行修复或提前关闭 ECL。",
   "runtime.components.title": "组件状态",
+  "runtime.main": "ECL 主程序",
   "runtime.components.name": "项目",
   "runtime.components.state": "当前状态",
   "runtime.components.reason": "异常原因",

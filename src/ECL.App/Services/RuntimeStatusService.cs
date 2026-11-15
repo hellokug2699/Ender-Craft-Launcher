@@ -140,8 +140,11 @@ public sealed class RuntimeStatusService : IRuntimeStatusService
 
         foreach (var file in report.Files)
         {
+            var fileName = Path.GetFileName(file.Path);
             components.Add(new RuntimeComponentStatus(
-                Path.GetFileName(file.Path) is { Length: > 0 } name ? name : file.Path,
+                string.Equals(fileName, "ECL.exe", StringComparison.OrdinalIgnoreCase)
+                    ? _localizer.Get("runtime.main")
+                    : fileName is { Length: > 0 } ? fileName : file.Path,
                 file.IsIntact ? RuntimeHealth.Healthy : RuntimeHealth.Damaged,
                 IsRunningComponent(file.Path) ? RuntimeRunState.Running : RuntimeRunState.Stopped,
                 file.IsIntact ? null : DescribeFileStatus(file.Status)));

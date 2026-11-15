@@ -2600,6 +2600,7 @@
   "runtime.repair.button": "Repair",
   "runtime.repair.unavailable": "Repair unavailable: ECL has not implemented the Bootstrapper repair handoff (ADR 0051). This page never repairs itself or closes ECL early.",
   "runtime.components.title": "Component status",
+  "runtime.main": "ECL main program",
   "runtime.components.name": "Item",
   "runtime.components.state": "Current state",
   "runtime.components.reason": "Reason",
