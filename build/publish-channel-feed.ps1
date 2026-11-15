@@ -58,6 +58,19 @@ function Test-ManifestSignature([string]$ManifestPath, [string]$SignaturePath) {
     if (-not $valid) { throw "Existing channel Manifest signature verification failed." }
 }
 
+function Get-PublishedFeedFile([string]$Url, [string]$Destination) {
+    $statusCode = 0
+    Invoke-WebRequest -Uri $Url -OutFile $Destination -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 0 -SkipHttpErrorCheck -StatusCodeVariable statusCode
+    if ($statusCode -eq 404) {
+        Remove-Item $Destination -Force -ErrorAction SilentlyContinue
+        return $false
+    }
+    if ($statusCode -ne 200) {
+        throw "Production Feed request failed with HTTP $statusCode: $Url"
+    }
+    return $true
+}
+
 function Write-SignedManifest([object]$Manifest, [string]$Directory) {
     New-Item -ItemType Directory -Force -Path $Directory | Out-Null
     $manifestPath = Join-Path $Directory "update-manifest.json"
@@ -356,11 +369,14 @@ foreach ($candidate in @("main", "dev", "nightly")) {
     $channelDirectory = Join-Path $FeedRoot $candidate
     $existingManifest = Join-Path $channelDirectory "update-manifest.json"
     $existingSignature = Join-Path $channelDirectory "update-manifest.sig"
-    $isLive = $false
-    try {
-        New-Item -ItemType Directory -Force -Path $channelDirectory | Out-Null
-        Invoke-WebRequest -Uri "https://updates.endercraftlauncher.top/$candidate/update-manifest.json" -OutFile $existingManifest -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 0
-        Invoke-WebRequest -Uri "https://updates.endercraftlauncher.top/$candidate/update-manifest.sig" -OutFile $existingSignature -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 0
+    New-Item -ItemType Directory -Force -Path $channelDirectory | Out-Null
+    $manifestExists = Get-PublishedFeedFile "https://updates.endercraftlauncher.top/$candidate/update-manifest.json" $existingManifest
+    $signatureExists = Get-PublishedFeedFile "https://updates.endercraftlauncher.top/$candidate/update-manifest.sig" $existingSignature
+    if ($manifestExists -xor $signatureExists) {
+        throw "Production Feed for $candidate is incomplete; refusing to replace a partial or tampered deployment."
+    }
+    $isLive = $manifestExists -and $signatureExists
+    if ($isLive) {
         Test-ManifestSignature $existingManifest $existingSignature
         $existing = Get-Content $existingManifest -Raw | ConvertFrom-Json
         $existingPackageUri = [Uri]$existing.package.file
@@ -372,10 +388,9 @@ foreach ($candidate in @("main", "dev", "nightly")) {
             throw "Existing Production Feed is not a valid migrated channel."
         }
         Confirm-PackageUrl $existingPackageUri.AbsoluteUri ([long]$existing.package.size) ([string]$existing.package.sha256)
-        $isLive = $true
     }
-    catch {
-        Write-Host "No usable Production Feed for $candidate; migrating the current signed GitHub Release."
+    else {
+        Write-Host "No Production Feed exists for $candidate; migrating the current signed GitHub Release."
     }
 
     if (-not $isLive) {
@@ -386,12 +401,14 @@ foreach ($candidate in @("main", "dev", "nightly")) {
             default { @("nightly") }
         }
         $legacyDownloaded = $false
+        $selectedLegacyTag = $null
         foreach ($legacyTag in $legacyTags) {
             $attemptDirectory = Join-Path $legacyDirectory $legacyTag
             New-Item -ItemType Directory -Force -Path $attemptDirectory | Out-Null
             & gh release download $legacyTag --pattern "update-manifest.json" --pattern "update-manifest.sig" --dir $attemptDirectory
             if ($LASTEXITCODE -eq 0) {
                 $legacyDirectory = $attemptDirectory
+                $selectedLegacyTag = $legacyTag
                 $legacyDownloaded = $true
                 break
             }
@@ -412,7 +429,7 @@ foreach ($candidate in @("main", "dev", "nightly")) {
         if ([System.IO.Path]::GetFileName($legacyPackageName) -ne $legacyPackageName) {
             throw "Legacy Manifest package filename is not a leaf name."
         }
-        & gh release download $candidate --pattern $legacyPackageName --dir $legacyDirectory
+        & gh release download $selectedLegacyTag --pattern $legacyPackageName --dir $legacyDirectory
         if ($LASTEXITCODE -ne 0) { throw "Unable to download legacy Package for $candidate." }
         $legacyPackagePath = Join-Path $legacyDirectory $legacyPackageName
         $legacyHash = (Get-FileHash $legacyPackagePath -Algorithm SHA256).Hash.ToLowerInvariant()
