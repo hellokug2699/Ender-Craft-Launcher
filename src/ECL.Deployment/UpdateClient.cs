@@ -226,7 +226,6 @@ public sealed class UpdateClient(HttpClient http, UpdateSignatureVerifier verifi
         var request = new HttpRequestMessage(HttpMethod.Get, uri);
         request.Headers.UserAgent.Add(new ProductInfoHeaderValue("EnderCraftLauncher", "0.9.1"));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
-        request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
         return request;
     }
 
@@ -236,6 +235,7 @@ public sealed class UpdateClient(HttpClient http, UpdateSignatureVerifier verifi
         CancellationToken cancellationToken)
     {
         using var request = CreateRequest(uri);
+        request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
         using var response = await http
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
             .ConfigureAwait(false);
