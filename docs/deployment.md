@@ -230,6 +230,8 @@ GitHub Actions 需要将 `CLOUDFLARE_ACCOUNT_ID` 与 `CLOUDFLARE_API_TOKEN` 作�
 
 Direct Upload 项目的 Production branch 若需显式设置，通过 Pages Update Project API 将 `production_branch` 设为 `main`；不要假设 Dashboard 的 Git Integration 设置适用于 Direct Upload 项目。Preview 部署不得成为客户端 Feed 地址。
 
+客户端 HTTP 兼容性注意：Cloudflare Pages 的 Browser Integrity Check（BIC）由 Pages 托管层执行，部分通用 HTTP 客户端默认 User-Agent 可能收到 HTTP 403 / Error 1010。ECL 的 Feed 请求必须发送稳定、可识别的产品 User-Agent（例如包含 ECL 产品名与版本），并在 Pages 自定义域名和 `pages.dev` 地址上分别进行真实客户端测试；不得通过关闭签名验证或放宽下载校验来规避访问问题。
+
 Feed 发布检查：
 
 - 部署后分别请求 `https://updates.endercraftlauncher.top/main/update-manifest.json`、`https://updates.endercraftlauncher.top/dev/update-manifest.json`、`https://updates.endercraftlauncher.top/nightly/update-manifest.json` 及对应 `.sig`。
