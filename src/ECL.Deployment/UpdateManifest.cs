@@ -197,7 +197,13 @@ public static class UpdateManifestParser
 
         var package = dto.Package;
         if (package is null ||
-            !TryNormalizePackageReference(package.File, package.Sha256, channel, architecture, version, out var packageFile) ||
+            !TryNormalizePackageReference(
+                package.File,
+                package.Sha256,
+                channel,
+                architecture,
+                version,
+                out var packageFile) ||
             package.Size <= 0 ||
             !UpdateHash.IsSha256(package.Sha256))
         {
@@ -311,6 +317,7 @@ public static class UpdateManifestParser
         normalized = uri.AbsoluteUri;
         return true;
     }
+
     public static byte[] Serialize(UpdateManifest manifest)
     {
         var dto = new ManifestDto
