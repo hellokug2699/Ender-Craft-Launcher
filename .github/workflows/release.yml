@@ -92,7 +92,7 @@ jobs:
 
           if ($env:ECL_REF_TYPE -eq "tag") {
             $version = $env:ECL_REF_NAME -replace '^v', ''
-            if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)) {
+            if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') {
               throw "Release tags must be stable SemVer tags such as v1.2.3."
             }
             $channel = "main"
