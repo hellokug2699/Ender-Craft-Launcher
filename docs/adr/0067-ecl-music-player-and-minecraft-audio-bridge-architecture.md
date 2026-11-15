@@ -1,6 +1,6 @@
 # ADR 0067: ECL Music Player and Minecraft Audio Bridge Architecture
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-09
 - Scope: ECL Music Player Addition、Core 托管音频播放、Minecraft 游戏内音乐分类控制、Java Agent Audio Bridge、跨 Minecraft 版本与 Mod Loader 兼容性及进程修改知情授权
@@ -166,3 +166,5 @@ Java Agent 被注入目标 Minecraft JVM，属于对 Minecraft 进程的实际�
 ## 修订记录
 
 - 2026-11-09：首次提出 ECL Music Player 与 Minecraft Audio Bridge 架构。确定 Core 托管音频播放、单一 Java Agent 随 Addition 提供、按版本适配而不默认拆分 Loader Mod，并规定 Minecraft 进程修改授权弹窗必须高显著性展示用户指定的两行警示。Decision 保持 Proposed，Implementation 保持 Not Started。
+
+- 2026-11-16：经维护者明确批准，Decision 由 Proposed 更新为 Accepted。该批准确认架构决策生效，不代表 Implementation 已完成；实施状态与既有验收证据保持不变。
