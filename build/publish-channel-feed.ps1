@@ -129,7 +129,7 @@ function Add-PackageToStore(
     }
 
     if (-not $releaseExists) {
-        & gh release create $releaseTag --title "ECL $PackageChannel update packages (machine-only)" --notes "Machine-only immutable update Package storage for the $PackageChannel channel. Not intended for manual downloads." --target $env:GITHUB_SHA
+        & gh release create $releaseTag --title "ECL $PackageChannel update packages (machine-only)" --notes "Machine-only immutable update Package storage for the $PackageChannel channel. Not intended for manual downloads." --prerelease --target $env:GITHUB_SHA
         if ($LASTEXITCODE -ne 0) { throw "Unable to create machine-only Package Release $releaseTag." }
     }
 
