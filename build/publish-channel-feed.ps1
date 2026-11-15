@@ -99,41 +99,68 @@ function Add-PackageToStore(
     $digest = (Get-FileHash $SourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
     $fileName = "ECL-$PackageVersion-win-$Architecture-$digest.zip"
     $relative = "packages/$PackageChannel/windows/$Architecture/$PackageVersion/$fileName"
-    $target = Join-Path $storeRoot ($relative -replace '/', [System.IO.Path]::DirectorySeparatorChar)
-    $directory = Split-Path -Parent $target
 
     for ($attempt = 1; $attempt -le 6; $attempt++) {
         $remote = & git -C $storeRoot ls-remote --heads origin packages
         if ($LASTEXITCODE -ne 0) { throw "Unable to inspect packages branch." }
+
+        $parent = ""
         if ($remote) {
             Invoke-Git @("fetch", "--depth=1", "origin", "packages")
-            Invoke-Git @("checkout", "-B", "packages", "FETCH_HEAD")
+            $parent = (& git -C $storeRoot rev-parse FETCH_HEAD).Trim()
+            Invoke-Git @("read-tree", $parent)
+            & git -C $storeRoot update-ref refs/heads/packages $parent
+            if ($LASTEXITCODE -ne 0) { throw "Unable to set local package branch head." }
+
+            $objectPath = $parent + ":" + $relative
+            & git -C $storeRoot cat-file -e $objectPath 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                $existingPath = Join-Path $workRoot "existing-$([Guid]::NewGuid().ToString('N')).zip"
+                & git -C $storeRoot show $objectPath > $existingPath
+                if ($LASTEXITCODE -ne 0) { throw "Unable to read existing immutable Package." }
+                $existingHash = (Get-FileHash $existingPath -Algorithm SHA256).Hash.ToLowerInvariant()
+                Remove-Item $existingPath -Force
+                if ($existingHash -ne $digest) { throw "Immutable package path collision: $relative" }
+                return "https://raw.githubusercontent.com/$Repository/$parent/$relative"
+            }
         }
-        elseif ((& git -C $storeRoot branch --show-current) -ne "packages") {
-            Invoke-Git @("checkout", "--orphan", "packages")
+        else {
+            & git -C $storeRoot update-ref -d refs/heads/packages 2>$null
+            Invoke-Git @("read-tree", "--empty")
         }
 
-        New-Item -ItemType Directory -Force -Path $directory | Out-Null
-        if (Test-Path $target) {
-            $existing = (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($existing -ne $digest) { throw "Immutable package path collision: $relative" }
-            $commit = (& git -C $storeRoot rev-parse HEAD).Trim()
-            return "https://raw.githubusercontent.com/$Repository/$commit/$relative"
+        $blob = (& git -C $storeRoot hash-object -w $SourcePath).Trim()
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($blob)) {
+            throw "Unable to create package Git blob."
+        }
+        Invoke-Git @("update-index", "--add", "--cacheinfo", "100644", $blob, $relative)
+        $tree = (& git -C $storeRoot write-tree).Trim()
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($tree)) {
+            throw "Unable to write package tree."
         }
 
-        Copy-Item $SourcePath $target
-        Invoke-Git @("add", "--", $relative)
-        Invoke-Git @("-c", "user.name=github-actions[bot]", "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com", "commit", "-m", "packages($PackageChannel): add $PackageVersion $Architecture $digest")
+        $message = "packages($PackageChannel): add $PackageVersion $Architecture $digest"
+        $commitArgs = @("commit-tree", $tree, "-m", $message)
+        if ($parent) { $commitArgs = @("commit-tree", $tree, "-p", $parent, "-m", $message) }
+        $commit = (& git -C $storeRoot @commitArgs).Trim()
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commit)) {
+            throw "Unable to create append-only package commit."
+        }
+        if ($parent) {
+            & git -C $storeRoot update-ref refs/heads/packages $commit $parent
+        }
+        else {
+            & git -C $storeRoot update-ref refs/heads/packages $commit
+        }
+        if ($LASTEXITCODE -ne 0) { throw "Unable to update local package branch ref." }
+
         & git -C $storeRoot push origin "HEAD:refs/heads/packages"
         if ($LASTEXITCODE -eq 0) {
-            $commit = (& git -C $storeRoot rev-parse HEAD).Trim()
             return "https://raw.githubusercontent.com/$Repository/$commit/$relative"
         }
 
         Write-Warning "packages branch changed concurrently; retrying append (attempt $attempt/6)."
         if ($attempt -eq 6) { throw "Unable to append package after concurrent updates." }
-        Invoke-Git @("fetch", "--depth=1", "origin", "packages")
-        Invoke-Git @("reset", "--hard", "FETCH_HEAD")
     }
     throw "Package append did not complete."
 }
@@ -154,23 +181,14 @@ function Confirm-PackageUrl([string]$Url, [long]$ExpectedSize, [string]$Expected
     }
 }
 
-# Clone without checking out the source tree. The packages branch starts as an
-# orphan root commit so application source history is never copied into storage.
+# Clone repository metadata only. Package commits are assembled with Git's
+# index/tree plumbing, avoiding checkout/download of the entire immutable package history.
 $cloneArgs = @("-c", "http.extraheader=AUTHORIZATION: basic $auth", "clone", "--filter=blob:none", "--no-checkout", "https://github.com/$Repository.git", $storeRoot)
 & git @cloneArgs
 if ($LASTEXITCODE -ne 0) { throw "Unable to clone package repository metadata." }
 & git -C $storeRoot config http.https://github.com/.extraheader "AUTHORIZATION: basic $auth"
 & git -C $storeRoot config user.name "github-actions[bot]"
 & git -C $storeRoot config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-$hasPackages = & git -C $storeRoot ls-remote --heads origin packages
-if ($LASTEXITCODE -ne 0) { throw "Unable to inspect package branch." }
-if ($hasPackages) {
-    Invoke-Git @("fetch", "--depth=1", "origin", "packages")
-    Invoke-Git @("checkout", "-B", "packages", "FETCH_HEAD")
-}
-else {
-    Invoke-Git @("checkout", "--orphan", "packages")
-}
 
 # Preserve all existing channels. On the first deployment, migrate each channel's
 # current signed Release package into the immutable package store before Pages is
