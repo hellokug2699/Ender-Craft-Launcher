@@ -11,6 +11,11 @@ namespace Ecl.Download;
 public interface IHttpClientProvider
 {
     HttpClient CreateClient();
+
+    // Update metadata/package URLs are signed and host-constrained. Their HTTP
+    // handler must not follow redirects, so every response remains at the
+    // exact URI that was validated by the deployment layer.
+    HttpClient CreateUpdateClient() => CreateClient();
 }
 
 /// <summary>
@@ -26,10 +31,15 @@ public sealed class SettingsHttpClientProvider(
     IProxyCredentialStore credentials,
     ILogger<SettingsHttpClientProvider> logger) : IHttpClientProvider
 {
-    public HttpClient CreateClient()
+    public HttpClient CreateClient() => CreateClientCore(allowAutoRedirect: true);
+
+    public HttpClient CreateUpdateClient() => CreateClientCore(allowAutoRedirect: false);
+
+    private HttpClient CreateClientCore(bool allowAutoRedirect)
     {
         var handler = new SocketsHttpHandler
         {
+            AllowAutoRedirect = allowAutoRedirect,
             AutomaticDecompression = DecompressionMethods.All,
             ConnectTimeout = TimeSpan.FromSeconds(20),
             PooledConnectionLifetime = TimeSpan.FromMinutes(10),
