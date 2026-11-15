@@ -166,7 +166,7 @@ artifacts/release/1.0.1/
 └─ update-trust.json
 ```
 
-`-Unsigned` 只用于本地检查；未签名清单不会通过客户端验证。
+`-Unsigned` 只用于生成未签名的本地检查产物；由于完整安装介质必须包含签名清单，未签名模式不会生成可运行的 Installer。官方发布和安装介质验收必须使用有效签名。
 
 ### GitHub Actions：版本发布与滚动构建
 

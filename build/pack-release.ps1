@@ -231,6 +231,10 @@ try {
         }
     }
 
+    if (-not (Test-Path $signaturePath)) {
+        throw "Installer 完整安装介质必须包含有效签名文件；-Unsigned 仅用于检查未签名程序包，不能生成可安装 Installer。"
+    }
+
     # 无论 Manifest 是否使用测试签名，完整安装介质都必须携带公开信任库。
     if (-not (Test-Path $trustPath) -and -not [string]::IsNullOrWhiteSpace($TrustStorePath)) {
         if (-not (Test-Path $TrustStorePath)) { throw "更新信任库不存在：$TrustStorePath" }
