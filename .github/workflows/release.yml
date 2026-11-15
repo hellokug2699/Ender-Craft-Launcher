@@ -268,6 +268,188 @@ jobs:
             -TrustStorePath "build/update-trust.json"
           if ($LASTEXITCODE -ne 0) { throw "Channel Feed publishing failed." }
 
+      - name: Normalize historical Releases to Installer and Bootstrapper EXEs
+        if: steps.freshness.outputs.publish == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tags = @(gh release list --limit 100 --json tagName,isDraft --jq '.[] | select(.isDraft == false) | .tagName')
+          if ($LASTEXITCODE -ne 0) { throw "Unable to enumerate historical Releases." }
+          foreach ($tag in $tags) {
+            if ($tag -in @("main", "dev", "nightly")) { continue }
+            $assets = @(gh release view $tag --json assets --jq '.assets[].name')
+            if ($LASTEXITCODE -ne 0) { throw "Unable to inspect Release $tag." }
+            $installerName = $assets | Where-Object { $_ -match '^ECL\.Installer-.+-win-x64\.exe      # is live and its three-channel Production deployment has passed smoke tests.
+      - name: Publish human-facing Release with exactly two EXEs
+        if: steps.freshness.outputs.publish == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $dir = "artifacts/release/$env:ECL_VERSION"
+          $installer = Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.exe"
+          $bootstrapper = Join-Path $dir "bootstrapper/ECL.Bootstrapper.exe"
+          $notes = "$env:RUNNER_TEMP/release-notes.md"
+          $assets = @($installer, $bootstrapper)
+
+          if ($env:ECL_CHANNEL -eq "main") {
+            # The immutable versioned Release was published before Feed deployment.
+            $tag = "main"
+            $releaseTitle = "ECL main (latest: $env:ECL_VERSION)"
+          }
+          else {
+            $tag = $env:ECL_CHANNEL
+            $releaseTitle = $env:ECL_RELEASE_TITLE
+          }
+
+          gh release view $tag 2>$null
+          $releaseExists = ($LASTEXITCODE -eq 0)
+          $oldAssets = @()
+          if ($releaseExists) {
+            $oldAssets = @(gh release view $tag --json assets --jq '.assets[].name')
+            if ($LASTEXITCODE -ne 0) { throw "Failed to enumerate existing assets for $tag." }
+            gh release upload $tag @assets --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Failed to upload the two EXEs for $tag." }
+            if ($env:ECL_CHANNEL -eq "main") {
+              gh release edit $tag --title $releaseTitle --notes-file $notes
+            }
+            else {
+              gh release edit $tag --title $releaseTitle --notes-file $notes --prerelease
+            }
+            if ($LASTEXITCODE -ne 0) { throw "Failed to update Release metadata for $tag." }
+          }
+          else {
+            $createArgs = @("release", "create", $tag) + $assets + @("--title", $releaseTitle, "--notes-file", $notes, "--target", $env:GITHUB_SHA)
+            if ($env:ECL_CHANNEL -ne "main") { $createArgs += "--prerelease" }
+            gh @createArgs
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create rolling Release $tag." }
+          }
+
+          # Move the rolling tag only after both human-facing assets are uploaded.
+          gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$env:GITHUB_SHA" -F force=true
+          if ($LASTEXITCODE -ne 0) { throw "Failed to move rolling Release tag $tag." }
+
+          $allowedNames = @(
+            "ECL.Installer-$env:ECL_VERSION-win-x64.exe",
+            "ECL.Bootstrapper-$env:ECL_VERSION-win-x64.exe"
+          )
+          foreach ($oldAsset in $oldAssets) {
+            if ($oldAsset -and $oldAsset -notin $allowedNames) {
+              gh release delete-asset $tag $oldAsset --yes
+              if ($LASTEXITCODE -ne 0) { throw "Failed to remove obsolete Release asset $oldAsset." }
+            }
+          }
+
+      - name: Remove signing key
+        if: always()
+        shell: pwsh
+        run: |
+          $keyPath = Join-Path $env:RUNNER_TEMP "ecl-update-signing.key"
+          if (Test-Path $keyPath) { Remove-Item $keyPath -Force }
+ } | Select-Object -First 1
+            if (-not $installerName) {
+              Write-Warning "Skipping $tag: no standalone Installer EXE exists."
+              continue
+            }
+            $version = $installerName -replace '^ECL\.Installer-(.+)-win-x64\.exe      # is live and its three-channel Production deployment has passed smoke tests.
+      - name: Publish human-facing Release with exactly two EXEs
+        if: steps.freshness.outputs.publish == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $dir = "artifacts/release/$env:ECL_VERSION"
+          $installer = Join-Path $dir "ECL.Installer-$env:ECL_VERSION-win-x64.exe"
+          $bootstrapper = Join-Path $dir "bootstrapper/ECL.Bootstrapper.exe"
+          $notes = "$env:RUNNER_TEMP/release-notes.md"
+          $assets = @($installer, $bootstrapper)
+
+          if ($env:ECL_CHANNEL -eq "main") {
+            # The immutable versioned Release was published before Feed deployment.
+            $tag = "main"
+            $releaseTitle = "ECL main (latest: $env:ECL_VERSION)"
+          }
+          else {
+            $tag = $env:ECL_CHANNEL
+            $releaseTitle = $env:ECL_RELEASE_TITLE
+          }
+
+          gh release view $tag 2>$null
+          $releaseExists = ($LASTEXITCODE -eq 0)
+          $oldAssets = @()
+          if ($releaseExists) {
+            $oldAssets = @(gh release view $tag --json assets --jq '.assets[].name')
+            if ($LASTEXITCODE -ne 0) { throw "Failed to enumerate existing assets for $tag." }
+            gh release upload $tag @assets --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Failed to upload the two EXEs for $tag." }
+            if ($env:ECL_CHANNEL -eq "main") {
+              gh release edit $tag --title $releaseTitle --notes-file $notes
+            }
+            else {
+              gh release edit $tag --title $releaseTitle --notes-file $notes --prerelease
+            }
+            if ($LASTEXITCODE -ne 0) { throw "Failed to update Release metadata for $tag." }
+          }
+          else {
+            $createArgs = @("release", "create", $tag) + $assets + @("--title", $releaseTitle, "--notes-file", $notes, "--target", $env:GITHUB_SHA)
+            if ($env:ECL_CHANNEL -ne "main") { $createArgs += "--prerelease" }
+            gh @createArgs
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create rolling Release $tag." }
+          }
+
+          # Move the rolling tag only after both human-facing assets are uploaded.
+          gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$env:GITHUB_SHA" -F force=true
+          if ($LASTEXITCODE -ne 0) { throw "Failed to move rolling Release tag $tag." }
+
+          $allowedNames = @(
+            "ECL.Installer-$env:ECL_VERSION-win-x64.exe",
+            "ECL.Bootstrapper-$env:ECL_VERSION-win-x64.exe"
+          )
+          foreach ($oldAsset in $oldAssets) {
+            if ($oldAsset -and $oldAsset -notin $allowedNames) {
+              gh release delete-asset $tag $oldAsset --yes
+              if ($LASTEXITCODE -ne 0) { throw "Failed to remove obsolete Release asset $oldAsset." }
+            }
+          }
+
+      - name: Remove signing key
+        if: always()
+        shell: pwsh
+        run: |
+          $keyPath = Join-Path $env:RUNNER_TEMP "ecl-update-signing.key"
+          if (Test-Path $keyPath) { Remove-Item $keyPath -Force }
+, '$1'
+            $bootstrapperName = "ECL.Bootstrapper-$version-win-x64.exe"
+            if ($bootstrapperName -notin $assets) {
+              $bootstrapperZip = $assets | Where-Object { $_ -eq "ECL.Bootstrapper-$version-win-x64.zip" } | Select-Object -First 1
+              if (-not $bootstrapperZip) {
+                Write-Warning "Skipping $tag: no matching standalone Bootstrapper or Bootstrapper ZIP exists."
+                continue
+              }
+              $temp = Join-Path $env:RUNNER_TEMP "ecl-release-clean-$([Guid]::NewGuid().ToString('N'))"
+              New-Item -ItemType Directory -Force -Path $temp | Out-Null
+              gh release download $tag --pattern $bootstrapperZip --dir $temp
+              if ($LASTEXITCODE -ne 0) { throw "Unable to download $bootstrapperZip from $tag." }
+              $extract = Join-Path $temp "extract"
+              Expand-Archive -Path (Join-Path $temp $bootstrapperZip) -DestinationPath $extract -Force
+              $source = Get-ChildItem $extract -Filter "ECL.Bootstrapper.exe" -File -Recurse | Select-Object -First 1
+              if (-not $source) { throw "Bootstrapper archive in $tag does not contain ECL.Bootstrapper.exe." }
+              $bootstrapperPath = Join-Path $temp $bootstrapperName
+              Copy-Item $source.FullName $bootstrapperPath
+              gh release upload $tag $bootstrapperPath --clobber
+              if ($LASTEXITCODE -ne 0) { throw "Unable to add standalone Bootstrapper to $tag." }
+              Remove-Item $temp -Recurse -Force
+            }
+
+            foreach ($asset in $assets) {
+              if ($asset -and $asset -notin @($installerName, $bootstrapperName)) {
+                gh release delete-asset $tag $asset --yes
+                if ($LASTEXITCODE -ne 0) { throw "Unable to remove obsolete asset $asset from $tag." }
+              }
+            }
+          }
+
       # Human-facing Release assets are updated only after the signed channel feed
       # is live and its three-channel Production deployment has passed smoke tests.
       - name: Publish human-facing Release with exactly two EXEs
