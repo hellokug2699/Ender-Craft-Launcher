@@ -1,6 +1,6 @@
 # ADR 0064: Map Art Studio Architecture
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-08
 - Scope: Map Art Studio Addition、地图画画布、单张与多地图拼接、图片与地图数据导入、地图颜色映射、材料规划及可选投影预览组合
@@ -200,3 +200,6 @@ Map Art Studio 与 Schematic Preview 是独立 Addition：
 ## 修订记录
 
 - 2026-11-08：首次形成 Map Art Studio 架构提案；明确独立 Addition、统一单张/多地图画布、图片与地图数据导入、反向识别证据边界、尺寸与材料联合优化及 Schematic Preview 可选组合。Decision 保持 Proposed，Implementation 为 Not Started。
+
+
+- 2026-11-16：经维护者明确批准，Decision 由 Proposed 更新为 Accepted。该批准确认架构决策生效，不代表 Implementation 已完成；实施状态与既有验收证据保持不变。
