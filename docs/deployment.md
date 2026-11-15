@@ -174,9 +174,9 @@ artifacts/release/1.0.1/
 
 | 触发来源 | 构建追溯 | 人工 GitHub Release（目标） | 独立 Channel Feed（目标） |
 |---|---|---|---|
-| 推送 `nightly` | Actions Artifact，保留 14 天 | 更新唯一 Nightly 滚动 Release，仅两个 EXE | 更新 `nightly` Feed |
-| 推送 `dev` | Actions Artifact，保留 14 天 | 更新唯一 Dev 滚动 Release，仅两个 EXE | 更新 `dev` Feed |
-| 推送 `vMAJOR.MINOR.PATCH` | Actions Artifact，保留 14 天 | 创建不可变版本 Release，并更新 `main` 滚动 Release；均仅两个 EXE | 更新 `main` Feed |
+| 推送 `nightly` | Actions Artifact，保留 14 天 | 更新唯一 Nightly 滚动 Release，仅两个 EXE | 更新 `nightly` Feed | `packages/nightly/...`
+| 推送 `dev` | Actions Artifact，保留 14 天 | 更新唯一 Dev 滚动 Release，仅两个 EXE | 更新 `dev` Feed | `packages/dev/...`
+| 推送 `vMAJOR.MINOR.PATCH` | Actions Artifact，保留 14 天 | 创建不可变版本 Release，并更新 `main` 滚动 Release；均仅两个 EXE | 更新 `main` Feed | `packages/main/...`
 | 手动运行 | Actions Artifact，保留 14 天 | 根据所选分支更新对应人工 Release | 更新对应频道 Feed |
 
 当前 workflow 仍把更新资产放在 GitHub Release；Cloudflare Pages Feed 已选定为目标方案，但尚未创建 Pages 项目、配置 Secrets 或完成客户端 Package URL 兼容性验证。表格描述的是迁移目标，不代表现有流水线已经完成切换。
@@ -204,7 +204,7 @@ Feed 项目采用 Direct Upload，不绑定 Git Integration：
 - Pages 默认地址 `https://ender-craft-launcher-feed.pages.dev` 保留用于部署验证与故障排查，不作为客户端正式 Feed 地址
 - Feed 根目录：`/<channel>/`，频道为 `main`、`dev`、`nightly`
 - 仅部署静态文件；不包含 `functions/`、`_worker.js` 或动态 API。
-- Pages 仅承载 Manifest 与 detached Signature；完整 ECL Package 保留在 GitHub Releases。
+- Pages 仅承载 Manifest 与 detached Signature；完整 ECL Package 保留在同一公有仓库的 `packages` 分支。
 
 首次控制台配置：
 
@@ -236,10 +236,10 @@ Feed 发布检查：
 
 - 部署后分别请求 `https://updates.endercraftlauncher.top/main/update-manifest.json`、`https://updates.endercraftlauncher.top/dev/update-manifest.json`、`https://updates.endercraftlauncher.top/nightly/update-manifest.json` 及对应 `.sig`。
 - 使用与客户端相同的信任根验证签名，并检查 Manifest 的 channel、platform、architecture、version 与 Package URL。
-- 从匿名网络下载 Manifest 指向的 GitHub Release Package，验证字节数、SHA-256 和逐文件清单。
+- 从匿名网络下载 Manifest 指向的 commit-pinned GitHub Raw Package，验证字节数、SHA-256 和逐文件清单。
 - 任何一步失败都不得将该次发布报告为 Feed 成功；保留上一个已验证 Pages Production Deployment 以便回滚。
 
-重要兼容性前置条件：当前 Manifest 示例使用 `package.file` 相对文件名，现有客户端可能会把它拼接到 Feed Base URL。由于 Package 实际位于 GitHub Releases，切换前必须确认客户端协议支持绝对 HTTPS Package URL，并对 URL scheme、主机允许列表、重定向逐跳校验和哈希验证进行测试。若当前实现不支持，先扩展 Manifest/下载器并完成兼容测试；不得只更改 Pages 部署而让客户端错误地从 Pages 下载 Package。
+重要兼容性前置条件：当前 Manifest 示例使用 `package.file` 相对文件名，现有客户端可能会把它拼接到 Feed Base URL。由于 Package 实际位于 `packages` 分支，切换前必须扩展 Manifest/下载器以支持绝对 HTTPS Package URL，并对 URL scheme、允许的 GitHub Raw 主机、重定向逐跳校验和哈希验证进行测试。Package URL 必须固定到包含该文件的 Git commit SHA，禁止使用可移动分支名。若当前实现不支持，先扩展 Manifest/下载器并完成兼容测试；不得只更改 Pages 部署而让客户端错误地从 Pages 下载 Package。
 
 Pages Free 的单文件大小上限为 25 MiB、单站点最多 20,000 个文件；本方案只放小体积元数据，不把 ZIP Package 上传到 Pages。部署前应以 Cloudflare 当前官方限制再次核对。
 
@@ -253,7 +253,7 @@ https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/<channel>
 
 其中 `<channel>` 为 `main`、`dev` 或 `nightly`。对应文件为 `update-manifest.json`、`update-manifest.sig` 与 Manifest 指定的完整 ECL Package。Feed 可通过 CLI 参数或 `ECL_UPDATE_FEED` 指定。
 
-**目标状态由 [ADR 0072](adr/0072-separation-of-human-facing-releases-and-channel-update-feeds.md) 定义：**GitHub Release 页面只提供 Installer 与 Bootstrapper 两个 EXE；Manifest、Signature 与完整 ECL Package 从独立的匿名 HTTPS Channel Feed 获取。独立 Feed 的供应商与正式端点尚未选定，因此当前不得提前从 GitHub Release 删除这些旧 Feed 资产，否则现有客户端自动更新会中断。切换必须先完成独立 Feed 的匿名下载、签名验证、包哈希、频道发布原子性与回滚验收，再更新客户端默认 Feed 并清理旧资产。
+**目标状态由 [ADR 0072](adr/0072-separation-of-human-facing-releases-and-channel-update-feeds.md) 定义：**GitHub Release 页面只提供 Installer 与 Bootstrapper 两个 EXE；Manifest/Signature 从独立的匿名 HTTPS Channel Feed 获取，完整 ECL Package 从公有仓库 `packages` 分支获取。独立 Feed 的供应商与正式端点尚未选定，因此当前不得提前从 GitHub Release 删除这些旧 Feed 资产，否则现有客户端自动更新会中断。切换必须先完成独立 Feed 的匿名下载、签名验证、包哈希、频道发布原子性与回滚验收，再更新客户端默认 Feed 并清理旧资产。
 
 根据 [ADR 0051：统一安装、更新与恢复架构](adr/0051-unified-installation-update-and-recovery-architecture.md)，目标架构将由 Update Source Resolver 按有界策略尝试多个来源：
 
