@@ -29,6 +29,15 @@ public partial class MainWindow : Window
         _logTimer.Tick += (_, _) => RefreshLog();
         Loaded += async (_, _) =>
         {
+            // 在释放内嵌介质之前先完成首次启动完整性核对。
+            var integrity = await InstallerIntegrity.InspectAsync(AppContext.BaseDirectory, Environment.ProcessPath);
+            var dialog = new IntegrityWindow(integrity);
+            if (dialog.ShowDialog() != true)
+            {
+                Close();
+                return;
+            }
+
             string mediaDirectory;
             try
             {
@@ -38,14 +47,6 @@ public partial class MainWindow : Window
             {
                 InstallButton.IsEnabled = false;
                 MediaStatusText.Text = $"无法释放安装介质：{exception.Message}";
-                return;
-            }
-
-            var integrity = await InstallerIntegrity.InspectAsync(mediaDirectory, Environment.ProcessPath);
-            var dialog = new IntegrityWindow(integrity);
-            if (dialog.ShowDialog() != true)
-            {
-                Close();
                 return;
             }
 
