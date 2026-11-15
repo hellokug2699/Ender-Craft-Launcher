@@ -35,7 +35,7 @@
             <StackPanel>
                 <TextBlock Text="当前文件" FontWeight="Bold" Margin="0,0,0,4" />
                 <TextBox x:Name="FileText" IsReadOnly="True" Background="#1B1824" Foreground="#F3F2F7" BorderBrush="#2B2539" Padding="10,7" />
-                <TextBlock Text="官方 SHA-256（从同版本 GitHub Release 的 .sha256 资产复制）" FontWeight="Bold" Margin="0,14,0,4" />
+                <TextBlock Text="官方 SHA-256（从同版本 GitHub Release Notes 复制）" FontWeight="Bold" Margin="0,14,0,4" />
                 <TextBox x:Name="OfficialHashText" FontFamily="Consolas" Background="#1B1824" Foreground="#F3F2F7" BorderBrush="#2B2539" Padding="10,7" />
                 <TextBlock Text="本机文件 SHA-256（程序自检）" FontWeight="Bold" Margin="0,14,0,4" />
                 <TextBox x:Name="LocalHashText" IsReadOnly="True" FontFamily="Consolas" Background="#1B1824" Foreground="#F3F2F7" BorderBrush="#2B2539" Padding="10,7" />
