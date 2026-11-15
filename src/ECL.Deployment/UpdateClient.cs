@@ -80,6 +80,13 @@ public sealed class UpdateClient(HttpClient http, UpdateSignatureVerifier verifi
             return Result<UpdateCheckResult>.Fail(parsed.Error!);
         }
 
+        if (parsed.Value!.Channel != channel)
+        {
+            return Result<UpdateCheckResult>.Fail(
+                "update.channel_mismatch",
+                "更新清单的频道与当前请求频道不一致。");
+        }
+
         return Result<UpdateCheckResult>.Ok(new UpdateCheckResult(
             parsed.Value!,
             manifestUri,
