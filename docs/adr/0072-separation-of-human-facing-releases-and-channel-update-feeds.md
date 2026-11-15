@@ -81,6 +81,8 @@ nightly-packages  # nightly 频道
 
 Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目名建议为 `ender-craft-launcher-feed`，正式地址为 `https://updates.endercraftlauncher.top/`。该子域名可以由现有 DNS 服务商托管：先在 Pages 项目的 Custom domains 中登记，再在域名 DNS 服务商添加指向 `ender-craft-launcher-feed.pages.dev` 的 CNAME；无需将整个根域名迁移到 Cloudflare。GitHub Actions 使用仅具备目标 Account 下 Cloudflare Pages Edit 权限的 API Token，通过 Wrangler 部署预先生成的静态目录。Token 与 Account ID 只存放于 GitHub Actions Secrets。Pages Free 的文件数、单文件大小和构建配额必须在部署前核对；ECL Feed 只放小体积元数据，Package 不得上传 Pages。GitHub Actions Artifact 仅用于短期构建追溯，不得作为客户端 Feed。
 
+首次 Feed 迁移必须先通过 Cloudflare Pages Deployments API 查询 `env=production` 的部署记录：只有 API 明确返回无 Production deployment 时，才将频道视为首次初始化并从现有签名 Release 迁移；若已存在 Production deployment，则必须读取并验证现有三频道 Feed。部署清单 API 请求失败、鉴权失败或响应异常时必须停止发布，不得将其解释为“尚无 Feed”；公共 Feed 的网络错误也不得被降级为 404 或空频道。
+
 ### 4. 发布记录与频道更新状态相互独立
 
 - 人工版本 GitHub Release 负责用户下载、版本说明和两个 EXE 的摘要展示；完整 ECL Package 不得作为人工版本 Release 附件。机器专用 Package Releases 仅用于客户端自动更新，必须明确标注 machine-only，不得混入人工版本 Release。
