@@ -79,6 +79,7 @@ jobs:
           Write-Host "Release PowerShell scripts and workflow blocks parsed successfully."
 
       - name: Resolve version and channel from branch
+        id: resolve
         shell: pwsh
         env:
           ECL_REF_NAME: ${{ github.ref_name }}
@@ -114,6 +115,8 @@ jobs:
           "ECL_VERSION=$version" >> $env:GITHUB_ENV
           "ECL_CHANNEL=$channel" >> $env:GITHUB_ENV
           "ECL_RELEASE_TITLE=ECL $channel (latest: $version)" >> $env:GITHUB_ENV
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "channel=$channel" >> $env:GITHUB_OUTPUT
           $initialNotes = @(
               "ECL $version"
               "Channel: $channel"
@@ -206,8 +209,8 @@ jobs:
       - name: Archive this build in Actions
         uses: actions/upload-artifact@v4
         with:
-          name: ECL-${{ env.ECL_VERSION }}-${{ env.ECL_CHANNEL }}-${{ github.sha }}
-          path: artifacts/release/${{ env.ECL_VERSION }}/
+          name: ECL-${{ steps.resolve.outputs.version }}-${{ steps.resolve.outputs.channel }}-${{ github.sha }}
+          path: artifacts/release/${{ steps.resolve.outputs.version }}/
           if-no-files-found: error
           retention-days: 14
 
@@ -217,7 +220,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ECL_REF_TYPE: ${{ github.ref_type }}
-          ECL_CHANNEL: ${{ env.ECL_CHANNEL }}
+          ECL_CHANNEL: ${{ steps.resolve.outputs.channel }}
         run: |
           if ($env:ECL_REF_TYPE -eq "tag") {
             "publish=true" >> $env:GITHUB_OUTPUT
