@@ -172,14 +172,14 @@ artifacts/release/1.0.1/
 
 [release.yml](../.github/workflows/release.yml) 当前仍处于迁移前状态；目标分工遵循 [ADR 0072](adr/0072-separation-of-human-facing-releases-and-channel-update-feeds.md)。
 
-| 触发来源 | 构建追溯 | 人工 GitHub Release（目标） | 独立 Channel Feed（目标） |
-|---|---|---|---|
-| 推送 `nightly` | Actions Artifact，保留 14 天 | 更新唯一 Nightly 滚动 Release，仅两个 EXE | 更新 `nightly` Feed | `packages/nightly/...`
-| 推送 `dev` | Actions Artifact，保留 14 天 | 更新唯一 Dev 滚动 Release，仅两个 EXE | 更新 `dev` Feed | `packages/dev/...`
-| 推送 `vMAJOR.MINOR.PATCH` | Actions Artifact，保留 14 天 | 创建不可变版本 Release，并更新 `main` 滚动 Release；均仅两个 EXE | 更新 `main` Feed | `packages/main/...`
-| 手动运行 | Actions Artifact，保留 14 天 | 根据所选分支更新对应人工 Release | 更新对应频道 Feed |
+| 触发来源 | 构建追溯 | 人工 GitHub Release（目标） | 独立 Channel Feed（目标） | Package 存储（目标） |
+|---|---|---|---|---|
+| 推送 `nightly` | Actions Artifact，保留 14 天 | 更新唯一 Nightly 滚动 Release，仅两个 EXE | 更新 `nightly` Feed | 追加到 `packages/nightly/...` |
+| 推送 `dev` | Actions Artifact，保留 14 天 | 更新唯一 Dev 滚动 Release，仅两个 EXE | 更新 `dev` Feed | 追加到 `packages/dev/...` |
+| 推送 `vMAJOR.MINOR.PATCH` | Actions Artifact，保留 14 天 | 创建不可变版本 Release，并更新 `main` 滚动 Release；均仅两个 EXE | 更新 `main` Feed | 追加到 `packages/main/...` |
+| 手动运行 | Actions Artifact，保留 14 天 | 根据所选分支更新对应人工 Release | 更新对应频道 Feed | 追加到所选频道目录（须通过发布资格检查） |
 
-当前 workflow 仍把更新资产放在 GitHub Release；Cloudflare Pages Feed 已选定为目标方案，但尚未创建 Pages 项目、配置 Secrets 或完成客户端 Package URL 兼容性验证。表格描述的是迁移目标，不代表现有流水线已经完成切换。
+当前 workflow 仍把更新资产放在 GitHub Release；Cloudflare Pages 项目、自定义域名与 GitHub Actions Secrets 已由维护者确认配置完成，但发布流水线、`packages` 分支写入及客户端 Package URL 兼容性尚未实施/验证。表格描述的是迁移目标，不代表现有流水线已经完成切换。
 
 - Nightly 每次成功构建都会产生独立的 Actions Artifact，便于高级用户追溯特定构建；Artifact 保留 14 天，过期后不保证可取回。
 - 普通用户下载 `ECL.Installer-<version>-win-x64.exe` 并直接运行；不需要下载 ZIP 或手工解压。
@@ -253,7 +253,7 @@ https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/<channel>
 
 其中 `<channel>` 为 `main`、`dev` 或 `nightly`。对应文件为 `update-manifest.json`、`update-manifest.sig` 与 Manifest 指定的完整 ECL Package。Feed 可通过 CLI 参数或 `ECL_UPDATE_FEED` 指定。
 
-**目标状态由 [ADR 0072](adr/0072-separation-of-human-facing-releases-and-channel-update-feeds.md) 定义：**GitHub Release 页面只提供 Installer 与 Bootstrapper 两个 EXE；Manifest/Signature 从独立的匿名 HTTPS Channel Feed 获取，完整 ECL Package 从公有仓库 `packages` 分支获取。独立 Feed 的供应商与正式端点尚未选定，因此当前不得提前从 GitHub Release 删除这些旧 Feed 资产，否则现有客户端自动更新会中断。切换必须先完成独立 Feed 的匿名下载、签名验证、包哈希、频道发布原子性与回滚验收，再更新客户端默认 Feed 并清理旧资产。
+**目标状态由 [ADR 0072](adr/0072-separation-of-human-facing-releases-and-channel-update-feeds.md) 定义：**GitHub Release 页面只提供 Installer 与 Bootstrapper 两个 EXE；Manifest/Signature 从独立的匿名 HTTPS Channel Feed 获取，完整 ECL Package 从公有仓库 `packages` 分支获取。独立 Feed 的供应商与正式端点已选定为 Cloudflare Pages 与 `https://updates.endercraftlauncher.top/`，但客户端和发布流水线尚未完成迁移，因此当前不得提前从 GitHub Release 删除这些旧 Feed 资产，否则现有客户端自动更新会中断。切换必须先完成独立 Feed 的匿名下载、签名验证、包哈希、频道发布原子性与回滚验收，再更新客户端默认 Feed 并清理旧资产。
 
 根据 [ADR 0051：统一安装、更新与恢复架构](adr/0051-unified-installation-update-and-recovery-architecture.md)，目标架构将由 Update Source Resolver 按有界策略尝试多个来源：
 
@@ -299,7 +299,7 @@ git checkout <commit-or-tag>
 - `--cleanup` 与部署前自动清理只删除 `staging/`；自动化测试确认 `versions/` 与 `current.json` 不受影响。
 - 未完成：全新 Windows 无 .NET SDK、无 .NET 运行时的安装验收；Authenticode 签名；GUI 自动化（当前 GUI 仅人工冒烟）。
 - 2026-11-15，ADR 0071 分发重构：官方构建切换为自包含单文件 Installer，完整部署介质嵌入 Installer；Bootstrapper 统一为单文件自包含构建，独立下载与 Installer 内嵌副本共用同一二进制。该项需等待 PR CI 与干净 Windows 实机验收后才能标记 Verified。
-- 2026-11-15，ADR 0072 决定将人工 Release 与自动更新 Feed 分离，并选定 Cloudflare Pages Direct Upload 托管 Manifest/Signature、GitHub Releases 托管不可变 Package。当前 release workflow 尚未完成迁移，旧 GitHub Release Feed 资产必须保留，直到新 Feed 通过端到端验证。
+- 2026-11-15，ADR 0072 决定将人工 Release 与自动更新 Feed 分离：Cloudflare Pages Direct Upload 托管 Manifest/Signature，同一公有仓库的 `packages` 分支以 append-only 方式托管不可变 Package，Package URL 固定到 Git commit SHA。当前 release workflow、客户端绝对 Package URL 支持及端到端验证尚未完成；旧 GitHub Release Feed 资产必须保留，直到新 Feed 通过端到端验证。
 
 ## 9. 用户数据与卸载边界
 
