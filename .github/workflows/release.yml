@@ -271,6 +271,18 @@ jobs:
             }
           }
           else {
+            $existingTagRef = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha + "|" + .object.type' 2>$null
+            if ($LASTEXITCODE -eq 0) {
+              $tagParts = $existingTagRef.Trim().Split([char[]]@('|'), 2)
+              $tagSha = $tagParts[0]
+              if ($tagParts[1] -eq "tag") {
+                $tagSha = gh api "repos/$env:GITHUB_REPOSITORY/git/tags/$tagSha" --jq '.object.sha'
+                if ($LASTEXITCODE -ne 0) { throw "Unable to dereference existing stable tag $tag." }
+              }
+              if ($tagSha.Trim() -ne $env:GITHUB_SHA) {
+                throw "Stable tag $tag already exists but points to a different commit."
+              }
+            }
             gh release create $tag @assets --title "ECL $env:ECL_VERSION" --notes-file "$env:RUNNER_TEMP/release-notes.md" --target $env:GITHUB_SHA
             if ($LASTEXITCODE -ne 0) { throw "Failed to create immutable stable Release." }
           }
