@@ -146,11 +146,10 @@ public sealed class UpdateManifestTests
     public void AcceptsOnlyImmutableChannelScopedGitHubPackageUrls()
     {
         var digest = new string('a', 64);
-        var commit = new string('b', 40);
         var manifest = DeploymentTestData.CreateManifest("1.0.1", "ECL.zip", 1, digest) with
         {
             Package = new UpdatePackage(
-                $"https://raw.githubusercontent.com/hellokug2699/Ender-Craft-Launcher/{commit}/packages/main/windows/x64/1.0.1/ECL-1.0.1-win-x64-{digest}.zip",
+                $"https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/main-packages/ECL-1.0.1-win-x64-{digest}.zip",
                 1,
                 digest),
         };
@@ -163,7 +162,7 @@ public sealed class UpdateManifestTests
         {
             Package = manifest.Package with
             {
-                FileName = manifest.Package.FileName.Replace("/packages/main/", "/packages/dev/"),
+                FileName = manifest.Package.FileName.Replace("/main-packages/", "/dev-packages/"),
             },
         };
         Assert.Equal(
@@ -174,7 +173,7 @@ public sealed class UpdateManifestTests
         {
             Package = manifest.Package with
             {
-                FileName = manifest.Package.FileName.Replace("raw.githubusercontent.com", "example.com"),
+                FileName = manifest.Package.FileName.Replace("github.com", "example.com"),
             },
         };
         Assert.Equal(
