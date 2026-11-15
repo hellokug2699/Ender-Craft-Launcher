@@ -43,42 +43,6 @@ jobs:
       - name: Test WPF shell stabilization
         run: dotnet test tests/ECL.App.Tests/ECL.App.Tests.csproj -c Release --no-build
 
-      # 未签名打包只用于验证发布脚本与安装介质组装；签名产物仍由 release workflow 生成。
-      - name: Verify release packaging and installer media
-        shell: pwsh
-        run: |
-          dotnet build src/ECL.Installer/ECL.Installer.csproj -c Release --no-restore
-          pwsh -NoProfile -File build/pack-release.ps1 `
-            -Version 0.0.0-ci -Channel nightly -OutputRoot artifacts/ci-release -Unsigned -SelfContained -TrustStorePath build/update-trust.json
-          if ($LASTEXITCODE -ne 0) { throw "pack-release failed" }
-
-          $release = "artifacts/ci-release/0.0.0-ci"
-          $installer = Join-Path $release "ECL.Installer-0.0.0-ci-win-x64.exe"
-          if (-not (Test-Path $installer)) { throw "缺少独立 Installer EXE" }
-          if (-not (Test-Path "$installer.sha256")) { throw "缺少 Installer SHA-256 sidecar" }
-
-          $media = Join-Path $release "installer-media"
-          foreach ($file in @(
-            "ECL.Bootstrapper.exe",
-            "update-manifest.json",
-            "update-trust.json",
-            "ECL.Uninstaller.exe",
-            "ECL-package.zip"
-          )) {
-            if (-not (Test-Path (Join-Path $media $file))) { throw "嵌入介质缺少 $file" }
-          }
-
-          $package = Join-Path $release "ECL-0.0.0-ci-win-x64.zip"
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $zip = [System.IO.Compression.ZipFile]::OpenRead($package)
-          try {
-            $names = $zip.Entries | ForEach-Object { $_.FullName }
-            foreach ($required in @("ECL.exe", "ECL.LogHost.exe", "ECL.Uninstaller.exe")) {
-              if ($names -notcontains $required) { throw "程序包缺少 $required" }
-            }
-          }
-          finally { $zip.Dispose() }
-
       # 用一次性测试密钥完成真实签名、静默安装与篡改拒绝，验证安装器端到端契约。
       - name: Verify silent install and tampered media rejection
         shell: pwsh
@@ -98,9 +62,45 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "signed pack-release failed" }
 
           $release = "artifacts/ci-signed/1.0.0-ci"
-          $media = Join-Path $release "installer-media"
-          $target = Join-Path $env:RUNNER_TEMP "ecl-ci-install"
           $installer = Join-Path $release "ECL.Installer-1.0.0-ci-win-x64.exe"
+          $checksum = "$installer.sha256"
+          if (-not (Test-Path $installer) -or -not (Test-Path $checksum)) {
+            throw "Standalone installer or SHA-256 sidecar was not produced."
+          }
+          $expectedHash = (Get-Content $checksum -Raw).Trim().Split()[0]
+          $actualHash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($expectedHash -ne $actualHash) { throw "Installer SHA-256 sidecar does not match the final EXE." }
+
+          $media = Join-Path $release "installer-media"
+          foreach ($file in @(
+            "ECL.Bootstrapper.exe",
+            "ECL.Uninstaller.exe",
+            "update-manifest.json",
+            "update-manifest.sig",
+            "update-trust.json",
+            "ECL-package.zip"
+          )) {
+            if (-not (Test-Path (Join-Path $media $file))) { throw "嵌入介质缺少 $file" }
+          }
+
+          $standaloneBootstrapper = Join-Path $release "bootstrapper/ECL.Bootstrapper.exe"
+          $embeddedBootstrapper = Join-Path $media "ECL.Bootstrapper.exe"
+          $standaloneHash = (Get-FileHash $standaloneBootstrapper -Algorithm SHA256).Hash
+          $embeddedHash = (Get-FileHash $embeddedBootstrapper -Algorithm SHA256).Hash
+          if ($standaloneHash -ne $embeddedHash) { throw "独立与内嵌 Bootstrapper 并非同一构建。" }
+
+          $package = Join-Path $release "ECL-1.0.0-ci-win-x64.zip"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($package)
+          try {
+            $names = $zip.Entries | ForEach-Object { $_.FullName }
+            foreach ($required in @("ECL.exe", "ECL.LogHost.exe", "ECL.Uninstaller.exe")) {
+              if ($names -notcontains $required) { throw "程序包缺少 $required" }
+            }
+          }
+          finally { $zip.Dispose() }
+
+          $target = Join-Path $env:RUNNER_TEMP "ecl-ci-install"
           # No --media argument: verify that the single-file EXE releases its embedded media.
           $process = Start-Process -FilePath $installer `
             -ArgumentList @("--silent", "--accept-unverified", "--install-root", $target) -PassThru -Wait
