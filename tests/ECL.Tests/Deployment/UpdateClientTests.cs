@@ -79,6 +79,22 @@ public sealed class UpdateClientTests
     }
 
     [Fact]
+    public async Task RejectsFeedRedirectWithoutFollowingIt()
+    {
+        using var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.Redirect)
+        {
+            Headers = { Location = new Uri("https://attacker.example/collect") },
+        });
+        using var http = new HttpClient(handler);
+        var client = new UpdateClient(http, new UpdateSignatureVerifier(UpdateTrustStore.Empty));
+
+        var result = await client.CheckAsync(new Uri("https://updates.endercraftlauncher.top/"), UpdateChannel.Nightly);
+
+        Assert.Equal("update.feed_redirect_rejected", result.Error?.Code);
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
     public async Task RejectsManifestFromAnotherChannel()
     {
         var keys = DeploymentTestData.CreateKeys();
