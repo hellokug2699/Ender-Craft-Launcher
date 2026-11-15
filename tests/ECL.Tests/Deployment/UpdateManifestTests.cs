@@ -143,6 +143,57 @@ public sealed class UpdateManifestTests
     }
 
     [Fact]
+    public void AcceptsOnlyImmutableChannelScopedGitHubPackageUrls()
+    {
+        var digest = new string('a', 64);
+        var commit = new string('b', 40);
+        var manifest = DeploymentTestData.CreateManifest("1.0.1", "ECL.zip", 1, digest) with
+        {
+            Package = new UpdatePackage(
+                $"https://raw.githubusercontent.com/hellokug2699/Ender-Craft-Launcher/{commit}/packages/main/windows/x64/1.0.1/ECL-1.0.1-win-x64-{digest}.zip",
+                1,
+                digest),
+        };
+
+        var accepted = UpdateManifestParser.Parse(DeploymentTestData.Serialize(manifest));
+        Assert.True(accepted.IsSuccess, accepted.Error?.ToString());
+        Assert.Equal(manifest.Package.FileName, accepted.Value!.Package.FileName);
+
+        var wrongChannel = manifest with
+        {
+            Package = manifest.Package with
+            {
+                FileName = manifest.Package.FileName.Replace("/packages/main/", "/packages/dev/"),
+            },
+        };
+        Assert.Equal(
+            "update.package_invalid",
+            UpdateManifestParser.Parse(DeploymentTestData.Serialize(wrongChannel)).Error?.Code);
+
+        var wrongHost = manifest with
+        {
+            Package = manifest.Package with
+            {
+                FileName = manifest.Package.FileName.Replace("raw.githubusercontent.com", "example.com"),
+            },
+        };
+        Assert.Equal(
+            "update.package_invalid",
+            UpdateManifestParser.Parse(DeploymentTestData.Serialize(wrongHost)).Error?.Code);
+
+        var wrongDigest = manifest with
+        {
+            Package = manifest.Package with
+            {
+                FileName = manifest.Package.FileName.Replace(digest, new string('c', 64)),
+            },
+        };
+        Assert.Equal(
+            "update.package_invalid",
+            UpdateManifestParser.Parse(DeploymentTestData.Serialize(wrongDigest)).Error?.Code);
+    }
+
+    [Fact]
     public void RejectsInvalidPackageHash()
     {
         var manifest = DeploymentTestData.CreateManifest("1.0.1", "ECL.zip", 1, "not-a-hash");
