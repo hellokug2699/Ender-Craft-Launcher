@@ -83,6 +83,8 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 
 首次 Feed 迁移必须先通过 Cloudflare Pages Deployments API 查询 `env=production` 的部署记录：只有 API 明确返回无 Production deployment 时，才将频道视为首次初始化并从现有签名 Release 迁移；若已存在 Production deployment，则必须读取并验证现有三频道 Feed。部署清单 API 请求失败、鉴权失败或响应异常时必须停止发布，不得将其解释为“尚无 Feed”；公共 Feed 的网络错误也不得被降级为 404 或空频道。
 
+首次迁移时，`main` 允许处于尚未发布状态：若 `main`/`stable` 两个历史 Release tag 均经 GitHub API 明确返回 HTTP 404，且当前构建频道不是 `main`，则不创建虚构 Manifest、不借用 `dev` 或 `nightly` 内容，Production Feed 中暂不提供 `main` 元数据（客户端读取时得到 404）。该例外仅适用于 `main` 尚无任何正式 Release 的情形；若 Release tag 已存在但签名 Feed 资产缺失、下载失败或校验失败，必须 fail-closed。`dev` 与 `nightly` 仍必须具备可迁移的有效签名 Feed。后续 `main` 正式版本发布时，由该版本构建生成并部署首份 `main` Manifest/Signature。
+
 ### 4. 发布记录与频道更新状态相互独立
 
 - 人工版本 GitHub Release 负责用户下载、版本说明和两个 EXE 的摘要展示；完整 ECL Package 不得作为人工版本 Release 附件。机器专用 Package Releases 仅用于客户端自动更新，必须明确标注 machine-only，不得混入人工版本 Release。
@@ -147,3 +149,4 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 - 2026-11-15：明确切换前仅含 ZIP Installer 的历史 Release 不做不安全的 EXE 改名，严格的双 EXE 规则适用于切换后的新建/更新 Release；历史记录只在同一 Release 已同时存在对应版本的 Installer 与 Bootstrapper EXE 时才执行资产规范化，禁止从 ZIP 解压生成或伪装自包含 EXE。
 - 2026-11-15：补充 Feed 元数据 `Cache-Control: no-store`，并在 Manifest/Signature 两次独立读取遇到部署切换导致验签失败时，客户端重新读取整对文件一次；持续验签失败仍 fail-closed。
 - 2026-11-15：因 Package ZIP 超过 Git 普通单文件限制，且 Git LFS 免费额度不适合永久追加存储，改用三个机器专用 GitHub Releases（`main-packages`、`dev-packages`、`nightly-packages`）托管 Package。每个频道独立发布，asset 以版本与 SHA-256 唯一命名并只追加；Manifest 指向对应频道 Release asset。客户端仅允许从官方 GitHub Release URL 开始，并逐跳校验 HTTPS 下载重定向，只允许 GitHub Release asset 分发主机。
+- 2026-11-15：修正首次 Feed 迁移的频道前置假设：尚无正式 Release 的 `main` 可以保持无 Manifest/Signature 的未发布状态；只有明确确认 `main`/`stable` Release tag 不存在时才允许跳过，Release 查询错误或已有 Release 缺少签名资产仍必须失败。`dev` 与 `nightly` 仍要求有效历史签名 Feed。
