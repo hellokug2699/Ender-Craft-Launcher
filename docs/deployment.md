@@ -155,8 +155,12 @@ ecl update check --json
 ```text
 artifacts/release/1.0.1/
 ├─ ECL-1.0.1-win-x64.zip
-├─ ECL.Bootstrapper-1.0.1-win-x64.zip（由 Release workflow 收集）
+├─ ECL.Bootstrapper-1.0.1-win-x64.zip（与 Installer 内嵌 EXE 相同）
+├─ ECL.Installer-1.0.1-win-x64.exe（普通用户唯一推荐入口）
+├─ ECL.Installer-1.0.1-win-x64.exe.sha256
 ├─ bootstrapper/
+├─ installer-media/（完整部署介质，嵌入 Installer）
+├─ installer-bundle.zip（构建中间产物）
 ├─ update-manifest.json
 ├─ update-manifest.sig
 └─ update-trust.json
@@ -186,7 +190,7 @@ artifacts/release/1.0.1/
 - 同一分支的构建按队列执行，避免在上传资产或移动通道 Tag 时被强制取消；旧提交仍可作为短期 Actions Artifact 追溯，但只有检查时仍是分支最新 HEAD 的构建才能更新滚动源。
 - 手动运行 workflow 时选择 `dev` 或 `nightly` 分支；正式版只能通过版本 Tag 发布。
 
-构建流程仍然执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 和滚动 Release 都包含完整包、Bootstrapper 包、Manifest、签名与信任库。
+构建流程仍然执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 包含完整构建中间产物；滚动 Release 发布完整包、Bootstrapper ZIP、单文件 Installer EXE、Installer SHA-256 sidecar、Manifest、签名与信任库。
 
 ### 当前实现与目标架构
 
@@ -234,7 +238,7 @@ git checkout <commit-or-tag>
 
 2026-11-02，安装介质端到端（本地 Windows、临时安装目录）：
 
-- `pack-release.ps1` 用 Core 签名密钥打包两个版本（`0.8.1-local.1`、`0.8.2-local.1`），产出 `installer/` 介质：Installer、单文件自包含 Bootstrapper、Manifest、签名、信任库与 `ECL-package.zip`。
+- `pack-release.ps1` 用 Core 签名密钥打包两个版本（`0.8.1-local.1`、`0.8.2-local.1`），产出完整 `installer-media/` 并嵌入独立 Installer EXE；介质包含单文件自包含 Bootstrapper、Uninstaller、Manifest、签名、信任库与 `ECL-package.zip`。
 - 完整程序包内包含 `ECL.LogHost.exe` 及其依赖，安装后由 Bootstrapper 启动 LogHost。
 - 静默安装 `--silent --install-root <目录>`：退出码 0；生成 `current.json`、`versions/<版本>/ECL.exe`，未创建任何 Minecraft 工作区目录。
 - 升级到第二个版本：退出码 0，`previousVersion` 正确指向旧版本，两个版本目录并存。

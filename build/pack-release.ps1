@@ -247,7 +247,7 @@ try {
     New-Item -ItemType Directory -Force -Path $installerMedia | Out-Null
 
     Copy-Item (Join-Path $bootstrap "ECL.Bootstrapper.exe") $installerMedia -Force
-    Copy-Item (Join-Path $uninstallerSingle "ECL.Uninstaller.exe") $installerMedia -Force
+    Copy-Item (Join-Path $publish "ECL.Uninstaller.exe") $installerMedia -Force
     Copy-Item $manifestPath $installerMedia -Force
     if (Test-Path $trustPath) { Copy-Item $trustPath $installerMedia -Force }
     if (Test-Path $signaturePath) { Copy-Item $signaturePath $installerMedia -Force }

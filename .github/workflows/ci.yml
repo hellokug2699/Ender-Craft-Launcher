@@ -53,17 +53,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "pack-release failed" }
 
           $release = "artifacts/ci-release/0.0.0-ci"
-          $media = Join-Path $release "installer"
+          $installer = Join-Path $release "ECL.Installer-0.0.0-ci-win-x64.exe"
+          if (-not (Test-Path $installer)) { throw "缺少独立 Installer EXE" }
+          if (-not (Test-Path "$installer.sha256")) { throw "缺少 Installer SHA-256 sidecar" }
+
+          $media = Join-Path $release "installer-media"
           foreach ($file in @(
-            "ECL.Installer.exe",
             "ECL.Bootstrapper.exe",
             "update-manifest.json",
             "update-trust.json",
             "ECL.Uninstaller.exe",
-            "installer-integrity.json",
             "ECL-package.zip"
           )) {
-            if (-not (Test-Path (Join-Path $media $file))) { throw "安装介质缺少 $file" }
+            if (-not (Test-Path (Join-Path $media $file))) { throw "嵌入介质缺少 $file" }
           }
 
           $package = Join-Path $release "ECL-0.0.0-ci-win-x64.zip"
@@ -92,12 +94,14 @@ jobs:
 
           pwsh -NoProfile -File build/pack-release.ps1 `
             -Version 1.0.0-ci -Channel nightly -OutputRoot artifacts/ci-signed `
-            -SigningKeyPath $keyPath -KeyId "ci" -PublicKeyPath $pubPath
+            -SigningKeyPath $keyPath -KeyId "ci" -PublicKeyPath $pubPath -SelfContained
           if ($LASTEXITCODE -ne 0) { throw "signed pack-release failed" }
 
-          $media = "artifacts/ci-signed/1.0.0-ci/installer"
+          $release = "artifacts/ci-signed/1.0.0-ci"
+          $media = Join-Path $release "installer-media"
           $target = Join-Path $env:RUNNER_TEMP "ecl-ci-install"
-          $installer = Join-Path $media "ECL.Installer.exe"
+          $installer = Join-Path $release "ECL.Installer-1.0.0-ci-win-x64.exe"
+          # No --media argument: verify that the single-file EXE releases its embedded media.
           $process = Start-Process -FilePath $installer `
             -ArgumentList @("--silent", "--accept-unverified", "--install-root", $target) -PassThru -Wait
           if ($process.ExitCode -ne 0) { throw "静默安装失败：$($process.ExitCode)" }
@@ -120,8 +124,8 @@ jobs:
           $manifest = Join-Path $bad "update-manifest.json"
           (Get-Content $manifest -Raw).Replace('1.0.0-ci', '9.9.9-tampered') | Set-Content $manifest -Encoding utf8NoBOM
           $badTarget = Join-Path $env:RUNNER_TEMP "ecl-ci-install-bad"
-          $badProcess = Start-Process -FilePath (Join-Path $bad "ECL.Installer.exe") `
-            -ArgumentList @("--silent", "--accept-unverified", "--install-root", $badTarget) -PassThru -Wait
+          $badProcess = Start-Process -FilePath $installer `
+            -ArgumentList @("--silent", "--accept-unverified", "--install-root", $badTarget, "--media", $bad) -PassThru -Wait
           if ($badProcess.ExitCode -eq 0) { throw "篡改介质被错误接受" }
           if (Test-Path (Join-Path $badTarget "current.json")) { throw "篡改介质不应生成 current 指针" }
 
