@@ -182,7 +182,7 @@ function Confirm-PackageUrl([string]$Url, [long]$ExpectedSize, [string]$Expected
 }
 
 
-function Write-BranchFile([string]$Branch, [string]$Path, [string]$Content, [string]$Message) {
+function Write-BranchFile([string]$Branch, [string]$Path, [string]$Content, [string]$Message, [string]$ExpectedOwner = "") {
     for ($attempt = 1; $attempt -le 8; $attempt++) {
         $remote = & git -C $storeRoot ls-remote --heads origin $Branch
         if ($LASTEXITCODE -ne 0) { throw "Unable to inspect $Branch branch." }
@@ -190,6 +190,18 @@ function Write-BranchFile([string]$Branch, [string]$Path, [string]$Content, [str
         if ($remote) {
             Invoke-Git @("fetch", "--depth=1", "origin", $Branch)
             $parent = (& git -C $storeRoot rev-parse FETCH_HEAD).Trim()
+            if ($Branch -eq "feed-lock") {
+                $currentLockText = (& git -C $storeRoot show ($parent + ":lock.json")) -join [Environment]::NewLine
+                if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($currentLockText)) {
+                    $currentLock = $currentLockText | ConvertFrom-Json
+                    if ($ExpectedOwner) {
+                        if ($currentLock.owner -ne $ExpectedOwner) { throw "Feed lock ownership changed." }
+                    }
+                    elseif ($currentLock.owner -and [DateTimeOffset]::Parse([string]$currentLock.expiresAt) -gt [DateTimeOffset]::UtcNow) {
+                        throw "Feed lock is already held by another run."
+                    }
+                }
+            }
             Invoke-Git @("read-tree", $parent)
             & git -C $storeRoot update-ref "refs/heads/$Branch" $parent
         }
@@ -296,7 +308,7 @@ function Release-FeedLock {
             expiresAt = [DateTimeOffset]::UtcNow.AddMinutes(-1).ToString("o")
         }
         try {
-            $null = Write-BranchFile "feed-lock" "lock.json" ($released | ConvertTo-Json -Compress) "ci(feed): release Production deployment lock"
+            $null = Write-BranchFile "feed-lock" "lock.json" ($released | ConvertTo-Json -Compress) "ci(feed): release Production deployment lock" $script:feedLockOwner
             $script:feedLockOwner = ""
             return
         }
