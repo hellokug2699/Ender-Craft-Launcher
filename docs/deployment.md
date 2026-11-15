@@ -193,7 +193,7 @@ artifacts/release/1.0.1/
 - `packages` 分支仅允许 `packages/<channel>/...` 路径；单个 Package 必须小于 90 MiB，路径与文件名包含频道、架构、版本及 SHA-256，写入只追加且已发布包永久保留。
 - 手动运行 workflow 时选择 `dev` 或 `nightly` 分支；正式版只能通过版本 Tag 发布。
 
-构建流程执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 保留 14 天用于追溯。发布脚本先迁移/验证三个频道 Feed，再更新人工 Release；人工 Release 只上传 Installer 与 Bootstrapper 两个 EXE，并在 Feed 成功后清理当前滚动 Release 的其他资产。首次生产部署前，旧 Release Feed 资产仍须保留。
+构建流程执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 保留 14 天用于追溯。发布脚本先迁移/验证三个频道 Feed，再更新人工 Release；切换后的新建/更新 Release 只上传 Installer 与 Bootstrapper 两个 EXE，并在 Feed 成功后清理对应滚动 Release 的其他资产。已有可独立验证的 EXE 的历史 Release 可规范化；仅含旧 ZIP Installer 的历史 Release 保留原样，不能通过改名伪装成自包含 EXE。首次生产部署前，旧 Release Feed 资产仍须保留。
 
 ### Cloudflare Pages Feed 配置（目标部署方案）
 
@@ -303,7 +303,7 @@ git checkout <commit-or-tag>
 - `--cleanup` 与部署前自动清理只删除 `staging/`；自动化测试确认 `versions/` 与 `current.json` 不受影响。
 - 未完成：全新 Windows 无 .NET SDK、无 .NET 运行时的安装验收；Authenticode 签名；GUI 自动化（当前 GUI 仅人工冒烟）。
 - 2026-11-15，ADR 0071 分发重构：官方构建切换为自包含单文件 Installer，完整部署介质嵌入 Installer；Bootstrapper 统一为单文件自包含构建，独立下载与 Installer 内嵌副本共用同一二进制。该项需等待 PR CI 与干净 Windows 实机验收后才能标记 Verified。
-- 2026-11-15，ADR 0072 决定将人工 Release 与自动更新 Feed 分离：Cloudflare Pages Direct Upload 托管 Manifest/Signature，同一公有仓库的 `packages` 分支以 append-only 方式托管不可变 Package，Package URL 固定到 Git commit SHA。当前 PR 已实现发布脚本、三频道迁移、客户端绝对 Package URL 支持、无重定向请求及历史 Release 资产规范化；首次生产部署、匿名下载和真实安装器验收仍待完成。旧 GitHub Release Feed 资产在新 Feed 端到端验证成功前不得清理。
+- 2026-11-15，ADR 0072 决定将人工 Release 与自动更新 Feed 分离：Cloudflare Pages Direct Upload 托管 Manifest/Signature，同一公有仓库的 `packages` 分支以 append-only 方式托管不可变 Package，Package URL 固定到 Git commit SHA。当前 PR 已实现发布脚本、三频道迁移、客户端绝对 Package URL 支持、无重定向请求及对已有独立 EXE 的历史 Release 资产规范化；仅含旧 ZIP Installer 的历史 Release 不会被伪装改名。首次生产部署、匿名下载和真实安装器验收仍待完成。旧 GitHub Release Feed 资产在新 Feed 端到端验证成功前不得清理。
 
 ## 9. 用户数据与卸载边界
 
