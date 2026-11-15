@@ -154,7 +154,7 @@ function Add-PackageToStore(
     if ($fileName -in $assets) {
         $verifyDirectory = Join-Path $workRoot "existing-package-$([Guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Force -Path $verifyDirectory | Out-Null
-        & gh release download $releaseTag --pattern $fileName --dir $verifyDirectory
+        & gh release download $releaseTag --pattern $fileName --dir $verifyDirectory | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Unable to download existing immutable Package $fileName." }
         $existingPath = Join-Path $verifyDirectory $fileName
         $existingHash = (Get-FileHash $existingPath -Algorithm SHA256).Hash.ToLowerInvariant()
