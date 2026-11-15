@@ -1,0 +1,50 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.appearance-enhance",
+  "name": "Appearance Enhance",
+  "type": "Feature",
+  "category": "Account Appearance",
+  "summary": "完整本地衣柜、3D 玩家模型查看与受账户类型约束的外观管理；Core 基础读取与 2D 展示不依赖此 Addition。",
+  "registryStatus": "Planned",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0070-account-appearance-and-appearance-enhance-addition-architecture.md",
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md",
+    "../../adr/0053-addition-capability-permission-and-user-consent.md",
+    "../../adr/0054-addition-registry-and-manifest-governance.md",
+    "../../adr/0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-15",
+    "lastUpdated": "2026-11-15",
+    "deprecation": null,
+    "replacement": null
+  }
+}
