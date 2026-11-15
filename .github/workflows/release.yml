@@ -359,24 +359,10 @@ jobs:
             $version = $installerName -replace '^ECL\.Installer-(.+)-win-x64\.exe$', '$1'
             $bootstrapperName = "ECL.Bootstrapper-$version-win-x64.exe"
             if ($bootstrapperName -notin $assets) {
-              $bootstrapperZip = $assets | Where-Object { $_ -eq "ECL.Bootstrapper-$version-win-x64.zip" } | Select-Object -First 1
-              if (-not $bootstrapperZip) {
-                Write-Warning "Skipping ${tag}: no matching standalone Bootstrapper or Bootstrapper ZIP exists."
-                continue
-              }
-              $temp = Join-Path $env:RUNNER_TEMP "ecl-release-clean-$([Guid]::NewGuid().ToString('N'))"
-              New-Item -ItemType Directory -Force -Path $temp | Out-Null
-              gh release download $tag --pattern $bootstrapperZip --dir $temp
-              if ($LASTEXITCODE -ne 0) { throw "Unable to download $bootstrapperZip from $tag." }
-              $extract = Join-Path $temp "extract"
-              Expand-Archive -Path (Join-Path $temp $bootstrapperZip) -DestinationPath $extract -Force
-              $source = Get-ChildItem $extract -Filter "ECL.Bootstrapper.exe" -File -Recurse | Select-Object -First 1
-              if (-not $source) { throw "Bootstrapper archive in $tag does not contain ECL.Bootstrapper.exe." }
-              $bootstrapperPath = Join-Path $temp $bootstrapperName
-              Copy-Item $source.FullName $bootstrapperPath
-              gh release upload $tag $bootstrapperPath --clobber
-              if ($LASTEXITCODE -ne 0) { throw "Unable to add standalone Bootstrapper to $tag." }
-              Remove-Item $temp -Recurse -Force
+              # Do not manufacture a purported standalone EXE by extracting a
+              # legacy ZIP: it may contain a framework-dependent build.
+              Write-Warning "Skipping ${tag}: no independently published matching Bootstrapper EXE exists."
+              continue
             }
 
             $releaseBody = gh release view $tag --json body --jq '.body'
