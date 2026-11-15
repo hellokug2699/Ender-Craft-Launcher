@@ -206,9 +206,9 @@ function Write-BranchFile([string]$Branch, [string]$Path, [string]$Content, [str
         Invoke-Git @("update-index", "--add", "--cacheinfo", "100644", $blob, $Path)
         $tree = (& git -C $storeRoot write-tree).Trim()
         if ($LASTEXITCODE -ne 0) { throw "Unable to create branch metadata tree." }
-        $args = @("commit-tree", $tree, "-m", $Message)
-        if ($parent) { $args = @("commit-tree", $tree, "-p", $parent, "-m", $Message) }
-        $commit = (& git -C $storeRoot @args).Trim()
+        $commitArgs = @("commit-tree", $tree, "-m", $Message)
+        if ($parent) { $commitArgs = @("commit-tree", $tree, "-p", $parent, "-m", $Message) }
+        $commit = (& git -C $storeRoot @commitArgs).Trim()
         if ($LASTEXITCODE -ne 0) { throw "Unable to create branch metadata commit." }
         if ($parent) {
             & git -C $storeRoot update-ref "refs/heads/$Branch" $commit $parent
