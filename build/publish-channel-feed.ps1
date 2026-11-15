@@ -223,6 +223,7 @@ foreach ($candidate in @("main", "dev", "nightly")) {
         $legacyArchitecture = [string]$legacyManifest.architecture
         $legacyVersion = [string]$legacyManifest.version
         $legacyUrl = Add-PackageToStore $legacyPackagePath $candidate $legacyVersion $legacyArchitecture
+        Confirm-PackageUrl $legacyUrl ([long]$legacyManifest.package.size) ([string]$legacyManifest.package.sha256)
         $legacyManifest.package.file = $legacyUrl
         Write-SignedManifest $legacyManifest $channelDirectory
     }
