@@ -95,6 +95,39 @@ public sealed class UpdateClientTests
     }
 
     [Fact]
+    public async Task RetriesSignedFeedPairWhenDeploymentChangesBetweenRequests()
+    {
+        var keys = DeploymentTestData.CreateKeys();
+        var oldManifest = DeploymentTestData.CreateManifest("1.0.0", "old.zip", 1, new string('a', 64));
+        var newManifest = DeploymentTestData.CreateManifest("1.0.1", "new.zip", 1, new string('b', 64));
+        var oldBytes = DeploymentTestData.Serialize(oldManifest);
+        var newBytes = DeploymentTestData.Serialize(newManifest);
+        var oldSignature = Encoding.UTF8.GetBytes(
+            DeploymentTestData.Sign(oldBytes, keys.PrivateKeyPem, keys.KeyId));
+        var newSignature = Encoding.UTF8.GetBytes(
+            DeploymentTestData.Sign(newBytes, keys.PrivateKeyPem, keys.KeyId));
+        var signatureRequests = 0;
+        using var handler = new StubHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith(".sig", StringComparison.Ordinal))
+            {
+                signatureRequests++;
+                return Bytes(signatureRequests == 1 ? oldSignature : newSignature);
+            }
+
+            return Bytes(newBytes);
+        });
+        using var http = new HttpClient(handler);
+        var client = new UpdateClient(http, new UpdateSignatureVerifier(DeploymentTestData.TrustStore(keys.TrustJson)));
+
+        var result = await client.CheckAsync(new Uri("https://updates.endercraftlauncher.top/"), UpdateChannel.Stable);
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        Assert.Equal("1.0.1", result.Value!.Manifest.Version.ToString());
+        Assert.Equal(4, handler.Calls);
+    }
+
+    [Fact]
     public async Task RejectsManifestFromAnotherChannel()
     {
         var keys = DeploymentTestData.CreateKeys();
