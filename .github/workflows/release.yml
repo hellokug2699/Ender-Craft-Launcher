@@ -348,7 +348,7 @@ jobs:
           $tags = @(gh release list --limit 1000 --json tagName,isDraft --jq '.[] | select(.isDraft == false) | .tagName')
           if ($LASTEXITCODE -ne 0) { throw "Unable to enumerate historical Releases." }
           foreach ($tag in $tags) {
-            if ($tag -eq $env:ECL_CHANNEL) { continue }
+            if ($tag -in @("main", "dev", "nightly")) { continue }
             $assets = @(gh release view $tag --json assets --jq '.assets[].name')
             if ($LASTEXITCODE -ne 0) { throw "Unable to inspect Release $tag." }
             $installerName = $assets | Where-Object { $_ -match '^ECL\.Installer-.+-win-x64\.exe$' } | Select-Object -First 1
