@@ -231,6 +231,15 @@ try {
         }
     }
 
+    # 无论 Manifest 是否使用测试签名，完整安装介质都必须携带公开信任库。
+    if (-not (Test-Path $trustPath) -and -not [string]::IsNullOrWhiteSpace($TrustStorePath)) {
+        if (-not (Test-Path $TrustStorePath)) { throw "更新信任库不存在：$TrustStorePath" }
+        Copy-Item $TrustStorePath $trustPath -Force
+    }
+    if (-not (Test-Path $trustPath)) {
+        throw "完整安装介质缺少 update-trust.json；请提供 -TrustStorePath。"
+    }
+
     # ADR 0071：先组装完整部署介质，再将其作为资源嵌入独立 Installer。
     # 用户只需下载并运行一个 EXE；Installer 在临时目录释放介质，再委托 Bootstrapper。
     $installerMedia = Join-Path $releaseRoot "installer-media"
