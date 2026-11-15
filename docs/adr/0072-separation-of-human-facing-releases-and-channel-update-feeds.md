@@ -139,5 +139,5 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 ## 修订记录
 
 - 2026-11-15：首次决策。将人工 Release 与自动更新 Feed 分离；人工 Release 仅保留 Installer / Bootstrapper 两个 EXE，日常更新继续使用签名 ECL Package。
-- 2026-11-15：明确采用 Cloudflare Pages Direct Upload 托管频道 Manifest/Signature，GitHub Releases 托管不可变 Package；由 Wrangler 在 Package 可匿名访问并验证后部署完整频道元数据目录。
+- 2026-11-15：曾决定采用 Cloudflare Pages Direct Upload 托管频道 Manifest/Signature、GitHub Releases 托管不可变 Package；该 Package 托管选择随后由本记录的最新修订取代，保留此条用于追溯决策演进。
 - 2026-11-15：根据三频道独立更新与 Release 页面仅保留两个 EXE 的约束，改为由同一公有仓库的 `packages` 分支以 append-only 方式托管不可变 Package；Manifest 的 Package URL 固定到具体 Git commit SHA。三个频道独立命名空间、独立推进，已发布 Package 永久保留。
