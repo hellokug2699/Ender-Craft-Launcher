@@ -226,7 +226,8 @@ public sealed class RuntimeStatusService : IRuntimeStatusService
         _ => _localizer.Get("runtime.unavailable.io"),
     };
 
-    private RuntimeHealth MapTrust(SelfIntegrityTrustStatus trust) => trust switch    {
+    private RuntimeHealth MapTrust(SelfIntegrityTrustStatus trust) => trust switch
+    {
         SelfIntegrityTrustStatus.Verified => RuntimeHealth.Healthy,
         SelfIntegrityTrustStatus.TrustMissing or SelfIntegrityTrustStatus.SignatureMissing => RuntimeHealth.Warning,
         SelfIntegrityTrustStatus.TrustInvalid or SelfIntegrityTrustStatus.SignatureInvalid => RuntimeHealth.Damaged,
