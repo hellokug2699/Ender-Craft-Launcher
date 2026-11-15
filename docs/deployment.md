@@ -154,43 +154,45 @@ ecl update check --json
 
 ```text
 artifacts/release/1.0.1/
-├─ ECL-1.0.1-win-x64.zip
-├─ ECL.Bootstrapper-1.0.1-win-x64.zip（与 Installer 内嵌 EXE 相同）
-├─ ECL.Installer-1.0.1-win-x64.exe（普通用户唯一推荐入口）
-├─ ECL.Installer-1.0.1-win-x64.exe.sha256
+├─ ECL-1.0.1-win-x64.zip（签名 ECL Package；目标由独立 Feed 发布）
 ├─ bootstrapper/
+│  └─ ECL.Bootstrapper.exe（目标人工 Release 的独立 EXE 来源）
+├─ ECL.Installer-1.0.1-win-x64.exe（普通用户唯一推荐入口）
+├─ ECL.Installer-1.0.1-win-x64.exe.sha256（构建中间摘要，不作为公开 Release 附件）
 ├─ installer-media/（完整部署介质，嵌入 Installer）
 ├─ installer-bundle.zip（构建中间产物）
-├─ update-manifest.json
-├─ update-manifest.sig
-└─ update-trust.json
+├─ update-manifest.json（目标由独立 Feed 发布）
+├─ update-manifest.sig（目标由独立 Feed 发布）
+└─ update-trust.json（随客户端/Installer 分发的信任材料）
 ```
 
 `-Unsigned` 只用于生成未签名的本地检查产物；由于完整安装介质必须包含签名清单，未签名模式不会生成可运行的 Installer。官方发布和安装介质验收必须使用有效签名。
 
 ### GitHub Actions：版本发布与滚动构建
 
-[release.yml](../.github/workflows/release.yml) 统一负责签名构建，但将“构建记录”“更新源”和“正式版本发布”分开处理：
+[release.yml](../.github/workflows/release.yml) 当前仍处于迁移前状态；目标分工遵循 [ADR 0072](adr/0072-separation-of-human-facing-releases-and-channel-update-feeds.md)。
 
-| 触发来源 | 产物归档 | GitHub Release | 更新源 Tag |
+| 触发来源 | 构建追溯 | 人工 GitHub Release（目标） | 独立 Channel Feed（目标） |
 |---|---|---|---|
-| 推送 `nightly` | Actions Artifact，保留 14 天 | 更新唯一的滚动 Nightly Release | `nightly` |
-| 推送 `dev` | Actions Artifact，保留 14 天 | 更新唯一的滚动 Dev Release | `dev` |
-| 推送 `vMAJOR.MINOR.PATCH` | Actions Artifact，保留 14 天 | 创建不可变的版本 Release，并更新唯一的正式版滚动 Release | `main` |
-| 手动运行 | Actions Artifact，保留 14 天 | 根据所选分支更新对应滚动 Release | 对应通道 |
+| 推送 `nightly` | Actions Artifact，保留 14 天 | 更新唯一 Nightly 滚动 Release，仅两个 EXE | 更新 `nightly` Feed |
+| 推送 `dev` | Actions Artifact，保留 14 天 | 更新唯一 Dev 滚动 Release，仅两个 EXE | 更新 `dev` Feed |
+| 推送 `vMAJOR.MINOR.PATCH` | Actions Artifact，保留 14 天 | 创建不可变版本 Release，并更新 `main` 滚动 Release；均仅两个 EXE | 更新 `main` Feed |
+| 手动运行 | Actions Artifact，保留 14 天 | 根据所选分支更新对应人工 Release | 更新对应频道 Feed |
 
-- Nightly 每次成功构建都会产生独立的 Actions Artifact，便于高级用户下载特定构建；Artifact 保留 14 天，过期后不保证可取回。
-- 普通用户应下载 `ECL.Installer-<version>-win-x64.exe` 并直接运行；不需要下载 ZIP 或手工解压。目标 Release 还提供独立的 `ECL.Bootstrapper-<version>-win-x64.exe`，仅供需要单独修复入口的高级用户。两个 EXE 的 SHA-256 写在 Release Notes，不作为额外附件。
-- `ECL-<version>-win-x64.zip` 是 Bootstrapper 日常更新/部署使用的完整程序包，不是面向普通用户的首次安装入口；它应由独立 Channel Feed 提供，不出现在人工 Release 页面。
-- `ECL.Bootstrapper-<version>-win-x64.exe` 是高级用户独立恢复入口；它与 Installer 内嵌的 Bootstrapper 使用同一个自包含单文件构建。
-- Installer 内嵌完整介质并在临时目录释放；实际签名验证、包解压和逐文件校验仍由 Bootstrapper 执行。
-- Nightly 不再为每次提交创建新的 GitHub Release。公开 Release 列表中只保留一个 `nightly` 滚动入口，资产以 `--clobber` 更新。
-- `nightly`、`dev`、`main` 是可移动的通道 Tag。工作流在所有资产上传成功后才移动 Tag，避免 Tag 指向尚未完整发布的构建。
-- 正式版本仍通过 `vX.Y.Z` 保留不可变 Release；额外维护 `main` 滚动 Release，因为客户端更新协议读取的是 `/<channel>/update-manifest.json`。
-- 同一分支的构建按队列执行，避免在上传资产或移动通道 Tag 时被强制取消；旧提交仍可作为短期 Actions Artifact 追溯，但只有检查时仍是分支最新 HEAD 的构建才能更新滚动源。
+当前 workflow 仍把更新资产放在 GitHub Release；独立 Feed 尚未选定供应商与端点。表格描述的是迁移目标，不代表现有流水线已经完成切换。
+
+- Nightly 每次成功构建都会产生独立的 Actions Artifact，便于高级用户追溯特定构建；Artifact 保留 14 天，过期后不保证可取回。
+- 普通用户下载 `ECL.Installer-<version>-win-x64.exe` 并直接运行；不需要下载 ZIP 或手工解压。
+- `ECL.Bootstrapper-<version>-win-x64.exe` 是高级用户独立修复入口；它与 Installer 内嵌的 Bootstrapper 使用同一个自包含单文件构建。
+- 两个 EXE 的 SHA-256 写入人工 Release Notes，不发布独立 checksum sidecar。
+- `ECL-<version>-win-x64.zip` 是 Bootstrapper 日常更新/部署使用的完整程序包，不是首次安装入口；目标由独立 Channel Feed 提供。
+- Installer 内嵌完整离线介质并在临时目录释放；实际签名验证、包解压和逐文件校验仍由 Bootstrapper 执行。
+- Nightly 不为每次提交创建新的人工 Release；每个频道只维护一个滚动入口。
+- Release tag 与 Feed 频道指针分别管理；只有 Feed 的 Package、Manifest、Signature 全部验证并原子切换后，才算自动更新发布成功。
+- 同一分支的构建按队列执行；过期构建不得覆盖较新的 Release 或 Feed 版本。
 - 手动运行 workflow 时选择 `dev` 或 `nightly` 分支；正式版只能通过版本 Tag 发布。
 
-构建流程仍然执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 包含完整构建中间产物。目标发布形态由 ADR 0072 规定：人工 Release 仅发布 Installer 与 Bootstrapper 两个 EXE，自动更新 Feed 单独发布完整 ECL Package、Manifest 与 Signature；Release Notes 列出两个 EXE 的 SHA-256。
+构建流程仍然执行私钥读取、公钥匹配、完整包构建、逐文件清单生成与 RSA-PSS 签名。私钥只存在于 runner 临时目录，并在 `always()` 清理步骤中删除。Actions Artifact 包含完整构建中间产物。迁移完成后，人工 Release 只包含 Installer 与 Bootstrapper 两个 EXE；独立 Feed 提供完整 ECL Package、Manifest 与 Signature。当前发布流水线尚未完成该迁移，旧 Feed 资产必须保留。
 
 ### 当前实现与目标架构
 
