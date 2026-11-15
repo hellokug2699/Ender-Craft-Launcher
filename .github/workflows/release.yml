@@ -111,19 +111,20 @@ jobs:
           "ECL_VERSION=$version" >> $env:GITHUB_ENV
           "ECL_CHANNEL=$channel" >> $env:GITHUB_ENV
           "ECL_RELEASE_TITLE=ECL $channel (latest: $version)" >> $env:GITHUB_ENV
-          @"
-          ECL $version
-          Channel: $channel
-          Commit: $env:ECL_COMMIT_SHA
-          Build: $env:GITHUB_RUN_NUMBER (attempt $env:ECL_RUN_ATTEMPT)
-
-          This is the latest rolling $channel build. Older build history is available
-          in GitHub Actions artifacts and workflow runs.
-
-          普通用户只需下载并运行 ECL.Installer-$version-win-x64.exe。
-          只有需要独立修复入口时才下载 ECL.Bootstrapper-$version-win-x64.exe。
-          日常自动更新由签名频道 Feed 提供；Package 不作为人工 Release 附件。
-          "@ | Set-Content -Path "$env:RUNNER_TEMP/release-notes.md" -Encoding utf8NoBOM
+          $initialNotes = @(
+              "ECL $version"
+              "Channel: $channel"
+              "Commit: $env:ECL_COMMIT_SHA"
+              "Build: $env:GITHUB_RUN_NUMBER (attempt $env:ECL_RUN_ATTEMPT)"
+              ""
+              "This is the latest rolling $channel build. Older build history is available"
+              "in GitHub Actions artifacts and workflow runs."
+              ""
+              "普通用户只需下载并运行 ECL.Installer-$version-win-x64.exe。"
+              "只有需要独立修复入口时才下载 ECL.Bootstrapper-$version-win-x64.exe。"
+              "日常自动更新由签名频道 Feed 提供；Package 不作为人工 Release 附件。"
+          ) -join [Environment]::NewLine
+          [System.IO.File]::WriteAllText("$env:RUNNER_TEMP/release-notes.md", $initialNotes, [System.Text.UTF8Encoding]::new($false))
 
       - name: Materialize update signing key
         shell: pwsh
@@ -180,22 +181,23 @@ jobs:
           }
           $installerHash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
           $bootstrapperHash = (Get-FileHash $bootstrapper -Algorithm SHA256).Hash.ToLowerInvariant()
-          @"
-          ECL $env:ECL_VERSION
-          Channel: $env:ECL_CHANNEL
-          Commit: $env:GITHUB_SHA
-          Build: $env:GITHUB_RUN_NUMBER (attempt $env:GITHUB_RUN_ATTEMPT)
-
-          **普通用户：**只需下载并运行 Installer。
-          **独立修复：**只有在必要时才下载 Bootstrapper。
-
-          SHA-256:
-          - ECL.Installer-$env:ECL_VERSION-win-x64.exe: $installerHash
-          - ECL.Bootstrapper-$env:ECL_VERSION-win-x64.exe: $bootstrapperHash
-
-          日常自动更新由 ECL 的签名频道 Feed 提供，不需要手动下载 Package。
-          自动更新 Feed 状态：待发布；若该状态未更新，请稍后重试。
-          "@ | Set-Content -Path "$env:RUNNER_TEMP/release-notes.md" -Encoding utf8NoBOM
+          $releaseNotes = @(
+              "ECL $env:ECL_VERSION"
+              "Channel: $env:ECL_CHANNEL"
+              "Commit: $env:GITHUB_SHA"
+              "Build: $env:GITHUB_RUN_NUMBER (attempt $env:GITHUB_RUN_ATTEMPT)"
+              ""
+              "**普通用户：**只需下载并运行 Installer。"
+              "**独立修复：**只有在必要时才下载 Bootstrapper。"
+              ""
+              "SHA-256:"
+              "- ECL.Installer-$env:ECL_VERSION-win-x64.exe: $installerHash"
+              "- ECL.Bootstrapper-$env:ECL_VERSION-win-x64.exe: $bootstrapperHash"
+              ""
+              "日常自动更新由 ECL 的签名频道 Feed 提供，不需要手动下载 Package。"
+              "自动更新 Feed 状态：待发布；若该状态未更新，请稍后重试。"
+          ) -join [Environment]::NewLine
+          [System.IO.File]::WriteAllText("$env:RUNNER_TEMP/release-notes.md", $releaseNotes, [System.Text.UTF8Encoding]::new($false))
           Get-ChildItem $dir | Select-Object Name, Length
 
       - name: Archive this build in Actions
@@ -377,14 +379,14 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "Unable to download both EXEs to calculate historical Release hashes for $tag." }
               $installerHash = (Get-FileHash (Join-Path $hashDirectory $installerName) -Algorithm SHA256).Hash.ToLowerInvariant()
               $bootstrapperHash = (Get-FileHash (Join-Path $hashDirectory $bootstrapperName) -Algorithm SHA256).Hash.ToLowerInvariant()
-              $hashSection = @"
-**普通用户：**只需下载并运行 Installer。
-**独立修复：**只有必要时才下载 Bootstrapper。
-
-SHA-256:
-- $installerName: $installerHash
-- $bootstrapperName: $bootstrapperHash
-"@
+              $hashSection = @(
+                  "**普通用户：**只需下载并运行 Installer。"
+                  "**独立修复：**只有必要时才下载 Bootstrapper。"
+                  ""
+                  "SHA-256:"
+                  "- ${installerName}: $installerHash"
+                  "- ${bootstrapperName}: $bootstrapperHash"
+              ) -join [Environment]::NewLine
               $updatedBody = ([string]$releaseBody).TrimEnd() + "`n`n" + $hashSection
               $notesPath = Join-Path $hashDirectory "release-notes.md"
               [System.IO.File]::WriteAllText($notesPath, $updatedBody, [System.Text.UTF8Encoding]::new($false))
