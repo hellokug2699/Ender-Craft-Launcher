@@ -179,7 +179,7 @@ public sealed class LogSessionsPageTests : IDisposable
             vm.SearchCommand.Execute(null);
         });
 
-        Assert.Contains("4", vm.SearchStatus);
+        Assert.Equal("4 条命中", vm.SearchStatus);
         Assert.Equal(4, vm.Lines.Count(line => line.IsMatch));
 
         ui.Invoke(() => vm.FilterInfo = false);
