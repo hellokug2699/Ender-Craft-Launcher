@@ -1,6 +1,6 @@
 # ADR 0059: Shader Studio and Standard Scene Environment Architecture
 
-- Decision: Proposed
+- Decision: Accepted
 - Implementation: Not Started
 - Date: 2026-11-08
 - Scope: Shader Studio Addition、光影包分析与预览、ECL 标准测试场景、场景资产交付、时间段取景与场景资产治理
@@ -207,3 +207,6 @@ Standard / Advanced 仅作为项目内部的制作规划、资产复杂度、覆
 ## 修订记录
 
 - 2026-11-08：根据 Shader Studio 立项讨论形成 Proposed 架构提案；明确标准与高级场景统一交付、用户体验不分级、固定标准自然环境、同一地点四个时间段的对应取景，以及第三方模组群系的范围边界。尚未批准或实现。
+
+
+- 2026-11-16：经维护者明确批准，Decision 由 Proposed 更新为 Accepted。该批准确认架构决策生效，不代表 Implementation 已完成；实施状态与既有验收证据保持不变。
