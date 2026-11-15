@@ -133,9 +133,9 @@ public sealed class UpdateClient(HttpClient http, UpdateSignatureVerifier verifi
             (manifest.Package.IsAbsoluteUrl &&
              (!Uri.TryCreate(manifest.Package.FileName, UriKind.Absolute, out var declaredPackageUri) ||
               declaredPackageUri != packageUri ||
-              !string.Equals(packageUri.Host, "raw.githubusercontent.com", StringComparison.OrdinalIgnoreCase))))
+              !IsAllowedPackageUri(packageUri, manifest.Channel, manifest.Version, manifest.Architecture, manifest.Package.Sha256))))
         {
-            return Result.Fail("update.insecure_package", "更新包必须使用受信任的 HTTPS 地址。");
+            return Result.Fail("update.insecure_package", "更新包必须使用受信任的 GitHub Release 地址。");
         }
 
         var directory = Path.GetDirectoryName(destination);
@@ -147,15 +147,8 @@ public sealed class UpdateClient(HttpClient http, UpdateSignatureVerifier verifi
         var temporary = destination + ".part";
         try
         {
-            using var request = CreateRequest(packageUri);
-            using var response = await http
-                .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            using var response = await SendPackageRequestAsync(packageUri, cancellationToken)
                 .ConfigureAwait(false);
-            if ((int)response.StatusCode is >= 300 and < 400 ||
-                response.RequestMessage?.RequestUri is { } finalUri && finalUri != packageUri)
-            {
-                return Result.Fail("update.package_redirect_rejected", "更新包下载发生未授权重定向，已拒绝。");
-            }
             if (!response.IsSuccessStatusCode)
             {
                 return Result.Fail(
@@ -220,6 +213,77 @@ public sealed class UpdateClient(HttpClient http, UpdateSignatureVerifier verifi
             }
         }
     }
+
+    private static bool IsAllowedPackageUri(
+        Uri uri,
+        UpdateChannel channel,
+        ReleaseVersion version,
+        UpdateArchitecture architecture,
+        string sha256)
+    {
+        if (!string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase) ||
+            uri.Port != 443 || !string.IsNullOrEmpty(uri.UserInfo) ||
+            !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment))
+        {
+            return false;
+        }
+
+        var expectedFile = $"ECL-{version}-win-{architecture.ToApiValue()}-{sha256}.zip";
+        var expectedPath = $"/hellokug2699/Ender-Craft-Launcher/releases/download/{channel.ToApiValue()}-packages/{expectedFile}";
+        return string.Equals(uri.AbsolutePath, expectedPath, StringComparison.Ordinal);
+    }
+
+    private async Task<HttpResponseMessage> SendPackageRequestAsync(
+        Uri packageUri,
+        CancellationToken cancellationToken)
+    {
+        var current = packageUri;
+        for (var redirectCount = 0; redirectCount <= 5; redirectCount++)
+        {
+            using var request = CreateRequest(current);
+            var response = await http.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            if ((int)response.StatusCode is >= 300 and < 400)
+            {
+                var location = response.Headers.Location;
+                response.Dispose();
+                if (location is null || redirectCount == 5)
+                {
+                    throw new HttpRequestException("GitHub Release asset redirect chain is invalid or too long.");
+                }
+
+                var next = location.IsAbsoluteUri ? location : new Uri(current, location);
+                if (!IsAllowedReleaseRedirect(next))
+                {
+                    throw new HttpRequestException("GitHub Release asset redirected to an untrusted host.");
+                }
+
+                current = next;
+                continue;
+            }
+
+            if (response.RequestMessage?.RequestUri is { } finalUri && finalUri != current)
+            {
+                response.Dispose();
+                throw new HttpRequestException("The HTTP handler followed an unvalidated redirect.");
+            }
+
+            return response;
+        }
+
+        throw new HttpRequestException("GitHub Release asset redirect chain exceeded the limit.");
+    }
+
+    private static bool IsAllowedReleaseRedirect(Uri uri) =>
+        uri.Scheme == Uri.UriSchemeHttps &&
+        uri.Port == 443 &&
+        string.IsNullOrEmpty(uri.UserInfo) &&
+        (string.Equals(uri.Host, "release-assets.githubusercontent.com", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(uri.Host, "objects.githubusercontent.com", StringComparison.OrdinalIgnoreCase));
 
     private static HttpRequestMessage CreateRequest(Uri uri)
     {

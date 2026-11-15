@@ -76,6 +76,18 @@ function Get-PublishedFeedFile([string]$Url, [string]$Destination) {
     return $true
 }
 
+function Test-ProductionDeploymentExists {
+    $endpoint = "https://api.cloudflare.com/client/v4/accounts/$env:CLOUDFLARE_ACCOUNT_ID/pages/projects/ender-craft-launcher-feed/deployments?env=production&per_page=1&page=1"
+    $response = Invoke-RestMethod -Method Get -Uri $endpoint -Headers @{ "Authorization" = "Bearer $env:CLOUDFLARE_API_TOKEN"; "User-Agent" = "EnderCraftLauncher/0.9.1" } -ErrorAction Stop
+
+    if (-not $response.success) {
+        throw "Cloudflare Pages deployment inventory query failed: $($response.errors | ConvertTo-Json -Compress)"
+    }
+
+    $productionDeployments = @($response.result | Where-Object { $_.environment -eq "production" })
+    return $productionDeployments.Count -gt 0
+}
+
 function Write-SignedManifest([object]$Manifest, [string]$Directory) {
     New-Item -ItemType Directory -Force -Path $Directory | Out-Null
     $manifestPath = Join-Path $Directory "update-manifest.json"
@@ -112,92 +124,62 @@ function Add-PackageToStore(
     [string]$Architecture) {
     if (-not (Test-Path $SourcePath)) { throw "Package not found: $SourcePath" }
     $item = Get-Item $SourcePath
-    if ($item.Length -le 0 -or $item.Length -ge 90MB) {
-        throw "Package must be non-empty and smaller than 90 MiB for GitHub repository storage."
+    if ($item.Length -le 0 -or $item.Length -ge 2GB) {
+        throw "Package must be non-empty and smaller than GitHub's 2 GiB Release asset limit."
     }
+
     $digest = (Get-FileHash $SourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
     $fileName = "ECL-$PackageVersion-win-$Architecture-$digest.zip"
-    $relative = "packages/$PackageChannel/windows/$Architecture/$PackageVersion/$fileName"
-
-    for ($attempt = 1; $attempt -le 6; $attempt++) {
-        $remote = & git -C $storeRoot ls-remote --heads origin packages
-        if ($LASTEXITCODE -ne 0) { throw "Unable to inspect packages branch." }
-
-        $parent = ""
-        if ($remote) {
-            Invoke-Git @("fetch", "--depth=1", "origin", "packages")
-            $parent = (& git -C $storeRoot rev-parse FETCH_HEAD).Trim()
-            Invoke-Git @("read-tree", $parent)
-            & git -C $storeRoot update-ref refs/heads/packages $parent
-            if ($LASTEXITCODE -ne 0) { throw "Unable to set local package branch head." }
-            $unexpectedPaths = @(& git -C $storeRoot ls-tree -r --name-only $parent | Where-Object { $_ -notlike "packages/*" })
-            if ($LASTEXITCODE -ne 0 -or $unexpectedPaths.Count -gt 0) {
-                throw "The packages branch must contain only immutable files under packages/."
-            }
-
-            $existingEntry = & git -C $storeRoot ls-tree --name-only $parent -- $relative
-            if ($LASTEXITCODE -ne 0) { throw "Unable to inspect immutable Package path." }
-            if ($existingEntry) {
-                $objectPath = $parent + ":" + $relative
-                $existingPath = Join-Path $workRoot "existing-$([Guid]::NewGuid().ToString('N')).zip"
-                & git -C $storeRoot show $objectPath > $existingPath
-                if ($LASTEXITCODE -ne 0) { throw "Unable to read existing immutable Package." }
-                $existingHash = (Get-FileHash $existingPath -Algorithm SHA256).Hash.ToLowerInvariant()
-                Remove-Item $existingPath -Force
-                if ($existingHash -ne $digest) { throw "Immutable package path collision: $relative" }
-                return "https://raw.githubusercontent.com/$Repository/$parent/$relative"
-            }
-        }
-        else {
-            & git -C $storeRoot update-ref -d refs/heads/packages 2>$null
-            Invoke-Git @("read-tree", "--empty")
-        }
-
-        $blob = (& git -C $storeRoot hash-object -w $SourcePath).Trim()
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($blob)) {
-            throw "Unable to create package Git blob."
-        }
-        Invoke-Git @("update-index", "--add", "--cacheinfo", "100644", $blob, $relative)
-        $tree = (& git -C $storeRoot write-tree).Trim()
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($tree)) {
-            throw "Unable to write package tree."
-        }
-
-        $message = "packages($PackageChannel): add $PackageVersion $Architecture $digest"
-        $commitArgs = @("commit-tree", $tree, "-m", $message)
-        if ($parent) { $commitArgs = @("commit-tree", $tree, "-p", $parent, "-m", $message) }
-        $commit = (& git -C $storeRoot @commitArgs).Trim()
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commit)) {
-            throw "Unable to create append-only package commit."
-        }
-        if ($parent) {
-            & git -C $storeRoot update-ref refs/heads/packages $commit $parent
-        }
-        else {
-            & git -C $storeRoot update-ref refs/heads/packages $commit
-        }
-        if ($LASTEXITCODE -ne 0) { throw "Unable to update local package branch ref." }
-
-        & git -C $storeRoot push origin "refs/heads/packages:refs/heads/packages"
-        if ($LASTEXITCODE -eq 0) {
-            return "https://raw.githubusercontent.com/$Repository/$commit/$relative"
-        }
-
-        Write-Warning "packages branch changed concurrently; retrying append (attempt $attempt/6)."
-        if ($attempt -eq 6) { throw "Unable to append package after concurrent updates." }
+    $releaseTag = "$PackageChannel-packages"
+    $releaseExists = $false
+    & gh release view $releaseTag --json tagName *> $null
+    if ($LASTEXITCODE -eq 0) {
+        $releaseExists = $true
     }
-    throw "Package append did not complete."
+    elseif ($LASTEXITCODE -ne 1) {
+        throw "Unable to inspect machine-only Package Release $releaseTag."
+    }
+
+    if (-not $releaseExists) {
+        & gh release create $releaseTag --title "ECL $PackageChannel update packages (machine-only)" --notes "Machine-only immutable update Package storage for the $PackageChannel channel. Not intended for manual downloads." --prerelease --target $env:GITHUB_SHA
+        if ($LASTEXITCODE -ne 0) { throw "Unable to create machine-only Package Release $releaseTag." }
+    }
+
+    $assets = @(& gh release view $releaseTag --json assets --jq '.assets[].name')
+    if ($LASTEXITCODE -ne 0) { throw "Unable to enumerate Package Release assets for $releaseTag." }
+    if ($fileName -in $assets) {
+        $verifyDirectory = Join-Path $workRoot "existing-package-$([Guid]::NewGuid().ToString('N'))"
+        New-Item -ItemType Directory -Force -Path $verifyDirectory | Out-Null
+        & gh release download $releaseTag --pattern $fileName --dir $verifyDirectory
+        if ($LASTEXITCODE -ne 0) { throw "Unable to download existing immutable Package $fileName." }
+        $existingPath = Join-Path $verifyDirectory $fileName
+        $existingHash = (Get-FileHash $existingPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        $existingSize = (Get-Item $existingPath).Length
+        Remove-Item $verifyDirectory -Recurse -Force
+        if ($existingHash -ne $digest -or $existingSize -ne $item.Length) {
+            throw "Immutable Package asset collision: $releaseTag/$fileName"
+        }
+    }
+    else {
+        $assetPath = Join-Path $workRoot $fileName
+        Copy-Item $SourcePath $assetPath -Force
+        & gh release upload $releaseTag $assetPath
+        if ($LASTEXITCODE -ne 0) { throw "Unable to append Package asset $fileName to $releaseTag." }
+        Remove-Item $assetPath -Force
+    }
+
+    return "https://github.com/$Repository/releases/download/$releaseTag/$fileName"
 }
 
 function Confirm-PackageUrl([string]$Url, [long]$ExpectedSize, [string]$ExpectedHash) {
     Renew-FeedLock
     $uri = [Uri]$Url
-    if ($uri.Scheme -ne "https" -or $uri.Host -ne "raw.githubusercontent.com" -or
-        $uri.AbsolutePath -notmatch "^/$([regex]::Escape($Repository))/[0-9a-f]{40}/packages/") {
-        throw "Package URL is outside the immutable GitHub Raw repository namespace."
+    if ($uri.Scheme -ne "https" -or $uri.Host -ne "github.com" -or
+        $uri.AbsolutePath -notmatch "^/$([regex]::Escape($Repository))/releases/download/(main|dev|nightly)-packages/ECL-.+-win-(x64|arm64)-$([regex]::Escape($ExpectedHash))\.zip$") {
+        throw "Package URL is outside the immutable GitHub Release asset namespace."
     }
     $download = Join-Path $workRoot "verify-$([Guid]::NewGuid().ToString('N')).zip"
-    Invoke-WebRequest -Uri $Url -OutFile $download -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 0
+    Invoke-WebRequest -Uri $Url -OutFile $download -Headers @{ "User-Agent" = "EnderCraftLauncher/0.9.1" } -MaximumRedirection 5
     $file = Get-Item $download
     $hash = (Get-FileHash $download -Algorithm SHA256).Hash.ToLowerInvariant()
     Remove-Item $download -Force
@@ -205,7 +187,6 @@ function Confirm-PackageUrl([string]$Url, [long]$ExpectedSize, [string]$Expected
         throw "Anonymous Package download did not match the signed size/SHA-256."
     }
 }
-
 
 function Write-BranchFile([string]$Branch, [string]$Path, [string]$Content, [string]$Message, [string]$ExpectedOwner = "") {
     for ($attempt = 1; $attempt -le 8; $attempt++) {
@@ -366,6 +347,14 @@ if ($LASTEXITCODE -ne 0) { throw "Unable to clone package repository metadata." 
 Acquire-FeedLock
 try {
 Assert-ChannelFreshness
+# Determine first-deployment state from Cloudflare's authenticated deployment
+# inventory, not from a failed request to the public hostname. A network error
+# must never be mistaken for an absent Feed.
+$hasProductionDeployment = Test-ProductionDeploymentExists
+if (-not $hasProductionDeployment) {
+    Write-Host "Cloudflare Pages has no Production deployment; bootstrapping all channels from signed legacy Releases."
+}
+
 # Preserve all existing channels. On the first deployment, migrate each channel's
 # current signed Release package into the immutable package store before Pages is
 # switched. Later deployments reuse the already verified Production Feed.
@@ -375,8 +364,14 @@ foreach ($candidate in @("main", "dev", "nightly")) {
     $existingManifest = Join-Path $channelDirectory "update-manifest.json"
     $existingSignature = Join-Path $channelDirectory "update-manifest.sig"
     New-Item -ItemType Directory -Force -Path $channelDirectory | Out-Null
-    $manifestExists = Get-PublishedFeedFile "https://updates.endercraftlauncher.top/$candidate/update-manifest.json" $existingManifest
-    $signatureExists = Get-PublishedFeedFile "https://updates.endercraftlauncher.top/$candidate/update-manifest.sig" $existingSignature
+    if ($hasProductionDeployment) {
+        $manifestExists = Get-PublishedFeedFile "https://updates.endercraftlauncher.top/$candidate/update-manifest.json" $existingManifest
+        $signatureExists = Get-PublishedFeedFile "https://updates.endercraftlauncher.top/$candidate/update-manifest.sig" $existingSignature
+    }
+    else {
+        $manifestExists = $false
+        $signatureExists = $false
+    }
     if ($manifestExists -xor $signatureExists) {
         throw "Production Feed for $candidate is incomplete; refusing to replace a partial or tampered deployment."
     }
@@ -385,11 +380,12 @@ foreach ($candidate in @("main", "dev", "nightly")) {
         Test-ManifestSignature $existingManifest $existingSignature
         $existing = Get-Content $existingManifest -Raw | ConvertFrom-Json
         $existingPackageUri = [Uri]$existing.package.file
-        $expectedPackagePattern = "^/$([regex]::Escape($Repository))/[0-9a-f]{40}/packages/$candidate/windows/$([regex]::Escape([string]$existing.architecture))/$([regex]::Escape([string]$existing.version))/ECL-$([regex]::Escape([string]$existing.version))-win-$([regex]::Escape([string]$existing.architecture))-$([regex]::Escape([string]$existing.package.sha256))\.zip$"
+        $expectedPackageName = "ECL-$([string]$existing.version)-win-$([string]$existing.architecture)-$([string]$existing.package.sha256).zip"
+        $expectedPackagePath = "/$Repository/releases/download/$candidate-packages/$expectedPackageName"
         if ($existing.channel -ne $candidate -or
             $existingPackageUri.Scheme -ne "https" -or
-            $existingPackageUri.Host -ne "raw.githubusercontent.com" -or
-            $existingPackageUri.AbsolutePath -notmatch $expectedPackagePattern) {
+            $existingPackageUri.Host -ne "github.com" -or
+            $existingPackageUri.AbsolutePath -cne $expectedPackagePath) {
             throw "Existing Production Feed is not a valid migrated channel."
         }
         Confirm-PackageUrl $existingPackageUri.AbsoluteUri ([long]$existing.package.size) ([string]$existing.package.sha256)

@@ -54,13 +54,13 @@ public sealed class UpdateClientTests
     public async Task ResolvesAbsoluteImmutablePackageUrlWithoutJoiningFeedPath()
     {
         var keys = DeploymentTestData.CreateKeys();
-        var digest = new string('a', 64);
-        var commit = new string('b', 40);
-        var packageUrl = $"https://raw.githubusercontent.com/hellokug2699/Ender-Craft-Launcher/{commit}/packages/nightly/windows/x64/1.0.1/ECL-1.0.1-win-x64-{digest}.zip";
-        var manifest = DeploymentTestData.CreateManifest("1.0.1", "unused.zip", 1, digest) with
+        var payload = Encoding.UTF8.GetBytes("x");
+        var digest = UpdateHash.ComputeSha256(payload);
+        var packageUrl = $"https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/nightly-packages/ECL-1.0.1-win-x64-{digest}.zip";
+        var manifest = DeploymentTestData.CreateManifest("1.0.1", "unused.zip", payload.Length, digest) with
         {
             Channel = UpdateChannel.Nightly,
-            Package = new UpdatePackage(packageUrl, 1, digest),
+            Package = new UpdatePackage(packageUrl, payload.Length, digest),
         };
         var manifestBytes = DeploymentTestData.Serialize(manifest);
         var signatureBytes = Encoding.UTF8.GetBytes(
@@ -92,6 +92,80 @@ public sealed class UpdateClientTests
 
         Assert.Equal("update.feed_redirect_rejected", result.Error?.Code);
         Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
+    public async Task FollowsOnlyAllowlistedGitHubReleaseAssetRedirects()
+    {
+        var keys = DeploymentTestData.CreateKeys();
+        var payload = Encoding.UTF8.GetBytes("x");
+        var digest = UpdateHash.ComputeSha256(payload);
+        var packageUrl = $"https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/nightly-packages/ECL-1.0.1-win-x64-{digest}.zip";
+        var manifest = DeploymentTestData.CreateManifest("1.0.1", "unused.zip", payload.Length, digest) with
+        {
+            Channel = UpdateChannel.Nightly,
+            Package = new UpdatePackage(packageUrl, payload.Length, digest),
+        };
+        var manifestBytes = DeploymentTestData.Serialize(manifest);
+        var signatureBytes = Encoding.UTF8.GetBytes(
+            DeploymentTestData.Sign(manifestBytes, keys.PrivateKeyPem, keys.KeyId));
+        var calls = 0;
+        using var handler = new StubHandler(request =>
+        {
+            var uri = request.RequestUri!;
+            if (uri.AbsolutePath.EndsWith(".sig", StringComparison.Ordinal)) return Bytes(signatureBytes);
+            if (uri.AbsolutePath.EndsWith(".json", StringComparison.Ordinal)) return Bytes(manifestBytes);
+            calls++;
+            if (calls == 1)
+                return new HttpResponseMessage(HttpStatusCode.Redirect)
+                {
+                    Headers = { Location = new Uri("https://release-assets.githubusercontent.com/asset") },
+                };
+            return Bytes(payload);
+        });
+        using var http = new HttpClient(handler);
+        var client = new UpdateClient(http, new UpdateSignatureVerifier(DeploymentTestData.TrustStore(keys.TrustJson)));
+        var check = await client.CheckAsync(new Uri("https://updates.endercraftlauncher.top/"), UpdateChannel.Nightly);
+        Assert.True(check.IsSuccess, check.Error?.ToString());
+
+        using var environment = new TempDirectory();
+        var result = await client.DownloadPackageAsync(check.Value!.Manifest, check.Value.PackageUri, environment.Combine("package.zip"));
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public async Task RejectsGitHubReleaseAssetRedirectToUntrustedHost()
+    {
+        var keys = DeploymentTestData.CreateKeys();
+        var digest = new string('a', 64);
+        var packageUrl = $"https://github.com/hellokug2699/Ender-Craft-Launcher/releases/download/nightly-packages/ECL-1.0.1-win-x64-{digest}.zip";
+        var manifest = DeploymentTestData.CreateManifest("1.0.1", "unused.zip", 1, digest) with
+        {
+            Channel = UpdateChannel.Nightly,
+            Package = new UpdatePackage(packageUrl, 1, digest),
+        };
+        var manifestBytes = DeploymentTestData.Serialize(manifest);
+        var signatureBytes = Encoding.UTF8.GetBytes(
+            DeploymentTestData.Sign(manifestBytes, keys.PrivateKeyPem, keys.KeyId));
+        using var handler = new StubHandler(request =>
+        {
+            var uri = request.RequestUri!;
+            if (uri.AbsolutePath.EndsWith(".sig", StringComparison.Ordinal)) return Bytes(signatureBytes);
+            if (uri.AbsolutePath.EndsWith(".json", StringComparison.Ordinal)) return Bytes(manifestBytes);
+            return new HttpResponseMessage(HttpStatusCode.Redirect)
+            {
+                Headers = { Location = new Uri("https://attacker.example/asset") },
+            };
+        });
+        using var http = new HttpClient(handler);
+        var client = new UpdateClient(http, new UpdateSignatureVerifier(DeploymentTestData.TrustStore(keys.TrustJson)));
+        var check = await client.CheckAsync(new Uri("https://updates.endercraftlauncher.top/"), UpdateChannel.Nightly);
+        Assert.True(check.IsSuccess, check.Error?.ToString());
+
+        using var environment = new TempDirectory();
+        var result = await client.DownloadPackageAsync(check.Value!.Manifest, check.Value.PackageUri, environment.Combine("package.zip"));
+        Assert.Equal("update.package_download_failed", result.Error?.Code);
     }
 
     [Fact]
