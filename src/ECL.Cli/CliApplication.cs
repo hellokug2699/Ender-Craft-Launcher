@@ -11,6 +11,7 @@ using Ecl.Core.Json;
 using Ecl.Core.Localization;
 using Ecl.Core.Storage;
 using Ecl.Deployment;
+using Ecl.Download;
 using Ecl.Java;
 using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Diagnostics;
@@ -817,12 +818,15 @@ internal sealed class CliApplication
             ? parsedChannel
             : UpdateChannel.Stable;
 
-        var feedValue = _commandLine.GetValue("feed") ??
-                        Environment.GetEnvironmentVariable("ECL_UPDATE_FEED");
+        var feedValue = _commandLine.GetValue("feed");
         if (string.IsNullOrWhiteSpace(feedValue))
         {
-            Console.WriteLine("未配置更新源。设置 ECL_UPDATE_FEED 或传入 --feed <https URL> 后重试。");
-            return 0;
+            feedValue = Environment.GetEnvironmentVariable("ECL_UPDATE_FEED");
+        }
+
+        if (string.IsNullOrWhiteSpace(feedValue))
+        {
+            feedValue = UpdateFeed.OfficialBaseAddress;
         }
 
         if (!Uri.TryCreate(feedValue, UriKind.Absolute, out var feed) ||
@@ -839,7 +843,8 @@ internal sealed class CliApplication
             return WriteError(trust.Error);
         }
 
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        using var http = _provider.GetRequiredService<IHttpClientProvider>().CreateUpdateClient();
+        http.Timeout = TimeSpan.FromSeconds(30);
         var client = new UpdateClient(http, new UpdateSignatureVerifier(trust.Value!));
         var check = await client.CheckAsync(feed, channel).ConfigureAwait(false);
         if (!check.IsSuccess)
