@@ -72,7 +72,7 @@ https://ender-craft-launcher-feed.pages.dev/
 - 新版本发布顺序为：构建并签名 Package/Manifest → 创建带不可变版本标签的 GitHub Release 并上传 Package → 验证 Release Package 可匿名下载且其字节与 Manifest 哈希一致 → 生成包含所有频道当前元数据的 Pages 静态目录 → 使用 Wrangler Direct Upload 部署 Production → 从正式自定义域名验证 Manifest、Signature、Package 下载与签名/哈希。只有全部步骤成功后，构建才算 Feed 发布成功。
 - 回滚通过恢复上一份已签名的频道 Manifest/Signature 指针完成；不得删除仍被旧 Manifest 引用的 Package。
 
-Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目名建议为 `ender-craft-launcher-feed`，使用 Cloudflare 自动分配的 `ender-craft-launcher-feed.pages.dev` 地址；不要求购买或绑定自定义域名，也不要求将现有域名接入 Cloudflare Zone。GitHub Actions 使用仅具备目标 Account 下 Cloudflare Pages Edit 权限的 API Token，通过 Wrangler 部署预先生成的静态目录。Token 与 Account ID 只存放于 GitHub Actions Secrets。Pages Free 的文件数、单文件大小和构建配额必须在部署前核对；ECL Feed 只放小体积元数据，Package 不得上传 Pages。GitHub Actions Artifact 仅用于短期构建追溯，不得作为客户端 Feed。
+Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目名建议为 `ender-craft-launcher-feed`，正式地址为 `https://updates.endercraftlauncher.top/`。该子域名可以由现有 DNS 服务商托管：先在 Pages 项目的 Custom domains 中登记，再在域名 DNS 服务商添加指向 `ender-craft-launcher-feed.pages.dev` 的 CNAME；无需将整个根域名迁移到 Cloudflare。GitHub Actions 使用仅具备目标 Account 下 Cloudflare Pages Edit 权限的 API Token，通过 Wrangler 部署预先生成的静态目录。Token 与 Account ID 只存放于 GitHub Actions Secrets。Pages Free 的文件数、单文件大小和构建配额必须在部署前核对；ECL Feed 只放小体积元数据，Package 不得上传 Pages。GitHub Actions Artifact 仅用于短期构建追溯，不得作为客户端 Feed。
 
 ### 4. 发布记录与频道更新状态相互独立
 
@@ -96,7 +96,7 @@ Pages 项目采用 Direct Upload 创建，禁止绑定 Git Integration；项目�
 
 - **继续把所有文件放在 GitHub Release：**实现简单且当前客户端兼容，但 Release 页面持续暴露所有内部更新文件，无法满足只提供两个 EXE 的目标，因此不采用。
 - **将更新文件改为 GitHub Actions Artifact：**Artifact 有保留期限，且客户端下载可能需要 GitHub 权限，不适合作为长期匿名更新源，因此不采用。
-- **GitHub Pages + GitHub Releases：**可实现相同职责分离，但在当前已选用 Cloudflare DNS/域名管理的前提下，Cloudflare Pages 可直接使用同一账户的域名与部署控制面，因此优先采用 Cloudflare Pages。
+- **GitHub Pages + GitHub Releases：**可实现相同职责分离，但Cloudflare Pages 支持将子域名通过 CNAME 指向 Pages 项目；域名 DNS 可以继续由现有服务商托管，因此无需为了 Feed 迁移整个 Zone。
 - **Cloudflare R2：**适合托管大型静态对象，但当前不作为前置依赖；Feed 元数据体积小，Pages 已足够，避免 R2 开通可能涉及的支付验证障碍。
 - **让 Installer 或 Bootstrapper 直接承担日常 ECL 更新下载：**会混淆首次安装介质、部署执行器与更新内容的职责；日常更新仍应由 Manifest 指向 ECL Package。
 
