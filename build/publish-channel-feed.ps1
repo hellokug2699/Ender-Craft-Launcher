@@ -168,6 +168,7 @@ function Add-PackageToStore(
 }
 
 function Confirm-PackageUrl([string]$Url, [long]$ExpectedSize, [string]$ExpectedHash) {
+    Renew-FeedLock
     $uri = [Uri]$Url
     if ($uri.Scheme -ne "https" -or $uri.Host -ne "raw.githubusercontent.com" -or
         $uri.AbsolutePath -notmatch "^/$([regex]::Escape($Repository))/[0-9a-f]{40}/packages/") {
@@ -279,6 +280,17 @@ function Acquire-FeedLock {
         }
     }
     throw "Timed out waiting for the Cloudflare Pages Production lock."
+}
+
+function Renew-FeedLock {
+    if ([string]::IsNullOrWhiteSpace($script:feedLockOwner)) {
+        throw "Cannot renew an unowned feed lock."
+    }
+    $renewed = [ordered]@{
+        owner = $script:feedLockOwner
+        expiresAt = [DateTimeOffset]::UtcNow.AddMinutes(45).ToString("o")
+    }
+    $null = Write-BranchFile "feed-lock" "lock.json" ($renewed | ConvertTo-Json -Compress) "ci(feed): renew Production deployment lease" $script:feedLockOwner
 }
 
 function Assert-ChannelFreshness {
@@ -445,6 +457,7 @@ Assert-ChannelFreshness
 
 # Wrangler Direct Upload replaces the complete static site in one Production
 # deployment. No Pages Functions, Workers, or Package binaries are uploaded.
+Renew-FeedLock
 npx --yes wrangler@4 pages deploy $FeedRoot --project-name=ender-craft-launcher-feed --branch=main
 if ($LASTEXITCODE -ne 0) { throw "Cloudflare Pages Production deployment failed." }
 
