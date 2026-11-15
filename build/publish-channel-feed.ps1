@@ -66,7 +66,7 @@ function Get-PublishedFeedFile([string]$Url, [string]$Destination) {
         return $false
     }
     if ($statusCode -ne 200) {
-        throw "Production Feed request failed with HTTP $statusCode: $Url"
+        throw "Production Feed request failed with HTTP ${statusCode}: $Url"
     }
     return $true
 }
