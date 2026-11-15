@@ -338,7 +338,7 @@ function Release-FeedLock {
 
 # Clone repository metadata only. Package commits are assembled with Git's
 # index/tree plumbing, avoiding checkout/download of the entire immutable package history.
-$cloneArgs = @("-c", "http.extraheader=AUTHORIZATION: basic $auth", "clone", "--filter=blob:none", "--no-checkout", "https://github.com/$Repository.git", $storeRoot)
+$cloneArgs = @("-c", "http.extraheader=AUTHORIZATION: basic $auth", "clone", "--depth=1", "--filter=blob:none", "--no-checkout", "https://github.com/$Repository.git", $storeRoot)
 & git @cloneArgs
 if ($LASTEXITCODE -ne 0) { throw "Unable to clone package repository metadata." }
 & git -C $storeRoot config http.https://github.com/.extraheader "AUTHORIZATION: basic $auth"
