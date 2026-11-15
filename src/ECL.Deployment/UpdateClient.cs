@@ -79,7 +79,28 @@ public sealed class UpdateClient(HttpClient http, UpdateSignatureVerifier verifi
         var verified = verifier.Verify(manifestBytes.Value!, signature.Value!);
         if (!verified.IsSuccess)
         {
-            return Result<UpdateCheckResult>.Fail(verified.Error!);
+            // A Pages deployment can switch between the two independent GETs.
+            // Retry the pair once so a transient old-signature/new-Manifest mix
+            // does not make an otherwise healthy channel appear permanently broken.
+            signature = await GetBytesAsync(signatureUri, MaxSignatureBytes, cancellationToken)
+                .ConfigureAwait(false);
+            if (!signature.IsSuccess)
+            {
+                return Result<UpdateCheckResult>.Fail(signature.Error!);
+            }
+
+            manifestBytes = await GetBytesAsync(manifestUri, MaxManifestBytes, cancellationToken)
+                .ConfigureAwait(false);
+            if (!manifestBytes.IsSuccess)
+            {
+                return Result<UpdateCheckResult>.Fail(manifestBytes.Error!);
+            }
+
+            verified = verifier.Verify(manifestBytes.Value!, signature.Value!);
+            if (!verified.IsSuccess)
+            {
+                return Result<UpdateCheckResult>.Fail(verified.Error!);
+            }
         }
 
         var parsed = UpdateManifestParser.Parse(manifestBytes.Value!);
@@ -205,6 +226,7 @@ public sealed class UpdateClient(HttpClient http, UpdateSignatureVerifier verifi
         var request = new HttpRequestMessage(HttpMethod.Get, uri);
         request.Headers.UserAgent.Add(new ProductInfoHeaderValue("EnderCraftLauncher", "0.9.1"));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
+        request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
         return request;
     }
 
