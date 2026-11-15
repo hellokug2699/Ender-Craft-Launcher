@@ -30,6 +30,12 @@ jobs:
         shell: pwsh
         run: ./scripts/check-commit-hygiene.ps1 -All
 
+      - name: Validate release PowerShell script syntax
+        shell: pwsh
+        run: |
+          [void][scriptblock]::Create((Get-Content "build/publish-channel-feed.ps1" -Raw))
+          Write-Host "Channel feed publishing script parsed successfully."
+
       - name: Build
         run: dotnet build ECL.sln -c Release --no-restore
 
