@@ -217,8 +217,17 @@ jobs:
           gh release view $tag --json assets 2>$null
           $exists = ($LASTEXITCODE -eq 0)
           if ($exists) {
-            $tagSha = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha'
-            if ($LASTEXITCODE -ne 0 -or $tagSha.Trim() -ne $env:GITHUB_SHA) {
+            $tagRef = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha + "|" + .object.type'
+            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($tagRef)) {
+              throw "Unable to resolve existing stable tag $tag."
+            }
+            $tagParts = $tagRef.Trim().Split('|', 2)
+            $tagSha = $tagParts[0]
+            if ($tagParts[1] -eq "tag") {
+              $tagSha = gh api "repos/$env:GITHUB_REPOSITORY/git/tags/$tagSha" --jq '.object.sha'
+              if ($LASTEXITCODE -ne 0) { throw "Unable to dereference annotated stable tag $tag." }
+            }
+            if ($tagSha.Trim() -ne $env:GITHUB_SHA) {
               throw "Existing stable tag $tag does not point to this exact build commit."
             }
             $oldAssets = @(gh release view $tag --json assets --jq '.assets[].name')
