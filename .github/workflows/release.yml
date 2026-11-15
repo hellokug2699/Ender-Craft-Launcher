@@ -73,6 +73,11 @@ jobs:
 
           This is the latest rolling $channel build. Older build history is available
           in GitHub Actions artifacts and workflow runs.
+
+          First installation: download and run ECL.Installer-$version-win-x64.exe directly.
+          Verify it with the matching .exe.sha256 asset before confirming installation.
+          ECL-$version-win-x64.zip is the signed deployment package used by Bootstrapper,
+          not the normal first-install download. The Bootstrapper ZIP is for advanced recovery.
           "@ | Set-Content -Path "$env:RUNNER_TEMP/release-notes.md" -Encoding utf8NoBOM
 
       - name: Materialize update signing key

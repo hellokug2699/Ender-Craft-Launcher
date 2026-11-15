@@ -3,8 +3,8 @@
 ECL 是多文件 WPF/.NET 应用，更新以**完整发布包**为单位，不替换单个 EXE，也不由运行中的主程序覆盖自身 DLL。
 本页说明当前的 Deployment/Updater 实现、协议、发布流程和仍未完成的部分。
 
-> 设计约束来自 private Core 仓库的 deployment hints。当前实现已经覆盖“协议 + 侧旁 staging + 指针切换 + 回滚 + 发布产物”，
-> 但安装器 UI、卸载、主程序内自动检查/下载以及差分更新仍属于后续阶段。
+> 设计约束来自 private Core 仓库的 deployment hints，并由 ADR 0051 / 0071 固化公开架构边界。
+> Installer 与 Uninstaller 已有独立 UI/编排实现；首次安装的单文件自包含分发及无运行时实机验收以本页“首次安装介质”与验证记录为准。
 
 ## 1. 目录模型
 
@@ -144,7 +144,7 @@ ecl update check --json
 ### 本地打包
 
 ```powershell
-./build/pack-release.ps1 -Version 1.0.1 -Channel stable `
+./build/pack-release.ps1 -Version 1.0.1 -Channel stable -SelfContained `
   -SigningKeyPath ".\signing\update-signing.key" `
   -KeyId "ecl-release-2026-11" `
   -TrustStorePath "build/update-trust.json"
@@ -176,6 +176,10 @@ artifacts/release/1.0.1/
 | 手动运行 | Actions Artifact，保留 14 天 | 根据所选分支更新对应滚动 Release | 对应通道 |
 
 - Nightly 每次成功构建都会产生独立的 Actions Artifact，便于高级用户下载特定构建；Artifact 保留 14 天，过期后不保证可取回。
+- 普通用户应下载 `ECL.Installer-<version>-win-x64.exe` 并直接运行；不需要下载 ZIP 或手工解压。对应 `.exe.sha256` 是 ADR 0025 的独立官方摘要来源。
+- `ECL-<version>-win-x64.zip` 是 Bootstrapper 更新/部署使用的完整程序包，不是面向普通用户的首次安装入口。
+- `ECL.Bootstrapper-<version>-win-x64.zip` 是高级用户独立恢复入口；它与 Installer 内嵌的 Bootstrapper 使用同一个自包含单文件构建。
+- Installer 内嵌完整介质并在临时目录释放；实际签名验证、包解压和逐文件校验仍由 Bootstrapper 执行。
 - Nightly 不再为每次提交创建新的 GitHub Release。公开 Release 列表中只保留一个 `nightly` 滚动入口，资产以 `--clobber` 更新。
 - `nightly`、`dev`、`main` 是可移动的通道 Tag。工作流在所有资产上传成功后才移动 Tag，避免 Tag 指向尚未完整发布的构建。
 - 正式版本仍通过 `vX.Y.Z` 保留不可变 Release；额外维护 `main` 滚动 Release，因为客户端更新协议读取的是 `/<channel>/update-manifest.json`。
@@ -237,7 +241,8 @@ git checkout <commit-or-tag>
 - `--rollback --deploy-only`：退出码 0，`current.json` 回到旧版本，版本目录内容未修改。
 - 篡改 `update-manifest.json` 后重新安装：Bootstrapper 退出码 3、安装器退出码 4，未生成 `current.json` 或版本目录（fail-closed）。
 - `--cleanup` 与部署前自动清理只删除 `staging/`；自动化测试确认 `versions/` 与 `current.json` 不受影响。
-- 未完成：全新 Windows 无 .NET SDK、无 .NET 运行时的安装验收；卸载器；Authenticode 签名；GUI 自动化（当前 GUI 仅人工冒烟）。
+- 未完成：全新 Windows 无 .NET SDK、无 .NET 运行时的安装验收；Authenticode 签名；GUI 自动化（当前 GUI 仅人工冒烟）。
+- 2026-11-15，ADR 0071 分发重构：官方构建切换为自包含单文件 Installer，完整部署介质嵌入 Installer；Bootstrapper 统一为单文件自包含构建，独立下载与 Installer 内嵌副本共用同一二进制。该项需等待 PR CI 与干净 Windows 实机验收后才能标记 Verified。
 
 ## 9. 用户数据与卸载边界
 

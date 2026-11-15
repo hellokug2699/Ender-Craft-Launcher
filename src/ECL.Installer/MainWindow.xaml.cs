@@ -29,7 +29,19 @@ public partial class MainWindow : Window
         _logTimer.Tick += (_, _) => RefreshLog();
         Loaded += async (_, _) =>
         {
-            var integrity = await InstallerIntegrity.InspectAsync(AppContext.BaseDirectory);
+            string mediaDirectory;
+            try
+            {
+                mediaDirectory = InstallerBundle.Extract();
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException or UnauthorizedAccessException)
+            {
+                InstallButton.IsEnabled = false;
+                MediaStatusText.Text = $"无法释放安装介质：{exception.Message}";
+                return;
+            }
+
+            var integrity = await InstallerIntegrity.InspectAsync(mediaDirectory, Environment.ProcessPath);
             var dialog = new IntegrityWindow(integrity);
             if (dialog.ShowDialog() != true)
             {
@@ -37,13 +49,13 @@ public partial class MainWindow : Window
                 return;
             }
 
-            InspectMedia();
+            InspectMedia(mediaDirectory);
         };
     }
 
-    private void InspectMedia()
+    private void InspectMedia(string mediaDirectory)
     {
-        var result = InstallMedia.Inspect(AppContext.BaseDirectory);
+        var result = InstallMedia.Inspect(mediaDirectory);
         if (!result.IsSuccess)
         {
             _media = null;

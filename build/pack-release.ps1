@@ -94,7 +94,7 @@ try {
     dotnet publish src/ECL.Uninstaller/ECL.Uninstaller.csproj `
         -c Release `
         -r $Runtime `
-        --self-contained $selfContainedValue `
+        --self-contained true `
         -p:PublishSingleFile=true `
         -p:IncludeNativeLibrariesForSelfExtract=true `
         -o $uninstallerSingle `
@@ -113,13 +113,17 @@ try {
     # ADR 0032：Additions 目录公钥随客户端部署，用于验证官方扩展目录签名。
     Copy-Item (Join-Path $root "build/additions-trust.json") $publish -Force
 
+    # Bootstrapper 的唯一分发形态为自包含单文件 EXE。
+    # 独立下载与完整安装介质共用同一个二进制，避免同版本运行时契约分叉。
     dotnet publish src/ECL.Bootstrapper/ECL.Bootstrapper.csproj `
         -c Release `
         -r $Runtime `
-        --self-contained $selfContainedValue `
+        --self-contained true `
+        -p:PublishSingleFile=true `
+        -p:IncludeNativeLibrariesForSelfExtract=true `
         -o $bootstrap `
         $versionProperty
-    if ($LASTEXITCODE -ne 0) { throw "发布 ECL.Bootstrapper 失败" }
+    if ($LASTEXITCODE -ne 0) { throw "发布自包含单文件 ECL.Bootstrapper 失败" }
     Invoke-CodeSign (Join-Path $bootstrap "ECL.Bootstrapper.exe")
 
     if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
@@ -227,61 +231,51 @@ try {
         }
     }
 
-    # 安装介质中的 Bootstrapper 采用单文件自包含发布：介质契约只携带一个 EXE，
-    # 目标机器无需预装 .NET 运行时即可完成部署。
-    $bootstrapSingle = Join-Path $releaseRoot "bootstrapper-single"
-    New-Item -ItemType Directory -Force -Path $bootstrapSingle | Out-Null
-    dotnet publish src/ECL.Bootstrapper/ECL.Bootstrapper.csproj `
+    # ADR 0071：先组装完整部署介质，再将其作为资源嵌入独立 Installer。
+    # 用户只需下载并运行一个 EXE；Installer 在临时目录释放介质，再委托 Bootstrapper。
+    $installerMedia = Join-Path $releaseRoot "installer-media"
+    if (Test-Path $installerMedia) { Remove-Item $installerMedia -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $installerMedia | Out-Null
+
+    Copy-Item (Join-Path $bootstrap "ECL.Bootstrapper.exe") $installerMedia -Force
+    Copy-Item (Join-Path $uninstallerSingle "ECL.Uninstaller.exe") $installerMedia -Force
+    Copy-Item $manifestPath $installerMedia -Force
+    if (Test-Path $trustPath) { Copy-Item $trustPath $installerMedia -Force }
+    if (Test-Path $signaturePath) { Copy-Item $signaturePath $installerMedia -Force }
+    Copy-Item $zipPath (Join-Path $installerMedia "ECL-package.zip") -Force
+
+    $bundlePath = Join-Path $releaseRoot "installer-bundle.zip"
+    if (Test-Path $bundlePath) { Remove-Item $bundlePath -Force }
+    Compress-Archive -Path (Join-Path $installerMedia "*") -DestinationPath $bundlePath -CompressionLevel Optimal
+
+    $installerPublish = Join-Path $releaseRoot "installer-publish"
+    New-Item -ItemType Directory -Force -Path $installerPublish | Out-Null
+    dotnet publish src/ECL.Installer/ECL.Installer.csproj `
         -c Release `
         -r $Runtime `
         --self-contained true `
         -p:PublishSingleFile=true `
         -p:IncludeNativeLibrariesForSelfExtract=true `
-        -o $bootstrapSingle `
+        -p:EclInstallerBundle="$bundlePath" `
+        -o $installerPublish `
         $versionProperty
-    if ($LASTEXITCODE -ne 0) { throw "发布单文件 ECL.Bootstrapper 失败" }
-    Invoke-CodeSign (Join-Path $bootstrapSingle "ECL.Bootstrapper.exe")
+    if ($LASTEXITCODE -ne 0) { throw "发布自包含单文件 ECL.Installer 失败" }
 
-    # 首次安装介质（ADR 0017）：安装器 + Bootstrapper + 信任库 + Manifest + 签名 + 完整包。
-    $installer = Join-Path $releaseRoot "installer"
-    if (Test-Path $installer) { Remove-Item $installer -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path $installer | Out-Null
-
-    dotnet publish src/ECL.Installer/ECL.Installer.csproj `
-        -c Release `
-        -r $Runtime `
-        --self-contained $selfContainedValue `
-        -o $installer `
-        $versionProperty
-    if ($LASTEXITCODE -ne 0) { throw "发布 ECL.Installer 失败" }
-    Invoke-CodeSign (Join-Path $installer "ECL.Installer.exe")
-
-    Copy-Item (Join-Path $bootstrapSingle "ECL.Bootstrapper.exe") $installer -Force
-    Copy-Item (Join-Path $uninstallerSingle "ECL.Uninstaller.exe") $installer -Force
-    Copy-Item $manifestPath $installer -Force
-    if (Test-Path $trustPath) { Copy-Item $trustPath $installer -Force }
-    if (Test-Path $signaturePath) { Copy-Item $signaturePath $installer -Force }
-    Copy-Item $zipPath (Join-Path $installer "ECL-package.zip") -Force
-
-    # ADR 0025：安装器自身的官方 SHA-256 记录随安装介质发布。
-    $installerExe = Join-Path $installer "ECL.Installer.exe"
-    $installerHash = (Get-FileHash $installerExe -Algorithm SHA256).Hash.ToLowerInvariant()
-    $integrity = [ordered]@{
-        file    = "ECL.Installer.exe"
-        version = $Version
-        sha256  = $installerHash
-    }
-    [System.IO.File]::WriteAllText(
-        (Join-Path $installer "installer-integrity.json"),
-        ($integrity | ConvertTo-Json),
-        [System.Text.UTF8Encoding]::new($false)
-    )
+    $installerExe = Join-Path $installerPublish "ECL.Installer.exe"
+    Invoke-CodeSign $installerExe
+    $installerAsset = Join-Path $releaseRoot "ECL.Installer-$Version-$Runtime.exe"
+    Copy-Item $installerExe $installerAsset -Force
+    $installerHash = (Get-FileHash $installerAsset -Algorithm SHA256).Hash.ToLowerInvariant()
+    $checksumPath = "$installerAsset.sha256"
+    [System.IO.File]::WriteAllText($checksumPath, "$installerHash  $([System.IO.Path]::GetFileName($installerAsset))", [System.Text.UTF8Encoding]::new($false))
 
     Write-Host "发布目录：$releaseRoot" -ForegroundColor Green
     Write-Host "  包：$zipPath"
     Write-Host "  清单：$manifestPath"
-    Write-Host "  引导程序：$bootstrap/ECL.Bootstrapper.exe"
-    Write-Host "  安装介质：$installer"
+    Write-Host "  自包含引导程序：$(Join-Path $bootstrap 'ECL.Bootstrapper.exe')"
+    Write-Host "  独立安装程序：$installerAsset"
+    Write-Host "  官方 SHA-256：$checksumPath"
+    Write-Host "  内嵌部署介质：$bundlePath"
 }
 finally {
     Pop-Location
