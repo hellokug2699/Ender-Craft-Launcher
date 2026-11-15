@@ -73,7 +73,10 @@ jobs:
         run: |
           [void][scriptblock]::Create((Get-Content "build/publish-channel-feed.ps1" -Raw))
           [void][scriptblock]::Create((Get-Content "build/validate-installer.ps1" -Raw))
-          Write-Host "Release PowerShell scripts parsed successfully."
+          [void][scriptblock]::Create((Get-Content "build/validate-release-workflow.ps1" -Raw))
+          pwsh -NoProfile -File build/validate-release-workflow.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Release workflow PowerShell validation failed." }
+          Write-Host "Release PowerShell scripts and workflow blocks parsed successfully."
 
       - name: Resolve version and channel from branch
         shell: pwsh
