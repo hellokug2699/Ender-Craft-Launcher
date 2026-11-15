@@ -285,7 +285,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tags = @(gh release list --limit 100 --json tagName,isDraft --jq '.[] | select(.isDraft == false) | .tagName')
+          $tags = @(gh release list --limit 1000 --json tagName,isDraft --jq '.[] | select(.isDraft == false) | .tagName')
           if ($LASTEXITCODE -ne 0) { throw "Unable to enumerate historical Releases." }
           foreach ($tag in $tags) {
             if ($tag -eq $env:ECL_CHANNEL) { continue }
