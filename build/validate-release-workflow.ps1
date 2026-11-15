@@ -36,7 +36,7 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
         [void][scriptblock]::Create($script)
     }
     catch {
-        throw "Invalid PowerShell in release.yml run block starting at line \${startLine}: $($_.Exception.Message)"
+        throw "Invalid PowerShell in release.yml run block starting at line ${startLine}: $($_.Exception.Message)"
     }
 
     $validated++
