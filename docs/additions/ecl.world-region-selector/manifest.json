@@ -1,0 +1,48 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.world-region-selector",
+  "name": "World Region Selector",
+  "type": "Feature",
+  "category": "World Management",
+  "summary": "ECL 自研的世界地图与 Region/Chunk 选择管理工具，提供 MCA Selector 类工作流，但不依赖或封装 MCA Selector。",
+  "registryStatus": "Planned",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0027-native-world-engine.md",
+    "../../adr/0030-world-diagnostics-and-chunk-fault-workflow.md",
+    "../../adr/0031-multi-dimension-world-architecture.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-07",
+    "lastUpdated": "2026-11-07",
+    "deprecation": null,
+    "replacement": null
+  }
+}

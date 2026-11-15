@@ -4,6 +4,7 @@ using Ecl.Configuration.Settings;
 using Ecl.Core.Localization;
 using Ecl.Java;
 using Ecl.Minecraft.Instances;
+using Ecl.Minecraft.Launch;
 using Ecl.Minecraft.Versions;
 
 namespace Ecl.Minecraft.Java;
@@ -42,6 +43,7 @@ public sealed class JavaSelectionService(
     ISettingsService settings,
     IJavaLocator locator,
     ILocalizer localizer,
+    IMemoryAllocationService memoryAllocation,
     IJavaRequirementProvider? requirementProvider = null) : IJavaSelectionService
 {
     public async Task<JavaSelectionResult> ResolveAsync(
@@ -54,6 +56,7 @@ public sealed class JavaSelectionService(
 
         var instancePath = settings.Get<string?>("instance.java.executablePath", instance.Id);
         var globalPaths = JavaSearchPath.Split(settings.Get<string>("java.defaultPath"));
+        var explicitPriority = JavaSearchPath.Split(settings.Get<string>(JavaPriorityOrdering.SettingsKey));
 
         var warnings = new List<string>();
         JavaRuntime? explicitRuntime = null;
@@ -84,7 +87,19 @@ public sealed class JavaSelectionService(
             .Select(group => group.First())
             .ToArray();
 
-        var priority = JavaPriorityOrdering.Order(configuredRuntimes, globalPaths);
+        // 用户在 Java 管理页显式调整过的全局优先级优先；
+        // 未配置时沿用 java.defaultPath 的旧顺序，升级前后候选顺序保持一致。
+        var priorityRuntimes = explicitPriority
+            .Select(path => ResolveConfiguredRuntime(locator, path))
+            .Where(candidate => candidate is not null)
+            .Select(candidate => candidate!)
+            .Concat(configuredRuntimes)
+            .GroupBy(candidate => candidate.ExecutablePath, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+        var orderSeed = JavaPriorityOrdering.SelectSeed(explicitPriority, globalPaths);
+
+        var priority = JavaPriorityOrdering.Order(priorityRuntimes, orderSeed);
         var decision = JavaSelectionPlanner.Select(
             priority.Runtimes,
             requirements,
@@ -103,8 +118,13 @@ public sealed class JavaSelectionService(
                                                       StringComparison.Ordinal);
 
         var instanceMemory = settings.Get<int?>("instance.java.memoryMb", instance.Id);
-        var globalMemory = settings.Get<int>("java.defaultMemoryMb");
-        var memoryMb = Math.Clamp(instanceMemory ?? globalMemory, 1024, 65536);
+        var memoryPlan = memoryAllocation.Resolve(instanceMemory);
+        var memoryMb = memoryPlan.EffectiveMb;
+        if (memoryPlan.Mode == MemoryAllocationMode.Automatic && !memoryPlan.IsEstimateReliable)
+        {
+            // 自动策略依赖真实可用内存；读取不到时退回保守值并明确告知，不伪装成自动结果。
+            warnings.Add(localizer.Get("launch.java.memory.autoUnavailable", memoryPlan.EffectiveMb));
+        }
 
         foreach (var issue in JavaPlatformAdvisor.Assess(decision.Runtime, memoryMb))
         {
@@ -134,7 +154,7 @@ public sealed class JavaSelectionService(
             requirements.ToRequirement(),
             true,
             compatibility,
-            discovered.Count > 0 || configuredRuntimes.Length > 0 || decision.Runtime is not null,
+            discovered.Count > 0 || priority.Runtimes.Count > 0 || decision.Runtime is not null,
             explicitPath,
             decision.IsExplicitOverride,
             warnings,

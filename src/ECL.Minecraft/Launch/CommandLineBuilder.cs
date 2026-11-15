@@ -96,6 +96,13 @@ public static class CommandLineBuilder
         arguments.Add("--height");
         arguments.Add(context.Settings.Get<int>("game.windowHeight").ToString());
 
+        // 默认全屏（settings-game-launch.md §6）：只把 ECL 的全局默认值传给游戏，
+        // 不修改系统显示设置；部分版本/模组环境可能忽略该参数。
+        if (context.Settings.Get<bool>("game.fullscreen"))
+        {
+            arguments.Add("--fullscreen");
+        }
+
         // 1.7.10 等旧版本要求 --userProperties；新版版本 JSON 不包含该选项。
         if (context.Version?.MinecraftArguments?.Contains("--userProperties", StringComparison.OrdinalIgnoreCase) == true)
         {

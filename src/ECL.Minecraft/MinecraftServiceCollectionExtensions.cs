@@ -12,6 +12,7 @@ using Ecl.Minecraft.Engine.Inventory;
 using Ecl.Minecraft.Engine.Snapshots;
 using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Eula;
+using Ecl.Minecraft.Export;
 using Ecl.Minecraft.GitHub;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
@@ -24,6 +25,8 @@ using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.Network;
 using Ecl.Minecraft.News;
 using Ecl.Minecraft.Performance;
+using Ecl.Minecraft.Schematics;
+using Ecl.Minecraft.Screenshots;
 using Ecl.Minecraft.Security;
 using Ecl.Minecraft.Storage;
 using Ecl.Minecraft.Versions;
@@ -54,6 +57,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IInstanceService, InstanceService>();
         services.AddSingleton<IVersionResolver, VersionResolver>();
         services.AddSingleton<IVersionCatalog, MojangVersionCatalog>();
+        services.AddSingleton<IVersionDownloadSizeEstimator, VersionDownloadSizeEstimator>();
         services.AddSingleton<SystemProcessLauncher>();
         services.AddSingleton<LogHostProcessLauncher>();
         services.AddSingleton<IProcessLauncher, HybridProcessLauncher>();
@@ -62,6 +66,11 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IVersionInstallService, VanillaInstallService>();
         services.AddSingleton<IJavaSelectionService, JavaSelectionService>();
         services.AddSingleton<IJavaRequirementProvider, ModJavaRequirementProvider>();
+        services.AddSingleton<IMemoryAllocationService, MemoryAllocationService>();
+
+        // Java 管理页的卸载安全探测：实例固定引用与活动游戏会话由本层提供，
+        // 领域层（ECL.Java）只负责所有权校验与文件删除。
+        services.AddSingleton<IJavaRuntimeUsageProvider, InstanceJavaRuntimeUsageProvider>();
         services.AddSingleton<IEulaService, FileEulaService>();
         services.AddSingleton<IModService, ModService>();
         services.AddSingleton<IModDependencyInstaller, ModDependencyInstaller>();
@@ -70,12 +79,19 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<ICurseForgeService, CurseForgeService>();
         services.AddSingleton<IModrinthClient, ModrinthClient>();
         services.AddSingleton<IContentSearchService, ContentSearchService>();
+        services.AddSingleton<IContentVersionCatalog, ContentVersionCatalog>();
         services.AddSingleton<IDependencyResolver, DependencyResolver>();
         services.AddSingleton<IContentInstallService, ContentInstallService>();
         services.AddSingleton<IContentPackService, ContentPackService>();
+        services.AddSingleton<IDatapackService, DatapackService>();
+        services.AddSingleton<IShaderSupportService, ShaderSupportService>();
+        services.AddSingleton<IScreenshotService, ScreenshotService>();
+        services.AddSingleton<ISchematicService, SchematicService>();
+        services.AddSingleton<ISchematicSupportService, SchematicSupportService>();
         services.AddSingleton<IVersionNewsService, MojangVersionNewsService>();
         services.AddSingleton<ICrashReportService, CrashReportService>();
         services.AddSingleton<IDiagnosticPackageService, DiagnosticPackageService>();
+        services.AddSingleton<IInstanceExportService, InstanceExportService>();
         services.AddSingleton<IThreatProtectionService, ThreatProtectionService>();
         services.AddSingleton<IProcessMetricsProbe, ProcessMetricsProbe>();
         services.AddSingleton<IGameTelemetryProbe, JsonLinesGameTelemetryProbe>();
@@ -88,6 +104,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<GitHubApiClient>();
         services.AddSingleton<StorageAnalysisService>();
         services.AddSingleton<StorageCleanupService>();
+        services.AddSingleton<IStorageInventoryService, StorageInventoryService>();
         services.AddSingleton<ServerPingService>();
         services.AddSingleton<WorldDiagnosticsParser>();
         services.AddSingleton(provider => new RecentAccessStore(
@@ -107,6 +124,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<ILaunchStep, BuildCommandStep>();
         services.AddSingleton<ILaunchStep, SecurityGateStep>();
         services.AddSingleton<ILaunchStep, StartGameStep>();
+        services.AddSingleton<ILaunchStatusStore, LaunchStatusStore>();
         services.AddSingleton<ILaunchService, LaunchService>();
 
         return services;

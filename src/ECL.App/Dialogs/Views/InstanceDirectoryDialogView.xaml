@@ -1,0 +1,156 @@
+<UserControl x:Class="Ecl.App.Dialogs.Views.InstanceDirectoryDialogView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization">
+    <!--
+        “已经选择的目录”（instances.md §4）：目录逐行展示 + 最后一行下方一行高的添加入口。
+        添加入口是紫色虚线框；本次选择无效时变红，成功添加后恢复紫色。
+        页面不自行绘制模态层或遮罩，全部由 Dialog Engine 提供。
+    -->
+    <Grid Margin="20,0,20,18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ScrollViewer Grid.Row="0"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      MaxHeight="340">
+            <StackPanel>
+                <TextBlock Text="{loc:Loc Key=instanceDirectories.title}"
+                           Style="{StaticResource SectionText}"
+                           Margin="0,0,0,10" />
+
+                <ItemsControl ItemsSource="{Binding Directories}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="{DynamicResource SurfaceAltBrush}"
+                                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="12,10"
+                                    Margin="0,0,0,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   FontSize="15"
+                                                   Style="{StaticResource EmphasisText}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Path}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   FontSize="11"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding Path}"
+                                                   Margin="0,3,0,0" />
+                                        <TextBlock Text="{Binding CountText}"
+                                                   Foreground="{DynamicResource TextMutedBrush}"
+                                                   FontSize="11"
+                                                   Margin="0,3,0,0" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1"
+                                            Content="{Binding RemoveText}"
+                                            Command="{Binding DataContext.RemoveDirectoryCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                                            CommandParameter="{Binding}"
+                                            Style="{StaticResource ToolbarButton}"
+                                            VerticalAlignment="Center"
+                                            Margin="12,0,0,0">
+                                        <Button.ToolTip>
+                                            <TextBlock Text="{Binding PrimaryHint}"
+                                                       Visibility="{Binding IsPrimary, Converter={StaticResource BoolToVisibility}}" />
+                                        </Button.ToolTip>
+                                    </Button>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="{Binding EmptyText}"
+                           Style="{StaticResource SubtitleText}"
+                           Margin="0,2,0,10"
+                           Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVisibility}}" />
+
+                <!-- 添加入口：位于最后一个目录行之后；没有目录时占据主要内容区域。 -->
+                <Button Command="{Binding AddDirectoryCommand}"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Padding="0"
+                        MinHeight="64"
+                        HorizontalContentAlignment="Stretch"
+                        AutomationProperties.Name="{Binding PickHint}">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Grid>
+                                <Rectangle x:Name="Dash"
+                                           RadiusX="10"
+                                           RadiusY="10"
+                                           StrokeThickness="1.4"
+                                           StrokeDashArray="4 3"
+                                           Fill="Transparent">
+                                    <Rectangle.Style>
+                                        <Style TargetType="Rectangle">
+                                            <Setter Property="Stroke" Value="{DynamicResource AccentBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasSelectionError}" Value="True">
+                                                    <Setter Property="Stroke" Value="{DynamicResource DangerBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Rectangle.Style>
+                                </Rectangle>
+                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <TextBlock Text="+"
+                                               FontSize="20"
+                                               HorizontalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="{Binding PickHint}"
+                                               FontSize="11"
+                                               HorizontalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Dash" Property="StrokeThickness" Value="2" />
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                    <Setter TargetName="Dash" Property="StrokeThickness" Value="2" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.5" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+
+                <TextBlock Text="{Binding ErrorText}"
+                           Foreground="{DynamicResource DangerBrush}"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Margin="0,8,0,0"
+                           Visibility="{Binding HasError, Converter={StaticResource BoolToVisibility}}" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <TextBlock Text="{loc:Loc Key=instanceDirectories.footnote}"
+                       Foreground="{DynamicResource TextMutedBrush}"
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       MaxWidth="320"
+                       VerticalAlignment="Center"
+                       Margin="0,0,12,0" />
+            <Button Content="{Binding DoneText}"
+                    Command="{Binding DoneCommand}"
+                    Style="{StaticResource PrimaryButton}"
+                    IsDefault="True" />
+        </StackPanel>
+    </Grid>
+</UserControl>

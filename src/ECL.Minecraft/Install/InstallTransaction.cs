@@ -61,16 +61,20 @@ public sealed class InstallTransaction
         _files.Clear();
     }
 
-    /// <summary>回滚本次安装写入的文件，返回人类可读的操作记录（用于诊断文件与日志）。</summary>
-    public IReadOnlyList<string> Rollback()
+    /// <summary>
+    /// 回滚本次安装写入的文件。返回人类可读的操作记录（用于诊断文件与日志）与未完成的失败项；
+    /// 失败项非空时文件级回滚不完整，调用方不得宣称实例已回到原状态。
+    /// </summary>
+    public InstallRollbackResult Rollback()
     {
         if (_committed || _rolledBack)
         {
-            return [];
+            return InstallRollbackResult.Empty;
         }
 
         _rolledBack = true;
         var actions = new List<string>();
+        var failures = new List<string>();
 
         foreach (var (path, tracked) in _files)
         {
@@ -89,7 +93,9 @@ public sealed class InstallTransaction
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                actions.Add($"failed to rollback {path}: {exception.Message}");
+                var failure = $"failed to rollback {path}: {exception.Message}";
+                actions.Add(failure);
+                failures.Add(failure);
             }
         }
 
@@ -106,13 +112,15 @@ public sealed class InstallTransaction
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                actions.Add($"failed to remove directory {directory}: {exception.Message}");
+                var failure = $"failed to remove directory {directory}: {exception.Message}";
+                actions.Add(failure);
+                failures.Add(failure);
             }
         }
 
         _files.Clear();
         _directories.Clear();
-        return actions;
+        return new InstallRollbackResult(actions, failures);
     }
 
     public static string WriteDiagnostics(

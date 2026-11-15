@@ -26,6 +26,14 @@ public interface IModrinthClient
         string? loader = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 按版本 ID 批量读取版本（GET /versions?ids=[...]）。用于搜索列表补全真实文件大小，
+    /// 避免为每个搜索结果单独发一次请求。
+    /// </summary>
+    Task<Result<IReadOnlyList<ModrinthVersion>>> GetVersionsByIdsAsync(
+        IReadOnlyList<string> versionIds,
+        CancellationToken cancellationToken = default);
+
     Task<Result<ModrinthVersion>> GetVersionAsync(
         string versionId,
         CancellationToken cancellationToken = default);
@@ -172,6 +180,34 @@ public sealed class ModrinthClient : IModrinthClient, IDisposable
         }
 
         return Parse<ModrinthVersion>(raw.Value!);
+    }
+
+    public async Task<Result<IReadOnlyList<ModrinthVersion>>> GetVersionsByIdsAsync(
+        IReadOnlyList<string> versionIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = versionIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .Take(100)
+            .ToArray();
+        if (ids.Length == 0)
+        {
+            return Result<IReadOnlyList<ModrinthVersion>>.Ok([]);
+        }
+
+        var path = "/versions" + BuildQuery(("ids", JsonSerializer.Serialize(ids, EclJson.Default)));
+        var raw = await SendAsync(path, cancellationToken).ConfigureAwait(false);
+        if (!raw.IsSuccess)
+        {
+            return Result<IReadOnlyList<ModrinthVersion>>.Fail(raw.Error!);
+        }
+
+        var parsed = Parse<List<ModrinthVersion>>(raw.Value!);
+        return parsed.IsSuccess
+            ? Result<IReadOnlyList<ModrinthVersion>>.Ok(parsed.Value!)
+            : Result<IReadOnlyList<ModrinthVersion>>.Fail(parsed.Error!);
     }
 
     public void Dispose()

@@ -1,0 +1,92 @@
+<UserControl x:Class="Ecl.App.Dialogs.Views.AuthlibAccountDialogView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization">
+    <!--
+        Authlib-Injector 账户弹窗内容（ADR 0052、ADR 0065）。
+        密码输入沿用 PasswordBox 边界：不通过绑定属性，也不进入页面状态。
+    -->
+    <StackPanel Margin="20,0,20,18" MinWidth="420">
+        <TextBlock Text="{Binding IntroText}"
+                   Foreground="{DynamicResource TextMutedBrush}"
+                   FontSize="10"
+                   TextWrapping="Wrap" />
+
+        <TextBlock Text="{loc:Loc Key=authlib.serverUrl}"
+                   Style="{StaticResource LabelText}"
+                   Margin="0,14,0,0" />
+        <TextBox x:Name="ServerUrlBox"
+                 Text="{Binding ServerUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                 Margin="0,6,0,0"
+                 IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolean}}" />
+        <TextBlock Text="{loc:Loc Key=authlib.serverUrlHint}"
+                   Foreground="{DynamicResource TextMutedBrush}"
+                   FontSize="10"
+                   Margin="0,4,0,0"
+                   TextWrapping="Wrap" />
+
+        <TextBlock Text="{loc:Loc Key=authlib.registerUrl}"
+                   Style="{StaticResource LabelText}"
+                   Margin="0,12,0,0" />
+        <Grid Margin="0,6,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="RegisterUrlBox"
+                     Text="{Binding RegisterUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolean}}" />
+            <Button Grid.Column="1"
+                    Content="{loc:Loc Key=authlib.openRegister}"
+                    Command="{Binding OpenRegisterCommand}"
+                    IsEnabled="{Binding CanOpenRegister}"
+                    Style="{StaticResource GhostButton}"
+                    Margin="8,0,0,0" />
+        </Grid>
+        <TextBlock Text="{loc:Loc Key=authlib.registerUrlHint}"
+                   Foreground="{DynamicResource TextMutedBrush}"
+                   FontSize="10"
+                   Margin="0,4,0,0"
+                   TextWrapping="Wrap" />
+
+        <TextBlock Text="{loc:Loc Key=authlib.username}"
+                   Style="{StaticResource LabelText}"
+                   Margin="0,12,0,0" />
+        <TextBox x:Name="UsernameBox"
+                 Text="{Binding Username, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                 IsReadOnly="{Binding IsUsernameReadOnly}"
+                 IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolean}}"
+                 Margin="0,6,0,0" />
+
+        <TextBlock Text="{loc:Loc Key=authlib.password}"
+                   Style="{StaticResource LabelText}"
+                   Margin="0,12,0,0" />
+        <PasswordBox x:Name="PasswordInput"
+                     IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolean}}"
+                     Margin="0,6,0,0" />
+        <TextBlock Text="{Binding PasswordHintText}"
+                   Foreground="{DynamicResource TextMutedBrush}"
+                   FontSize="10"
+                   Margin="0,4,0,0"
+                   TextWrapping="Wrap" />
+
+        <TextBlock Text="{Binding StatusText}"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   FontSize="11"
+                   Margin="0,10,0,0"
+                   TextWrapping="Wrap" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="ConfirmButton"
+                    Content="{Binding ConfirmText}"
+                    Style="{StaticResource PrimaryButton}"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolean}}"
+                    IsDefault="True"
+                    Click="OnConfirmClick" />
+            <Button Content="{Binding CancelText}"
+                    Command="{Binding CancelCommand}"
+                    Style="{StaticResource GhostButton}"
+                    Margin="8,0,0,0" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

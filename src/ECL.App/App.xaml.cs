@@ -4,18 +4,25 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Threading;
+using Ecl.App.Dialogs;
 using Ecl.App.Localization;
 using Ecl.App.Services;
+using Ecl.App.Shell;
+using Ecl.App.Shell.Inspector;
+using Ecl.App.Shell.Output;
 using Ecl.App.ViewModels;
 using Ecl.App.Views;
+using Ecl.App.Workspace.ViewModels;
 using Ecl.Auth;
 using Ecl.Configuration;
+using Ecl.Configuration.Network;
 using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Core.Logging;
 using Ecl.Core.Runtime;
 using Ecl.Core.Storage;
+using Ecl.Core.Workspace;
 using Ecl.Download;
 using Ecl.Java;
 using Ecl.Minecraft;
@@ -48,13 +55,22 @@ public partial class App : Application
                 SettingsBootstrap.ReadGlobalString(paths, "launcher.minecraftDirectory"));
             paths.EnsureCreated();
 
-            var language = SettingsBootstrap.ReadGlobalString(paths, "launcher.language")
-                           ?? CultureInfo.CurrentUICulture.Name;
+            // 界面语言默认“跟随系统”（settings-interface-preferences.md §5）：
+            // “system”与未设置都按操作系统首选语言解析，已保存的具体区域性名称原样使用。
+            var language = SettingsBootstrap.ResolveLanguage(
+                SettingsBootstrap.ReadGlobalString(paths, "launcher.language"),
+                CultureInfo.CurrentUICulture);
             var culture = JsonLocalizer.Normalize(CultureInfo.GetCultureInfo(language));
             LocalizationProvider.Current = new JsonLocalizer(culture);
 
             var services = new ServiceCollection();
             services.AddEclLogging(paths, console: false);
+
+            // Output 面板只读取应用级有界日志缓冲；文件日志与游戏进程日志仍由各自机制负责。
+            var logBuffer = new AppLogBuffer();
+            services.AddSingleton(logBuffer);
+            services.AddLogging(builder => builder.AddProvider(logBuffer));
+
             services.AddEclCore(paths, culture);
             services.AddEclConfiguration();
             services.AddEclDownload();
@@ -63,29 +79,79 @@ public partial class App : Application
             services.AddEclMinecraft();
 
             services.AddSingleton<IDialogService, DialogService>();
+            // 关于页的外部链接与只读更新检查：只读取并校验，不下载或替换程序文件。
+            services.AddSingleton<IExternalLinkService, ExternalLinkService>();
+            services.AddSingleton<IUpdateCheckService, UpdateCheckService>();
+            services.AddSingleton<IShaderHintStore, ShaderHintStore>();
+            // 主页中央实例切换栏的排列是主页布局偏好，保存在启动器数据目录，不写实例记录。
+            services.AddSingleton<IHomeLayoutStore, HomeLayoutStore>();
+            services.AddSingleton<IScreenshotImageLoader, ScreenshotImageLoader>();
+            // 界面偏好（字体/字号档位/缩放/动效）在窗口显示前应用，避免首帧抖动。
+            services.AddSingleton<IUserInterfacePreferences, UserInterfacePreferences>();
             services.AddSingleton(new Ecl.Deployment.CodeSigningTrustService());
             services.AddSingleton<InstancesViewModel>();
             services.AddSingleton<StorageViewModel>();
-            services.AddSingleton<ModsViewModel>();
+            services.AddSingleton<ModsPageFactory>();
+            services.AddSingleton<InstanceModifyPageFactory>();
+            services.AddSingleton<ContentPackPageFactory>();
+            services.AddSingleton<DataPackPageFactory>();
+            services.AddSingleton<ScreenshotPageFactory>();
+            services.AddSingleton<SchematicPageFactory>();
+            services.AddSingleton<ExportPageFactory>();
             services.AddSingleton<HomeViewModel>();
+            services.AddSingleton<InstanceVersionPageViewModel>();
+            services.AddSingleton<ContentDiscoveryPageFactory>();
             services.AddSingleton<DownloadViewModel>();
             services.AddSingleton<SettingsViewModel>();
-            services.AddSingleton<JavaManagementViewModel>();
+            services.AddSingleton<Ecl.App.ViewModels.Settings.SettingsJavaPageViewModel>();
             services.AddSingleton<LogSessionsViewModel>();
-            services.AddSingleton<AdditionsViewModel>();
-            services.AddSingleton<WardrobeViewModel>();
+            // 扩展生命周期与目录读取收敛到领域入口；设置 → 扩展管理页只做呈现与确认。
+            services.AddSingleton<Ecl.App.Services.IAdditionsService, Ecl.App.Services.AdditionsService>();
+            // 工具中心的原生条目只在 NativeToolsCenterCatalog 登记一次；工具内容仍是既有页面对象。
+            services.AddSingleton<IToolsCenterCatalog, NativeToolsCenterCatalog>();
             services.AddSingleton<DiagnosticsViewModel>();
             services.AddSingleton<EngineToolsViewModel>();
             services.AddSingleton<ToolsViewModel>();
             services.AddSingleton<IMemoryPressureMonitor, MemoryPressureMonitor>();
             services.AddSingleton<AboutViewModel>();
             services.AddSingleton<OperationCenterViewModel>();
-            services.AddSingleton<MainViewModel>();
+            // B11：安全目的地、两份页面与真实运行时状态数据源。
+            services.AddSingleton<IRuntimeStatusService, RuntimeStatusService>();
+            services.AddSingleton<Ecl.App.ViewModels.Security.RuntimeStatusViewModel>();
+            services.AddSingleton<Ecl.App.ViewModels.Security.SecurityCenterViewModel>();
+            services.AddSingleton<Ecl.App.ViewModels.Security.SecurityViewModel>();
+            // B10：首次启动向导在 Shell / Dialog Engine 创建前运行；窗口只承载视图，状态在页面对象中。
+            services.AddTransient<WorkspaceSetupViewModel>();
+
+            // Shell / Workspace Host / Inspector / Output / Dialog Engine
+            // 弹窗层与输出面板绑定到创建主窗口的 UI Dispatcher；Core 保持 UI 无关。
+            var uiDispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+            services.AddSingleton(uiDispatcher);
+            services.AddSingleton<DialogLayerViewModel>();
+            services.AddSingleton<IDialogEngine, DialogEngine>();
+            services.AddSingleton<IWorkspaceHost>(provider => new WorkspaceHost(
+                logger: provider.GetService<ILogger<WorkspaceHost>>()));
+            services.AddSingleton<InspectorViewModel>();
+            services.AddSingleton<OutputPanelViewModel>();
+            services.AddSingleton<ShellViewModel>();
             services.AddSingleton<MainWindow>();
 
             _services = services.BuildServiceProvider();
             _logger = _services.GetRequiredService<ILogger<App>>();
             DispatcherUnhandledException += OnDispatcherUnhandledException;
+
+            // D-03：旧配置的显式内存值迁移为“手动指定”，未修改过默认值的用户保持自动。
+            // 迁移可能写一次全局配置；失败不阻断启动（运行时的兼容回退仍保留数值）。
+            Ecl.Minecraft.Launch.MemoryPolicyMigration.TryMigrate(
+                _services.GetRequiredService<ISettingsService>(),
+                _logger);
+
+            // D-04：旧版 network.proxyAddress 只作为迁移输入；可无歧义拆分时写入结构化键，
+            // 无法拆分时保留原值并在网络页提示修复。失败不阻断启动（运行时会显式报错）。
+            ProxySettingsMigration.TryMigrate(
+                _services.GetRequiredService<ISettingsService>(),
+                _services.GetRequiredService<IProxyCredentialStore>(),
+                _logger);
 
             // ADR 0039：组合根建立后进入 Starting，初始化完成后再进入 Running。
             var lifecycle = _services.GetRequiredService<IApplicationLifecycle>();
@@ -95,13 +161,18 @@ public partial class App : Application
             var workspace = _services.GetRequiredService<IWorkspaceService>();
             if (!workspace.IsConfigured)
             {
-                var setup = new WorkspaceSetupWindow(workspace, _services.GetRequiredService<ILocalizer>());
+                var setup = new WorkspaceSetupWindow(_services.GetRequiredService<WorkspaceSetupViewModel>());
                 setup.ShowDialog();
             }
 
             var window = _services.GetRequiredService<MainWindow>();
             MainWindow = window;
             window.Closing += OnMainWindowClosing;
+
+            // ADR 0002 + settings-interface-preferences.md §7：偏好保存在配置服务里，
+            // 启动时在显示窗口前应用一次；之后由设置变更事件自动重新应用。
+            _services.GetRequiredService<IUserInterfacePreferences>().Attach(window);
+
             window.Show();
             splash.Close();
 
@@ -120,7 +191,7 @@ public partial class App : Application
                 token => CleanupDownloadArtifactsAsync(_services, paths, token));
 
             lifecycle.MarkRunning();
-            await _services.GetRequiredService<MainViewModel>().InitializeAsync();
+            await _services.GetRequiredService<ShellViewModel>().InitializeAsync();
         }
         catch (Exception exception)
         {

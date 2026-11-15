@@ -39,6 +39,10 @@ jobs:
       - name: Test
         run: dotnet test tests/ECL.Tests/ECL.Tests.csproj -c Release --no-build
 
+      # WPF 线程/Dispatcher 契约与有界输出管线只能在实际 Windows UI 线程上验证。
+      - name: Test WPF shell stabilization
+        run: dotnet test tests/ECL.App.Tests/ECL.App.Tests.csproj -c Release --no-build
+
       # 未签名打包只用于验证发布脚本与安装介质组装；签名产物仍由 release workflow 生成。
       - name: Verify release packaging and installer media
         shell: pwsh

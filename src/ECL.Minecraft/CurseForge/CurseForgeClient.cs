@@ -41,6 +41,7 @@ public interface ICurseForgeClient
         string? gameVersion,
         CurseForgeModLoader? loader,
         int pageSize = 50,
+        int index = 0,
         CancellationToken cancellationToken = default);
 
     Task<Result<string?>> GetDownloadUrlAsync(
@@ -230,12 +231,13 @@ public sealed class CurseForgeClient : ICurseForgeClient, IDisposable
         string? gameVersion,
         CurseForgeModLoader? loader,
         int pageSize = 50,
+        int index = 0,
         CancellationToken cancellationToken = default)
     {
         var path = $"/v1/mods/{modId}/files" + BuildQuery(
             ("gameVersion", gameVersion),
             ("modLoaderType", loader is null ? null : ((int)loader.Value).ToString()),
-            ("index", "0"),
+            ("index", Math.Max(0, index).ToString()),
             ("pageSize", Math.Clamp(pageSize, 1, 50).ToString()));
 
         var raw = await SendAsync(HttpMethod.Get, path, null, cancellationToken)

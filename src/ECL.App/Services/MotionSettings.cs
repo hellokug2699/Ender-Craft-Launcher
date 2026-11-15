@@ -5,12 +5,26 @@ using System.Windows;
 namespace Ecl.App.Services;
 
 /// <summary>
-/// 动效策略：遵循 Windows 的减少动画偏好。关闭动效时所有时长归零，
-/// 交互状态仍由颜色/边框/焦点立即表达。
+/// 动效策略：用户偏好（<c>launcher.animationsEnabled</c>）与 Windows 的“减少动画”
+/// 系统偏好共同决定是否使用动画。任一来源要求减少动效时时长归零，
+/// 交互状态仍由颜色/边框/焦点立即表达（ADR 0021 §6）。
+///
+/// 用户偏好由 <see cref="UserInterfacePreferences"/> 在设置变更时写入；页面/模板
+/// 只读取这里的结果，不各自判断配置。
 /// </summary>
 public static class MotionSettings
 {
-    public static bool IsReducedMotion => !SystemParameters.ClientAreaAnimation;
+    private static bool _userEnabled = true;
+
+    /// <summary>用户是否开启界面动效；默认开启。关闭后不影响状态反馈与后台任务。</summary>
+    public static bool UserEnabled
+    {
+        get => _userEnabled;
+        set => _userEnabled = value;
+    }
+
+    /// <summary>操作系统已声明减少动画，或用户在 ECL 中关闭动效。</summary>
+    public static bool IsReducedMotion => !UserEnabled || !SystemParameters.ClientAreaAnimation;
 
     public static TimeSpan Instant => IsReducedMotion ? TimeSpan.Zero : TimeSpan.FromMilliseconds(60);
 

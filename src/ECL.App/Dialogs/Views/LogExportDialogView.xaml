@@ -1,0 +1,99 @@
+<UserControl x:Class="Ecl.App.Dialogs.Views.LogExportDialogView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        单会话诊断导出确认（logs.md §5）：范围、目标位置、脱敏选项与隐私提示。
+        页面不自行扫描目录或拼接 ZIP；确认后由 SessionExportService 生成导出副本。
+    -->
+    <StackPanel Margin="20,0,20,18">
+        <TextBlock Text="{Binding Title}"
+                   FontSize="14"
+                   Style="{StaticResource EmphasisText}"
+                   TextWrapping="Wrap" />
+        <TextBlock Text="{Binding ScopeText}"
+                   FontSize="11"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,8,0,0" />
+
+        <Border Background="{DynamicResource SurfaceAltBrush}"
+                BorderBrush="{DynamicResource BorderSoftBrush}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="10,8"
+                Margin="0,10,0,0"
+                MaxHeight="170">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Evidence}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,3">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding KindText}"
+                                               FontSize="11"
+                                               Style="{StaticResource EmphasisText}" />
+                                    <TextBlock Text="{Binding Summary}"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding OwnershipText}"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="10,0,0,0" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <TextBlock Text="{Binding OutputPath}"
+                   FontFamily="Consolas, Cascadia Mono, monospace"
+                   FontSize="10"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,10,0,0" />
+
+        <CheckBox Content="{Binding RedactText}"
+                  IsChecked="{Binding Redact, Mode=TwoWay}"
+                  Margin="0,12,0,0" />
+        <TextBlock Text="{Binding RedactHint}"
+                   FontSize="10"
+                   Foreground="{DynamicResource TextMutedBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,4,0,0" />
+
+        <TextBlock Text="{Binding PrivacyNotice}"
+                   FontSize="10"
+                   Foreground="{DynamicResource WarningBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,12,0,0" />
+        <TextBlock Text="{Binding WarningNotice}"
+                   FontSize="10"
+                   Foreground="{DynamicResource TextMutedBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,6,0,0" />
+        <TextBlock Text="{Binding SnapshotNotice}"
+                   FontSize="10"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   TextWrapping="Wrap"
+                   Margin="0,6,0,0"
+                   Visibility="{Binding SnapshotNotice, Converter={StaticResource StringToVisibility}}" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="{Binding CancelText}"
+                    Command="{Binding CancelCommand}"
+                    Style="{StaticResource GhostButton}"
+                    Margin="0,0,8,0" />
+            <Button Content="{Binding ExportText}"
+                    Command="{Binding ConfirmCommand}"
+                    Style="{StaticResource PrimaryButton}" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

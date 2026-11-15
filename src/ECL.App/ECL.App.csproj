@@ -44,4 +44,9 @@
     <PackageReference Include="Microsoft.Extensions.Logging" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- UI 线程与有界输出管线的并发回归测试需要访问 App 内部类型（见 tests/ECL.App.Tests）。 -->
+    <InternalsVisibleTo Include="Ecl.App.Tests" />
+  </ItemGroup>
+
 </Project>

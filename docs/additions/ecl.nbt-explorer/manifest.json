@@ -1,0 +1,48 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.nbt-explorer",
+  "name": "NBT Explorer",
+  "type": "Feature",
+  "category": "World Data",
+  "summary": "Minecraft NBT 结构浏览、检索与受控编辑；复用 Native World Engine 的格式解析与安全写入能力。",
+  "registryStatus": "Planned",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0027-native-world-engine.md",
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md",
+    "../../adr/0042-instance-file-explorer-and-crash-report-workflow.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-07",
+    "lastUpdated": "2026-11-07",
+    "deprecation": null,
+    "replacement": null
+  }
+}

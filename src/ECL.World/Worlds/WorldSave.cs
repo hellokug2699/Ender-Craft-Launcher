@@ -109,6 +109,20 @@ public sealed record WorldLevelInfo
 
     public DateTimeOffset? LastPlayed { get; init; }
 
+    /// <summary>
+    /// <c>Data/DataPacks/Enabled</c>：游戏实际加载的数据包（包含 <c>vanilla</c> 等内置项）。
+    /// 字段缺失时为空集合，不按经验补默认值。
+    /// </summary>
+    public IReadOnlyList<string> DataPacksEnabled { get; init; } = [];
+
+    /// <summary>
+    /// <c>Data/DataPacks/Disabled</c>：被显式禁用的数据包。字段缺失时为空集合。
+    /// </summary>
+    public IReadOnlyList<string> DataPacksDisabled { get; init; } = [];
+
+    /// <summary>level.dat 是否已有 <c>DataPacks/Enabled</c> 配置（旧世界可能没有）。</summary>
+    public bool HasDataPacks { get; init; }
+
     public string? Error { get; init; }
 
     public bool IsReadable => Error is null;
@@ -157,6 +171,7 @@ public static class WorldLevelReader
             var root = NbtFile.ReadFile(levelDatPath);
             var data = root.Child("Data") ?? root;
             var version = data.Child("Version");
+            var dataPacks = data.Child("DataPacks");
             var lastPlayed = data.Child("LastPlayed")?.GetLong();
             DateTimeOffset? lastPlayedTime = lastPlayed is > 0
                 ? DateTimeOffset.FromUnixTimeMilliseconds(lastPlayed.Value)
@@ -172,12 +187,29 @@ public static class WorldLevelReader
                 Hardcore = data.Child("hardcore")?.GetByte() == 1,
                 DayTime = data.Child("DayTime")?.GetLong() ?? 0,
                 LastPlayed = lastPlayedTime,
+                DataPacksEnabled = ReadStringList(dataPacks, "Enabled"),
+                DataPacksDisabled = ReadStringList(dataPacks, "Disabled"),
+                HasDataPacks = dataPacks?.Child("Enabled") is not null,
             };
         }
         catch (Exception exception) when (exception is NbtFormatException or IOException or UnauthorizedAccessException or InvalidDataException)
         {
             return new WorldLevelInfo { Error = $"level.dat 读取失败：{exception.Message}" };
         }
+    }
+
+    private static IReadOnlyList<string> ReadStringList(NbtTag? parent, string name)
+    {
+        var list = parent?.Child(name);
+        if (list is not { Type: NbtTagType.List })
+        {
+            return [];
+        }
+
+        return list.Children
+            .Select(child => child.GetString() ?? string.Empty)
+            .Where(value => value.Length > 0)
+            .ToArray();
     }
 
     /// <summary>

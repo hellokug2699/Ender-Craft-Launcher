@@ -1,0 +1,273 @@
+<UserControl x:Class="Ecl.App.Views.SecurityCenterView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization"
+             xmlns:controls="clr-namespace:Ecl.App.Controls"
+             xmlns:behaviors="clr-namespace:Ecl.App.Behaviors"
+             xmlns:security="clr-namespace:Ecl.App.ViewModels.Security">
+    <UserControl.Resources>
+        <!-- 分类标题：红 X / 黄 ！ + 未忽略计数；没有异常时改显示“无对应异常”。 -->
+        <DataTemplate x:Key="SecurityCategoryTemplate" DataType="{x:Type security:SecurityCategoryViewModel}">
+            <Border Style="{StaticResource Card}" Padding="16" Margin="0,0,0,12">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding Title}"
+                                   Style="{StaticResource SectionText}"
+                                   VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding MarkerText}"
+                                       FontSize="12"
+                                       FontWeight="Bold"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding MarkerKey}" Value="red">
+                                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding MarkerKey}" Value="yellow">
+                                                <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="{Binding CountText}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+
+                    <ListBox ItemsSource="{Binding Findings}"
+                             Margin="0,8,0,0"
+                             MaxHeight="280"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Visibility="{Binding HasAny, Converter={StaticResource BoolToVisibility}}"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             behaviors:WheelScroll.IsEnabled="True"
+                             IsEnabled="{Binding DataContext.CanModifyFindings, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid x:Name="ItemRoot" Margin="0,3" MinHeight="28">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="18" />
+                                        <ColumnDefinition Width="72" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Text="{Binding MarkerText}"
+                                               FontSize="11"
+                                               FontWeight="Bold"
+                                               VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding LevelKey}" Value="high">
+                                                        <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding LevelKey}" Value="confirmed">
+                                                        <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding LevelKey}" Value="suspicious">
+                                                        <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding LevelKey}" Value="notice">
+                                                        <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding LevelKey}" Value="unknown">
+                                                        <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding LevelText}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+
+                                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding InstanceName}"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding StateText}"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource TextMutedBrush}"
+                                                   Visibility="{Binding HasStateText, Converter={StaticResource BoolToVisibility}}" />
+                                    </StackPanel>
+
+                                    <Button Grid.Column="3"
+                                            Content="{loc:Loc Key=security.finding.ignore}"
+                                            Command="{Binding DataContext.IgnoreCommand, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                            CommandParameter="{Binding}"
+                                            IsEnabled="{Binding CanIgnore}"
+                                            Style="{StaticResource GhostButton}"
+                                            Padding="10,2"
+                                            MinHeight="0"
+                                            FontSize="11"
+                                            Margin="8,0,0,0"
+                                            AutomationProperties.Name="{loc:Loc Key=security.finding.ignore}" />
+
+                                    <Button Grid.Column="4"
+                                            Content="{loc:Loc Key=security.finding.delete}"
+                                            Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                            CommandParameter="{Binding}"
+                                            IsEnabled="{Binding CanDelete}"
+                                            Style="{StaticResource DangerButton}"
+                                            Padding="10,2"
+                                            MinHeight="0"
+                                            FontSize="11"
+                                            Margin="6,0,0,0"
+                                            AutomationProperties.Name="{loc:Loc Key=security.finding.delete}"
+                                            ToolTip="{Binding DeleteUnavailableReason}" />
+                                </Grid>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsIgnored}" Value="True">
+                                        <Setter TargetName="ItemRoot" Property="Opacity" Value="0.55" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <ScrollViewer x:Name="PageScroll"
+                  VerticalScrollBarVisibility="Auto"
+                  HorizontalScrollBarVisibility="Disabled"
+                  KeyboardNavigation.TabNavigation="Cycle"
+                  behaviors:WheelScroll.IsEnabled="True">
+        <StackPanel>
+            <controls:SecurityStatusCircle HorizontalAlignment="Center"
+                                           Glyph="{Binding Glyph}"
+                                           PrimaryText="{Binding PrimaryText}"
+                                           PrimaryCommand="{Binding StartScanCommand}"
+                                           PrimaryEnabled="{Binding CanStartScan}"
+                                           SecondaryText="{Binding SolveText}"
+                                           SecondaryCommand="{Binding SolveCommand}"
+                                           SecondaryVisibility="{Binding ShowSolveButton, Converter={StaticResource BoolToVisibility}}">
+                <controls:SecurityStatusCircle.Style>
+                    <Style TargetType="{x:Type controls:SecurityStatusCircle}">
+                        <Setter Property="StatusBrush" Value="{DynamicResource AccentBrush}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding StatusKey}" Value="green">
+                                <Setter Property="StatusBrush" Value="{DynamicResource SuccessBrush}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding StatusKey}" Value="yellow">
+                                <Setter Property="StatusBrush" Value="{DynamicResource WarningBrush}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding StatusKey}" Value="red">
+                                <Setter Property="StatusBrush" Value="{DynamicResource DangerBrush}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding StatusKey}" Value="blue">
+                                <Setter Property="StatusBrush" Value="{DynamicResource AccentBrush}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </controls:SecurityStatusCircle.Style>
+            </controls:SecurityStatusCircle>
+
+            <TextBlock Text="{Binding StatusText}"
+                       FontSize="16"
+                       Style="{StaticResource EmphasisText}"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       Margin="0,14,0,0" />
+
+            <TextBlock Text="{Binding DetailText}"
+                       FontSize="12"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       MaxWidth="{StaticResource PageMaxContentWidth}"
+                       HorizontalAlignment="Center"
+                       Margin="0,6,0,0" />
+
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        Margin="0,10,0,0"
+                        Visibility="{Binding ShowCancelScan, Converter={StaticResource BoolToVisibility}}">
+                <Button Content="{Binding CancelScanText}"
+                        Command="{Binding CancelScanCommand}"
+                        Style="{StaticResource GhostButton}" />
+                <ProgressBar Width="150"
+                             Height="4"
+                             Margin="12,0,0,0"
+                             VerticalAlignment="Center"
+                             IsIndeterminate="True" />
+            </StackPanel>
+
+            <Border Style="{StaticResource Card}"
+                    Padding="14,10"
+                    Margin="0,14,0,0"
+                    VerticalAlignment="Top"
+                    Visibility="{Binding HasCoverage, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <TextBlock Text="{loc:Loc Key=security.scan.coverageTitle}"
+                               Style="{StaticResource LabelText}" />
+                    <TextBlock Text="{Binding CoverageText}"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0" />
+                    <TextBlock Text="{loc:Loc Key=security.scan.pathHidden}"
+                               FontSize="10"
+                               Foreground="{DynamicResource TextMutedBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}"
+                    Padding="14,10"
+                    Margin="0,10,0,0"
+                    Visibility="{Binding ShowActionHint, Converter={StaticResource BoolToVisibility}}">
+                <TextBlock Text="{Binding ActionHintText}"
+                           FontSize="11"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           TextWrapping="Wrap" />
+            </Border>
+
+            <!-- 尚未扫描时只显示说明；开始扫描后才出现固定的分类分区。 -->
+            <Border Style="{StaticResource Card}"
+                    Padding="18"
+                    Margin="0,14,0,0"
+                    Visibility="{Binding ShowNotScannedHint, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                    <TextBlock Text="{loc:Loc Key=security.notScanned.title}"
+                               Style="{StaticResource SectionText}" />
+                    <TextBlock Text="{loc:Loc Key=security.notScanned.description}"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,6,0,0" />
+                </StackPanel>
+            </Border>
+
+            <ItemsControl x:Name="FindingsSection"
+                          ItemsSource="{Binding Categories}"
+                          ItemTemplate="{StaticResource SecurityCategoryTemplate}"
+                          Margin="0,14,0,0"
+                          Visibility="{Binding HasCategories, Converter={StaticResource BoolToVisibility}}" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

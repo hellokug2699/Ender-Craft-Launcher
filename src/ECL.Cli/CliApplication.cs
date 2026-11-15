@@ -1022,15 +1022,24 @@ internal sealed class CliApplication
         var settings = _provider.GetRequiredService<ISettingsService>();
         var localizer = _provider.GetRequiredService<ILocalizer>();
         var configured = JavaSearchPath.Split(settings.Get<string>("java.defaultPath"));
-        var candidates = configured
+        var explicitPriority = JavaSearchPath.Split(settings.Get<string>(JavaPriorityOrdering.SettingsKey));
+        var priorityPaths = explicitPriority
             .Select(path => locator.FromPath(path))
             .Where(runtime => runtime is not null)
             .Select(runtime => runtime!)
-            .Concat(runtimes)
+            .ToArray();
+        var candidates = priorityPaths
+            .Concat(configured
+                .Select(path => locator.FromPath(path))
+                .Where(runtime => runtime is not null)
+                .Select(runtime => runtime!)
+                .Concat(runtimes))
             .GroupBy(runtime => runtime.ExecutablePath, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToArray();
-        var priority = JavaPriorityOrdering.Order(candidates, configured);
+        var priority = JavaPriorityOrdering.Order(
+            candidates,
+            JavaPriorityOrdering.SelectSeed(explicitPriority, configured));
 
         if (_commandLine.HasFlag("json"))
         {

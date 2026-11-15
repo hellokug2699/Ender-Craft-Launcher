@@ -28,6 +28,15 @@ public interface IInstanceService
         string? optiFineVersion = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 把实例记录恢复为给定快照（仅用于失败回滚）：稳定 InstanceId 必须与现有记录一致，
+    /// 其余字段（含 <see cref="GameInstance.VersionId"/> 与时间戳）按给定记录原样写回，
+    /// 不重新推导版本 ID。用户编辑仍走 <see cref="UpdateConfigurationAsync"/>。
+    /// </summary>
+    Task<Result<GameInstance>> RestoreConfigurationAsync(
+        GameInstance restorePoint,
+        CancellationToken cancellationToken = default);
+
     Task<Result> DeleteAsync(string instanceId, CancellationToken cancellationToken = default);
 
     /// <summary>

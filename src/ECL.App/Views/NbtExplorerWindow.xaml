@@ -7,7 +7,7 @@
         Height="720"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource BackgroundBrush}"
-        FontFamily="{StaticResource UiFontFamily}">
+        FontFamily="{DynamicResource UiFontFamily}">
     <Window.Resources>
         <HierarchicalDataTemplate DataType="{x:Type vm:NbtNodeViewModel}" ItemsSource="{Binding Children}">
             <StackPanel Orientation="Horizontal" Margin="0,1">

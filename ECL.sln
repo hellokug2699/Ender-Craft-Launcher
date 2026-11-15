@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -56,6 +56,8 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "additions", "additions", "{177C4818-BFCE-87EC-7ACA-E62ECF15F1B8}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ECL.VanillaToolkit", "additions\vanilla-toolkit\src\ECL.VanillaToolkit\ECL.VanillaToolkit.csproj", "{B67968E4-2D52-43E2-A2EF-59B5E879450D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ECL.App.Tests", "tests\ECL.App.Tests\ECL.App.Tests.csproj", "{7EAF9169-E9FD-4A7E-B6E8-07E558D5EBD4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -355,6 +357,18 @@ Global
 		{B67968E4-2D52-43E2-A2EF-59B5E879450D}.Release|x64.Build.0 = Release|Any CPU
 		{B67968E4-2D52-43E2-A2EF-59B5E879450D}.Release|x86.ActiveCfg = Release|Any CPU
 		{B67968E4-2D52-43E2-A2EF-59B5E879450D}.Release|x86.Build.0 = Release|Any CPU
+		{7EAF9169-E9FD-4A7E-B6E8-07E558D5EBD4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7EAF9169-E9FD-4A7E-B6E8-07E558D5EBD4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7EAF9169-E9FD-4A7E-B6E8-07E558D5EBD4}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7EAF9169-E9FD-4A7E-B6E8-07E558D5EBD4}.Debug|x64.Build.0 = Debug|Any CPU
+		{7EAF9169-E9FD-4A7E-B6E8-07E558D5EBD4}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7EAF9169-E9FD-4A7E-B6E8-07E558D5EBD4}.Debug|x86.Build.0 = Debug|Any CPU
+		{7EAF9169-E9FD-4A7E-B6E8-07E558D5EBD4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7EAF9169-E9FD-4A7E-B6E8-07E558D5EBD4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7EAF9169-E9FD-4A7E-B6E8-07E558D5EBD4}.Release|x64.ActiveCfg = Release|Any CPU
+		{7EAF9169-E9FD-4A7E-B6E8-07E558D5EBD4}.Release|x64.Build.0 = Release|Any CPU
+		{7EAF9169-E9FD-4A7E-B6E8-07E558D5EBD4}.Release|x86.ActiveCfg = Release|Any CPU
+		{7EAF9169-E9FD-4A7E-B6E8-07E558D5EBD4}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -383,5 +397,6 @@ Global
 		{29CAD000-DADF-495D-B5FE-2C7D8AE2C023} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{593C9123-603C-4AD8-AACD-C527157C894F} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{B67968E4-2D52-43E2-A2EF-59B5E879450D} = {177C4818-BFCE-87EC-7ACA-E62ECF15F1B8}
+		{7EAF9169-E9FD-4A7E-B6E8-07E558D5EBD4} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

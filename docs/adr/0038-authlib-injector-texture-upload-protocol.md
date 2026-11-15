@@ -1,10 +1,11 @@
 # ADR 0038: Authlib-Injector Texture Upload Protocol Support
 
-- Decision: Accepted
-- Implementation: In Progress
+- Decision: Superseded
+- Implementation: N/A
 - Date: 2026-11-02
 - Scope: Authlib-Injector / Yggdrasil 第三方账户的皮肤与披风上传、清除及能力识别
 - Related: [ADR 0037：账户外观与本地衣柜架构](0037-account-appearance-and-local-wardrobe.md)
+- Superseded by: [ADR 0070: Account Appearance and Appearance Enhance Addition Architecture](0070-account-appearance-and-appearance-enhance-addition-architecture.md)
 
 ## 背景
 
@@ -148,3 +149,5 @@ ECL 不应将皮肤、披风或账户资料上传到除当前账户配置的验�
 
 - 2026-11-02：首次提出 Authlib-Injector 材质上传协议通用 Provider，明确 `uploadableTextures` 能力识别、标准 PUT/DELETE 接口、认证上下文复用、上传后复查和不兼容服务端降级策略。
 - 2026-11-03：决策状态更新为 Accepted，实施状态更新为 In Progress。已实现能力解析、规范 PUT/DELETE 请求构造、HTTPS/重定向约束、上传前 PNG 校验与上传后资料复查状态区分；没有可用的第三方测试服务端，尚未完成真实服务器上传验收。依据见 [ADR 0031–0040 实施记录](../adr-0031-0040-implementation.md)。
+
+- 2026-11-15：由 Proposed 状态的 [ADR 0070](0070-account-appearance-and-appearance-enhance-addition-architecture.md) 取代其第三方账户上传产品决策。本文保留 Authlib-Injector 协议的历史技术记录；协议解析或上传代码即使仍存在，也不得据此向第三方账户开放衣柜或外观写入入口。

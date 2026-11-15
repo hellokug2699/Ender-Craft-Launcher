@@ -69,6 +69,18 @@ internal sealed class FakeModrinthClient : IModrinthClient
         Task.FromResult(VersionsById.TryGetValue(versionId, out var version)
             ? Result<ModrinthVersion>.Ok(version)
             : Result<ModrinthVersion>.Fail("modrinth.not_found", $"缺少测试版本 {versionId}"));
+
+    public Task<Result<IReadOnlyList<ModrinthVersion>>> GetVersionsByIdsAsync(
+        IReadOnlyList<string> versionIds,
+        CancellationToken cancellationToken = default)
+    {
+        var versions = versionIds
+            .Select(id => VersionsById.GetValueOrDefault(id))
+            .Where(version => version is not null)
+            .Cast<ModrinthVersion>()
+            .ToArray();
+        return Task.FromResult(Result<IReadOnlyList<ModrinthVersion>>.Ok(versions));
+    }
 }
 
 internal sealed class FakeCurseForgeService : ICurseForgeService

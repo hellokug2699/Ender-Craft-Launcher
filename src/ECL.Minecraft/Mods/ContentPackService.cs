@@ -26,6 +26,22 @@ public enum PackOptionsStatus
     Unreadable,
 }
 
+/// <summary>资源包/光影包文件的元数据读取状态；页面按页面规格的颜色语义呈现。</summary>
+public enum ContentPackReadState
+{
+    /// <summary>元数据可读（资源包有 <c>pack.mcmeta</c>，光影包含 <c>shaders/</c>）。</summary>
+    Ok,
+
+    /// <summary>文件是有效压缩包，但没有可识别的元数据；不猜测内容。</summary>
+    Unrecognized,
+
+    /// <summary>压缩包损坏或元数据无法解析。</summary>
+    Corrupt,
+}
+
+/// <summary>存档在 <c>pack.mcmeta</c> 中的声明式格式范围（Minecraft 1.20.2+ 的 <c>supported_formats</c>）。</summary>
+public readonly record struct PackFormatRange(int MinInclusive, int MaxInclusive);
+
 /// <summary>磁盘上的一个资源包/光影包文件，以及它在 options.txt 中的启用状态。</summary>
 public sealed record ContentPackEntry(
     string FileName,
@@ -35,7 +51,14 @@ public sealed record ContentPackEntry(
     string? Description,
     int? PackFormat,
     bool Enabled,
-    bool Incompatible);
+    bool Incompatible)
+{
+    /// <summary>元数据读取状态；<see cref="ContentPackReadState.Corrupt"/> 对应“文件损坏”。</summary>
+    public ContentPackReadState ReadState { get; init; } = ContentPackReadState.Ok;
+
+    /// <summary><c>pack.mcmeta</c> 声明的格式范围；未声明时为 <c>null</c>，不按经验补全。</summary>
+    public PackFormatRange? SupportedFormats { get; init; }
+}
 
 /// <summary>
 /// 一次资源包/光影包列表查询的结果。
@@ -86,6 +109,21 @@ public interface IContentPackService
         ContentPackKind kind,
         string fileName,
         bool enabled,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 一次写入提交页面的待应用更改（resource-library-template.md §5）：资源包以
+    /// <paramref name="orderedFileNames"/> 的顺序重写 <c>resourcePacks</c> 的受管条目
+    /// （顺序即页面显示的优先级顺序），光影包只保留最后一个为当前选择。
+    /// <para>
+    /// 未受管条目（<c>vanilla</c>、其它启动器写入的裸值等）保持原位置，不会被删除；
+    /// options.txt 无法解析时拒绝写入，不覆盖用户配置。
+    /// </para>
+    /// </summary>
+    Task<Result> ApplyAsync(
+        string instanceId,
+        ContentPackKind kind,
+        IReadOnlyList<string> orderedFileNames,
         CancellationToken cancellationToken = default);
 }
 
@@ -330,6 +368,144 @@ public sealed class ContentPackService(
         return document.IsDirty ? document.Save() : Result.Ok();
     }
 
+    public async Task<Result> ApplyAsync(
+        string instanceId,
+        ContentPackKind kind,
+        IReadOnlyList<string> orderedFileNames,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(orderedFileNames);
+
+        var desired = orderedFileNames
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        foreach (var fileName in desired)
+        {
+            if (!IsValidFileName(fileName))
+            {
+                return Result.Fail("pack.invalid_file", "文件名不合法。");
+            }
+        }
+
+        var instance = await instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        if (instance is null)
+        {
+            return Result.Fail("instance.not_found", "实例不存在。");
+        }
+
+        var directory = GetDirectory(instance, kind);
+        foreach (var fileName in desired)
+        {
+            if (!File.Exists(Path.Combine(directory, fileName)))
+            {
+                return Result.Fail("pack.not_found", $"文件不存在：{fileName}");
+            }
+        }
+
+        var options = GameOptionsFile.Load(GetOptionsPath(instance));
+        if (!options.IsSuccess)
+        {
+            return Result.Fail(options.Error!);
+        }
+
+        var document = options.Value!;
+        var selection = ReadSelection(document, kind);
+        if (selection.Status == PackOptionsStatus.Unreadable)
+        {
+            return Result.Fail(
+                "options.invalid_value",
+                selection.Warning ?? "options.txt 中的资源包配置无法解析，已保持原文件不变。",
+                document.Path);
+        }
+
+        if (kind == ContentPackKind.ShaderPack)
+        {
+            // 游戏一次只支持一个光影包；页面只允许一行处于“已启用”，这里取最后一个作为当前选择。
+            var active = desired.LastOrDefault();
+            if (active is null)
+            {
+                document.Remove("shaderPack");
+            }
+            else
+            {
+                document.SetString("shaderPack", active);
+            }
+        }
+        else
+        {
+            ApplyResourcePackOrder(document, selection, desired);
+        }
+
+        return document.IsDirty ? document.Save() : Result.Ok();
+    }
+
+    /// <summary>
+    /// 按给定顺序重写受管资源包条目，保留 <c>vanilla</c> 与其它未受管条目的原始位置；
+    /// 被禁用（不再出现在目标列表）的条目同时清理“已确认不兼容”记录。
+    /// </summary>
+    private static void ApplyResourcePackOrder(
+        GameOptionsFile document,
+        KindSelection selection,
+        IReadOnlyList<string> desiredFileNames)
+    {
+        var desiredEntries = desiredFileNames
+            .Select(fileName => ResourcePackEntryPrefix + fileName)
+            .ToArray();
+        var desiredEntrySet = new HashSet<string>(desiredEntries, StringComparer.OrdinalIgnoreCase);
+
+        var rebuilt = new List<string>();
+        var inserted = false;
+        foreach (var entry in selection.Enabled)
+        {
+            if (ResourcePackFileName(entry) is null)
+            {
+                rebuilt.Add(entry);
+                continue;
+            }
+
+            // 全部受管条目被替换为一次按目标顺序插入的列表，避免逐个追加导致顺序错乱。
+            if (!inserted)
+            {
+                rebuilt.AddRange(desiredEntries);
+                inserted = true;
+            }
+        }
+
+        if (!inserted)
+        {
+            rebuilt.AddRange(desiredEntries);
+        }
+
+        // 键缺失时游戏按默认值 ["vanilla"] 处理；目标列表非空时补上默认项。
+        if (document.GetValue("resourcePacks") is null &&
+            rebuilt.Count > 0 &&
+            !rebuilt.Any(entry => string.Equals(entry, VanillaResourcePack, StringComparison.OrdinalIgnoreCase)))
+        {
+            rebuilt.Insert(0, VanillaResourcePack);
+        }
+
+        document.SetStringList("resourcePacks", rebuilt);
+
+        var disabled = selection.Enabled
+            .Select(ResourcePackFileName)
+            .Where(name => name is not null && !desiredEntrySet.Contains(ResourcePackEntryPrefix + name))
+            .Select(name => ResourcePackEntryPrefix + name!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (disabled.Count == 0)
+        {
+            return;
+        }
+
+        var incompatible = selection.Incompatible
+            .Where(candidate => !disabled.Contains(candidate))
+            .ToArray();
+        if (incompatible.Length != selection.Incompatible.Count)
+        {
+            document.SetStringList("incompatibleResourcePacks", incompatible);
+        }
+    }
+
     private static Result SetResourcePackEnabled(
         GameOptionsFile document,
         KindSelection selection,
@@ -541,33 +717,50 @@ public sealed class ContentPackService(
         string name = Path.GetFileNameWithoutExtension(fileName);
         string? description = null;
         int? packFormat = null;
+        PackFormatRange? supportedFormats = null;
+        var readState = ContentPackReadState.Unrecognized;
 
         try
         {
             using var archive = ZipFile.OpenRead(path);
-            var entry = archive.Entries.FirstOrDefault(candidate =>
-                string.Equals(candidate.FullName, "pack.mcmeta", StringComparison.OrdinalIgnoreCase));
-            if (entry is not null)
-            {
-                using var stream = entry.Open();
-                using var document = JsonDocument.Parse(stream);
-                if (document.RootElement.TryGetProperty("pack", out var pack))
-                {
-                    if (pack.TryGetProperty("pack_format", out var format) &&
-                        format.ValueKind == JsonValueKind.Number &&
-                        format.TryGetInt32(out var parsedFormat))
-                    {
-                        packFormat = parsedFormat;
-                    }
 
-                    description = ReadDescription(pack);
+            if (kind == ContentPackKind.ShaderPack)
+            {
+                // 光影包没有 pack.mcmeta；有效压缩包至少包含 shaders/ 目录。
+                readState = archive.Entries.Any(candidate =>
+                        candidate.FullName.StartsWith("shaders/", StringComparison.OrdinalIgnoreCase))
+                    ? ContentPackReadState.Ok
+                    : ContentPackReadState.Unrecognized;
+            }
+            else
+            {
+                var entry = archive.Entries.FirstOrDefault(candidate =>
+                    string.Equals(candidate.FullName, "pack.mcmeta", StringComparison.OrdinalIgnoreCase));
+                if (entry is not null)
+                {
+                    using var stream = entry.Open();
+                    using var document = JsonDocument.Parse(stream);
+                    if (document.RootElement.TryGetProperty("pack", out var pack))
+                    {
+                        if (pack.TryGetProperty("pack_format", out var format) &&
+                            format.ValueKind == JsonValueKind.Number &&
+                            format.TryGetInt32(out var parsedFormat))
+                        {
+                            packFormat = parsedFormat;
+                        }
+
+                        supportedFormats = ReadSupportedFormats(pack);
+                        description = ReadDescription(pack);
+                        readState = ContentPackReadState.Ok;
+                    }
                 }
             }
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException
                                               or JsonException or UnauthorizedAccessException)
         {
-            // 无效压缩包仍作为文件列出，导入时可以重新覆盖。
+            // 损坏的压缩包仍作为文件列出（状态为“文件损坏”），删除或重新导入由用户决定。
+            readState = ContentPackReadState.Corrupt;
         }
 
         if (!string.IsNullOrWhiteSpace(description))
@@ -575,7 +768,60 @@ public sealed class ContentPackService(
             name = description;
         }
 
-        return new ContentPackEntry(fileName, Path.GetFullPath(path), kind, name, description, packFormat, enabled, incompatible);
+        return new ContentPackEntry(
+            fileName,
+            Path.GetFullPath(path),
+            kind,
+            name,
+            description,
+            packFormat,
+            enabled,
+            incompatible)
+        {
+            ReadState = readState,
+            SupportedFormats = supportedFormats,
+        };
+    }
+
+    /// <summary>
+    /// 读取 Minecraft 1.20.2+ 的 <c>pack.supported_formats</c>：可以是
+    /// <c>{"min_inclusive":…, "max_inclusive":…}</c>，也可以是 <c>[min, max]</c>。
+    /// 无法无歧义解析时返回 <c>null</c>，不猜测范围。
+    /// </summary>
+    private static PackFormatRange? ReadSupportedFormats(JsonElement pack)
+    {
+        if (!pack.TryGetProperty("supported_formats", out var formats))
+        {
+            return null;
+        }
+
+        if (formats.ValueKind == JsonValueKind.Object)
+        {
+            var min = formats.TryGetProperty("min_inclusive", out var minElement) &&
+                      minElement.ValueKind == JsonValueKind.Number &&
+                      minElement.TryGetInt32(out var parsedMin)
+                ? parsedMin
+                : (int?)null;
+            var max = formats.TryGetProperty("max_inclusive", out var maxElement) &&
+                      maxElement.ValueKind == JsonValueKind.Number &&
+                      maxElement.TryGetInt32(out var parsedMax)
+                ? parsedMax
+                : (int?)null;
+            return min is null || max is null || max < min ? null : new PackFormatRange(min.Value, max.Value);
+        }
+
+        if (formats.ValueKind == JsonValueKind.Array &&
+            formats.GetArrayLength() == 2 &&
+            formats[0].ValueKind == JsonValueKind.Number &&
+            formats[1].ValueKind == JsonValueKind.Number &&
+            formats[0].TryGetInt32(out var rangeMin) &&
+            formats[1].TryGetInt32(out var rangeMax) &&
+            rangeMax >= rangeMin)
+        {
+            return new PackFormatRange(rangeMin, rangeMax);
+        }
+
+        return null;
     }
 
     private static string? ReadDescription(JsonElement pack)

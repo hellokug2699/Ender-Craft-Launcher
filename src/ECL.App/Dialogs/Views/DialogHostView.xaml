@@ -1,0 +1,76 @@
+<UserControl x:Class="Ecl.App.Dialogs.Views.DialogHostView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization"
+             Focusable="False">
+    <!--
+        统一弹窗层：覆盖所属窗口客户区。模态时遮罩暗化全部 Shell 区域，
+        并且 Shell 根节点由 IsShellInteractive 绑定禁用，保证背景不接收输入。
+        这里只与 DialogEngine 的状态对象联动，不承载业务内容。
+    -->
+    <Grid x:Name="Root"
+          Visibility="{Binding HasDialogs, Converter={StaticResource BoolToVisibility}}">
+        <Border x:Name="Scrim"
+                Background="{DynamicResource ScrimBrush}"
+                Opacity="0"
+                Visibility="{Binding HasModal, Converter={StaticResource BoolToVisibility}}" />
+
+        <ContentControl x:Name="TopContent"
+                        Content="{Binding Top}"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Focusable="False"
+                        Opacity="0">
+            <ContentControl.ContentTemplate>
+                <DataTemplate>
+                    <Border Style="{StaticResource DialogCard}"
+                            MinWidth="{Binding MinWidth}"
+                            MaxWidth="{Binding MaxWidth}"
+                            MinHeight="{Binding MinHeight}"
+                            MaxHeight="{Binding MaxHeight}"
+                            KeyboardNavigation.TabNavigation="Cycle"
+                            AutomationProperties.Name="{Binding Title}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Margin="20,15,12,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Title}"
+                                           Style="{StaticResource SectionText}"
+                                           TextTrimming="CharacterEllipsis"
+                                           VerticalAlignment="Center" />
+                                <Button Grid.Column="1"
+                                        Style="{StaticResource TabCloseButton}"
+                                        Command="{Binding CloseCommand}"
+                                        Visibility="{Binding CanClose, Converter={StaticResource BoolToVisibility}}"
+                                        ToolTip="{loc:Loc Key=dialog.close}"
+                                        AutomationProperties.Name="{loc:Loc Key=dialog.close}">
+                                    <Path Data="{StaticResource IconClose}"
+                                          Width="10"
+                                          Height="10"
+                                          Stretch="Uniform"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="1.4"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round" />
+                                </Button>
+                            </Grid>
+
+                            <ScrollViewer Grid.Row="1"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <ContentPresenter Content="{Binding Content}" />
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ContentControl.ContentTemplate>
+        </ContentControl>
+    </Grid>
+</UserControl>

@@ -8,20 +8,19 @@ using Ecl.Minecraft.Engine.Identity;
 using Ecl.Minecraft.Engine.Inventory;
 using Ecl.Minecraft.Engine.Snapshots;
 using Ecl.Minecraft.Instances;
-using Ecl.Minecraft.Security;
 
 namespace Ecl.App.ViewModels;
 
 /// <summary>
-/// 实例引擎原生页：共享 Inventory、用户快照与安全体检。所有危险操作都先展示目标并要求确认；
+/// 实例引擎原生页：共享 Inventory 与用户快照。所有危险操作都先展示目标并要求确认；
 /// 功能不可用或未扫描时显示明确状态，不伪造成功。
+/// 安全扫描已迁入独立安全中心（B11），这里不再保留第二套入口。
 /// </summary>
 public sealed partial class EngineToolsViewModel : ObservableObject
 {
     private readonly IInstanceService _instances;
     private readonly IInstanceInventoryService _inventory;
     private readonly IInstanceSnapshotService _snapshots;
-    private readonly IThreatProtectionService _security;
     private readonly InstanceIdentityService _identity;
     private readonly IDialogService _dialogs;
     private bool _activated;
@@ -30,14 +29,12 @@ public sealed partial class EngineToolsViewModel : ObservableObject
         IInstanceService instances,
         IInstanceInventoryService inventory,
         IInstanceSnapshotService snapshots,
-        IThreatProtectionService security,
         InstanceIdentityService identity,
         IDialogService dialogs)
     {
         _instances = instances;
         _inventory = inventory;
         _snapshots = snapshots;
-        _security = security;
         _identity = identity;
         _dialogs = dialogs;
         Scopes = [SnapshotScope.Full, SnapshotScope.Environment];
@@ -49,8 +46,6 @@ public sealed partial class EngineToolsViewModel : ObservableObject
     public ObservableCollection<EngineResourceRow> Resources { get; } = [];
 
     public ObservableCollection<EngineSnapshotRow> Snapshots { get; } = [];
-
-    public ObservableCollection<EngineFindingRow> Findings { get; } = [];
 
     public IReadOnlyList<SnapshotScope> Scopes { get; }
 
@@ -67,16 +62,13 @@ public sealed partial class EngineToolsViewModel : ObservableObject
     private EngineSnapshotRow? _selectedSnapshot;
 
     [ObservableProperty]
-    private string _status = "选择实例后扫描共享 Inventory、创建快照或执行安全体检。";
+    private string _status = "选择实例后扫描共享 Inventory 或创建快照。";
 
     [ObservableProperty]
     private string _identityStatus = "尚未校验实例身份。";
 
     [ObservableProperty]
     private string _inventorySummary = "尚未扫描资源清单。";
-
-    [ObservableProperty]
-    private string _securitySummary = "尚未执行安全扫描。";
 
     [ObservableProperty]
     private bool _isBusy;
@@ -129,23 +121,6 @@ public sealed partial class EngineToolsViewModel : ObservableObject
             IdentityStatus = identity.IsSuccess
                 ? $"{identity.Value!.Status} · {identity.Value.Message}"
                 : identity.Error!.Message;
-
-            var latest = await _security.GetLatestScanAsync(instanceId).ConfigureAwait(true);
-            Findings.Clear();
-            if (latest.IsSuccess && latest.Value is not null)
-            {
-                foreach (var finding in latest.Value.Findings)
-                {
-                    Findings.Add(new EngineFindingRow(finding));
-                }
-
-                SecuritySummary =
-                    $"最近扫描 {latest.Value.ScannedAt:yyyy-MM-dd HH:mm} · 结论 {latest.Value.OverallLevel} · 覆盖 {latest.Value.FilesScanned} 个文件。";
-            }
-            else
-            {
-                SecuritySummary = "尚未执行安全扫描；启动不会被安全中心阻断，但覆盖范围未知。";
-            }
 
             Status = cached.IsSuccess && cached.Value is not null
                 ? $"已读取 {cached.Value.ScannedAt:yyyy-MM-dd HH:mm} 的 Inventory 缓存。"
@@ -270,43 +245,6 @@ public sealed partial class EngineToolsViewModel : ObservableObject
         await RefreshAsync().ConfigureAwait(true);
     }
 
-    [RelayCommand]
-    private async Task ScanSecurityAsync()
-    {
-        if (SelectedInstance is null)
-        {
-            return;
-        }
-
-        IsBusy = true;
-        try
-        {
-            Status = "正在执行本地安全扫描…";
-            var result = await _security.ScanAsync(SelectedInstance.Id).ConfigureAwait(true);
-            if (!result.IsSuccess)
-            {
-                Status = result.Error!.Message;
-                return;
-            }
-
-            Findings.Clear();
-            foreach (var finding in result.Value!.Findings)
-            {
-                Findings.Add(new EngineFindingRow(finding));
-            }
-
-            SecuritySummary =
-                $"扫描完成 · 结论 {result.Value.OverallLevel} · {result.Value.FilesScanned} 文件 / {result.Value.ArchivesScanned} 归档 · 完整 {result.Value.IsComplete}";
-            Status = result.Value.Findings.Count == 0
-                ? "本地扫描未发现需要处理的风险；这不等同于绝对安全。"
-                : "发现需关注的风险；可在启动时明确接受，或先隔离可疑文件。";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
     private async Task ReloadInstancesAsync()
     {
         var instances = await _instances.GetInstancesAsync().ConfigureAwait(true);
@@ -391,13 +329,4 @@ public sealed record EngineSnapshotRow(SnapshotManifest Manifest)
 
     public string Summary =>
         $"{Manifest.CreatedAt:yyyy-MM-dd HH:mm} · {Manifest.Scope} · {Manifest.FileCount} 文件 · {Manifest.Status}";
-}
-
-public sealed record EngineFindingRow(ThreatFinding Finding)
-{
-    public string Level => Finding.Level.ToString();
-
-    public string RelativePath => Finding.RelativePath;
-
-    public string Summary => Finding.Evidence.FirstOrDefault()?.Summary ?? Finding.Recommendation;
 }

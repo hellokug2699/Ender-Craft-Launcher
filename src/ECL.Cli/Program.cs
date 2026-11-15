@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Ecl.Auth;
 using Ecl.Configuration;
+using Ecl.Configuration.Network;
 using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Json;
@@ -37,7 +38,9 @@ internal static class Program
             SettingsBootstrap.ReadGlobalString(paths, "launcher.minecraftDirectory"));
         paths.EnsureCreated();
 
-        var language = commandLine.Language ?? SettingsBootstrap.ReadGlobalString(paths, "launcher.language") ?? CultureInfo.CurrentUICulture.Name;
+        var language = commandLine.Language ?? SettingsBootstrap.ResolveLanguage(
+            SettingsBootstrap.ReadGlobalString(paths, "launcher.language"),
+            CultureInfo.CurrentUICulture);
         var culture = JsonLocalizer.Normalize(CultureInfo.GetCultureInfo(language));
 
         var services = new ServiceCollection();
@@ -50,6 +53,17 @@ internal static class Program
         services.AddEclMinecraft();
 
         await using var provider = services.BuildServiceProvider();
+        // D-03：旧配置的显式内存值迁移为“手动指定”；失败不阻断 CLI 命令。
+        Ecl.Minecraft.Launch.MemoryPolicyMigration.TryMigrate(
+            provider.GetRequiredService<ISettingsService>(),
+            provider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()
+                ?.CreateLogger("MemoryPolicyMigration"));
+        // D-04：旧版 network.proxyAddress 只作为迁移输入；失败保留原值并继续运行。
+        ProxySettingsMigration.TryMigrate(
+            provider.GetRequiredService<ISettingsService>(),
+            provider.GetRequiredService<IProxyCredentialStore>(),
+            provider.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()
+                ?.CreateLogger("ProxySettingsMigration"));
         var lifecycle = provider.GetRequiredService<Ecl.Core.Runtime.IApplicationLifecycle>();
         lifecycle.BeginStart();
         var application = new CliApplication(provider, commandLine);

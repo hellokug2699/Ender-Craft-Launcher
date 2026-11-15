@@ -2,6 +2,7 @@
 
 using Ecl.Auth;
 using Ecl.Configuration.Settings;
+using Ecl.Core.Diagnostics;
 using Ecl.Java;
 using Ecl.Minecraft.Eula;
 using Ecl.Minecraft.Instances;
@@ -23,6 +24,10 @@ public sealed class LaunchPipelineTests
         var instance = await CreateInstanceAsync(provider);
         await provider.GetRequiredService<IAccountService>().AddOfflineAsync("Player");
 
+        // 固定为手动 4096 MB，使命令断言不依赖本机可用内存。
+        var settings = provider.GetRequiredService<ISettingsService>();
+        Assert.True(settings.TrySetRaw("java.memoryPolicy", "manual", null, out var policyError), policyError);
+
         var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: true);
 
         Assert.True(report.Success);
@@ -31,8 +36,50 @@ public sealed class LaunchPipelineTests
         Assert.Contains("--username", report.CommandLine);
         Assert.Contains("--gameDir", report.CommandLine);
         Assert.Contains("--width", report.CommandLine);
+        Assert.DoesNotContain("--fullscreen", report.CommandLine);
         Assert.Equal(0, fake.Calls);
         Assert.Contains(report.Steps, step => step.StepId == "start" && step.Status == LaunchStepStatus.Skipped);
+    }
+
+    [Fact]
+    public async Task AutomaticMemoryPolicyUsesAvailableMemoryInTheCommand()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeProcessLauncher();
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IProcessLauncher>(fake);
+            services.AddSingleton<ISystemMemoryProbe>(new StubMemoryProbe(32 * 1024, 16 * 1024));
+        });
+
+        var instance = await CreateInstanceAsync(provider);
+        await provider.GetRequiredService<IAccountService>().AddOfflineAsync("Player");
+
+        var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: true);
+
+        Assert.True(report.Success);
+        Assert.Contains("-Xmx8192M", report.CommandLine);
+    }
+
+    [Fact]
+    public async Task FullscreenDefaultAddsTheFullscreenGameArgument()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeProcessLauncher();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IProcessLauncher>(fake));
+
+        var instance = await CreateInstanceAsync(provider);
+        await provider.GetRequiredService<IAccountService>().AddOfflineAsync("Player");
+        var settings = provider.GetRequiredService<ISettingsService>();
+        Assert.True(settings.TrySetRaw("game.fullscreen", "true", null, out var error), error);
+
+        var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: true);
+
+        Assert.True(report.Success);
+        Assert.Contains("--fullscreen", report.CommandLine);
+        // 全屏不会删除窗口尺寸参数：关闭全屏后仍可继续使用。
+        Assert.Contains("--width", report.CommandLine);
+        Assert.Contains("--height", report.CommandLine);
     }
 
     [Fact]
@@ -475,6 +522,15 @@ public sealed class LaunchPipelineTests
         var created = await provider.GetRequiredService<IInstanceService>().CreateAsync("Test", "1.21.1");
         Assert.True(created.IsSuccess);
         return created.Value!;
+    }
+
+    private sealed class StubMemoryProbe(long totalMegabytes, long availableMegabytes) : ISystemMemoryProbe
+    {
+        public MemoryPressureSample? Read() => new(
+            availableMegabytes * 1024 * 1024,
+            totalMegabytes * 1024 * 1024,
+            0,
+            0);
     }
 
     private sealed class FakeProcessLauncher : IProcessLauncher

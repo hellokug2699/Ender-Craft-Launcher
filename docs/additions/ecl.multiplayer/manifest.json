@@ -1,0 +1,50 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.multiplayer",
+  "name": "ECL Multiplayer",
+  "type": "Feature",
+  "category": "Multiplayer",
+  "summary": "ECL 自研的私人 Minecraft 联机体验与会话管理能力，包含联机环境检查与模组差异处理。",
+  "registryStatus": "Planned",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0057-ecl-multiplayer-session-architecture.md",
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md",
+    "../../adr/0043-minecraft-threat-protection-and-security-analysis.md",
+    "../../adr/0053-addition-capability-permission-and-user-consent.md",
+    "../../adr/0054-addition-registry-and-manifest-governance.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-07",
+    "lastUpdated": "2026-11-07",
+    "deprecation": null,
+    "replacement": null
+  }
+}

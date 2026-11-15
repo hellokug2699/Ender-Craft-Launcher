@@ -1,10 +1,11 @@
 # ADR 0037: Account Appearance and Local Wardrobe Architecture
 
-- Decision: Accepted
-- Implementation: In Progress
+- Decision: Superseded
+- Implementation: N/A
 - Date: 2026-11-02
 - Scope: 玩家皮肤、披风资源管理，账户外观 Provider，以及实例外观应用边界
 - Related: [ADR 0018：Minecraft 工作区与实例存储位置](0018-minecraft-workspace-and-instance-storage.md)、[ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)
+- Superseded by: [ADR 0070: Account Appearance and Appearance Enhance Addition Architecture](0070-account-appearance-and-appearance-enhance-addition-architecture.md)
 
 ## 背景
 
@@ -153,3 +154,5 @@ Authlib-Injector / Yggdrasil 账户只代表认证协议兼容，不代表外观
 
 - 2026-11-02：首次提出本地衣柜与账户外观 Provider 分离的架构；明确复用现有 Microsoft 认证链、第三方 API 按服务商适配、离线外观依赖游戏环境，以及账户外观和实例外观的边界。
 - 2026-11-03：决策状态更新为 Accepted，实施状态更新为 In Progress。已实现本地衣柜/哈希去重/引用保护、独立 PNG 校验与模型启发式、Provider 能力模型；Microsoft 外观接口未逐项验证，因此当前只报告 Unsupported，原生衣柜页面已支持导入、预览、收藏与删除；实例外观应用仍待实现。依据见 [ADR 0031–0040 实施记录](../adr-0031-0040-implementation.md)。
+
+- 2026-11-15：由 Proposed 状态的 [ADR 0070](0070-account-appearance-and-appearance-enhance-addition-architecture.md) 取代。原统一衣柜与账户 Provider 架构不再作为后续产品设计依据；历史实现及其测试保留为待审查的技术资产，具体迁移状态以实施记录为准。

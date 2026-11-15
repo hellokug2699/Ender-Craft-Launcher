@@ -1,10 +1,11 @@
 # ADR 0010：CurseForge 改由私有代理转发
 
-> 生命周期迁移说明：保留原决策及实施历史；本次仅将原状态拆分为独立字段，不改变既有技术决策或已完成验证。
+> 生命周期迁移说明：保留原决策及实施历史；本 ADR 的决策已被 ADR 0069 取代，但原私有代理方案的实施与验证历史仍标记为 `Verified`。
 
-- Decision: Accepted
+- Decision: Superseded
 - Implementation: Verified
 - Date: 2026-10-30
+- Superseded by: [ADR 0069](0069-client-side-curseforge-auth-and-adaptive-download-architecture.md)
 - Scope: ECL 架构与实现
 
 ## 背景
@@ -36,3 +37,8 @@
 - [curseforge.md](../curseforge.md)
 - [repository-policy.md](../repository-policy.md)
 - [ADR 0009](0009-curseforge-integration.md)
+
+
+## 生命周期修订（2026-11-09）
+
+原私有代理方案已完成实施并经过验证；后续架构方向由 [ADR 0069：Client-Side CurseForge Access and Adaptive Download Architecture](0069-client-side-curseforge-auth-and-adaptive-download-architecture.md) 取代。原有私有 Worker 代理方案保留为历史记录；新架构改为客户端直连 CurseForge 官方 API，并采用统一资源调度与自适应下载传输。旧版本客户端在迁移窗口内仍可继续使用原 Worker，不能在新版本迁移和兼容验证完成前提前关闭服务。

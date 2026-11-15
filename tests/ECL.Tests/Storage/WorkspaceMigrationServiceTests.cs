@@ -114,6 +114,146 @@ public sealed class WorkspaceMigrationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task PlanExposesStructuredProblemCodes()
+    {
+        var (workspace, migration) = CreateServices();
+        await SeedWorkspaceAsync(workspace);
+
+        var overlap = await migration.PlanAsync(Path.Combine(_source, "nested"));
+        var overlapProblem = Assert.Single(overlap.Value!.ProblemDetails);
+        Assert.Equal("workspace.migration.overlap", overlapProblem.Code);
+        Assert.Equal(overlap.Value.Problems[0], overlapProblem.Message);
+
+        Directory.CreateDirectory(_target);
+        await File.WriteAllTextAsync(Path.Combine(_target, "existing.txt"), "keep");
+        var notEmpty = await migration.PlanAsync(_target);
+        Assert.Contains(
+            notEmpty.Value!.ProblemDetails,
+            problem => problem.Code == "workspace.migration.target_not_empty");
+        Assert.Equal(
+            notEmpty.Value.Problems,
+            notEmpty.Value.ProblemDetails.Select(problem => problem.Message));
+    }
+
+    [Fact]
+    public async Task MigrationReportsRealStagesAndFileCounts()
+    {
+        var (workspace, migration) = CreateServices();
+        await SeedWorkspaceAsync(workspace);
+        var stages = new List<WorkspaceMigrationState>();
+        var copied = 0;
+        var progress = new CollectingProgress(record =>
+        {
+            stages.Add(record.State);
+            copied = Math.Max(copied, record.CopiedFiles);
+        });
+
+        var result = await migration.StartAsync(_target, progress);
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        Assert.Equal(WorkspaceMigrationState.Completed, result.Value!.State);
+        Assert.Contains(WorkspaceMigrationState.Copying, stages);
+        Assert.Contains(WorkspaceMigrationState.Verifying, stages);
+        Assert.Contains(WorkspaceMigrationState.Switching, stages);
+        Assert.Equal(WorkspaceMigrationState.Completed, stages[^1]);
+        Assert.True(copied >= 4);
+        Assert.Equal(result.Value.TotalFiles, copied);
+    }
+
+    [Fact]
+    public async Task CompleteSwitchFinishesARollbackRequiredMigrationWithoutCopyingAgain()
+    {
+        var (workspace, migration) = CreateServices();
+        await SeedWorkspaceAsync(workspace);
+
+        // 模拟“文件已复制到新位置、但切换工作区配置失败”：目标目录已有完整副本。
+        CopyTree(_source, _target);
+        var record = new WorkspaceMigrationRecord
+        {
+            Id = "rollback-required",
+            SourcePath = _source,
+            TargetPath = _target,
+            StagingPath = _target + ".ecl-staging",
+            State = WorkspaceMigrationState.RollbackRequired,
+            ErrorCode = "workspace.migration.switch_failed",
+            ErrorMessage = "切换失败。",
+        };
+        await File.WriteAllTextAsync(
+            Path.Combine(_paths.ConfigDirectory, "workspace-migration.json"),
+            System.Text.Json.JsonSerializer.Serialize(record));
+
+        var services = new WorkspaceMigrationService(
+            _paths,
+            workspace,
+            NullLogger<WorkspaceMigrationService>.Instance);
+
+        var completed = await services.CompleteSwitchAsync();
+
+        Assert.True(completed.IsSuccess, completed.Error?.ToString());
+        Assert.Equal(WorkspaceMigrationState.Completed, completed.Value!.State);
+        Assert.Equal(_target, workspace.Primary!.Path);
+        Assert.Equal(_target, _paths.GameRoot);
+        Assert.True(File.Exists(Path.Combine(_target, "instances", "demo-abc123", "minecraft", "options.txt")));
+        Assert.True(Directory.Exists(_source));
+    }
+
+    [Fact]
+    public async Task CompleteSwitchRejectsOtherStates()
+    {
+        var (workspace, migration) = CreateServices();
+        await SeedWorkspaceAsync(workspace);
+
+        var rejected = await migration.CompleteSwitchAsync();
+        Assert.False(rejected.IsSuccess);
+        Assert.Equal("workspace.migration.none", rejected.Error!.Code);
+
+        // 复制尚未完成（Copying）时只能继续迁移，不能直接切换工作区。
+        var copying = new WorkspaceMigrationRecord
+        {
+            Id = "copying",
+            SourcePath = _source,
+            TargetPath = _target,
+            StagingPath = _target + ".ecl-staging",
+            State = WorkspaceMigrationState.Copying,
+            CopiedFiles = 1,
+        };
+        await File.WriteAllTextAsync(
+            Path.Combine(_paths.ConfigDirectory, "workspace-migration.json"),
+            System.Text.Json.JsonSerializer.Serialize(copying));
+        var services = new WorkspaceMigrationService(
+            _paths,
+            workspace,
+            NullLogger<WorkspaceMigrationService>.Instance);
+
+        var blocked = await services.CompleteSwitchAsync();
+        Assert.False(blocked.IsSuccess);
+        Assert.Equal("workspace.migration.not_switchable", blocked.Error!.Code);
+        Assert.Equal(_source, workspace.Primary!.Path);
+    }
+
+    private static void CopyTree(string source, string target)
+    {
+        Directory.CreateDirectory(target);
+        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
+        {
+            Directory.CreateDirectory(Path.Combine(target, Path.GetRelativePath(source, directory)));
+        }
+
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            var destination = Path.Combine(target, Path.GetRelativePath(source, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(file, destination, overwrite: true);
+        }
+    }
+
+    private sealed class CollectingProgress(Action<WorkspaceMigrationRecord> report)
+        : IProgress<WorkspaceMigrationRecord>
+    {
+        public void Report(WorkspaceMigrationRecord value) => report(value);
+    }
+
+    [Fact]
     public async Task RefusesWhenWorkspaceIsNotConfigured()
     {
         var (_, migration) = CreateServices();

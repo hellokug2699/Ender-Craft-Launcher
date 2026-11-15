@@ -9,8 +9,8 @@
 | [0033 本地诊断](adr/0033-local-minecraft-diagnostic-and-knowledge-engine.md) | Accepted | In Progress | 本地解析、知识库与证据链 |
 | [0034 自完整性](adr/0034-ecl-self-integrity-and-recovery.md) | Accepted | In Progress | 校验、Repair Mode、本地恢复缓存 |
 | [0036 受限知识浏览器](adr/0036-embedded-browser-for-minecraft-knowledge.md) | Accepted | In Progress | 白名单/重定向/子资源策略与本地错误页 |
-| [0037 账户外观与衣柜](adr/0037-account-appearance-and-local-wardrobe.md) | Accepted | In Progress | 本地衣柜、PNG 校验、Provider 能力模型 |
-| [0038 Authlib 材质上传](adr/0038-authlib-injector-texture-upload-protocol.md) | Accepted | In Progress | 能力声明、PUT/DELETE 协议与上传后复查 |
+| [0037 账户外观与衣柜](adr/0037-account-appearance-and-local-wardrobe.md) | Superseded | N/A | 历史实现记录；后续产品边界由 ADR 0070 提案重新定义 |
+| [0038 Authlib 材质上传](adr/0038-authlib-injector-texture-upload-protocol.md) | Superseded | N/A | 历史协议实现记录；不得据此开放第三方账户外观写入，参见 ADR 0070 Accepted |
 | [0039 运行时生命周期](adr/0039-application-runtime-lifecycle-and-graceful-shutdown.md) | Accepted | Implemented | 关闭协调器、WPF/CLI 接入与超时测试 |
 | [0040 Vanilla Toolkit](adr/0040-vanilla-toolkit-addition.md) | Accepted | In Progress | 数据模板、数据包校验、Registry 查询 |
 
@@ -128,7 +128,9 @@
 - 未实现 WebView2 宿主。ADR 0036 §5 要求在跟随重定向前取得原始 3xx 并在网络响应层取消；仅靠导航事件无法保证这一点。宿主必须验证运行时能力后才能宣称完成浏览器集成，当前不启动/不初始化 WebView。
 - 浏览器用户数据目录、Cookie 生命周期、运行时缺失降级、下载/弹窗/权限默认拒绝仅停留在策略契约，尚无宿主实现与实机验收。
 
-## ADR 0037 / 0038：账户外观、衣柜与材质上传
+## ADR 0037 / 0038：账户外观、衣柜与材质上传（历史实现记录）
+
+> ADR 0037 与 ADR 0038 已由 Proposed 状态的 [ADR 0070](adr/0070-account-appearance-and-appearance-enhance-addition-architecture.md) 标记为 Superseded。以下内容只记录此前代码与测试事实，不代表这些能力仍属于当前产品方案，也不代表它们已迁移、删除或完成新架构验收。
 
 已落地：
 
@@ -215,3 +217,8 @@ Remove-Item Env:\ECL_WORLD_VERIFY_DIR
 - 诊断、存档、世界、Seed 与账户数据默认只在本机处理；本轮没有新增上传路径或遥测。
 - 目录/恢复材料/扩展包均在使用前校验签名与哈希；无法验证时拒绝使用并保留原有可用版本。
 - 未新增仓库、未建设在线目录/代理服务；扩展包仍通过现有公有仓库 Release Asset 分发。
+
+
+## ADR 0070 提案说明
+
+ADR 0070 当前为 Accepted + Not Started，等待项目维护者审查。该提案将 Core 基础外观读取/2D 展示与 Appearance Enhance Addition 分离，并规定第三方 Yggdrasil 账户只保留读取展示、不提供衣柜和外观管理。此处不将既有衣柜或 Authlib 协议实现计为新架构已实现。

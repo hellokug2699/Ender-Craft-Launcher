@@ -1,6 +1,6 @@
 # 架构决策记录（ADR）
 
-本目录记录 ECL 的正式架构决策。ADR 使用中文撰写；代码标识、协议字段和状态值可保留 English。
+本目录记录 ECL 的正式架构决策。ADR 文件标题使用英文；背景、决策说明、备选方案、后果、验收标准和修订记录使用中文。代码标识、协议字段和状态值可保留 English。
 
 ADR 不是功能愿望清单，也不是实施任务列表。它记录需要长期保留的架构选择、选择理由、替代方案、约束、代价及验证方式。纯产品构想优先写 Proposal；具体功能行为和验收细节优先写 Feature Spec；实施任务进入 Roadmap / Issue。
 
@@ -25,6 +25,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | `Not Started` | 尚未实施 | 决策已批准，但尚无实质实现工作。 |
 | `In Progress` | 实施中 | 已开始实现，但范围尚未完成。 |
 | `Implemented` | 已实现 | 约定范围已有实现，但验收或验证仍未全部完成。 |
+| `Blocked` | 已阻塞 | 实施因外部依赖、政策/合规限制或其他当前无法由项目团队消除的因素而暂停；须记录阻塞原因、解除条件及计划复审时间。复审日期不代表自动解除阻塞。不得将其解释为实现失败或验收通过。 |
 | `Verified` | 已验证 | 已完成约定验收，并有测试、构建、实机验证或其他可复核证据。 |
 | `N/A` | 不适用 | 例如纯治理规则、已拒绝提案或不要求代码实施的决策。 |
 
@@ -34,6 +35,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 - `Accepted + Not Started`：已经批准，但尚未开始实施。
 - `Accepted + In Progress`：已经批准，正在实施。
 - `Accepted + Implemented`：实现已完成，验证尚未全部完成。
+- `Accepted + Blocked`：决策仍然有效，但实施被外部或暂不可控因素阻塞；解除阻塞后恢复相应实施状态。
 - `Accepted + Verified`：实现及约定验收均已完成。
 - `Rejected + N/A`：已拒绝，不应实施。
 - `Superseded + N/A`：已被后续决策取代，保留历史记录。
@@ -82,7 +84,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 新 ADR 使用以下字段与顺序：
 
 ```markdown
-# ADR NNNN：中文标题
+# ADR NNNN: English Title
 
 - Decision: Proposed
 - Implementation: Not Started
@@ -109,7 +111,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 
 1. 编号使用四位数字，按创建顺序递增，不重复、不回收。
 2. `Date` 是首次形成该决策的日期；后续修订写入“修订记录”，不修改首次日期。
-3. 标题、背景、决策和说明性正文使用中文；技术名词、代码、命令、协议字段和状态值保留原文。
+3. ADR 文件标题使用英文；背景、决策和说明性正文使用中文；技术名词、代码、命令、协议字段和状态值保留原文。
 4. `Related`、`Supersedes` 和 `Superseded by` 仅在存在关系时添加，使用相对 Markdown 链接。
 5. 已批准 ADR 必须包含可验证的验收标准；纯探索保持 Proposed。
 6. 旧 ADR 可以暂时保留旧版 `Status` 字段。迁移时必须依据实际实现证据映射，不得仅凭原状态名称推断已验证。
@@ -133,7 +135,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 
 ## 最高优先级 UI 架构约束
 
-[ADR 0050: ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) 是 ECL **UI 全局架构与设计系统的最高优先级约束**，负责 Design System、Application Shell、全局导航职责、工具栏定位、统一排版及 DPI/分辨率适配。
+[ADR 0050: ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) 是 ECL **UI 全局架构与设计系统的最高优先级约束**，负责 Design System、Application Shell、全局导航职责、统一排版及 DPI/分辨率适配。[ADR 0056: Right Auxiliary Rail and Inspector Integration](0056-right-auxiliary-rail-and-inspector-integration.md) 是其右侧辅助区域的专门协调决策，具体规定 Rail 的组成、Inspector/Tools 模式职责与交互；两者按此分工共同生效，不存在 0056 取代 0050 全文的关系。
 
 具体页面的布局、信息组织、功能入口、页面内导航、交互流程、用户可见状态、文案和页面级验收，以已确认的 UI 页面规划（Feature Spec）为准。页面规划可以取代其他 ADR 中过时的局部 UI 假设，但不得改变该 ADR 中仍然有效的领域架构决策。
 
@@ -154,7 +156,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0007 加载器安装与组件分发](0007-loaders-and-components.md) | Accepted | Verified | 加载器与组件 |
 | [0008 Forge 与 NeoForge 安装器 processors](0008-forge-neoforge-installers.md) | Accepted | Verified | 加载器安装 |
 | [0009 CurseForge API 集成与凭据注入](0009-curseforge-integration.md) | Superseded | N/A | CurseForge 客户端集成 |
-| [0010 CurseForge 改由私有代理转发](0010-curseforge-private-proxy.md) | Accepted | Verified | 私有代理边界 |
+| [0010 CurseForge 改由私有代理转发](0010-curseforge-private-proxy.md) | Superseded | Verified | 历史决策（由 0069 取代；原实施已验证） |
 | [0011 全局下载任务与页面解耦](0011-download-task-boundary.md) | Superseded | N/A | 下载任务模型 |
 | [0012 整合包归档提取安全边界](0012-modpack-archive-extraction-boundary.md) | Accepted | Implemented | 归档安全 |
 | [0013 分支驱动的版本与发布频道](0013-branch-based-versioning-and-release-channels.md) | Accepted | Implemented | 版本与发布 |
@@ -172,7 +174,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0025 Installer 首次启动完整性确认向导](0025-installer-first-launch-integrity-confirmation.md) | Accepted | Implemented | 安装前完整性确认 |
 | [0026 实例工作台的存档、多人游戏与最近访问](0026-instance-workbench-worlds-servers-and-recent-access.md) | Accepted | Implemented | 实例工作台 |
 | [0027 原生 C# 世界分析与编辑引擎](0027-native-world-engine.md) | Accepted | In Progress | 世界引擎、NBT 编辑器、语义本地化与编辑校验 |
-| [0028 世界种子与生成规则分析功能提议](0028-world-generation-analysis.md) | Proposed | Not Started | 世界生成分析提案 |
+| [0028 世界种子与生成规则分析功能提议](0028-world-generation-analysis.md) | Accepted | Not Started | 世界生成分析 Addition |
 | [0029 Installer、Bootstrapper 与 Uninstaller 的生命周期边界](0029-installer-bootstrapper-uninstaller-lifecycle.md) | Accepted | Implemented | 安装与卸载 |
 | [0030 世界诊断与区块异常定位联动](0030-world-diagnostics-and-chunk-fault-workflow.md) | Accepted | In Progress | 世界诊断 |
 | [0031 多维度世界架构与存储解析](0031-multi-dimension-world-architecture.md) | Accepted | Implemented | 多维度架构 |
@@ -181,8 +183,8 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0034 ECL 自身完整性与可恢复安装架构](0034-ecl-self-integrity-and-recovery.md) | Superseded | N/A | 历史决策（由 0051 统一取代） |
 | [0035 Offline Minecraft Knowledge Library as an Optional Addition](0035-offline-minecraft-knowledge-library.md) | Superseded | N/A | 离线知识库方向（由 0036 取代主要交付方式） |
 | [0036 Embedded Browser for Minecraft Knowledge Access](0036-embedded-browser-for-minecraft-knowledge.md) | Accepted | In Progress | 受限知识浏览器与站点白名单 |
-| [0037 Account Appearance and Local Wardrobe Architecture](0037-account-appearance-and-local-wardrobe.md) | Accepted | In Progress | 皮肤、披风与账户外观管理 |
-| [0038 Authlib-Injector Texture Upload Protocol Support](0038-authlib-injector-texture-upload-protocol.md) | Accepted | In Progress | 第三方账户皮肤与披风协议上传 |
+| [0037 Account Appearance and Local Wardrobe Architecture](0037-account-appearance-and-local-wardrobe.md) | Superseded | N/A | 历史决策（由 0070 取代） |
+| [0038 Authlib-Injector Texture Upload Protocol Support](0038-authlib-injector-texture-upload-protocol.md) | Superseded | N/A | 历史协议决策（由 0070 取代；技术记录保留） |
 | [0039 Application Runtime Lifecycle and Graceful Shutdown](0039-application-runtime-lifecycle-and-graceful-shutdown.md) | Accepted | Implemented | 应用运行时生命周期与优雅关闭 |
 | [0040 原版工具集作为独立官方 Addition](0040-vanilla-toolkit-addition.md) | Accepted | In Progress | 原版查询、模拟、计算与本地资源解析 |
 | [0041 Minecraft 性能监控与性能分析架构](0041-minecraft-performance-monitoring-and-profiling-architecture.md) | Accepted | In Progress | 性能监控、卡死检测、Profiler 与诊断联动 |
@@ -194,5 +196,24 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0047 实例变更事务与并发控制](0047-instance-transactions-and-concurrency-control.md) | Accepted | In Progress | 实例级写入协调、事务、冲突检测与恢复 |
 | [0048 实例快照与恢复架构](0048-instance-snapshots-and-recovery.md) | Accepted | Implemented | 用户快照、事务恢复材料、差异比较与恢复 |
 | [0049：原生 GitHub 项目中心与仓库资源边界](0049-native-github-integration-and-repository-bounded-navigation.md) | Accepted | In Progress | GitHub 项目中心 Addition、ECL 原生渲染、GitHub App 最小权限与仓库内资源解析 |
-| [0050 ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) | Accepted | Not Started | UI 设计系统、Application Shell、右侧工具栏、信息架构、排版与 DPI 适配（UI 领域最高优先级） |
-| [0051 统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md) | Accepted | In Progress | 首次安装、更新源容灾、发布验证、部署、Repair Mode 与离线恢复 |
+| [0050 ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) | Accepted | In Progress | UI 设计系统、Application Shell、全局导航、Right Auxiliary Rail 全局视觉、排版与 DPI 适配（UI 领域最高优先级；Rail 具体职责由 0056 细化） |
+| [0051 统一安装、更新与恢复架构](0051-unified-installation-update-and-recovery-architecture.md) | Accepted | In Progress | Installer / Bootstrapper 独立 UI、首次安装、更新源容灾、发布验证、部署、Repair Mode 与离线恢复 |
+| [0052 Unified Dialog Engine and Incremental Migration](0052-unified-dialog-engine-and-incremental-migration.md) | Accepted | In Progress | 统一弹窗引擎、应用内背景暗化、模态交互与旧弹窗渐进迁移 |
+| [0053 Additions 能力权限模型与用户授权流程](0053-addition-capability-permission-and-user-consent.md) | Accepted | Not Started | 扩展权限声明、安装前知情授权、宿主能力执行控制与撤销 |
+| [0054 Addition 注册表、清单与生命周期治理](0054-addition-registry-and-manifest-governance.md) | Accepted | Not Started | 官方 Addition 统一目录、Manifest、登记审核、生命周期与既有扩展 ADR 迁移 |
+| [0055 ECL 混合工作区与原生工具平台架构](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md) | Accepted | Not Started | Workspace、Native UI SDK、Addition Runtime、IPC、Event Bus、资源边界与条件式启动恢复 |
+| [0056 Right Auxiliary Rail and Inspector Integration](0056-right-auxiliary-rail-and-inspector-integration.md) | Accepted | Not Started | Right Auxiliary Rail：协调右侧 Tools 与 Inspector 两种模式 |
+| [0057 ECL Multiplayer Session Architecture](0057-ecl-multiplayer-session-architecture.md) | Accepted | Not Started | ECL Multiplayer Addition、私人会话、网络传输适配、环境兼容检查与模组安全边界 |
+| [0058 Resource Pack Studio Architecture](0058-resource-pack-studio-architecture.md) | Proposed | Not Started | Resource Pack Studio Addition、资源发现、状态变体预览、按需渲染与安全能力复用 |
+| [0059 Shader Studio and Standard Scene Environment Architecture](0059-shader-studio-and-standard-scene-environment-architecture.md) | Proposed | Not Started | Shader Studio Addition、光影包分析与预览、固定标准场景、时间段取景及官方场景库治理 |
+| [0060 Multi-Addition Visual Preview Composition Architecture](0060-multi-addition-visual-preview-composition.md) | Proposed | Not Started | Schematic Preview、Resource Pack Studio、Shader Studio 的独立与组合预览模式、统一会话及跨 Addition 协作规范 |
+| [0061 ECL AI Conversation and Capability Architecture](0061-ecl-ai-conversation-and-capability-architecture.md) | Accepted | Not Started | ECL AI：Chat、Knowledge、Diagnostic、推理后端、受控搜索、对话/上下文、数据隐私与安全边界（Harness 执行层由 0062 细化） |
+| [0062 ECL AI Agent Runtime and Orchestration Architecture](0062-ecl-ai-agent-runtime-and-orchestration-architecture.md) | Proposed | Not Started | 独立 Agent Runtime Addition、Target/Plan/Task Scheduler、受控执行、Changes 审查、验证与恢复 |
+| [0063 ECL Player Workspace Architecture](0063-ecl-player-workspace-architecture.md) | Proposed | Not Started | 不限定用途的通用玩家工作空间：表格、目标与任务、项目资料、数据导入导出及玩家数据自主权 |
+| [0064 Map Art Studio Architecture](0064-map-art-studio-architecture.md) | Proposed | Not Started | Map Art Studio Addition、单张/多地图画布、图片与地图数据导入、颜色映射、材料优化及可选投影预览组合 |
+| [0065 OAuth Login Session Termination and Authentication Safety](0065-oauth-login-session-termination-and-authentication-safety.md) | Proposed | Not Started | Microsoft 正版登录 OAuth 会话异常检测与立即终止、回调隔离、令牌兑换中止及安全边界 |
+| [0066 Non-Elevated Execution Requirement and Bootstrap Enforcement](0066-non-elevated-execution-requirement-and-bootstrap-enforcement.md) | Proposed | Not Started | ECL 非提权运行原则、Bootstrapper 最早期权限检查、管理员账户与提升令牌区分及拒绝启动 |
+| [0067 ECL Music Player and Minecraft Audio Bridge Architecture](0067-ecl-music-player-and-minecraft-audio-bridge-architecture.md) | Proposed | Not Started | ECL Music Player、Core 托管音频播放、Java Agent 游戏内音量桥接、跨版本/Loader 兼容性与进程修改授权 |
+| [0068 ECL Media Processing and Editing Architecture](0068-ecl-media-engine-and-format-conversion-architecture.md) | Proposed | Not Started | 独立媒体处理 Addition、图片/音频/视频识别转换与基础编辑、预览可视化、临时工作区与源文件安全提交、可替换后端及平台保护措施边界 |
+| [0069 Server-Side CurseForge Credential Proxy and Adaptive Download Architecture](0069-client-side-curseforge-auth-and-adaptive-download-architecture.md) | Accepted | Blocked | ECL 云端服务端持有 CurseForge API Key 并代理 API 请求、客户端直连 CDN、统一下载协调、全局资源预算、自适应 Range、多源回退及既有 Artifact Lifecycle 保留 |
+| [0070 Account Appearance and Appearance Enhance Addition Architecture](0070-account-appearance-and-appearance-enhance-addition-architecture.md) | Accepted | Not Started | Core 基础外观读取与 2D 展示、Appearance Enhance Addition、衣柜及账户类型能力边界 |

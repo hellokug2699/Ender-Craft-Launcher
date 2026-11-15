@@ -1,0 +1,50 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.publisher-trust-database",
+  "name": "Publisher Trust Database",
+  "type": "Data",
+  "category": "Security Data",
+  "summary": "可按需下载和更新的发布者、项目与分发来源验证数据，为 ECL 安全中心提供可追溯的信任判断参考.",
+  "registryStatus": "Planned",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": {
+    "status": "pending-definition",
+    "schemaVersion": null
+  },
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md",
+    "../../adr/0043-minecraft-threat-protection-and-security-analysis.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-07",
+    "lastUpdated": "2026-11-07",
+    "deprecation": null,
+    "replacement": null
+  }
+}

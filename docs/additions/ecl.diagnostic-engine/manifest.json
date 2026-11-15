@@ -1,0 +1,48 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.diagnostic-engine",
+  "name": "Minecraft Diagnostic Engine",
+  "type": "Feature",
+  "category": "Diagnostics",
+  "summary": "本地 Minecraft 诊断引擎，负责日志与崩溃报告解析、环境关联、证据组织、规则执行和诊断报告，包括 Crash Analysis 工作流。",
+  "registryStatus": "In Development",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "minecraft": [],
+    "loaders": [],
+    "platforms": []
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0033-local-minecraft-diagnostic-and-knowledge-engine.md",
+    "../../adr/0030-world-diagnostics-and-chunk-fault-workflow.md",
+    "../../adr/0041-minecraft-performance-monitoring-and-profiling-architecture.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-07",
+    "lastUpdated": "2026-11-07",
+    "deprecation": null,
+    "replacement": null
+  }
+}

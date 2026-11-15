@@ -21,7 +21,7 @@ public sealed class DownloadService(
     DownloadArtifactLifecycle? artifacts = null) : IDownloadService, IDownloadController
 {
     private const int BufferSize = 81920;
-    private const int MaxAttemptsPerUrl = 3;
+    private const int MaxConfiguredAttempts = 10;
     private static readonly TimeSpan FileDownloadTimeout = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan TextDownloadTimeout = TimeSpan.FromMinutes(2);
 
@@ -60,6 +60,8 @@ public sealed class DownloadService(
         var failureKinds = new ConcurrentBag<OperationErrorKind>();
 
         var concurrency = Math.Clamp(settings.Get<int>("network.maxConcurrentDownloads"), 1, 64);
+        var maxAttempts = ResolveMaxAttempts();
+        var limiter = DownloadRateLimiter.Create(settings.Get<int>("network.speedLimitMbps"));
         using var batchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var token = batchCts.Token;
         var parallelOptions = new ParallelOptions
@@ -106,7 +108,8 @@ public sealed class DownloadService(
                         return;
                     }
 
-                    await DownloadOneAsync(client, request, tracker, fileToken).ConfigureAwait(false);
+                    await DownloadOneAsync(client, request, tracker, limiter, maxAttempts, fileToken)
+                        .ConfigureAwait(false);
                     Interlocked.Increment(ref downloadedFiles);
                     Interlocked.Increment(ref completedFiles);
                     var completedSize = request.Size ?? GetFileLength(request.DestinationPath);
@@ -178,10 +181,11 @@ public sealed class DownloadService(
 
         using var client = httpClientProvider.CreateClient();
         var failures = new List<string>();
+        var maxAttempts = ResolveMaxAttempts();
 
         foreach (var url in urls)
         {
-            for (var attempt = 0; attempt < MaxAttemptsPerUrl; attempt++)
+            for (var attempt = 0; attempt < maxAttempts; attempt++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 _resumeSignal.Wait(cancellationToken);
@@ -229,7 +233,7 @@ public sealed class DownloadService(
                         break;
                     }
 
-                    if (attempt + 1 < MaxAttemptsPerUrl)
+                    if (attempt + 1 < maxAttempts)
                     {
                         await Task.Delay(TimeSpan.FromMilliseconds(400 * (attempt + 1)), cancellationToken).ConfigureAwait(false);
                     }
@@ -247,6 +251,8 @@ public sealed class DownloadService(
         HttpClient client,
         DownloadRequest request,
         DownloadBatchTracker tracker,
+        DownloadRateLimiter? limiter,
+        int maxAttempts,
         CancellationToken cancellationToken)
     {
         var destinationDirectory = Path.GetDirectoryName(request.DestinationPath);
@@ -287,12 +293,13 @@ public sealed class DownloadService(
         {
             foreach (var url in request.Urls)
             {
-                for (var attempt = 0; attempt < MaxAttemptsPerUrl; attempt++)
+                for (var attempt = 0; attempt < maxAttempts; attempt++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     try
                     {
-                        await DownloadFromUrlAsync(client, url, request, partPath, tracker, displayName, cancellationToken)
+                        await DownloadFromUrlAsync(
+                                client, url, request, partPath, tracker, displayName, limiter, cancellationToken)
                             .ConfigureAwait(false);
                         _artifacts.Complete(partPath);
                         return;
@@ -315,10 +322,10 @@ public sealed class DownloadService(
                             break;
                         }
 
-                        if (attempt + 1 < MaxAttemptsPerUrl)
+                        if (attempt + 1 < maxAttempts)
                         {
                             // 让任务中心显示“正在重试”，而不是把可重试的失败直接当成最终失败。
-                            tracker.Retry(displayName, attempt + 1, MaxAttemptsPerUrl, exception.Message);
+                            tracker.Retry(displayName, attempt + 1, maxAttempts, exception.Message);
                             await Task.Delay(
                                     TimeSpan.FromMilliseconds(400 * (attempt + 1)),
                                     cancellationToken)
@@ -346,10 +353,19 @@ public sealed class DownloadService(
         string partPath,
         DownloadBatchTracker tracker,
         string displayName,
+        DownloadRateLimiter? limiter,
         CancellationToken cancellationToken)
     {
         using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        attemptCts.CancelAfter(FileDownloadTimeout);
+        // 限速会把传输时间拉长：按已知大小与限速值延长本次尝试的超时，
+        // 避免“低速被当成网络超时”。
+        var attemptTimeout = FileDownloadTimeout;
+        if (limiter is not null && request.Size is long limitedSize && limitedSize > 0)
+        {
+            attemptTimeout += TimeSpan.FromSeconds((double)limitedSize / limiter.BytesPerSecond);
+        }
+
+        attemptCts.CancelAfter(attemptTimeout);
         var token = attemptCts.Token;
 
         var existingLength = File.Exists(partPath) ? new FileInfo(partPath).Length : 0;
@@ -378,7 +394,8 @@ public sealed class DownloadService(
             }
 
             _artifacts.Discard(partPath);
-            throw new InvalidDataException("断点文件无效，已重新开始下载。");
+            // 断点文件不可用属于可恢复状态：丢弃后需要一次新的完整尝试。
+            throw new DownloadRestartRequiredException("断点文件无效，已重新开始下载。");
         }
 
         if (!response.IsSuccessStatusCode)
@@ -426,6 +443,16 @@ public sealed class DownloadService(
                     await destination.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
                     written += read;
                     tracker.FileProgress(displayName, written);
+
+                    // 限速：批次级共享令牌桶，等待时间在两次读取之间生效。
+                    if (limiter is not null)
+                    {
+                        var delay = limiter.Reserve(read);
+                        if (delay > TimeSpan.Zero)
+                        {
+                            await Task.Delay(delay, token).ConfigureAwait(false);
+                        }
+                    }
                 }
             }
             finally
@@ -516,13 +543,24 @@ public sealed class DownloadService(
     private static HashAlgorithmName ToHashAlgorithmName(HashingAlgorithm algorithm) =>
         algorithm == HashingAlgorithm.Sha1 ? HashAlgorithmName.SHA1 : HashAlgorithmName.SHA256;
 
+    private int ResolveMaxAttempts()
+    {
+        if (!settings.Get<bool>("network.autoRetry"))
+        {
+            return 1;
+        }
+
+        return Math.Clamp(settings.Get<int>("network.maxRetryAttempts"), 1, MaxConfiguredAttempts);
+    }
+
     private static bool IsRetryable(Exception exception) => exception switch
     {
         HttpRequestException http => http.StatusCode is null ||
                                      (int)http.StatusCode >= 500 ||
                                      http.StatusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests,
         IOException => true,
-        InvalidDataException => true,
+        // 只对可恢复的传输问题重试；大小/哈希校验失败是内容完整性错误，不重试。
+        DownloadRestartRequiredException => true,
         // HttpClient 连接超时会以 TaskCanceledException 形式抛出，用户取消已在上层过滤。
         OperationCanceledException => true,
         TimeoutException => true,
@@ -802,3 +840,9 @@ public sealed class DownloadService(
                 .FirstOrDefault(host => !string.IsNullOrWhiteSpace(host));
     }
 }
+
+/// <summary>
+/// 断点文件不可用等“丢弃后重来”的内部状态。它与大小/哈希校验失败不同，
+/// 属于可重试的传输准备问题，不能把校验失败也当成可重试错误。
+/// </summary>
+internal sealed class DownloadRestartRequiredException(string message) : Exception(message);

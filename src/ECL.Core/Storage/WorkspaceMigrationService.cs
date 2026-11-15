@@ -21,6 +21,7 @@ public sealed class WorkspaceMigrationService : IWorkspaceMigrationService
     private readonly IWorkspaceService _workspace;
     private readonly ILogger<WorkspaceMigrationService> _logger;
     private readonly string _recordPath;
+    private IProgress<WorkspaceMigrationRecord>? _progress;
 
     public WorkspaceMigrationService(
         AppPaths paths,
@@ -43,11 +44,92 @@ public sealed class WorkspaceMigrationService : IWorkspaceMigrationService
 
     public Task<Result<WorkspaceMigrationRecord>> StartAsync(
         string targetPath,
+        IProgress<WorkspaceMigrationRecord>? progress = null,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => Run(targetPath, resume: false), cancellationToken);
+        Task.Run(
+            () =>
+            {
+                _progress = progress;
+                try
+                {
+                    return Run(targetPath, resume: false);
+                }
+                finally
+                {
+                    _progress = null;
+                }
+            },
+            cancellationToken);
 
-    public Task<Result<WorkspaceMigrationRecord>> ResumeAsync(CancellationToken cancellationToken = default) =>
-        Task.Run(() => Run(null, resume: true), cancellationToken);
+    public Task<Result<WorkspaceMigrationRecord>> ResumeAsync(
+        IProgress<WorkspaceMigrationRecord>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        Task.Run(
+            () =>
+            {
+                _progress = progress;
+                try
+                {
+                    return Run(null, resume: true);
+                }
+                finally
+                {
+                    _progress = null;
+                }
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// 迁移在“文件已复制并校验、切换工作区配置失败”时进入
+    /// <see cref="WorkspaceMigrationState.RollbackRequired"/>。这里只重试切换这一步，
+    /// 不重新复制文件，也不删除目标目录中的任何内容。
+    /// </summary>
+    public Task<Result<WorkspaceMigrationRecord>> CompleteSwitchAsync(CancellationToken cancellationToken = default) =>
+        Task.Run(
+            () =>
+            {
+                if (Current is null)
+                {
+                    return Result<WorkspaceMigrationRecord>.Fail(
+                        "workspace.migration.none",
+                        "没有可完成的迁移记录。");
+                }
+
+                if (Current.State == WorkspaceMigrationState.Completed)
+                {
+                    return Result<WorkspaceMigrationRecord>.Ok(Current);
+                }
+
+                if (Current.State != WorkspaceMigrationState.RollbackRequired)
+                {
+                    return Result<WorkspaceMigrationRecord>.Fail(
+                        "workspace.migration.not_switchable",
+                        "只有“文件已复制、切换工作区配置失败”的迁移可以重新切换工作区。");
+                }
+
+                if (!Directory.Exists(Current.TargetPath))
+                {
+                    return Result<WorkspaceMigrationRecord>.Fail(
+                        "workspace.migration.target_missing",
+                        "新位置已不存在，无法切换工作区。请重新检查目标位置。");
+                }
+
+                var switched = _workspace.InitializeAsync(Current.TargetPath).GetAwaiter().GetResult();
+                if (!switched.IsSuccess)
+                {
+                    return Result<WorkspaceMigrationRecord>.Fail(switched.Error!);
+                }
+
+                var completed = Update(Current with
+                {
+                    State = WorkspaceMigrationState.Completed,
+                    ErrorCode = null,
+                    ErrorMessage = null,
+                });
+                _logger.LogInformation("工作区迁移切换完成：{Target}", completed.TargetPath);
+                return Result<WorkspaceMigrationRecord>.Ok(completed);
+            },
+            cancellationToken);
 
     public Task<Result> DiscardAsync(CancellationToken cancellationToken = default) =>
         Task.Run(
@@ -79,31 +161,39 @@ public sealed class WorkspaceMigrationService : IWorkspaceMigrationService
                 "尚未配置可迁移的工作区。");
         }
 
-        var problems = new List<string>();
+        var problems = new List<WorkspaceMigrationProblem>();
         var warnings = new List<string>();
         var source = WorkspacePathValidator.NormalizePath(primary.Path);
         if (source is null || !Directory.Exists(source))
         {
-            problems.Add("源工作区当前不可用，无法迁移。");
+            problems.Add(new WorkspaceMigrationProblem(
+                "workspace.migration.source_unavailable",
+                "源工作区当前不可用，无法迁移。"));
         }
 
         if (primary.Kind != WorkspaceKind.Managed)
         {
-            problems.Add("外部工作区只登记引用，不支持由 ECL 迁移。");
+            problems.Add(new WorkspaceMigrationProblem(
+                "workspace.migration.external_workspace",
+                "外部工作区只登记引用，不支持由 ECL 迁移。"));
         }
 
         var check = _workspace.Check(targetPath, createIfMissing: false);
         var target = check.Path;
         if (string.IsNullOrWhiteSpace(target))
         {
-            problems.Add("目标路径无效。");
+            problems.Add(new WorkspaceMigrationProblem(
+                "workspace.migration.target_invalid",
+                "目标路径无效。"));
         }
         else
         {
             if (source is not null &&
                 (WorkspacePathValidator.IsUnder(target, source) || WorkspacePathValidator.IsUnder(source, target)))
             {
-                problems.Add("源与目标路径重叠，迁移会破坏数据。");
+                problems.Add(new WorkspaceMigrationProblem(
+                    "workspace.migration.overlap",
+                    "源与目标路径重叠，迁移会破坏数据。"));
             }
 
             if (Directory.Exists(target))
@@ -111,12 +201,16 @@ public sealed class WorkspaceMigrationService : IWorkspaceMigrationService
                 var isEmpty = !Directory.EnumerateFileSystemEntries(target).Any();
                 if (!isEmpty)
                 {
-                    problems.Add("目标目录已存在且不为空；ECL 不会合并或覆盖现有目录。");
+                    problems.Add(new WorkspaceMigrationProblem(
+                        "workspace.migration.target_not_empty",
+                        "目标目录已存在且不为空；ECL 不会合并或覆盖现有目录。"));
                 }
             }
             else if (check.Status != WorkspaceStatus.Missing)
             {
-                problems.Add(check.ProblemMessage ?? "目标路径不可用。");
+                problems.Add(new WorkspaceMigrationProblem(
+                    "workspace.migration.target_unavailable",
+                    check.ProblemMessage ?? "目标路径不可用。"));
             }
 
             warnings.AddRange(check.WarningCodes);
@@ -127,13 +221,22 @@ public sealed class WorkspaceMigrationService : IWorkspaceMigrationService
             : Measure(source, problems);
         if (source is not null && HasLockedSessionFile(source))
         {
-            problems.Add("检测到被占用的世界会话文件，游戏可能仍在运行。请先退出游戏。");
+            problems.Add(new WorkspaceMigrationProblem(
+                "workspace.migration.game_running",
+                "检测到被占用的世界会话文件，游戏可能仍在运行。请先退出游戏。"));
         }
 
         var freeBytes = check.FreeBytes;
         if (freeBytes is { } free && totalBytes > 0 && free < totalBytes + SpaceSafetyMargin)
         {
-            problems.Add($"目标空间不足：需要约 {FormatBytes(totalBytes + SpaceSafetyMargin)}，可用 {FormatBytes(free)}。");
+            var requiredText = FormatBytes(totalBytes + SpaceSafetyMargin);
+            var freeText = FormatBytes(free);
+            problems.Add(new WorkspaceMigrationProblem(
+                "workspace.migration.insufficient_space",
+                $"目标空间不足：需要约 {requiredText}，可用 {freeText}。")
+            {
+                Arguments = [requiredText, freeText],
+            });
         }
 
         var plan = new WorkspaceMigrationPlan(
@@ -144,8 +247,11 @@ public sealed class WorkspaceMigrationService : IWorkspaceMigrationService
             instanceCount,
             freeBytes,
             problems.Count == 0,
-            problems,
-            warnings);
+            problems.Select(problem => problem.Message).ToArray(),
+            warnings)
+        {
+            ProblemDetails = problems,
+        };
 
         return Result<WorkspaceMigrationPlan>.Ok(plan);
     }
@@ -395,7 +501,9 @@ public sealed class WorkspaceMigrationService : IWorkspaceMigrationService
         return Directory.EnumerateFiles(root, "*", options);
     }
 
-    private static (long Bytes, int Files, int Instances) Measure(string source, List<string> problems)
+    private static (long Bytes, int Files, int Instances) Measure(
+        string source,
+        List<WorkspaceMigrationProblem> problems)
     {
         try
         {
@@ -414,7 +522,9 @@ public sealed class WorkspaceMigrationService : IWorkspaceMigrationService
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            problems.Add($"无法读取源工作区：{exception.Message}");
+            problems.Add(new WorkspaceMigrationProblem(
+                "workspace.migration.source_unreadable",
+                $"无法读取源工作区：{exception.Message}"));
             return (0, 0, 0);
         }
     }
@@ -482,7 +592,28 @@ public sealed class WorkspaceMigrationService : IWorkspaceMigrationService
         var next = record with { UpdatedAtUtc = DateTimeOffset.UtcNow };
         SaveRecord(next);
         Current = next;
+        Report(next);
         return next;
+    }
+
+    /// <summary>
+    /// 进度回调只是呈现通道：UI 处理器抛异常不得让迁移失败或留下半份记录。
+    /// </summary>
+    private void Report(WorkspaceMigrationRecord record)
+    {
+        if (_progress is not { } progress)
+        {
+            return;
+        }
+
+        try
+        {
+            progress.Report(record);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogWarning(exception, "迁移进度回调失败（不影响迁移本身）。");
+        }
     }
 
     private void SaveRecord(WorkspaceMigrationRecord record)

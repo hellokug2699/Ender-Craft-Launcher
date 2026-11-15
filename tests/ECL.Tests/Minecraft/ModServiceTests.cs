@@ -151,6 +151,39 @@ public sealed class ModServiceTests
         Assert.Equal(2, report.Value!.Issues.Count(issue => issue.Kind == ModIssueKind.DuplicateModId));
     }
 
+    [Fact]
+    public async Task ImportRejectsFilesWithoutModMetadataOrForAnotherLoader()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instance = await CreateInstanceAsync(provider);
+        var service = provider.GetRequiredService<IModService>();
+        var modsDirectory = GetModsDirectory(environment, instance);
+
+        var noMetadata = Path.Combine(Path.GetTempPath(), $"ecl-import-{Guid.NewGuid():N}.jar");
+        WriteJar(noMetadata, readme: true);
+        var forgeJar = Path.Combine(Path.GetTempPath(), $"ecl-import-{Guid.NewGuid():N}.jar");
+        WriteForgeJar(forgeJar, "forgemod");
+
+        try
+        {
+            var result = await service.ImportAsync(instance.Id, [noMetadata, forgeJar]);
+
+            Assert.True(result.IsSuccess, result.Error?.ToString());
+            Assert.Equal(0, result.Value!.Succeeded);
+            Assert.Equal(2, result.Value.Errors.Count);
+            Assert.Contains(result.Value.Errors, error => error.Contains("不包含可识别的模组信息", StringComparison.Ordinal));
+            Assert.Contains(result.Value.Errors, error => error.Contains("加载器", StringComparison.Ordinal));
+            Assert.False(File.Exists(Path.Combine(modsDirectory, Path.GetFileName(noMetadata))));
+            Assert.False(File.Exists(Path.Combine(modsDirectory, Path.GetFileName(forgeJar))));
+        }
+        finally
+        {
+            File.Delete(noMetadata);
+            File.Delete(forgeJar);
+        }
+    }
+
     private static async Task<GameInstance> CreateInstanceAsync(IServiceProvider provider)
     {
         var result = await provider.GetRequiredService<IInstanceService>()
@@ -170,6 +203,12 @@ public sealed class ModServiceTests
     {
         using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
         WriteEntry(archive, "fabric.mod.json", fabricMetadata);
+    }
+
+    private static void WriteJar(string path, bool readme)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        WriteEntry(archive, "readme.txt", "not a mod");
     }
 
     private static void WriteForgeJar(string path, string modId)

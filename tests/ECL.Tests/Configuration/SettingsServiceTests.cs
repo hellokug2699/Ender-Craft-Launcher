@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using System.Globalization;
 using Ecl.Configuration;
 using Ecl.Configuration.Settings;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,8 +21,29 @@ public sealed class SettingsServiceTests
         Assert.Equal("g1", settings.Get<string>("java.jvmPreset"));
         Assert.Equal(8, settings.Get<int>("network.maxConcurrentDownloads"));
         Assert.Equal("official-first", settings.Get<string>("network.downloadSource"));
-        Assert.Contains(settings.Get<string>("launcher.language"), new[] { "zh-CN", "en-US" });
+        // 界面语言默认“跟随系统”（settings-interface-preferences.md §5），
+        // 启动时再按操作系统首选语言解析为 zh-CN / en-US。
+        Assert.Equal("system", settings.Get<string>("launcher.language"));
+        Assert.Equal(100, settings.Get<int>("launcher.uiScale"));
+        Assert.Equal("standard", settings.Get<string>("launcher.fontSize"));
+        Assert.True(settings.Get<bool>("launcher.animationsEnabled"));
         Assert.Equal(SettingsValueSource.Default, settings.GetSource("java.defaultMemoryMb"));
+    }
+
+    [Theory]
+    [InlineData(null, "en-US")]
+    [InlineData("", "en-US")]
+    [InlineData("system", "en-US")]
+    [InlineData("SYSTEM", "en-US")]
+    [InlineData("zh-CN", "zh-CN")]
+    [InlineData("fr-FR", "fr-FR")]
+    public void ResolveLanguageFollowsTheSystemOnlyWhenUnsetOrSystem(string? configured, string expected)
+    {
+        // 未设置 / 空 / system 都表示“跟随系统首选语言”；显式保存的区域性原样返回，
+        // 支不支持由本地化器决定（不支持的名称会回退到 ECL 默认语言）。
+        Assert.Equal(
+            expected,
+            SettingsBootstrap.ResolveLanguage(configured, CultureInfo.GetCultureInfo("en-US")));
     }
 
     [Fact]
@@ -57,6 +79,17 @@ public sealed class SettingsServiceTests
 
         Assert.False(settings.TrySetRaw("network.proxyMode", "bogus", null, out var choiceError));
         Assert.False(string.IsNullOrWhiteSpace(choiceError));
+
+        // 界面偏好（settings-interface-preferences.md §3–§6）：缩放范围/步进、字体族与字号档位
+        // 都由元数据校验，CLI 也不能写入 83%、未知字体或未登记的档位。
+        Assert.False(settings.TrySetRaw("launcher.uiScale", "83", null, out _));
+        Assert.False(settings.TrySetRaw("launcher.uiScale", "155", null, out _));
+        Assert.True(settings.TrySetRaw("launcher.uiScale", "80", null, out var scaleError), scaleError);
+        Assert.True(settings.TrySetRaw("launcher.uiScale", "150", null, out scaleError), scaleError);
+        Assert.False(settings.TrySetRaw("launcher.interfaceFont", "comic-sans", null, out _));
+        Assert.False(settings.TrySetRaw("launcher.fontSize", "tiny", null, out _));
+        Assert.False(settings.TrySetRaw("launcher.animationsEnabled", "maybe", null, out _));
+        Assert.True(settings.TrySetRaw("launcher.language", "system", null, out var languageError), languageError);
     }
 
     [Fact]

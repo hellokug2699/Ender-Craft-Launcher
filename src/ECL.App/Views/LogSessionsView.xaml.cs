@@ -1,40 +1,85 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Collections.Specialized;
+using System.Windows;
 using System.Windows.Controls;
 using Ecl.App.ViewModels;
+using Ecl.App.ViewModels.LogSessions;
 
 namespace Ecl.App.Views;
 
+/// <summary>
+/// 日志阅读器的视图协作：跟随滚动、搜索命中定位与窄窗口折叠。
+/// 业务状态、会话生命周期与读取全部在 ViewModel 与领域服务中，视图只处理滚动锚点。
+/// </summary>
 public partial class LogSessionsView : UserControl
 {
-    private INotifyCollectionChanged? _tracked;
+    private readonly List<INotifyCollectionChanged> _tracked = [];
+    private LogSessionsViewModel? _viewModel;
 
     public LogSessionsView()
     {
         InitializeComponent();
-        DataContextChanged += (_, _) => Track();
+        DataContextChanged += (_, _) => Attach();
+        Loaded += (_, _) => Attach();
+        Unloaded += (_, _) => Detach();
+        SizeChanged += OnSizeChanged;
     }
 
-    private void Track()
+    private void Attach()
     {
-        if (_tracked is not null)
+        if (DataContext is not LogSessionsViewModel viewModel || ReferenceEquals(viewModel, _viewModel))
         {
-            _tracked.CollectionChanged -= OnLinesChanged;
+            return;
         }
 
-        _tracked = (DataContext as LogSessionsViewModel)?.Lines;
-        if (_tracked is not null)
+        Detach();
+        _viewModel = viewModel;
+        _viewModel.ScrollToEndRequested += OnScrollToEndRequested;
+        _viewModel.ScrollToLineRequested += OnScrollToLineRequested;
+        _viewModel.Lines.CollectionChanged += OnLinesChanged;
+        _tracked.Add(_viewModel.Lines);
+        LogList.ItemsSource = _viewModel.Lines;
+    }
+
+    private void Detach()
+    {
+        foreach (var collection in _tracked)
         {
-            _tracked.CollectionChanged += OnLinesChanged;
+            collection.CollectionChanged -= OnLinesChanged;
+        }
+
+        _tracked.Clear();
+
+        if (_viewModel is not null)
+        {
+            _viewModel.ScrollToEndRequested -= OnScrollToEndRequested;
+            _viewModel.ScrollToLineRequested -= OnScrollToLineRequested;
+            _viewModel = null;
         }
     }
 
     private void OnLinesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (DataContext is LogSessionsViewModel { Follow: true })
+        if (_viewModel is { Follow: true })
         {
-            LogScroller.ScrollToEnd();
+            ScrollToEnd();
         }
     }
+
+    private void OnScrollToEndRequested(object? sender, EventArgs e) => ScrollToEnd();
+
+    private void OnScrollToLineRequested(object? sender, LogLineViewModel line) =>
+        LogList.ScrollIntoView(line);
+
+    private void ScrollToEnd()
+    {
+        if (LogList.Items.Count > 0)
+        {
+            LogList.ScrollIntoView(LogList.Items[^1]);
+        }
+    }
+
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e) =>
+        _viewModel?.SetNarrow(ActualWidth < 760);
 }

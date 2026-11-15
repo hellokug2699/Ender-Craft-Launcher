@@ -239,8 +239,10 @@ public sealed class InstallServiceTests
             environment.Paths.LibrariesDirectory,
             "com/example/demo/1.0/demo-1.0.jar".Replace('/', Path.DirectorySeparatorChar))));
 
-        // 基础版本 JSON 不是本次安装新建的加载器版本，应保留。
-        Assert.True(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, "1.21.1")));
+        // 基础版本 JSON 现在也属于安装事务（§6.4 决策 a）：本次新建、安装失败时必须删除，
+        // 避免回滚后留下“半个共享版本目录”。原本已存在的同版本文件走恢复而不是删除（见下一个测试）。
+        Assert.False(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, "1.21.1")));
+        Assert.False(File.Exists(VersionFilePlanner.GetAssetIndexPath(environment.Paths, "1.21")));
 
         var diagnostics = Directory.GetFiles(
             Path.Combine(environment.Paths.LogsDirectory, "install"),
@@ -249,6 +251,78 @@ public sealed class InstallServiceTests
         var content = await File.ReadAllTextAsync(diagnostics[0]);
         Assert.Contains("install.download_failed", content, StringComparison.Ordinal);
         Assert.Contains(instance.Id, content, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// §6.4 决策 a：共享的 <c>versions/&lt;id&gt;/&lt;id&gt;.json</c> 与 <c>assets/indexes/&lt;id&gt;.json</c>
+    /// 被本次安装替换时必须在失败后恢复原始内容（可能是其它启动器写入的合并配置）。
+    /// </summary>
+    [Fact]
+    public async Task FailedInstallRestoresReplacedSharedVersionJsonAndAssetIndex()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService(failOnDisplayName: "client-1.12.xml");
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IDownloadService>(fake));
+
+        var versionJsonPath = VersionFilePlanner.GetVersionJsonPath(environment.Paths, "1.21.1");
+        var assetIndexPath = VersionFilePlanner.GetAssetIndexPath(environment.Paths, "1.21");
+        Directory.CreateDirectory(Path.GetDirectoryName(versionJsonPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(assetIndexPath)!);
+        const string sharedVersionJson =
+            """{"id":"1.21.1","mainClass":"net.fabricmc.loader.impl.launch.knot.KnotClient","libraries":[]}""";
+        const string sharedAssetIndex = """{"objects":{},"marker":"other-launcher"}""";
+        await File.WriteAllTextAsync(versionJsonPath, sharedVersionJson);
+        await File.WriteAllTextAsync(assetIndexPath, sharedAssetIndex);
+
+        var instance = (await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Shared Files", "1.21.1")).Value!;
+
+        var outcome = await provider.GetRequiredService<IVersionInstallService>()
+            .ReconfigureAsync(instance.Id, "1.21.1", "vanilla");
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal("install.download_failed", outcome.Error?.Code);
+        var failure = outcome.Failure!;
+        Assert.True(failure.Rollback.IsComplete);
+        Assert.False(failure.RecoveryRequired);
+
+        // 回滚必须写回原始字节，而不是留下官方 JSON。
+        Assert.Equal(sharedVersionJson, await File.ReadAllTextAsync(versionJsonPath));
+        Assert.Equal(sharedAssetIndex, await File.ReadAllTextAsync(assetIndexPath));
+        Assert.Contains(
+            failure.Rollback.Actions,
+            action => action.Contains(versionJsonPath, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            failure.Rollback.Actions,
+            action => action.Contains(assetIndexPath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// §6.4 决策 a 的成功路径：共享版本 JSON / 资产索引被校正为新内容，安装提交后保留（不回滚）。
+    /// </summary>
+    [Fact]
+    public async Task SuccessfulInstallKeepsReplacedSharedVersionJsonAndAssetIndex()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IDownloadService>(fake));
+
+        var versionJsonPath = VersionFilePlanner.GetVersionJsonPath(environment.Paths, "1.21.1");
+        var assetIndexPath = VersionFilePlanner.GetAssetIndexPath(environment.Paths, "1.21");
+        Directory.CreateDirectory(Path.GetDirectoryName(versionJsonPath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(assetIndexPath)!);
+        await File.WriteAllTextAsync(versionJsonPath, """{"id":"1.21.1","mainClass":"stale.example.Main"}""");
+        await File.WriteAllTextAsync(assetIndexPath, """{"objects":{},"marker":"stale"}""");
+
+        var instance = (await provider.GetRequiredService<IInstanceService>().CreateAsync("Shared Ok", "1.21.1")).Value!;
+
+        var result = await provider.GetRequiredService<IVersionInstallService>().InstallAsync(instance.Id);
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        var installedJson = await File.ReadAllTextAsync(versionJsonPath);
+        Assert.DoesNotContain("stale.example.Main", installedJson, StringComparison.Ordinal);
+        Assert.Contains("net.minecraft.client.main.Main", installedJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("stale", await File.ReadAllTextAsync(assetIndexPath), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -282,6 +356,166 @@ public sealed class InstallServiceTests
             "com/example/demo/1.0/demo-1.0-client.jar".Replace('/', Path.DirectorySeparatorChar));
         Assert.False(File.Exists(patched));
         Assert.False(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, instance.VersionId)));
+    }
+
+    [Fact]
+    public async Task ReconfigureFailureReportsCompleteRollbackAndRestoredConfiguration()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService(failOnDisplayName: "1.21.1-fabric-0.16.0.jar");
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(fake);
+            services.AddSingleton<ILoaderCatalog>(new FakeLoaderCatalog());
+        });
+
+        var original = (await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Rollback Target", "1.21.1")).Value!;
+
+        var outcome = await provider.GetRequiredService<IVersionInstallService>()
+            .ReconfigureAsync(original.Id, "1.21.1", "fabric", "0.16.0");
+
+        Assert.False(outcome.IsSuccess);
+        Assert.Equal("install.download_failed", outcome.Error?.Code);
+        var failure = outcome.Failure!;
+        Assert.True(failure.MetadataRestored);
+        Assert.True(failure.Rollback.IsComplete);
+        Assert.False(failure.RecoveryRequired);
+        Assert.NotNull(failure.DiagnosticPath);
+        Assert.True(File.Exists(failure.DiagnosticPath!));
+
+        // 失败后实例记录（含 VersionId）必须与变更前完全一致，不能重算成新的版本 ID。
+        var restored = await provider.GetRequiredService<IInstanceService>().GetAsync(original.Id);
+        Assert.NotNull(restored);
+        Assert.Equal(original.VersionId, restored!.VersionId);
+        Assert.Equal(original.GameVersion, restored.GameVersion);
+        Assert.Equal(original.Loader, restored.Loader);
+        Assert.Equal(original.LoaderVersion, restored.LoaderVersion);
+
+        // 本次新写入的加载器版本文件必须已删除。
+        Assert.False(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, "1.21.1-fabric-0.16.0")));
+        Assert.False(File.Exists(VersionFilePlanner.GetClientJarPath(environment.Paths, "1.21.1-fabric-0.16.0")));
+    }
+
+    [Fact]
+    public async Task ReconfigureFailureKeepsTheOriginalVersionIdOfImportedInstances()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService(failOnDisplayName: "1.21.1-fabric-0.16.0.jar");
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(fake);
+            services.AddSingleton<ILoaderCatalog>(new FakeLoaderCatalog());
+        });
+
+        var created = (await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Imported", "1.21.1")).Value!;
+        var imported = created with { VersionId = "custom-imported-version" };
+        await provider.GetRequiredService<IInstanceStore>().SaveAsync(imported);
+
+        var outcome = await provider.GetRequiredService<IVersionInstallService>()
+            .ReconfigureAsync(imported.Id, "1.21.1", "fabric", "0.16.0");
+
+        Assert.False(outcome.IsSuccess);
+        var restored = await provider.GetRequiredService<IInstanceService>().GetAsync(imported.Id);
+        Assert.Equal("custom-imported-version", restored!.VersionId);
+        Assert.True(outcome.Failure!.MetadataRestored);
+    }
+
+    [Fact]
+    public async Task ReconfigureSuccessCommitsTargetAndKeepsInstanceId()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeDownloadService();
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<IDownloadService>(fake);
+            services.AddSingleton<ILoaderCatalog>(new FakeLoaderCatalog());
+        });
+
+        var original = (await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Reconfigure Ok", "1.21.1")).Value!;
+
+        var outcome = await provider.GetRequiredService<IVersionInstallService>()
+            .ReconfigureAsync(original.Id, "1.21.1", "fabric", "0.16.0");
+
+        Assert.True(outcome.IsSuccess, outcome.Error?.ToString());
+        Assert.Null(outcome.Failure);
+        Assert.Contains(outcome.Report!.Components!, component => component.StartsWith("fabric-api:", StringComparison.Ordinal));
+
+        var updated = await provider.GetRequiredService<IInstanceService>().GetAsync(original.Id);
+        Assert.Equal(original.Id, updated!.Id);
+        Assert.Equal("fabric", updated.Loader);
+        Assert.Equal("0.16.0", updated.LoaderVersion);
+        Assert.Equal("1.21.1-fabric-0.16.0", updated.VersionId);
+        Assert.True(File.Exists(VersionFilePlanner.GetVersionJsonPath(environment.Paths, updated.VersionId)));
+
+        var operation = Assert.Single(provider.GetRequiredService<IOperationStore>().Snapshots);
+        Assert.Equal(OperationKind.Install, operation.Kind);
+        Assert.Equal(OperationState.Completed, operation.State);
+    }
+
+    [Fact]
+    public void RollbackReportsFailedRestoresInsteadOfClaimingSuccess()
+    {
+        var root = Directory.CreateTempSubdirectory("ecl-rollback-").FullName;
+        try
+        {
+            var path = Path.Combine(root, "blocked.jar");
+            File.WriteAllText(path, "original content");
+            var transaction = new InstallTransaction();
+            transaction.TrackFileWithBackup(path);
+
+            // 用同名目录占据文件路径：恢复备份在 Windows 与 Linux 上都必须失败。
+            // 不能在 Linux 上依赖“文件仍被打开”来制造删除失败——Unix 允许删除打开的文件，
+            // 那样测试会在 Linux CI 上误判为回滚成功。
+            File.Delete(path);
+            Directory.CreateDirectory(path);
+
+            var result = transaction.Rollback();
+
+            Assert.False(result.IsComplete);
+            var failure = Assert.Single(result.Failures);
+            Assert.Contains("failed to rollback", failure, StringComparison.Ordinal);
+            Assert.Contains(path, failure, StringComparison.Ordinal);
+            Assert.Single(result.Actions);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RollbackReportsFailedDeletesWhenTheFileIsStillOpen()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            // Windows 的共享锁语义是此路径的前提；Linux 允许删除仍打开的文件。
+            return;
+        }
+
+        var root = Directory.CreateTempSubdirectory("ecl-rollback-lock-").FullName;
+        try
+        {
+            var path = Path.Combine(root, "locked.jar");
+            var transaction = new InstallTransaction();
+            transaction.TrackFile(path);
+            File.WriteAllText(path, "new content");
+
+            using var handle = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.None);
+            var result = transaction.Rollback();
+
+            Assert.False(result.IsComplete);
+            var failure = Assert.Single(result.Failures);
+            Assert.Contains("failed to rollback", failure, StringComparison.Ordinal);
+            Assert.Contains(path, failure, StringComparison.Ordinal);
+            Assert.Single(result.Actions);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     private sealed class InlineProgress<T>(Action<T> callback) : IProgress<T>

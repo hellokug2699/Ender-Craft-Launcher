@@ -1,403 +1,485 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using System.Collections.ObjectModel;
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Ecl.App.Dialogs;
+using Ecl.App.Dialogs.ViewModels;
 using Ecl.App.Services;
-using Ecl.Core;
-using Ecl.Core.Storage;
-using Ecl.Minecraft.Instances;
+using Ecl.App.ViewModels.Storage;
+using Ecl.Core.Localization;
 using Ecl.Minecraft.Storage;
-using Microsoft.Win32;
+using Ecl.Operations;
+using Microsoft.Extensions.Logging;
 
 namespace Ecl.App.ViewModels;
 
-public sealed record StorageUsageItemViewModel(StorageUsage Usage)
-{
-    public string Title => Usage.Label;
-
-    public string SizeText => Usage.Bytes is { } bytes ? FormatBytes(bytes) : Usage.Status switch
-    {
-        StorageUsageStatus.Unavailable => "不可访问",
-        StorageUsageStatus.NotScanned => "尚未扫描",
-        StorageUsageStatus.Overlapping => "已排除重复",
-        _ => "未知",
-    };
-
-    public string StatusText => Usage.Status switch
-    {
-        StorageUsageStatus.Scanned => "已扫描",
-        StorageUsageStatus.Estimated => "估算",
-        StorageUsageStatus.Unavailable => "不可访问",
-        StorageUsageStatus.Overlapping => "重复排除",
-        _ => "未扫描",
-    };
-
-    public string Detail => string.IsNullOrWhiteSpace(Usage.Detail)
-        ? Usage.Path ?? string.Empty
-        : $"{Usage.Detail}  ·  {Usage.Path}";
-
-    public bool IsCleanable => Usage.IsCleanable;
-
-    private static string FormatBytes(long bytes) => bytes switch
-    {
-        >= 1024L * 1024 * 1024 => $"{bytes / (1024d * 1024 * 1024):0.##} GB",
-        >= 1024L * 1024 => $"{bytes / (1024d * 1024):0.##} MB",
-        >= 1024 => $"{bytes / 1024d:0.##} KB",
-        _ => $"{bytes} B",
-    };
-}
-
-public sealed record SourceGroupViewModel(
-    string Name,
-    string Path,
-    string Status,
-    int InstanceCount,
-    IReadOnlyList<string> InstanceNames)
-{
-    public string InstancesText => InstanceCount == 0
-        ? "未发现已识别实例"
-        : $"{InstanceCount} 个实例：{string.Join("、", InstanceNames.Take(4))}{(InstanceCount > 4 ? "…" : string.Empty)}";
-}
-
-public sealed record StorageInstanceItemViewModel(GameInstance Model, string Path)
-{
-    public string Name => Model.Name;
-
-    public string Meta => $"{Model.GameVersion} · {Model.Loader} · {Path}";
-}
-
-public sealed record CleanupItemViewModel(CleanupPreviewItem Item)
-{
-    public string Title => Item.Kind switch
-    {
-        CleanupItemKind.DownloadPart => "下载临时产物",
-        CleanupItemKind.RebuildableCache => "可重建缓存",
-        CleanupItemKind.InstanceLog => "实例历史日志",
-        CleanupItemKind.DiagnosticTemp => "诊断临时文件",
-        _ => Item.Kind.ToString(),
-    };
-
-    public string SizeText => Item.Bytes >= 1024 * 1024
-        ? $"{Item.Bytes / (1024d * 1024):0.##} MB"
-        : $"{Math.Max(1, Item.Bytes / 1024d):0.##} KB";
-
-    public string PathText => Item.Path;
-
-    public string Reason => Item.Reason;
-}
-
+/// <summary>
+/// 存储管理（storage-management.md / ADR 0022）。页面只呈现领域清单并提交用户选择；
+/// 扫描、分类、白名单、所有权、路径与活动状态校验全部由
+/// <see cref="IStorageInventoryService"/> 负责。
+/// </summary>
 public sealed partial class StorageViewModel : ObservableObject
 {
-    private readonly StorageAnalysisService _analysis;
-    private readonly StorageCleanupService _cleanup;
-    private readonly InstanceSourceService _sources;
-    private readonly IWorkspaceService _workspace;
-    private readonly IInstanceService _instances;
-    private readonly IAppPaths _paths;
-    private readonly IDialogService _dialogs;
-    private CleanupPreview? _preview;
-    private bool _activated;
+    private readonly IStorageInventoryService _inventory;
+    private readonly ILocalizer _localizer;
+    private readonly IOperationService _operations;
+    private readonly IDialogEngine _dialogs;
+    private readonly IDialogService _dialogService;
+    private readonly ILogger<StorageViewModel> _logger;
+    private readonly List<StorageCategoryViewModel> _categories = [];
+
+    private string? _instanceFocusId;
+    private StorageInventory? _lastInventory;
+    private bool _suppressDiskRefresh;
 
     public StorageViewModel(
-        StorageAnalysisService analysis,
-        StorageCleanupService cleanup,
-        InstanceSourceService sources,
-        IWorkspaceService workspace,
-        IInstanceService instances,
-        IAppPaths paths,
-        IDialogService dialogs)
+        IStorageInventoryService inventory,
+        ILocalizer localizer,
+        IOperationService operations,
+        IDialogEngine dialogs,
+        IDialogService dialogService,
+        ILogger<StorageViewModel> logger)
     {
-        _analysis = analysis;
-        _cleanup = cleanup;
-        _sources = sources;
-        _workspace = workspace;
-        _instances = instances;
-        _paths = paths;
+        _inventory = inventory;
+        _localizer = localizer;
+        _operations = operations;
         _dialogs = dialogs;
+        _dialogService = dialogService;
+        _logger = logger;
     }
 
-    public ObservableCollection<StorageUsageItemViewModel> Usages { get; } = [];
+    public ObservableCollection<StorageDiskViewModel> Disks { get; } = [];
 
-    public ObservableCollection<SourceGroupViewModel> SourceGroups { get; } = [];
+    public ObservableCollection<StorageGroupViewModel> Groups { get; } = [];
 
-    public ObservableCollection<CleanupItemViewModel> PreviewItems { get; } = [];
+    public IReadOnlyList<StorageCategoryViewModel> Categories => _categories;
 
-    public ObservableCollection<StorageInstanceItemViewModel> Instances { get; } = [];
+    public string Title => _localizer.Get("storage.title");
 
-    [ObservableProperty]
-    private StorageInstanceItemViewModel? _selectedInstance;
+    public string Subtitle => _localizer.Get("storage.subtitle");
 
-    [ObservableProperty]
-    private string _instanceDeletionStatus = "实例删除使用与实例库相同的删除计划与保护规则。";
+    public string ScanText => _localizer.Get("storage.scan");
 
-    public bool HasSelectedInstance => SelectedInstance is not null;
-
-    public bool CanCleanupSelected => SelectedInstance is not null;
-
-    partial void OnSelectedInstanceChanged(StorageInstanceItemViewModel? value)
-    {
-        OnPropertyChanged(nameof(HasSelectedInstance));
-        OnPropertyChanged(nameof(CanCleanupSelected));
-    }
+    public string RescanText => _localizer.Get("storage.rescan");
 
     [ObservableProperty]
-    private string _status = "点击“扫描”统计 ECL、下载缓存、Java Runtime、工作区与已登记实例来源。";
+    private bool _isScanning;
 
     [ObservableProperty]
-    private string _summary = "尚未扫描";
+    private bool _hasScanned;
 
     [ObservableProperty]
-    private string _previewSummary = "尚未生成清理预览";
+    private bool _hasData;
 
     [ObservableProperty]
-    private bool _isBusy;
+    private bool _hasWarnings;
 
     [ObservableProperty]
-    private bool _hasPreview;
+    private string _statusMessage = string.Empty;
+
+    [ObservableProperty]
+    private string _warningText = string.Empty;
+
+    [ObservableProperty]
+    private string _summaryText = string.Empty;
+
+    [ObservableProperty]
+    private string _scanProgressText = string.Empty;
+
+    [ObservableProperty]
+    private double _scanProgress;
+
+    [ObservableProperty]
+    private string _scanDateText = string.Empty;
+
+    [ObservableProperty]
+    private string _instanceFocusMessage = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasInstanceFocus;
+
+    [ObservableProperty]
+    private bool _isDeleting;
+
+    public bool CanScan => !IsScanning && !IsDeleting;
+
+    public bool ShowEmptyState => HasScanned && (!HasData || _categories.All(category => category.IsEmpty));
 
     public async Task ActivateAsync()
     {
-        if (_activated)
+        if (HasScanned || IsScanning)
         {
             return;
         }
 
-        _activated = true;
-        await ScanAsync();
+        await ScanAsync(force: false);
+    }
+
+    public void FocusInstance(string instanceId)
+    {
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            return;
+        }
+
+        _instanceFocusId = instanceId;
+        var name = _lastInventory?.Categories
+            .SelectMany(category => category.Entries)
+            .FirstOrDefault(entry => string.Equals(entry.InstanceId, instanceId, StringComparison.Ordinal))
+            ?.InstanceName;
+        SetInstanceFocus(_localizer.Get("storage.instanceFocus", name ?? instanceId));
+        ApplyFilters();
     }
 
     [RelayCommand]
-    private async Task ScanAsync()
+    public void ClearInstanceFocus()
     {
-        if (IsBusy)
+        if (_instanceFocusId is null)
         {
             return;
         }
 
-        IsBusy = true;
-        Status = "正在扫描存储占用…";
+        _instanceFocusId = null;
+        SetInstanceFocus(string.Empty);
+        ApplyFilters();
+    }
+
+    [RelayCommand]
+    private async Task RescanAsync() => await ScanAsync(force: true);
+
+    public async Task ScanAsync(bool force)
+    {
+        if (IsScanning || IsDeleting || (HasScanned && !force))
+        {
+            return;
+        }
+
+        IsScanning = true;
+        HasScanned = false;
+        HasData = false;
+        HasWarnings = false;
+        WarningText = string.Empty;
+        StatusMessage = _localizer.Get("storage.scanning");
+        ScanProgressText = string.Empty;
+        ScanProgress = 0;
+        Disks.Clear();
+        Groups.Clear();
+        _categories.Clear();
+        OnPropertyChanged(nameof(Categories));
+        OnPropertyChanged(nameof(ShowEmptyState));
+        OnPropertyChanged(nameof(CanScan));
+
+        var progress = new Progress<StorageScanProgress>(value =>
+        {
+            ScanProgressText = value.Detail ?? value.Stage;
+            if (value.Fraction is { } fraction)
+            {
+                ScanProgress = Math.Clamp(fraction, 0, 1);
+            }
+        });
+
         try
         {
-            var result = await _analysis.AnalyzeAsync();
-            Usages.Clear();
-            foreach (var usage in result.Usages.OrderByDescending(usage => usage.Bytes ?? -1))
+            var inventory = await _inventory.ScanAsync(progress: progress).ConfigureAwait(true);
+            _lastInventory = inventory;
+            Build(inventory);
+            HasScanned = true;
+            HasData = inventory.Categories.Any(category => category.KnownFileCount > 0 || category.UnknownSizeCount > 0);
+            HasWarnings = inventory.Warnings.Count > 0;
+            WarningText = string.Join(Environment.NewLine, inventory.Warnings);
+            if (_instanceFocusId is { } focusId)
             {
-                Usages.Add(new StorageUsageItemViewModel(usage));
+                var name = inventory.Categories
+                    .SelectMany(category => category.Entries)
+                    .FirstOrDefault(entry => string.Equals(entry.InstanceId, focusId, StringComparison.Ordinal))
+                    ?.InstanceName;
+                SetInstanceFocus(_localizer.Get("storage.instanceFocus", name ?? focusId));
             }
 
-            Summary = $"已知占用 {FormatBytes(result.KnownBytes)} · {result.InstanceCount} 个已识别实例 · {result.UnavailableCount} 项不可访问";
-            Status = result.Warnings.Count == 0
-                ? "扫描完成。未知/不可访问项不会被当作 0 字节。"
-                : $"扫描完成，{result.Warnings.Count} 条提示：{string.Join("；", result.Warnings.Take(3))}";
-
-            var catalog = await _sources.ScanAllAsync();
-            SourceGroups.Clear();
-            foreach (var group in catalog.Groups)
-            {
-                SourceGroups.Add(new SourceGroupViewModel(
-                    group.Source.Name,
-                    group.Source.Path,
-                    group.IsAccessible ? group.Structure.ToString() : "不可访问",
-                    group.Instances.Count,
-                    group.Instances.Select(instance => instance.Name).ToArray()));
-            }
-
-            await LoadInstancesAsync();
+            SummaryText = _localizer.Get(
+                "storage.summary",
+                StorageSizeFormatter.FormatBytes(inventory.KnownEclBytes),
+                inventory.InstanceCount,
+                inventory.UnavailableCount);
+            ScanDateText = _localizer.Get("storage.scannedAt", inventory.ScannedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
+            StatusMessage = inventory.IsComplete
+                ? _localizer.Get("storage.complete")
+                : _localizer.Get("storage.incomplete");
+            ApplyFilters();
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            _logger.LogWarning(exception, "存储扫描失败。");
+            StatusMessage = _localizer.Get("storage.scanFailed", exception.Message);
         }
         finally
         {
-            IsBusy = false;
+            IsScanning = false;
+            ScanProgressText = string.Empty;
+            OnPropertyChanged(nameof(CanScan));
+            OnPropertyChanged(nameof(ShowEmptyState));
         }
     }
 
-    [RelayCommand]
-    private async Task DeleteSelectedInstanceAsync()
+    private void Build(StorageInventory inventory)
     {
-        if (SelectedInstance is null)
-        {
-            return;
-        }
-
-        var planResult = await _instances.GetDeletionPlanAsync(SelectedInstance.Model.Id);
-        if (!planResult.IsSuccess)
-        {
-            _dialogs.ShowError("无法生成删除计划", planResult.Error!.Message);
-            return;
-        }
-
-        var plan = planResult.Value!;
-        var choice = _dialogs.ChooseInstanceDeletion(
-            "删除实例",
-            $"实例：{plan.InstanceName}\n路径：{plan.GameDirectory}\n\n" +
-            "删除实例会移除 ECL 的实例记录；选择同时删除托管数据时还会移除 instances/<id>/minecraft 中的世界、模组与配置。" +
-            "该操作不可撤销。\n\n" +
-            (plan.HasExternalGameData
-                ? "该实例引用外部游戏目录；ECL 只会移除记录，不会删除外部目录中的任何文件。"
-                : "请确认已不再需要该实例，或先备份存档。"),
-            plan.HasManagedGameData);
-        if (choice == InstanceDeletionChoice.Cancel)
-        {
-            return;
-        }
-
-        var options = choice == InstanceDeletionChoice.DeleteManagedData
-            ? InstanceDeleteOptions.DeleteManagedData
-            : InstanceDeleteOptions.RemoveRecordOnly;
-        var result = await _instances.DeleteAsync(SelectedInstance.Model.Id, options);
-        if (!result.IsSuccess)
-        {
-            InstanceDeletionStatus = result.Error!.Message;
-            return;
-        }
-
-        InstanceDeletionStatus = $"已删除实例 {plan.InstanceName}。";
-        await ScanAsync();
-    }
-
-    private async Task LoadInstancesAsync()
-    {
-        var selectedId = SelectedInstance?.Model.Id;
-        var instances = await _instances.GetInstancesAsync();
-        Instances.Clear();
-        foreach (var instance in instances)
-        {
-            Instances.Add(new StorageInstanceItemViewModel(instance, InstancePaths.GetGameDirectory(_paths, instance)));
-        }
-
-        SelectedInstance = Instances.FirstOrDefault(item => item.Model.Id == selectedId) ?? Instances.FirstOrDefault();
-    }
-
-    [RelayCommand]
-    private async Task AddSourceAsync()
-    {
-        var dialog = new OpenFolderDialog
-        {
-            Title = "登记包含 Minecraft 实例的来源目录",
-            Multiselect = false,
-        };
-        if (dialog.ShowDialog() != true)
-        {
-            return;
-        }
-
-        var result = await _workspace.RegisterExternalAsync(dialog.FolderName);
-        if (!result.IsSuccess)
-        {
-            _dialogs.ShowError("无法登记来源", result.Error!.Message);
-            return;
-        }
-
-        Status = "已登记来源。ECL 只读取该目录，不复制、移动或清理其中的实例。";
-        await ScanAsync();
-    }
-
-    [RelayCommand]
-    private async Task PreviewCleanupAsync()
-    {
-        if (IsBusy)
-        {
-            return;
-        }
-
-        IsBusy = true;
+        _suppressDiskRefresh = true;
         try
         {
-            _preview = await _cleanup.PreviewAsync(new StorageCleanupRequest());
-            PreviewItems.Clear();
-            foreach (var item in _preview.Items)
+            foreach (var disk in inventory.Disks)
             {
-                PreviewItems.Add(new CleanupItemViewModel(item));
+                Disks.Add(new StorageDiskViewModel(disk, _localizer, OnDiskSelectionChanged));
             }
-
-            HasPreview = _preview.HasItems;
-            PreviewSummary = _preview.HasItems
-                ? $"可释放约 {FormatBytes(_preview.TotalBytes)}，共 {_preview.Items.Count} 项；跳过 {_preview.SkippedCount} 项（活动下载或未到保留期）。"
-                : "没有符合保留期与白名单的清理项。";
-            Status = "预览不会删除任何文件。世界存档、模组、配置、资源包与未知文件不在清理范围。";
         }
         finally
         {
-            IsBusy = false;
+            _suppressDiskRefresh = false;
         }
+
+        foreach (var category in inventory.Categories)
+        {
+            _categories.Add(new StorageCategoryViewModel(category, _localizer, RequestDelete));
+        }
+
+        foreach (var group in new[]
+                 {
+                     StorageGroup.MinecraftInstance,
+                     StorageGroup.EclOwn,
+                     StorageGroup.Additions,
+                 })
+        {
+            Groups.Add(new StorageGroupViewModel(
+                _localizer.Get("storage.group." + group),
+                _categories.Where(category => category.Group == group)));
+        }
+
+        OnPropertyChanged(nameof(Categories));
     }
 
-    [RelayCommand]
-    private async Task PreviewSelectedInstanceCleanupAsync()
+    private void OnDiskSelectionChanged()
     {
-        if (IsBusy || SelectedInstance is null)
+        if (_suppressDiskRefresh)
         {
             return;
         }
 
-        IsBusy = true;
-        try
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        var selectedDisks = Disks.Where(disk => disk.IsSelected).Select(disk => disk.Root).ToArray();
+        IReadOnlyCollection<string>? diskFilter = selectedDisks.Length == Disks.Count
+            ? null
+            : selectedDisks;
+        foreach (var category in _categories)
         {
-            _preview = await _cleanup.PreviewAsync(new StorageCleanupRequest
+            category.ApplyFilter(diskFilter, _instanceFocusId);
+        }
+
+        OnPropertyChanged(nameof(ShowEmptyState));
+    }
+
+    private void RequestDelete(StorageCategoryViewModel category) =>
+        _ = OpenDeleteDialogAsync(category);
+
+    private async Task OpenDeleteDialogAsync(StorageCategoryViewModel category)
+    {
+        var rows = category.SelectedRows;
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        var deleted = false;
+        if (_dialogs.IsAvailable)
+        {
+            var dialog = new StorageDeleteConfirmViewModel(rows, _localizer, ExecuteDeleteAsync);
+            try
             {
-                IncludeDownloadParts = false,
-                IncludeRebuildableCache = false,
-                InstanceId = SelectedInstance.Model.Id,
+                await _dialogs.ShowAsync(new DialogRequest
+                {
+                    Title = _localizer.Get("storage.delete.title"),
+                    Content = dialog,
+                    InitialFocus = DialogInitialFocus.Cancel,
+                    Severity = DialogSeverity.Warning,
+                    MinWidth = 720,
+                    MaxWidth = 980,
+                    MinHeight = 380,
+                    MaxHeight = 720,
+                });
+                deleted = dialog.DidExecute;
+            }
+            catch (DialogHostUnavailableException)
+            {
+                // 宿主暂不可用时退回到兼容确认；仍执行同一个领域清理，不伪造逐项进度。
+                deleted = _dialogService.Confirm(
+                    _localizer.Get("storage.delete.title"),
+                    _localizer.Get("storage.delete.fallback", rows.Count, DescribeSelection(rows)));
+                if (deleted)
+                {
+                    await ExecuteDeleteAsync(rows);
+                }
+            }
+        }
+        else
+        {
+            deleted = _dialogService.Confirm(
+                _localizer.Get("storage.delete.title"),
+                _localizer.Get("storage.delete.fallback", rows.Count, DescribeSelection(rows)));
+            if (deleted)
+            {
+                await ExecuteDeleteAsync(rows);
+            }
+        }
+
+        if (deleted)
+        {
+            // 删除完成后必须重新扫描：不得根据删除任务报告推算新的存储数字。
+            await ScanAsync(force: true);
+        }
+    }
+
+    private string DescribeSelection(IReadOnlyList<StorageFileRowViewModel> rows)
+    {
+        var known = rows.Where(row => row.Size is not null).Sum(row => row.Size!.Value);
+        return _localizer.Get(
+            "storage.delete.fallbackDetail",
+            StorageSizeFormatter.FormatBytes(known));
+    }
+
+    private async Task ExecuteDeleteAsync(IReadOnlyList<StorageFileRowViewModel> rows)
+    {
+        if (rows.Count == 0 || IsDeleting)
+        {
+            return;
+        }
+
+        IsDeleting = true;
+        using var cancellation = new CancellationTokenSource();
+        using var operation = _operations.Begin(new OperationStart
+        {
+            Kind = OperationKind.Generic,
+            Title = _localizer.Get("storage.delete.taskTitle"),
+            StageId = "storage-cleanup",
+            Source = "ECL",
+            Total = rows.Count,
+            CanCancel = true,
+            CanRetry = false,
+        });
+        _operations.AttachControl(operation.Id, new OperationControl(cancellation));
+        var rowById = rows.ToDictionary(row => row.Entry.Id, StringComparer.Ordinal);
+        var completed = 0;
+
+        var progress = new Progress<StorageDeleteProgress>(value =>
+        {
+            if (!rowById.TryGetValue(value.EntryId, out var row))
+            {
+                return;
+            }
+
+            switch (value.State)
+            {
+                case StorageDeleteItemState.Running:
+                    row.BeginProgress();
+                    break;
+                case StorageDeleteItemState.Succeeded:
+                    row.CompleteProgress(true, null);
+                    completed++;
+                    break;
+                case StorageDeleteItemState.Failed:
+                case StorageDeleteItemState.Skipped:
+                    row.CompleteProgress(false, DescribeReason(value.Reason));
+                    completed++;
+                    break;
+            }
+
+            operation.Report(new OperationProgressUpdate
+            {
+                Completed = completed,
+                Total = rows.Count,
+                CurrentItem = row.FileName,
+                StageId = "storage-cleanup",
             });
-            PreviewItems.Clear();
-            foreach (var item in _preview.Items)
-            {
-                PreviewItems.Add(new CleanupItemViewModel(item));
-            }
+        });
 
-            HasPreview = _preview.HasItems;
-            PreviewSummary = _preview.HasItems
-                ? $"实例 {SelectedInstance.Name} 可释放约 {FormatBytes(_preview.TotalBytes)}，共 {_preview.Items.Count} 项；跳过 {_preview.SkippedCount} 项。"
-                : $"实例 {SelectedInstance.Name} 没有符合保留期与白名单的历史日志/诊断临时文件。";
-            Status = "实例级预览只包含该实例的历史日志与诊断临时文件，不包含下载缓存或可重建缓存。";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    [RelayCommand]
-    private async Task ExecuteCleanupAsync()
-    {
-        if (_preview is null || !_preview.HasItems || IsBusy)
-        {
-            return;
-        }
-
-        var accepted = _dialogs.Confirm(
-            "执行缓存清理",
-            $"将删除 {_preview.Items.Count} 项、约 {FormatBytes(_preview.TotalBytes)} 的可重建缓存/临时产物。\n\n" +
-            "不会删除世界存档、模组、配置、资源包、截图或未知文件。实例历史日志会被删除。\n\n是否继续？",
-            "storage.cleanup.v1");
-        if (!accepted)
-        {
-            return;
-        }
-
-        IsBusy = true;
         try
         {
-            var result = await _cleanup.ExecuteAsync(_preview);
-            Status = result.Failed == 0
-                ? $"清理完成：删除 {result.Deleted} 项，释放 {FormatBytes(result.BytesFreed)}，跳过 {result.Skipped} 项。"
-                : $"清理部分完成：删除 {result.Deleted} 项，失败 {result.Failed} 项。{string.Join("；", result.Errors.Take(2))}";
-            _preview = null;
-            HasPreview = false;
-            PreviewItems.Clear();
-            PreviewSummary = "清理已执行。重新扫描可查看最新占用。";
+            var result = await _inventory.DeleteAsync(
+                rows.Select(row => row.Entry).ToArray(),
+                progress,
+                cancellation.Token).ConfigureAwait(true);
+
+            if (result.Failed == 0 && result.Skipped == 0)
+            {
+                operation.Complete(new OperationProgressUpdate
+                {
+                    Completed = result.Succeeded,
+                    Total = rows.Count,
+                    StageId = "storage-cleanup",
+                    StageText = _localizer.Get("storage.delete.completed"),
+                });
+                StatusMessage = _localizer.Get("storage.delete.success", result.Succeeded, StorageSizeFormatter.FormatBytes(result.BytesFreed));
+            }
+            else
+            {
+                operation.Complete(new OperationProgressUpdate
+                {
+                    Completed = result.Succeeded,
+                    Total = rows.Count,
+                    StageId = "storage-cleanup",
+                    StageText = _localizer.Get("storage.delete.completed"),
+                });
+                StatusMessage = _localizer.Get(
+                    "storage.delete.partial",
+                    result.Succeeded,
+                    result.Skipped,
+                    result.Failed);
+            }
+
+        }
+        catch (OperationCanceledException)
+        {
+            operation.Cancel();
+            StatusMessage = _localizer.Get("storage.delete.cancelled");
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            operation.Fail(new OperationError(
+                exception is IOException or UnauthorizedAccessException
+                    ? OperationErrorKind.LocalIO
+                    : OperationErrorKind.EclInternal,
+                "storage.cleanup.failed",
+                exception.Message));
+            StatusMessage = _localizer.Get("storage.delete.failed", exception.Message);
         }
         finally
         {
-            IsBusy = false;
+            IsDeleting = false;
         }
     }
 
-    private static string FormatBytes(long bytes) => bytes switch
+    private string DescribeReason(string? reason)
     {
-        >= 1024L * 1024 * 1024 => $"{bytes / (1024d * 1024 * 1024):0.##} GB",
-        >= 1024L * 1024 => $"{bytes / (1024d * 1024):0.##} MB",
-        >= 1024 => $"{bytes / 1024d:0.##} KB",
-        _ => $"{bytes} B",
-    };
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            return _localizer.Get("storage.delete.reason.unknown");
+        }
+
+        var key = "storage.delete.reason." + reason;
+        var localized = _localizer.Get(key);
+        return string.Equals(localized, key, StringComparison.Ordinal)
+            ? reason
+            : localized;
+    }
+
+    private void SetInstanceFocus(string message)
+    {
+        InstanceFocusMessage = message;
+        HasInstanceFocus = !string.IsNullOrWhiteSpace(message);
+    }
+
+    private static string FormatBytes(long bytes) => StorageSizeFormatter.FormatBytes(bytes);
 }

@@ -386,7 +386,7 @@ public sealed class CurseForgeService(
         }
 
         var listed = await client
-            .GetFilesForModAsync(mod.Id, instance.GameVersion, loader, 50, cancellationToken)
+            .GetFilesForModAsync(mod.Id, instance.GameVersion, loader, 50, 0, cancellationToken)
             .ConfigureAwait(false);
         if (!listed.IsSuccess)
         {
