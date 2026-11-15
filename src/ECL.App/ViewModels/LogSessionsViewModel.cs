@@ -1368,7 +1368,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     /// <summary>测试与定时器共用的增量轮询入口。</summary>
     public async Task PollAsync()
     {
-        if (_disposed || _polling || SelectedSession is not { } row)
+        if (_disposed || _polling || !_sourceLoad.IsCompleted || SelectedSession is not { } row)
         {
             return;
         }
