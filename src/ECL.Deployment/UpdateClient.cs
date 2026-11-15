@@ -15,6 +15,8 @@ public sealed record UpdateCheckResult(
 
 public static class UpdateFeed
 {
+    public const string OfficialBaseAddress = "https://updates.endercraftlauncher.top/";
+
     public static Uri GetManifestUri(Uri feedBase, UpdateChannel channel) =>
         new(NormalizeBase(feedBase), $"{channel.ToApiValue()}/update-manifest.json");
 
