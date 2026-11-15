@@ -362,6 +362,33 @@ jobs:
               Remove-Item $temp -Recurse -Force
             }
 
+            $releaseBody = gh release view $tag --json body --jq '.body'
+            if ($LASTEXITCODE -ne 0) { throw "Unable to read Release notes for $tag." }
+            $hasInstallerHash = [regex]::IsMatch([string]$releaseBody, [regex]::Escape($installerName) + ':\\s*[0-9a-fA-F]{64}')
+            $hasBootstrapperHash = [regex]::IsMatch([string]$releaseBody, [regex]::Escape($bootstrapperName) + ':\\s*[0-9a-fA-F]{64}')
+            if (-not ($hasInstallerHash -and $hasBootstrapperHash)) {
+              $hashDirectory = Join-Path $env:RUNNER_TEMP "ecl-release-hashes-$([Guid]::NewGuid().ToString('N'))"
+              New-Item -ItemType Directory -Force -Path $hashDirectory | Out-Null
+              gh release download $tag --pattern $installerName --pattern $bootstrapperName --dir $hashDirectory
+              if ($LASTEXITCODE -ne 0) { throw "Unable to download both EXEs to calculate historical Release hashes for $tag." }
+              $installerHash = (Get-FileHash (Join-Path $hashDirectory $installerName) -Algorithm SHA256).Hash.ToLowerInvariant()
+              $bootstrapperHash = (Get-FileHash (Join-Path $hashDirectory $bootstrapperName) -Algorithm SHA256).Hash.ToLowerInvariant()
+              $hashSection = @"
+**普通用户：**只需下载并运行 Installer。
+**独立修复：**只有必要时才下载 Bootstrapper。
+
+SHA-256:
+- $installerName: $installerHash
+- $bootstrapperName: $bootstrapperHash
+"@
+              $updatedBody = ([string]$releaseBody).TrimEnd() + "`n`n" + $hashSection
+              $notesPath = Join-Path $hashDirectory "release-notes.md"
+              [System.IO.File]::WriteAllText($notesPath, $updatedBody, [System.Text.UTF8Encoding]::new($false))
+              gh release edit $tag --notes-file $notesPath
+              if ($LASTEXITCODE -ne 0) { throw "Unable to update historical Release checksums for $tag." }
+              Remove-Item $hashDirectory -Recurse -Force
+            }
+
             foreach ($asset in $assets) {
               if ($asset -and $asset -notin @($installerName, $bootstrapperName)) {
                 gh release delete-asset $tag $asset --yes
