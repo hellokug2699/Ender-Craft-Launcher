@@ -744,6 +744,11 @@
   "option.instance.customJvmPreset.desc": "覆盖全局自定义预设文件；留空则继承。",
   "option.instance.gameArgs.name": "实例游戏参数",
   "option.instance.gameArgs.desc": "覆盖全局游戏参数；留空则继承。",
+  "option.instance.updatePolicy.name": "内容更新策略",
+  "option.instance.updatePolicy.desc": "决定该实例的模组/内容更新：允许更新、只提示或禁止更新；禁止更新不能被单个操作绕过。",
+  "option.instance.updatePolicy.allow": "允许更新",
+  "option.instance.updatePolicy.notify": "只提示",
+  "option.instance.updatePolicy.block": "禁止更新",
   "launch.status.success": "成功",
   "launch.status.warning": "警告",
   "launch.status.skipped": "跳过",
@@ -2637,14 +2642,12 @@
   "runtime.file.sizeMismatch": "文件大小与安装清单不符。",
   "runtime.file.hashMismatch": "文件 SHA-256 与安装清单不符。",
   "runtime.file.unreadable": "文件无法读取。",
-  "runtime.file.pathEscape": "安装清单路径越界。"
+  "runtime.file.pathEscape": "安装清单路径越界。",
+  "storage.category.ecl.lifecycleMaterials": "生命周期恢复材料",
+  "storage.category.ecl.instanceEngine": "事务与恢复材料",
+  "storage.category.ecl.detachedGameData": "已分离的游戏数据",
+  "storage.protection.lifecycleMaterial": "生命周期恢复材料只能由恢复入口或删除计划处理。",
+  "storage.protection.engineRecoveryMaterial": "事务/恢复材料用于崩溃恢复，不参与普通清理。",
+  "storage.protection.detachedGameData": "记录已移除但数据仍在原位；需显式删除计划才能清理。",
+  "storage.protection.externalInstance": "外部/共享实例的数据由用户管理，ECL 不自动清理。"
 }
-
-
-
-
-
-
-
-
-

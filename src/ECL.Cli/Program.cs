@@ -110,6 +110,24 @@ internal static class Program
                                           创建实例；加载器支持 vanilla、fabric、forge、neoforge、cleanroom
           instance delete <实例ID> [--force] [--keep-data] [--dry-run] [--json]
                                           预览删除计划；--force 执行，--keep-data 只移除记录
+          instance move <实例ID> --target-root <根ID> [--dry-run] [--force] [--json]
+                                          跨受管理根移动实例（源进入 .ecl-retired，可独立清理）
+          instance reconfigure <实例ID> --game-version <版本> [--loader <加载器>]
+                           [--loader-version <版本>] [--fabric-api <版本>] [--optifine <type:patch>]
+                           [--confirm-external] [--dry-run] [--force] [--json]
+                                          重配置版本/加载器：计划 → 变更前快照 → 文件事务 → 元数据提交 → 复验
+          instance lifecycle list|inspect [实例ID] [--json]
+                                          扫描生命周期 journal、隔离区、退休区与已分离数据
+          instance lifecycle resume|discard <planId>
+                                          继续中断的移动/删除清理，或丢弃未切换的 staging
+          instance lifecycle cleanup-source <planId>
+                                          清理已提交移动的退休源
+          content plan <实例ID> --project <项目ID> [--version <版本ID>] [--json]
+                                          生成依赖图安装计划（只读，不下载）
+          content updates <实例ID> [--json]
+                                          按实例更新策略检查可证明来源的更新
+          content policy <实例ID> [allow|notify|block]
+                                          读取或设置实例内容更新策略
           instance scan [--json]          扫描 versions 目录中已有的版本
           instance import <版本ID> [--name <名称>]
                                           把已有版本导入为实例（引用原目录，不复制）

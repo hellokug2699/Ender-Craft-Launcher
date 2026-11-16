@@ -106,6 +106,24 @@ internal sealed class MinecraftOptionsProvider : IOptionProvider
 
         yield return new OptionDefinition<string?>
         {
+            Key = "instance.content.updatePolicy",
+            Kind = OptionKind.Select,
+            Scope = OptionScope.Instance,
+            CategoryKey = "category.instance",
+            DisplayNameKey = "option.instance.updatePolicy.name",
+            DescriptionKey = "option.instance.updatePolicy.desc",
+            Default = "allow",
+            Order = 50,
+            Choices =
+            [
+                new OptionChoice("allow", "option.instance.updatePolicy.allow"),
+                new OptionChoice("notify", "option.instance.updatePolicy.notify"),
+                new OptionChoice("block", "option.instance.updatePolicy.block"),
+            ],
+        };
+
+        yield return new OptionDefinition<string?>
+        {
             Key = "instance.game.extraArguments",
             Kind = OptionKind.Text,
             Scope = OptionScope.Instance,

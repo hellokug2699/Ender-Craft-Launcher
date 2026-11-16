@@ -57,9 +57,13 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IInstancePathPolicy, InstancePathPolicy>();
         services.AddSingleton<IInstanceOwnershipClassifier, InstanceOwnershipClassifier>();
         services.AddSingleton<IInstanceActivityGuard, InstanceActivityGuard>();
+        services.AddSingleton<IInstanceLifecycleLock, InstanceLifecycleLock>();
+        services.AddSingleton<InstanceLifecycleJournalStore>();
         services.AddSingleton<IInstanceDeletionService, InstanceDeletionService>();
         services.AddSingleton<IInstanceRelocationService, InstanceRelocationService>();
         services.AddSingleton<IInstanceMoveService, InstanceMoveService>();
+        services.AddSingleton<IInstanceReconfigureService, InstanceReconfigureService>();
+        services.AddSingleton<IInstanceLifecycleRecoveryService, InstanceLifecycleRecoveryService>();
         services.AddSingleton<InstanceTransactionCoordinator>();
         services.AddSingleton<IInstanceTransactionService>(provider =>
             provider.GetRequiredService<InstanceTransactionCoordinator>());
@@ -84,7 +88,11 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IProcessLauncher, HybridProcessLauncher>();
         services.AddSingleton<ILoaderCatalog, LoaderCatalog>();
         services.AddSingleton<IForgeProcessorRunner, ForgeProcessorRunner>();
-        services.AddSingleton<IVersionInstallService, VanillaInstallService>();
+        services.AddSingleton<VanillaInstallService>();
+        services.AddSingleton<IVersionInstallService>(provider =>
+            provider.GetRequiredService<VanillaInstallService>());
+        services.AddSingleton<IInstanceConfigurationInstaller>(provider =>
+            provider.GetRequiredService<VanillaInstallService>());
         services.AddSingleton<IJavaSelectionService, JavaSelectionService>();
         services.AddSingleton<IJavaRequirementProvider, ModJavaRequirementProvider>();
         services.AddSingleton<IMemoryAllocationService, MemoryAllocationService>();
@@ -102,6 +110,9 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IContentSearchService, ContentSearchService>();
         services.AddSingleton<IContentVersionCatalog, ContentVersionCatalog>();
         services.AddSingleton<IDependencyResolver, DependencyResolver>();
+        services.AddSingleton<IContentInstallPlanner, ContentInstallPlanner>();
+        services.AddSingleton<IInstanceContentUpdatePolicyService, InstanceContentUpdatePolicyService>();
+        services.AddSingleton<IContentUpdateService, ContentUpdateService>();
         services.AddSingleton<IContentInstallService, ContentInstallService>();
         services.AddSingleton<IContentPackService, ContentPackService>();
         services.AddSingleton<IDatapackService, DatapackService>();

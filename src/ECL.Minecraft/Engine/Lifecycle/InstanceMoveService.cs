@@ -101,6 +101,14 @@ public interface IInstanceMoveService
 
     /// <summary>只丢弃 staging；已切换后的计划不允许丢弃。</summary>
     Task<Result> DiscardAsync(string planId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 标记源退休区已清理（F-03 §8.4）。只更新 journal，不删除任何数据；
+    /// 目录删除由调用方（生命周期恢复服务）按 containment/重解析点校验后执行。
+    /// </summary>
+    Task<Result<InstanceMoveJournal>> MarkSourceCleanedAsync(
+        string planId,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -129,6 +137,7 @@ public sealed class InstanceMoveService : IInstanceMoveService
     private readonly IInstanceOwnershipClassifier _ownership;
     private readonly IInstancePathPolicy _pathPolicy;
     private readonly IInstanceWriteGate _gate;
+    private readonly IInstanceLifecycleLock _lifecycleLock;
     private readonly InstanceIdentityService _identity;
     private readonly ISnapshotProtectionService _snapshots;
     private readonly IAppPaths _paths;
@@ -147,7 +156,8 @@ public sealed class InstanceMoveService : IInstanceMoveService
         ISnapshotProtectionService snapshots,
         IAppPaths paths,
         ILogger<InstanceMoveService>? logger = null,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        IInstanceLifecycleLock? lifecycleLock = null)
     {
         _instances = instances;
         _store = store;
@@ -156,6 +166,7 @@ public sealed class InstanceMoveService : IInstanceMoveService
         _ownership = ownership;
         _pathPolicy = pathPolicy;
         _gate = gate;
+        _lifecycleLock = lifecycleLock ?? new InstanceLifecycleLock(paths);
         _identity = identity;
         _snapshots = snapshots;
         _paths = paths;
@@ -604,6 +615,50 @@ public sealed class InstanceMoveService : IInstanceMoveService
         return Result.Ok();
     }
 
+    public async Task<Result<InstanceMoveJournal>> MarkSourceCleanedAsync(
+        string planId,
+        CancellationToken cancellationToken = default)
+    {
+        var journalResult = await GetAsync(planId, cancellationToken).ConfigureAwait(false);
+        if (!journalResult.IsSuccess)
+        {
+            return Result<InstanceMoveJournal>.Fail(journalResult.Error!);
+        }
+
+        var journal = journalResult.Value!;
+        if (journal.State == "SourceCleaned")
+        {
+            // 幂等：重复清理只返回当前 journal。
+            return Result<InstanceMoveJournal>.Ok(journal);
+        }
+
+        if (journal.State is not ("Committed" or "Completed"))
+        {
+            return Result<InstanceMoveJournal>.Fail(
+                "instance.lifecycle.source_cleanup_invalid",
+                $"journal 状态 {journal.State} 不允许清理退休源。");
+        }
+
+        try
+        {
+            var updated = journal with
+            {
+                State = "SourceCleaned",
+                RetiredSourcePath = null,
+                UpdatedAt = _time.GetUtcNow(),
+            };
+            await WriteJournalAsync(updated, CancellationToken.None).ConfigureAwait(false);
+            return Result<InstanceMoveJournal>.Ok(updated);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return Result<InstanceMoveJournal>.Fail(
+                "instance.lifecycle.journal_write_failed",
+                "无法更新生命周期 journal；退休源清理结果未提交。",
+                exception.Message);
+        }
+    }
+
     private async Task<Result<InstanceMoveResult>> ExecuteCoreAsync(
         InstanceMovePlan plan,
         InstanceMoveJournal journal,
@@ -618,6 +673,14 @@ public sealed class InstanceMoveService : IInstanceMoveService
         }
 
         await using var lease = leaseResult.Value!;
+        var lifecycleLease = await _lifecycleLock.AcquireAsync(plan.InstanceId, cancellationToken)
+            .ConfigureAwait(false);
+        if (!lifecycleLease.IsSuccess)
+        {
+            return Result<InstanceMoveResult>.Fail(lifecycleLease.Error!);
+        }
+
+        await using var lifecycleGuard = lifecycleLease.Value!;
         var instance = await _instances.GetAsync(plan.InstanceId, cancellationToken).ConfigureAwait(false);
         if (instance is null)
         {

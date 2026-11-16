@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.Core;
+using Ecl.Minecraft.Instances;
 
 namespace Ecl.Minecraft.Install;
 
@@ -118,6 +119,20 @@ public interface IVersionInstallService
         string? loaderVersion = null,
         string? fabricApiVersion = null,
         string? optiFineVersion = null,
+        IProgress<InstallProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// 把已确定的目标配置应用到实例：安装目标版本文件，文件事务成功后才提交实例元数据。
+/// 不创建变更前快照——快照由生命周期服务（F-03 <c>InstanceReconfigureService</c>）在拿到
+/// 写门之前统一创建，避免同一次重配置产生两份快照（F-03 §3.4/§5.6）。
+/// </summary>
+public interface IInstanceConfigurationInstaller
+{
+    Task<InstallOutcome> ApplyConfigurationAsync(
+        string instanceId,
+        GameInstance target,
         IProgress<InstallProgress>? progress = null,
         CancellationToken cancellationToken = default);
 }

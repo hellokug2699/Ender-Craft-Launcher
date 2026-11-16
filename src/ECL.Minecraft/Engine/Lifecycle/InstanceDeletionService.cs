@@ -106,6 +106,24 @@ public interface IInstanceDeletionService
     Task<Result<InstanceDeletionResult>> DeleteAsync(
         InstanceDeletionPlanV2 plan,
         CancellationToken cancellationToken = default);
+
+    /// <summary>读取单个删除 journal；恢复入口与诊断使用。</summary>
+    Task<Result<InstanceDeletionJournal>> GetAsync(
+        string planId,
+        CancellationToken cancellationToken = default);
+
+    Task<Result<IReadOnlyList<InstanceDeletionJournal>>> ListAsync(
+        string instanceId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 继续清理隔离区（F-03 §5.8/§6.6）。只对 <c>Quarantined/Deleting/Purging/NeedsRecovery</c> 且隔离区仍存在的
+    /// journal 有效；从剩余项继续，失败项保留并重新进入 <see cref="InstanceDeletionState.NeedsRecovery"/>。
+    /// 绝不删除隔离区之外的路径。
+    /// </summary>
+    Task<Result<InstanceDeletionJournal>> ResumeCleanupAsync(
+        string planId,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -124,6 +142,7 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
     private readonly ISnapshotMaintenanceService _snapshots;
     private readonly IWorkspaceService _workspace;
     private readonly IAppPaths _paths;
+    private readonly IInstanceLifecycleLock _lifecycleLock;
     private readonly ILogger<InstanceDeletionService> _logger;
     private readonly TimeProvider _time;
 
@@ -137,7 +156,8 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
         IWorkspaceService workspace,
         IAppPaths paths,
         ILogger<InstanceDeletionService>? logger = null,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        IInstanceLifecycleLock? lifecycleLock = null)
     {
         _instances = instances;
         _identity = identity;
@@ -149,6 +169,7 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
         _paths = paths;
         _logger = logger ?? NullLogger<InstanceDeletionService>.Instance;
         _time = time ?? TimeProvider.System;
+        _lifecycleLock = lifecycleLock ?? new InstanceLifecycleLock(paths);
     }
 
     public async Task<Result<InstanceDeletionPlanV2>> PlanAsync(
@@ -349,6 +370,15 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
             return Result<InstanceDeletionResult>.Fail("instance.not_found", "实例不存在。");
         }
 
+        var lifecycleLease = await _lifecycleLock.AcquireAsync(plan.InstanceId, cancellationToken)
+            .ConfigureAwait(false);
+        if (!lifecycleLease.IsSuccess)
+        {
+            return Result<InstanceDeletionResult>.Fail(lifecycleLease.Error!);
+        }
+
+        await using var lease = lifecycleLease.Value!;
+
         var recordDirectory = _paths.GetInstanceDirectory(plan.InstanceId);
         if (!Directory.Exists(recordDirectory))
         {
@@ -476,29 +506,24 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
             }
         }
 
-        try
+        var purge = await PurgeQuarantineAsync(journal.TombstonePath, cancellationToken).ConfigureAwait(false);
+        journal = await UpdateAsync(journalRoot, journal with
         {
-            if (Directory.Exists(tombstone))
-            {
-                Directory.Delete(tombstone, recursive: true);
-            }
+            State = purge.IsSuccess ? InstanceDeletionState.Purged : InstanceDeletionState.NeedsRecovery,
+            ErrorCode = purge.IsSuccess ? null : purge.Error!.Code,
+            ErrorMessage = purge.IsSuccess ? null : purge.Error!.Message,
+        }, cancellationToken).ConfigureAwait(false);
 
-            journal = await UpdateAsync(journalRoot, journal with
-            {
-                State = InstanceDeletionState.Purged,
-                UpdatedAt = _time.GetUtcNow(),
-            }, cancellationToken).ConfigureAwait(false);
-
+        if (purge.IsSuccess)
+        {
             _paths.UnregisterInstanceRoot(plan.InstanceId);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        else
         {
-            journal = await UpdateAsync(journalRoot, journal with
-            {
-                State = InstanceDeletionState.NeedsRecovery,
-                ErrorCode = "instance.lifecycle.needs_recovery",
-                ErrorMessage = $"隔离区清理失败：{exception.Message}",
-            }, cancellationToken).ConfigureAwait(false);
+            _logger.LogWarning(
+                "实例 {InstanceId} 的隔离区未清理完成，保留 journal 供恢复：{Error}",
+                plan.InstanceId,
+                purge.Error);
         }
 
         return Result<InstanceDeletionResult>.Ok(new InstanceDeletionResult(
@@ -507,6 +532,254 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
             quarantinedBytes,
             retainedSnapshots,
             journal.DetachedGameDataPath));
+    }
+
+    public Task<Result<InstanceDeletionJournal>> GetAsync(
+        string planId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var path = FindJournalPath(planId);
+        if (path is null)
+        {
+            return Task.FromResult(Result<InstanceDeletionJournal>.Fail(
+                "instance.lifecycle.journal_missing",
+                "未找到该删除计划的生命周期 journal。"));
+        }
+
+        return Task.FromResult(ReadJournal(path));
+    }
+
+    public Task<Result<IReadOnlyList<InstanceDeletionJournal>>> ListAsync(
+        string instanceId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var directory = Path.Combine(_paths.ConfigDirectory, "instance-engine", "lifecycle", instanceId);
+        if (!Directory.Exists(directory))
+        {
+            return Task.FromResult(Result<IReadOnlyList<InstanceDeletionJournal>>.Ok([]));
+        }
+
+        var journals = new List<InstanceDeletionJournal>();
+        foreach (var path in Directory.EnumerateFiles(directory, "*.json"))
+        {
+            var read = ReadJournal(path);
+            if (read.IsSuccess)
+            {
+                journals.Add(read.Value!);
+            }
+        }
+
+        return Task.FromResult(Result<IReadOnlyList<InstanceDeletionJournal>>.Ok(
+            journals.OrderByDescending(journal => journal.UpdatedAt).ToArray()));
+    }
+
+    public async Task<Result<InstanceDeletionJournal>> ResumeCleanupAsync(
+        string planId,
+        CancellationToken cancellationToken = default)
+    {
+        var journalResult = await GetAsync(planId, cancellationToken).ConfigureAwait(false);
+        if (!journalResult.IsSuccess)
+        {
+            return journalResult;
+        }
+
+        var journal = journalResult.Value!;
+        if (journal.State == InstanceDeletionState.Purged)
+        {
+            // 幂等：已完成清理的计划重复恢复返回同一结果。
+            return Result<InstanceDeletionJournal>.Ok(journal);
+        }
+
+        if (journal.State is not (InstanceDeletionState.Quarantined or InstanceDeletionState.Deleting
+            or InstanceDeletionState.NeedsRecovery))
+        {
+            return Result<InstanceDeletionJournal>.Fail(
+                "instance.lifecycle.resume_invalid",
+                $"journal 状态 {journal.State} 不允许继续清理隔离区。");
+        }
+
+        if (string.IsNullOrWhiteSpace(journal.TombstonePath))
+        {
+            return Result<InstanceDeletionJournal>.Fail(
+                "instance.lifecycle.needs_recovery",
+                "journal 未记录隔离区路径，无法安全继续清理。");
+        }
+
+        var leaseResult = await _lifecycleLock.AcquireAsync(journal.InstanceId, cancellationToken)
+            .ConfigureAwait(false);
+        if (!leaseResult.IsSuccess)
+        {
+            return Result<InstanceDeletionJournal>.Fail(leaseResult.Error!);
+        }
+
+        await using var lease = leaseResult.Value!;
+        var journalRoot = Path.Combine(
+            _paths.ConfigDirectory,
+            "instance-engine",
+            "lifecycle",
+            journal.InstanceId);
+
+        if (!Directory.Exists(journal.TombstonePath))
+        {
+            // 隔离区已不存在：说明上次清理已完成，只补齐 journal 终态。
+            var completed = await UpdateAsync(journalRoot, journal with
+            {
+                State = InstanceDeletionState.Purged,
+                ErrorCode = null,
+                ErrorMessage = null,
+            }, cancellationToken).ConfigureAwait(false);
+            return Result<InstanceDeletionJournal>.Ok(completed);
+        }
+
+        journal = await UpdateAsync(journalRoot, journal with
+        {
+            State = InstanceDeletionState.Deleting,
+            ErrorCode = null,
+            ErrorMessage = null,
+        }, cancellationToken).ConfigureAwait(false);
+
+        var purge = await PurgeQuarantineAsync(journal.TombstonePath, cancellationToken).ConfigureAwait(false);
+        journal = await UpdateAsync(journalRoot, journal with
+        {
+            State = purge.IsSuccess ? InstanceDeletionState.Purged : InstanceDeletionState.NeedsRecovery,
+            ErrorCode = purge.IsSuccess ? null : purge.Error!.Code,
+            ErrorMessage = purge.IsSuccess ? null : purge.Error!.Message,
+        }, cancellationToken).ConfigureAwait(false);
+
+        if (purge.IsSuccess)
+        {
+            _paths.UnregisterInstanceRoot(journal.InstanceId);
+            return Result<InstanceDeletionJournal>.Ok(journal);
+        }
+
+        return Result<InstanceDeletionJournal>.Fail(purge.Error!);
+    }
+
+    /// <summary>
+    /// 清理隔离区：只接受 <c>&lt;root&gt;/.ecl-trash/&lt;instanceId&gt;-&lt;planId&gt;</c> 形状的路径，
+    /// 逐项拒绝重解析点，失败保留剩余项并可重试（F-03 §6.6/§7.2）。
+    /// </summary>
+    private Task<Result> PurgeQuarantineAsync(string? tombstone, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(tombstone) || !Directory.Exists(tombstone))
+        {
+            return Task.FromResult(Result.Ok());
+        }
+
+        var normalized = PathIdentity.Normalize(tombstone);
+        var parent = Path.GetDirectoryName(normalized);
+        if (normalized is null || parent is null ||
+            !string.Equals(Path.GetFileName(parent), ".ecl-trash", StringComparison.OrdinalIgnoreCase))
+        {
+            return Task.FromResult(Result.Fail(
+                "instance.path.owner_scope",
+                "隔离区路径不在 .ecl-trash 下，拒绝清理。"));
+        }
+
+        var name = Path.GetFileName(normalized);
+        var dash = name.IndexOf('-', StringComparison.Ordinal);
+        if (dash <= 0 || name.Length <= dash + 1)
+        {
+            return Task.FromResult(Result.Fail(
+                "instance.path.owner_scope",
+                "隔离区目录名不符合 <instanceId>-<planId> 约定，拒绝清理。"));
+        }
+
+        var failures = new List<string>();
+        var skipped = 0;
+        foreach (var entry in Directory.EnumerateFileSystemEntries(normalized))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                if ((File.GetAttributes(entry) & FileAttributes.ReparsePoint) != 0)
+                {
+                    skipped++;
+                    failures.Add($"跳过重解析点：{Path.GetFileName(entry)}");
+                    continue;
+                }
+
+                if (Directory.Exists(entry))
+                {
+                    Directory.Delete(entry, recursive: true);
+                }
+                else if (File.Exists(entry))
+                {
+                    File.Delete(entry);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                failures.Add($"{Path.GetFileName(entry)}：{exception.Message}");
+            }
+        }
+
+        try
+        {
+            if (Directory.Exists(normalized) && !Directory.EnumerateFileSystemEntries(normalized).Any())
+            {
+                Directory.Delete(normalized);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            failures.Add($"隔离区目录：{exception.Message}");
+        }
+
+        if (failures.Count > 0)
+        {
+            _logger.LogWarning(
+                "隔离区 {Path} 仍有 {Count} 项未清理（跳过重解析点 {Skipped} 项）。",
+                normalized,
+                failures.Count,
+                skipped);
+            return Task.FromResult(Result.Fail(
+                "instance.lifecycle.needs_recovery",
+                "隔离区未完全清理；剩余项与失败原因已保留，可重试。",
+                string.Join("; ", failures.Take(5))));
+        }
+
+        return Task.FromResult(Result.Ok());
+    }
+
+    private string? FindJournalPath(string planId)
+    {
+        if (string.IsNullOrWhiteSpace(planId))
+        {
+            return null;
+        }
+
+        var root = Path.Combine(_paths.ConfigDirectory, "instance-engine", "lifecycle");
+        if (!Directory.Exists(root))
+        {
+            return null;
+        }
+
+        return Directory.EnumerateFiles(root, $"{planId}.json", SearchOption.AllDirectories).FirstOrDefault();
+    }
+
+    private static Result<InstanceDeletionJournal> ReadJournal(string path)
+    {
+        try
+        {
+            var journal = JsonSerializer.Deserialize<InstanceDeletionJournal>(
+                File.ReadAllText(path),
+                EclJson.Default);
+            return journal is null
+                ? Result<InstanceDeletionJournal>.Fail(
+                    "instance.lifecycle.journal_invalid",
+                    "删除 journal 为空。")
+                : Result<InstanceDeletionJournal>.Ok(journal);
+        }
+        catch (Exception exception) when (exception is IOException or JsonException or UnauthorizedAccessException)
+        {
+            return Result<InstanceDeletionJournal>.Fail(
+                "instance.lifecycle.journal_invalid",
+                "删除 journal 无法读取。",
+                exception.Message);
+        }
     }
 
     private string ResolveRootPath(GameInstance instance, string recordDirectory)

@@ -744,6 +744,11 @@
   "option.instance.customJvmPreset.desc": "Overrides the global custom preset file; leave empty to inherit.",
   "option.instance.gameArgs.name": "Instance game arguments",
   "option.instance.gameArgs.desc": "Overrides the global game arguments; leave empty to inherit.",
+  "option.instance.updatePolicy.name": "Content update policy",
+  "option.instance.updatePolicy.desc": "Controls mod/content updates for this instance: allowed, notify only, or blocked; blocking cannot be bypassed per operation.",
+  "option.instance.updatePolicy.allow": "Allow updates",
+  "option.instance.updatePolicy.notify": "Notify only",
+  "option.instance.updatePolicy.block": "Block updates",
   "launch.status.success": "OK",
   "launch.status.warning": "Warn",
   "launch.status.skipped": "Skip",
@@ -1504,7 +1509,8 @@
   "downloads.discovery.otherTitle": "Choose another install location",
   "downloads.discovery.other.instances": "Registered instances",
   "downloads.discovery.other.directory": "Choose folder…",
-  "downloads.discovery.other.directoryHint": "Only mods can be downloaded to an arbitrary folder; resource packs, shader packs, and datapacks must target a registered instance.",  "downloads.discovery.other.confirm": "Use this location",
+  "downloads.discovery.other.directoryHint": "Only mods can be downloaded to an arbitrary folder; resource packs, shader packs, and datapacks must target a registered instance.",
+  "downloads.discovery.other.confirm": "Use this location",
   "downloads.discovery.other.none": "No registered instances to choose from.",
   "downloads.discovery.other.worlds": "Worlds of this instance",
   "downloads.discovery.other.worldNone": "This instance has no recognizable worlds.",
@@ -2636,14 +2642,12 @@
   "runtime.file.sizeMismatch": "The file size does not match the install manifest.",
   "runtime.file.hashMismatch": "The file SHA-256 does not match the install manifest.",
   "runtime.file.unreadable": "The file cannot be read.",
-  "runtime.file.pathEscape": "The manifest path escapes the version directory."
+  "runtime.file.pathEscape": "The manifest path escapes the version directory.",
+  "storage.category.ecl.lifecycleMaterials": "Lifecycle recovery materials",
+  "storage.category.ecl.instanceEngine": "Transaction and recovery materials",
+  "storage.category.ecl.detachedGameData": "Detached game data",
+  "storage.protection.lifecycleMaterial": "Lifecycle recovery materials are handled only by recovery entries or deletion plans.",
+  "storage.protection.engineRecoveryMaterial": "Transaction/recovery materials are needed for crash recovery and are never cleaned automatically.",
+  "storage.protection.detachedGameData": "Records were removed but data remains; cleanup requires an explicit deletion plan.",
+  "storage.protection.externalInstance": "External/shared instance data belongs to the user; ECL never cleans it automatically."
 }
-
-
-
-
-
-
-
-
-

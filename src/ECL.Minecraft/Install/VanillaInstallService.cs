@@ -20,7 +20,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Ecl.Minecraft.Install;
 
-public sealed class VanillaInstallService : IVersionInstallService
+public sealed class VanillaInstallService : IVersionInstallService, IInstanceConfigurationInstaller
 {
     private const string OfficialLibrariesRoot = "https://libraries.minecraft.net/";
     private const string OfficialAssetsRoot = "https://resources.download.minecraft.net/";
@@ -131,10 +131,27 @@ public sealed class VanillaInstallService : IVersionInstallService
             }
         }
 
+        return await ApplyConfigurationAsync(instanceId, target.Value!, progress, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 已确定目标配置后的文件安装与元数据提交（F-03 §3.4 唯一允许的顺序）：
+    /// 共享 JSON/文件事务提交 → 实例元数据提交 → 失败时元数据保持旧值。
+    /// 调用方负责快照、生命周期 journal 与提交后校验。
+    /// </summary>
+    public async Task<InstallOutcome> ApplyConfigurationAsync(
+        string instanceId,
+        GameInstance target,
+        IProgress<InstallProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+
         InstallOutcome outcome;
         try
         {
-            outcome = await RunInstallAsync(instanceId, progress, cancellationToken, target.Value!)
+            outcome = await RunInstallAsync(instanceId, progress, cancellationToken, target)
                 .ConfigureAwait(false);
         }
         catch (Exception exception)
@@ -159,11 +176,11 @@ public sealed class VanillaInstallService : IVersionInstallService
 
         var metadata = await _instances.UpdateConfigurationAsync(
             instanceId,
-            gameVersion,
-            loader,
-            loaderVersion,
-            fabricApiVersion,
-            optiFineVersion,
+            target.GameVersion,
+            target.Loader,
+            target.LoaderVersion,
+            target.FabricApiVersion,
+            target.OptiFineVersion,
             cancellationToken).ConfigureAwait(false);
         if (!metadata.IsSuccess)
         {

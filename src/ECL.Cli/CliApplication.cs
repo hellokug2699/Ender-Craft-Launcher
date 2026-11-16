@@ -14,6 +14,7 @@ using Ecl.Core.Storage.Discovery;
 using Ecl.Deployment;
 using Ecl.Download;
 using Ecl.Java;
+using Ecl.Minecraft.Content;
 using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Diagnostics;
 using Ecl.Minecraft.Engine.Identity;
@@ -67,6 +68,7 @@ internal sealed class CliApplication
             "loader" => await LoaderCommandAsync(rest).ConfigureAwait(false),
             "mod" => await ModCommandAsync(rest).ConfigureAwait(false),
             "modpack" => await ModpackCommandAsync(rest).ConfigureAwait(false),
+            "content" => await ContentCommandAsync(rest).ConfigureAwait(false),
             "curseforge" => await CurseForgeCommandAsync(rest).ConfigureAwait(false),
             "pack" => await PackCommandAsync(rest).ConfigureAwait(false),
             "crash" => await CrashCommandAsync(rest).ConfigureAwait(false),
@@ -366,6 +368,12 @@ internal sealed class CliApplication
             case "move":
                 return await MoveInstanceAsync(args.ElementAtOrDefault(1)).ConfigureAwait(false);
 
+            case "reconfigure":
+                return await ReconfigureInstanceAsync(args.ElementAtOrDefault(1)).ConfigureAwait(false);
+
+            case "lifecycle":
+                return await LifecycleCommandAsync(args).ConfigureAwait(false);
+
             default:
                 return UsageError($"未知的 instance 子命令：{subCommand}");
         }
@@ -452,9 +460,377 @@ internal sealed class CliApplication
         return 0;
     }
 
-    /// <summary>F-02 来源命令：登记/扫描/目录/重新定位/解绑/导入。</summary>
-    private async Task<int> SourceCommandAsync(string[] args)
+    /// <summary>
+    /// F-03 重配置：先出计划（目标配置/所有权/阻断项/快照要求），--dry-run 只显示计划，
+    /// 执行必须 --force；共享外部实例默认阻断，外部实例需要 --confirm-external。
+    /// </summary>
+    private async Task<int> ReconfigureInstanceAsync(string? instanceId)
     {
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            return UsageError("instance reconfigure 需要实例 ID。");
+        }
+
+        var gameVersion = _commandLine.GetValue("game-version") ?? _commandLine.GetValue("version");
+        var loader = _commandLine.GetValue("loader") ?? "vanilla";
+        if (string.IsNullOrWhiteSpace(gameVersion))
+        {
+            return UsageError("instance reconfigure 需要 --game-version <版本> [--loader vanilla|fabric|forge|neoforge|cleanroom]。");
+        }
+
+        var reconfigures = _provider.GetRequiredService<IInstanceReconfigureService>();
+        var planResult = await reconfigures.PlanAsync(
+            instanceId,
+            gameVersion,
+            loader,
+            _commandLine.GetValue("loader-version"),
+            _commandLine.GetValue("fabric-api"),
+            _commandLine.GetValue("optifine"),
+            _commandLine.HasFlag("confirm-external")).ConfigureAwait(false);
+        if (!planResult.IsSuccess)
+        {
+            return WriteError(planResult.Error);
+        }
+
+        var plan = planResult.Value!;
+        if (_commandLine.HasFlag("json"))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(plan, EclJson.Indented));
+        }
+        else
+        {
+            Console.WriteLine($"实例 {plan.InstanceName}（{plan.InstanceId}）· {plan.Ownership}");
+            Console.WriteLine($"  当前   : {plan.CurrentGameVersion} / {plan.TargetLoader} / {plan.CurrentLoaderVersion ?? "-"}");
+            Console.WriteLine($"  目标   : {plan.TargetGameVersion} / {plan.TargetLoader} / {plan.TargetLoaderVersion ?? "-"}（VersionId {plan.TargetVersionId}）");
+            Console.WriteLine($"  快照   : {(plan.RequiresSnapshot ? "必须先创建并校验变更前快照" : "不需要")}");
+            Console.WriteLine($"  计划   : {plan.PlanId} · {plan.PlanHash}");
+            foreach (var evidence in plan.Evidence)
+            {
+                Console.WriteLine($"  · {evidence}");
+            }
+
+            foreach (var blocker in plan.Blockers)
+            {
+                Console.WriteLine($"  ! {blocker}");
+            }
+
+            foreach (var warning in plan.Warnings)
+            {
+                Console.WriteLine($"  ? {warning}");
+            }
+        }
+
+        if (_commandLine.HasFlag("dry-run"))
+        {
+            return 0;
+        }
+
+        if (!_commandLine.HasFlag("force"))
+        {
+            return UsageError("重配置实例需要 --force 确认；先用 --dry-run 检查计划。");
+        }
+
+        if (plan.Blockers.Count > 0)
+        {
+            return WriteError(new EclError(
+                "instance.lifecycle.blocked",
+                "重配置计划存在阻断项，未执行。",
+                string.Join("; ", plan.Blockers)));
+        }
+
+        var result = await reconfigures.ExecuteAsync(plan).ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return WriteError(result.Error);
+        }
+
+        var reconfigured = result.Value!;
+        Console.WriteLine($"已完成实例 {instanceId} 的重配置：{reconfigured.Instance.GameVersion} / {reconfigured.Instance.Loader} / {reconfigured.Instance.LoaderVersion ?? "-"}");
+        Console.WriteLine($"  快照    : {reconfigured.SnapshotId ?? "(未创建)"}");
+        Console.WriteLine($"  计划    : {reconfigured.PlanId}");
+        foreach (var item in reconfigured.Verification)
+        {
+            Console.WriteLine($"  {item}");
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// F-03 生命周期恢复入口：list / inspect / resume / discard / cleanup-source。
+    /// 只报告与显式执行，不自动前向完成无法证明一致的状态。
+    /// </summary>
+    private async Task<int> LifecycleCommandAsync(string[] args)
+    {
+        var action = args.ElementAtOrDefault(1)?.ToLowerInvariant() ?? "list";
+        var recovery = _provider.GetRequiredService<IInstanceLifecycleRecoveryService>();
+        switch (action)
+        {
+            case "list":
+            case "inspect":
+            {
+                var instanceId = args.ElementAtOrDefault(2);
+                var inspected = await recovery.InspectAsync(instanceId).ConfigureAwait(false);
+                if (!inspected.IsSuccess)
+                {
+                    return WriteError(inspected.Error);
+                }
+
+                var report = inspected.Value!;
+
+                if (_commandLine.HasFlag("json"))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(report, EclJson.Indented));
+                    return 0;
+                }
+
+                if (report.Entries.Count == 0)
+                {
+                    Console.WriteLine("没有生命周期 journal。");
+                }
+
+                foreach (var entry in report.Entries)
+                {
+                    var record = entry.Record;
+                    Console.WriteLine($"{record.Kind} · {record.State} · {record.InstanceId} · {record.PlanId}");
+                    Console.WriteLine($"  动作   : {entry.Action}");
+                    Console.WriteLine($"  时间   : {record.CreatedAt.ToLocalTime():yyyy-MM-dd HH:mm} → {record.UpdatedAt.ToLocalTime():yyyy-MM-dd HH:mm}");
+                    foreach (var note in entry.Notes)
+                    {
+                        Console.WriteLine($"  · {note}");
+                    }
+                }
+
+                if (report.Orphans.Count > 0)
+                {
+                    Console.WriteLine($"生命周期残留（{report.Orphans.Count}）：");
+                    foreach (var orphan in report.Orphans)
+                    {
+                        Console.WriteLine($"  [{orphan.Kind}] {orphan.Path}");
+                        Console.WriteLine($"    {orphan.Detail}");
+                    }
+                }
+
+                Console.WriteLine(
+                    $"汇总：需要恢复 {report.NeedsRecoveryCount} · 可继续 {report.ResumableCount} · 可清理退休源 {report.CleanableSourceCount} · 残留 {report.OrphanCount}");
+                return report.NeedsRecoveryCount > 0 ? 1 : 0;
+            }
+
+            case "resume":
+            {
+                var planId = args.ElementAtOrDefault(2);
+                if (string.IsNullOrWhiteSpace(planId))
+                {
+                    return UsageError("instance lifecycle resume <planId>");
+                }
+
+                var resumed = await recovery.ResumeAsync(planId).ConfigureAwait(false);
+                if (!resumed.IsSuccess)
+                {
+                    return WriteError(resumed.Error);
+                }
+
+                Console.WriteLine($"已继续 {resumed.Value!.Kind} 计划 {planId}：{resumed.Value.State}");
+                return 0;
+            }
+
+            case "discard":
+            {
+                var planId = args.ElementAtOrDefault(2);
+                if (string.IsNullOrWhiteSpace(planId))
+                {
+                    return UsageError("instance lifecycle discard <planId>");
+                }
+
+                var discarded = await recovery.DiscardAsync(planId).ConfigureAwait(false);
+                if (!discarded.IsSuccess)
+                {
+                    return WriteError(discarded.Error);
+                }
+
+                Console.WriteLine($"已丢弃 {discarded.Value!.Kind} 计划 {planId}：{discarded.Value.State}");
+                return 0;
+            }
+
+            case "cleanup-source":
+            {
+                var planId = args.ElementAtOrDefault(2);
+                if (string.IsNullOrWhiteSpace(planId))
+                {
+                    return UsageError("instance lifecycle cleanup-source <planId>");
+                }
+
+                var cleaned = await recovery.CleanupSourceAsync(planId).ConfigureAwait(false);
+                if (!cleaned.IsSuccess)
+                {
+                    return WriteError(cleaned.Error);
+                }
+
+                Console.WriteLine($"退休源已清理：{cleaned.Value!.DeletedPath ?? "(无)"}");
+                foreach (var note in cleaned.Value.Notes)
+                {
+                    Console.WriteLine($"  · {note}");
+                }
+
+                return 0;
+            }
+
+            default:
+                return UsageError("instance lifecycle 支持 list|inspect|resume|discard|cleanup-source。");
+        }
+    }
+
+    /// <summary>
+    /// F-06 内容计划/更新策略/更新检查：只生成只读计划与事实，不自动下载或替换内容。
+    /// </summary>
+    private async Task<int> ContentCommandAsync(string[] args)
+    {
+        var action = args.ElementAtOrDefault(0)?.ToLowerInvariant();
+        switch (action)
+        {
+            case "plan":
+            {
+                var instanceId = args.ElementAtOrDefault(1);
+                var projectId = _commandLine.GetValue("project");
+                if (string.IsNullOrWhiteSpace(instanceId) || string.IsNullOrWhiteSpace(projectId))
+                {
+                    return UsageError("content plan <实例ID> --project <Modrinth项目ID> [--version <版本ID>] [--json]");
+                }
+
+                var planner = _provider.GetRequiredService<IContentInstallPlanner>();
+                var planned = await planner.PlanAsync(
+                    instanceId,
+                    new ContentInstallPlanRequest(
+                        ContentSourceKind.Modrinth,
+                        projectId,
+                        _commandLine.GetValue("version"))).ConfigureAwait(false);
+                if (!planned.IsSuccess)
+                {
+                    return WriteError(planned.Error);
+                }
+
+                var plan = planned.Value!;
+                if (_commandLine.HasFlag("json"))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(plan, EclJson.Indented));
+                    return plan.IsInstallable ? 0 : 1;
+                }
+
+                Console.WriteLine($"计划 {plan.PlanId} · 实例 {plan.InstanceId} · MC {plan.GameVersion} / {plan.Loader}");
+                Console.WriteLine($"  节点   : {plan.Nodes.Count} · 可安装文件 {plan.Files.Count} · {FormatBytes(plan.TotalBytes)}");
+                foreach (var node in plan.Nodes)
+                {
+                    Console.WriteLine($"  [{node.Status}] {node.Key} · {node.FileName ?? node.ProjectName ?? "-"}{(node.Required ? " · 必需" : " · 可选")}");
+                    if (!string.IsNullOrWhiteSpace(node.Reason))
+                    {
+                        Console.WriteLine($"      {node.Reason}");
+                    }
+                }
+
+                foreach (var edge in plan.Edges)
+                {
+                    Console.WriteLine($"  依赖 : {edge.FromKey} → {edge.ToKey}{(edge.Required ? string.Empty : "（可选）")}");
+                }
+
+                foreach (var blocker in plan.Blockers)
+                {
+                    Console.WriteLine($"  ! {blocker}");
+                }
+
+                foreach (var warning in plan.Warnings)
+                {
+                    Console.WriteLine($"  ? {warning}");
+                }
+
+                return plan.IsInstallable ? 0 : 1;
+            }
+
+            case "updates":
+            {
+                var instanceId = args.ElementAtOrDefault(1);
+                if (string.IsNullOrWhiteSpace(instanceId))
+                {
+                    return UsageError("content updates <实例ID> [--json]");
+                }
+
+                var updates = _provider.GetRequiredService<IContentUpdateService>();
+                var checkedResult = await updates.CheckAsync(instanceId).ConfigureAwait(false);
+                if (!checkedResult.IsSuccess)
+                {
+                    return WriteError(checkedResult.Error);
+                }
+
+                var check = checkedResult.Value!;
+                if (_commandLine.HasFlag("json"))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(check, EclJson.Indented));
+                    return 0;
+                }
+
+                Console.WriteLine($"实例 {check.InstanceId} · 策略 {check.Policy} · 可更新 {check.AvailableCount}");
+                foreach (var candidate in check.Candidates)
+                {
+                    Console.WriteLine(
+                        $"  {candidate.Installed.FileName} → {candidate.LatestFileName ?? candidate.LatestVersionId}{(candidate.Allowed ? " · 允许" : " · 不可执行")}（{candidate.Reason}）");
+                }
+
+                foreach (var skipped in check.Skipped)
+                {
+                    Console.WriteLine($"  ? {skipped}");
+                }
+
+                foreach (var warning in check.Warnings)
+                {
+                    Console.WriteLine($"  ? {warning}");
+                }
+
+                return 0;
+            }
+
+            case "policy":
+            {
+                var instanceId = args.ElementAtOrDefault(1);
+                var value = args.ElementAtOrDefault(2);
+                if (string.IsNullOrWhiteSpace(instanceId))
+                {
+                    return UsageError("content policy <实例ID> [allow|notify|block]");
+                }
+
+                var policies = _provider.GetRequiredService<IInstanceContentUpdatePolicyService>();
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    var current = await policies.GetAsync(instanceId).ConfigureAwait(false);
+                    if (!current.IsSuccess)
+                    {
+                        return WriteError(current.Error);
+                    }
+
+                    Console.WriteLine($"{InstanceContentUpdatePolicyService.ToRaw(current.Value)}");
+                    return 0;
+                }
+
+                if (!InstanceContentUpdatePolicyService.TryParse(value, out var policy))
+                {
+                    return UsageError("更新策略只支持 allow、notify、block。");
+                }
+
+                var written = await policies.SetAsync(instanceId, policy).ConfigureAwait(false);
+                if (!written.IsSuccess)
+                {
+                    return WriteError(written.Error);
+                }
+
+                Console.WriteLine($"已设置实例 {instanceId} 的更新策略为 {InstanceContentUpdatePolicyService.ToRaw(policy)}。");
+                return 0;
+            }
+
+            default:
+                return UsageError("content 支持 plan <实例ID> --project <项目ID> [--version <版本ID>]、updates <实例ID>、policy <实例ID> [allow|notify|block]。");
+        }
+    }
+
+    /// <summary>F-02 来源命令：登记/扫描/目录/重新定位/解绑/导入。</summary>
+    private async Task<int> SourceCommandAsync(string[] args)    {
         var workspace = _provider.GetRequiredService<IWorkspaceService>();
         var discovery = _provider.GetRequiredService<IInstanceDiscoveryService>();
         var subCommand = args.ElementAtOrDefault(0)?.ToLowerInvariant();
