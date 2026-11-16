@@ -57,6 +57,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IInstanceOwnershipClassifier, InstanceOwnershipClassifier>();
         services.AddSingleton<IInstanceActivityGuard, InstanceActivityGuard>();
         services.AddSingleton<IInstanceDeletionService, InstanceDeletionService>();
+        services.AddSingleton<IInstanceRelocationService, InstanceRelocationService>();
         services.AddSingleton<InstanceTransactionCoordinator>();
         services.AddSingleton<IInstanceTransactionService>(provider =>
             provider.GetRequiredService<InstanceTransactionCoordinator>());
