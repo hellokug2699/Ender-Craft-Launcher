@@ -11,8 +11,8 @@ using Ecl.App.Workspace.ViewModels;
 using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Java;
+using Ecl.Minecraft.Engine.Lifecycle;
 using Ecl.Minecraft.Engine.Snapshots;
-using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Loaders;
@@ -536,13 +536,15 @@ public sealed class InstanceModifyPageTests
         Assert.Empty(harness.Mods.ImportCalls);
         Assert.Equal(0, harness.Packs.WriteCalls);
 
-        // 只生成计划：不创建快照、不调用安装服务、不展示确认弹窗。
+        // 只生成计划：不创建快照、不调用领域重配置服务、不展示确认弹窗。
         Assert.Equal(0, harness.Snapshots.CreateCalls);
         Assert.Equal(0, harness.Snapshots.VerifyCalls);
-        Assert.Empty(harness.Install.Calls);
+        Assert.Empty(harness.Reconfigure.PlanCalls);
+        Assert.Empty(harness.Reconfigure.Calls);
         Assert.Empty(harness.Dialogs.Requests);
 
-        // 结构保证：页面没有直接写实例记录的依赖，写入只能经安装服务与快照服务。
+        // 结构保证：页面没有直接写实例记录的依赖，也不直接调用安装服务；
+        // 写入只能经领域生命周期服务与快照恢复服务。
         var dependencies = typeof(InstanceModifyViewModel)
             .GetConstructors()
             .SelectMany(constructor => constructor.GetParameters())
@@ -550,6 +552,8 @@ public sealed class InstanceModifyPageTests
             .ToArray();
         Assert.DoesNotContain(typeof(IInstanceService), dependencies);
         Assert.DoesNotContain(typeof(Ecl.Minecraft.Engine.Transactions.InstanceTransactionCoordinator), dependencies);
+        Assert.DoesNotContain(typeof(Ecl.Minecraft.Install.IVersionInstallService), dependencies);
+        Assert.Contains(typeof(IInstanceReconfigureService), dependencies);
     }
 
     [Fact]
@@ -562,18 +566,18 @@ public sealed class InstanceModifyPageTests
         await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
 
         Assert.Equal(0, harness.Snapshots.CreateCalls);
-        Assert.Empty(harness.Install.Calls);
+        Assert.Empty(harness.Reconfigure.PlanCalls);
+        Assert.Empty(harness.Reconfigure.Calls);
         Assert.Equal(InstanceModifyPlanState.Executable, harness.ViewModel.PlanState);
         Assert.Single(harness.Dialogs.Requests);
         Assert.IsType<ModifyConfirmDialogViewModel>(harness.Dialogs.Requests[0].Content);
     }
 
     [Fact]
-    public async Task ExecutionCreatesAVerifiedFullSnapshotBeforeInstalling()
+    public async Task ExecutionUsesTheDomainLifecyclePlanAndItsSnapshot()
     {
         using var harness = new Harness();
         await PrepareExecutablePlanAsync(harness);
-        harness.Install.Factory = _ => SuccessOutcome("1.21-fabric");
 
         await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
 
@@ -583,31 +587,34 @@ public sealed class InstanceModifyPageTests
         Assert.False(vm.HasExecutionStage);
         Assert.Equal(1, harness.WorkspaceRefreshes);
 
-        // 顺序：先创建并校验快照，再安装。
-        Assert.Equal(["snapshot.create", "snapshot.verify", "install"], harness.Events);
-        Assert.Equal(SnapshotScope.Full, harness.Snapshots.LastCreateOptions!.Scope);
-        Assert.Equal(harness.Snapshots.CreatedSnapshotId, harness.Snapshots.LastVerifiedSnapshotId);
-        Assert.Equal(harness.Snapshots.CreatedSnapshotId, vm.SnapshotId);
-        Assert.Contains("已校验", vm.SnapshotSummary);
+        // 页面不再自建快照：计划与快照都由领域生命周期服务提供。
+        Assert.Equal(0, harness.Snapshots.CreateCalls);
+        Assert.Equal(0, harness.Snapshots.VerifyCalls);
 
-        var call = Assert.Single(harness.Install.Calls);
-        Assert.Equal("1-20-1-790872", call.InstanceId);
-        Assert.Equal("1.21", call.GameVersion);
-        Assert.Equal("fabric", call.Loader);
-        Assert.Equal("0.16.10", call.LoaderVersion);
-        Assert.Equal("0.100.0", call.FabricApiVersion);
-        Assert.Null(call.OptiFineVersion);
+        var planCall = Assert.Single(harness.Reconfigure.PlanCalls);
+        Assert.Equal("1-20-1-790872", planCall.InstanceId);
+        Assert.Equal("1.21", planCall.GameVersion);
+        Assert.Equal("fabric", planCall.Loader);
+        Assert.Equal("0.16.10", planCall.LoaderVersion);
+        Assert.Equal("0.100.0", planCall.FabricApiVersion);
+        Assert.Null(planCall.OptiFineVersion);
+
+        var executeCall = Assert.Single(harness.Reconfigure.Calls);
+        Assert.Equal("1.21", executeCall.GameVersion);
+        Assert.Equal(FakeReconfigureService.DefaultSnapshotId, vm.SnapshotId);
+        Assert.Contains("生命周期", vm.SnapshotSummary);
     }
 
     [Fact]
-    public async Task ExecutionFailureWithCompleteRollbackIsNotReportedAsNeedingRecovery()
+    public async Task ExecutionFailureWithRolledBackJournalIsNotReportedAsNeedingRecovery()
     {
         using var harness = new Harness();
         await PrepareExecutablePlanAsync(harness);
-        harness.Install.Factory = _ => FailedOutcome(
-            rollbackFailures: [],
-            metadataRestored: true,
-            diagnosticPath: Path.Combine(harness.Root, "install-failed.json"));
+        harness.Reconfigure.ExecuteResult = _ => Result<InstanceReconfigureResult>.Fail(
+            "install.download_failed",
+            "下载失败（fake）。");
+        harness.Reconfigure.JournalState = InstanceReconfigureState.RolledBack;
+        harness.Reconfigure.JournalPath = Path.Combine(harness.Root, "instance-engine", "journal.json");
 
         await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
 
@@ -616,7 +623,7 @@ public sealed class InstanceModifyPageTests
         Assert.True(vm.IsFailedRolledBack);
         Assert.False(vm.IsFailedNeedsRecovery);
         Assert.Contains("已确认回滚完整", vm.ExecutionResult);
-        Assert.Contains("诊断", vm.DiagnosticNote);
+        Assert.Contains("journal", vm.DiagnosticNote);
         Assert.True(vm.HasDiagnosticFile);
         Assert.False(vm.RestoreSnapshotCommand.CanExecute(null));
     }
@@ -626,63 +633,66 @@ public sealed class InstanceModifyPageTests
     {
         using var harness = new Harness();
         await PrepareExecutablePlanAsync(harness);
-        harness.Install.Factory = _ => FailedOutcome(
-            rollbackFailures: ["failed to rollback locked.jar"],
-            metadataRestored: true,
-            diagnosticPath: null);
+        harness.Reconfigure.ExecuteResult = _ => Result<InstanceReconfigureResult>.Fail(
+            "instance.lifecycle.needs_recovery",
+            "回滚未能证明完成。");
+        harness.Reconfigure.JournalState = InstanceReconfigureState.NeedsRecovery;
+        harness.Reconfigure.JournalPath = null;
 
         await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
 
         var vm = harness.ViewModel;
         Assert.Equal(InstanceModifyPlanState.FailedNeedsRecovery, vm.PlanState);
         Assert.True(vm.IsFailedNeedsRecovery);
-        Assert.Contains("回滚未完整完成", vm.ExecutionResult);
+        Assert.Contains("无法证明", vm.ExecutionResult);
         Assert.False(vm.HasDiagnosticFile);
+        Assert.Equal(FakeReconfigureService.DefaultSnapshotId, vm.SnapshotId);
         Assert.True(vm.RestoreSnapshotCommand.CanExecute(null));
 
         harness.Dialogs.Outcome = DialogOutcome.Primary;
         await vm.RestoreSnapshotCommand.ExecuteAsync(null);
 
         var restore = Assert.Single(harness.Snapshots.RestoreCalls);
-        Assert.Equal(harness.Snapshots.CreatedSnapshotId, restore.SnapshotId);
+        Assert.Equal(FakeReconfigureService.DefaultSnapshotId, restore.SnapshotId);
         Assert.Equal(InstanceModifyPlanState.FailedRolledBack, vm.PlanState);
         Assert.Contains("已按快照", vm.RestoreStatus);
         Assert.Equal(1, harness.WorkspaceRefreshes);
     }
 
     [Fact]
-    public async Task SnapshotFailureStopsBeforeInstalling()
+    public async Task DomainPlanFailureStopsBeforeExecuting()
     {
         using var harness = new Harness();
         await PrepareExecutablePlanAsync(harness);
-        harness.Snapshots.CreateResult = _ => Result<SnapshotManifest>.Fail(
-            "snapshot.create_failed",
-            "快照创建失败");
+        harness.Reconfigure.PlanResult = Result<InstanceReconfigurePlan>.Fail(
+            "instance.lifecycle.external_write_requires_confirmation",
+            "目标是外部实例目录。");
 
         await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
 
         var vm = harness.ViewModel;
         Assert.Equal(InstanceModifyPlanState.FailedBeforeChange, vm.PlanState);
-        Assert.Contains("未开始变更", vm.ExecutionResult);
+        Assert.Contains("变更计划未通过", vm.ExecutionResult);
         Assert.True(vm.IsFailedBeforeChange);
-        Assert.Empty(harness.Install.Calls);
-        Assert.DoesNotContain("snapshot.verify", harness.Events);
+        Assert.Empty(harness.Reconfigure.Calls);
     }
 
     [Fact]
-    public async Task IncompleteSnapshotIsRejectedBeforeInstalling()
+    public async Task DomainRejectionBeforeWritingIsReportedAsFailedBeforeChange()
     {
         using var harness = new Harness();
         await PrepareExecutablePlanAsync(harness);
-        harness.Snapshots.Verification = new SnapshotVerification(
-            harness.Snapshots.CreatedSnapshotId, false, 1, 0, 0, ["missing object"]);
+        harness.Reconfigure.ExecuteResult = _ => Result<InstanceReconfigureResult>.Fail(
+            "snapshot.incomplete",
+            "变更前快照不完整");
+        harness.Reconfigure.JournalState = InstanceReconfigureState.Planned;
 
         await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
 
         var vm = harness.ViewModel;
         Assert.Equal(InstanceModifyPlanState.FailedBeforeChange, vm.PlanState);
-        Assert.Contains("不能用于恢复", vm.SnapshotSummary);
-        Assert.Empty(harness.Install.Calls);
+        Assert.Contains("快照不完整", vm.ExecutionResult);
+        Assert.Single(harness.Reconfigure.Calls);
     }
 
     [Fact]
@@ -699,7 +709,8 @@ public sealed class InstanceModifyPageTests
         var vm = harness.ViewModel;
         Assert.Equal(InstanceModifyPlanState.NeedsAction, vm.PlanState);
         Assert.Equal(0, harness.Snapshots.CreateCalls);
-        Assert.Empty(harness.Install.Calls);
+        Assert.Empty(harness.Reconfigure.PlanCalls);
+        Assert.Empty(harness.Reconfigure.Calls);
         Assert.Contains(vm.ActionItems, text => text.Contains("session-late"));
     }
 
@@ -714,30 +725,29 @@ public sealed class InstanceModifyPageTests
 
         Assert.Equal(InstanceModifyPlanState.NotChecked, harness.ViewModel.PlanState);
         Assert.False(harness.ViewModel.ExecuteCommand.CanExecute(null));
-        Assert.Empty(harness.Install.Calls);
+        Assert.Empty(harness.Reconfigure.Calls);
     }
 
     [Fact]
-    public async Task ExecutionReportsRealInstallStageAndRejectsDuplicateSubmit()
+    public async Task ExecutionReportsRealLifecycleStageAndRejectsDuplicateSubmit()
     {
         using var harness = new Harness();
         await PrepareExecutablePlanAsync(harness);
-        harness.Install.Gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        harness.Install.Factory = _ => SuccessOutcome("1.21-fabric");
+        harness.Reconfigure.Gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var execution = harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
-        await WaitForAsync(() => harness.Install.Calls.Count == 1, "安装服务应已开始执行");
-        await WaitForAsync(() => harness.ViewModel.ExecutionStage.Contains("安装客户端"), "执行阶段应转发安装进度");
+        await WaitForAsync(() => harness.Reconfigure.Calls.Count == 1, "领域重配置服务应已开始执行");
+        await WaitForAsync(() => harness.ViewModel.ExecutionStage.Contains("正在安装"), "执行阶段应显示领域执行进度");
 
         Assert.Equal(InstanceModifyPlanState.Executing, harness.ViewModel.PlanState);
         Assert.False(harness.ViewModel.ExecuteCommand.CanExecute(null));
         Assert.False(harness.ViewModel.GeneratePlanCommand.CanExecute(null));
 
-        // 重复提交在同一次执行完成前不会产生第二次安装。
+        // 重复提交在同一次执行完成前不会产生第二次执行。
         await harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
-        Assert.Single(harness.Install.Calls);
+        Assert.Single(harness.Reconfigure.Calls);
 
-        harness.Install.Gate.SetResult(true);
+        harness.Reconfigure.Gate.SetResult(true);
         await execution;
         Assert.Equal(InstanceModifyPlanState.Succeeded, harness.ViewModel.PlanState);
     }
@@ -747,18 +757,17 @@ public sealed class InstanceModifyPageTests
     {
         using var harness = new Harness();
         await PrepareExecutablePlanAsync(harness);
-        harness.Install.Gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        harness.Install.Factory = _ => SuccessOutcome("1.21-fabric");
+        harness.Reconfigure.Gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var execution = harness.ViewModel.ExecuteCommand.ExecuteAsync(null);
-        await WaitForAsync(() => harness.Install.Calls.Count == 1, "安装服务应已开始执行");
+        await WaitForAsync(() => harness.Reconfigure.Calls.Count == 1, "领域重配置服务应已开始执行");
 
         harness.ViewModel.Dispose();
-        harness.Install.Gate.SetResult(true);
+        harness.Reconfigure.Gate.SetResult(true);
         await execution.WaitAsync(TimeSpan.FromSeconds(5));
 
-        // 任务继续执行（安装只调用一次），但页面不再回写执行结果。
-        Assert.Single(harness.Install.Calls);
+        // 任务继续执行（领域服务只调用一次），但页面不再回写执行结果。
+        Assert.Single(harness.Reconfigure.Calls);
         Assert.Equal(InstanceModifyPlanState.Executing, harness.ViewModel.PlanState);
         Assert.DoesNotContain("已提交", harness.ViewModel.ExecutionResult);
         Assert.Equal(0, harness.WorkspaceRefreshes);
@@ -787,19 +796,6 @@ public sealed class InstanceModifyPageTests
         await vm.GeneratePlanCommand.ExecuteAsync(null);
         Assert.Equal(InstanceModifyPlanState.Executable, vm.PlanState);
     }
-
-    private static InstallOutcome SuccessOutcome(string versionId) =>
-        InstallOutcome.Ok(new InstallReport(versionId, 3, 0, 1024, TimeSpan.FromSeconds(1), ["fabric-api:0.100.0"]));
-
-    private static InstallOutcome FailedOutcome(
-        IReadOnlyList<string> rollbackFailures,
-        bool metadataRestored,
-        string? diagnosticPath) =>
-        InstallOutcome.Fail(new InstallFailure(
-            new EclError("install.download_failed", "下载失败（fake）。"),
-            new InstallRollbackResult([], rollbackFailures),
-            metadataRestored,
-            diagnosticPath));
 
     [Fact]
     public async Task ChangingAnyTargetValueInvalidatesTheExistingPlan()
@@ -912,7 +908,7 @@ public sealed class InstanceModifyPageTests
         {
             Root = Directory.CreateTempSubdirectory("ecl-modify-").FullName;
             Events = [];
-            Install = new FakeInstallService(Events);
+            Reconfigure = new FakeReconfigureService();
             Snapshots = new FakeSnapshotService(Events);
             var gameDirectory = Path.Combine(Root, "minecraft");
             if (createGameDirectory)
@@ -953,7 +949,7 @@ public sealed class InstanceModifyPageTests
                 Packs,
                 Sessions,
                 Operations,
-                Install,
+                Reconfigure,
                 Snapshots,
                 Dialogs,
                 localizer);
@@ -978,7 +974,7 @@ public sealed class InstanceModifyPageTests
 
         public FakeGameSessionService Sessions { get; } = new();
 
-        public FakeInstallService Install { get; }
+        public FakeReconfigureService Reconfigure { get; }
 
         public FakeSnapshotService Snapshots { get; }
 
@@ -1273,47 +1269,160 @@ public sealed class InstanceModifyPageTests
         }
     }
 
-    /// <summary>安装服务的调用记录与可控结果；不访问真实下载或文件系统。</summary>
-    private sealed class FakeInstallService(List<string> events) : IVersionInstallService
+    /// <summary>
+    /// 生命周期重配置服务替身：记录计划/执行调用，允许逐项注入计划、执行结果与 journal 状态。
+    /// 页面不再自建快照，因此“成功”结果携带领域创建的变更前快照 ID。
+    /// </summary>
+    private sealed class FakeReconfigureService : IInstanceReconfigureService
     {
-        public List<InstallCall> Calls { get; } = [];
+        public const string DefaultSnapshotId = "snap-before-change";
 
-        public Func<InstallCall, InstallOutcome>? Factory { get; set; }
+        public string FixedInstanceId { get; set; } = "1-20-1-790872";
 
-        /// <summary>非空时安装停在进度回调之后，用于观察执行中状态。</summary>
+        public List<ReconfigureCall> PlanCalls { get; } = [];
+
+        public List<ReconfigureCall> Calls { get; } = [];
+
+        public Result<InstanceReconfigurePlan>? PlanResult { get; set; }
+
+        public Func<ReconfigureCall, Result<InstanceReconfigureResult>>? ExecuteResult { get; set; }
+
+        public InstanceReconfigureState JournalState { get; set; } = InstanceReconfigureState.Completed;
+
+        public string? JournalPath { get; set; }
+
+        /// <summary>非空时执行停在进度回调之后，用于观察执行中状态。</summary>
         public TaskCompletionSource<bool>? Gate { get; set; }
 
-        public Task<Result<InstallReport>> InstallAsync(
-            string instanceId,
-            IProgress<InstallProgress>? progress = null,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("修改页只使用 ReconfigureAsync。");
-
-        public async Task<InstallOutcome> ReconfigureAsync(
+        public Task<Result<InstanceReconfigurePlan>> PlanAsync(
             string instanceId,
             string gameVersion,
             string loader,
             string? loaderVersion = null,
             string? fabricApiVersion = null,
             string? optiFineVersion = null,
-            IProgress<InstallProgress>? progress = null,
+            bool externalWriteConfirmed = false,
             CancellationToken cancellationToken = default)
         {
-            Calls.Add(new InstallCall(instanceId, gameVersion, loader, loaderVersion, fabricApiVersion, optiFineVersion));
-            events.Add("install");
-            progress?.Report(new InstallProgress(InstallStage.Client, "安装客户端", 1, 2, 0, 0, null));
+            PlanCalls.Add(new ReconfigureCall(
+                instanceId,
+                gameVersion,
+                loader,
+                loaderVersion,
+                fabricApiVersion,
+                optiFineVersion));
+            if (PlanResult is { } preset)
+            {
+                return Task.FromResult(preset);
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            return Task.FromResult(Result<InstanceReconfigurePlan>.Ok(new InstanceReconfigurePlan(
+                "plan-1",
+                "plan-hash-1",
+                now,
+                now.AddMinutes(10),
+                instanceId,
+                "Test Instance",
+                InstanceOwnership.EclManaged,
+                "1.20.1",
+                "0.16.10",
+                gameVersion,
+                loader,
+                loaderVersion,
+                fabricApiVersion,
+                optiFineVersion,
+                $"modded-{gameVersion}",
+                RequiresSnapshot: true,
+                RequiresGameClosed: true,
+                externalWriteConfirmed,
+                [],
+                [],
+                [],
+                "test")));
+        }
+
+        public async Task<Result<InstanceReconfigureResult>> ExecuteAsync(
+            InstanceReconfigurePlan plan,
+            IProgress<InstanceReconfigureProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add(new ReconfigureCall(
+                plan.InstanceId,
+                plan.TargetGameVersion,
+                plan.TargetLoader,
+                plan.TargetLoaderVersion,
+                plan.TargetFabricApiVersion,
+                plan.TargetOptiFineVersion));
+            progress?.Report(new InstanceReconfigureProgress("files"));
 
             if (Gate is not null)
             {
                 await Gate.Task;
             }
 
-            return Factory?.Invoke(Calls[^1])
-                   ?? throw new InvalidOperationException("测试需要先配置安装结果。");
+            if (ExecuteResult is { } factory)
+            {
+                return factory(Calls[^1]);
+            }
+
+            return Result<InstanceReconfigureResult>.Ok(new InstanceReconfigureResult(
+                new GameInstance
+                {
+                    Id = plan.InstanceId,
+                    Name = plan.InstanceName,
+                    GameVersion = plan.TargetGameVersion,
+                    Loader = plan.TargetLoader,
+                    LoaderVersion = plan.TargetLoaderVersion,
+                    VersionId = plan.TargetVersionId,
+                },
+                plan.PlanId,
+                plan.PlanHash,
+                DefaultSnapshotId,
+                ["ok:fake"],
+                MakeJournal(plan)));
         }
+
+        public Task<Result<InstanceReconfigureJournal>> GetAsync(
+            string planId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result<InstanceReconfigureJournal>.Ok(MakeJournal(null)));
+
+        public Task<Result<IReadOnlyList<InstanceReconfigureJournal>>> ListAsync(
+            string instanceId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result<IReadOnlyList<InstanceReconfigureJournal>>.Ok([]));
+
+        public string? GetJournalPath(string planId) => JournalPath;
+
+        private InstanceReconfigureJournal MakeJournal(InstanceReconfigurePlan? plan) =>
+            new(
+                1,
+                "Reconfigure",
+                plan?.PlanId ?? "plan-1",
+                plan?.PlanHash ?? "plan-hash-1",
+                plan?.InstanceId ?? FixedInstanceId,
+                plan?.InstanceName ?? "Test Instance",
+                InstanceOwnership.EclManaged,
+                JournalState.ToString(),
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow,
+                null,
+                null,
+                JournalState is InstanceReconfigureState.RolledBack or
+                    InstanceReconfigureState.NeedsRecovery or
+                    InstanceReconfigureState.Completed
+                    ? DefaultSnapshotId
+                    : null,
+                null,
+                null,
+                [],
+                null,
+                null,
+                "test");
     }
 
-    internal sealed record InstallCall(
+    internal sealed record ReconfigureCall(
         string InstanceId,
         string GameVersion,
         string Loader,

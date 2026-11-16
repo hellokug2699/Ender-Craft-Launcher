@@ -108,6 +108,9 @@ public interface IInstanceReconfigureService
     Task<Result<IReadOnlyList<InstanceReconfigureJournal>>> ListAsync(
         string instanceId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>生命周期 journal 的绝对路径；不存在时返回 null。供 UI 打开证据目录，不暴露写入入口。</summary>
+    string? GetJournalPath(string planId);
 }
 
 /// <summary>
@@ -562,6 +565,8 @@ public sealed class InstanceReconfigureService : IInstanceReconfigureService
         return Result<IReadOnlyList<InstanceReconfigureJournal>>.Ok(
             journals.OrderByDescending(journal => journal.UpdatedAt).ToArray());
     }
+
+    public string? GetJournalPath(string planId) => _journals.FindJournalPath(planId);
 
     private async Task<InstanceReconfigureJournal?> CreateJournalAsync(
         InstanceReconfigurePlan plan,

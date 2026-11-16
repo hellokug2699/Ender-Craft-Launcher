@@ -12,8 +12,8 @@ using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Java;
 using Ecl.Minecraft.Engine.Inventory;
+using Ecl.Minecraft.Engine.Lifecycle;
 using Ecl.Minecraft.Engine.Snapshots;
-using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Loaders;
@@ -29,8 +29,9 @@ namespace Ecl.App.Workspace.ViewModels;
 ///
 /// B2 步骤 3b-4a 建立了只读变更计划与影响预览（`instance-modify.md` §5–§7）；
 /// B2 步骤 3b-4b 在这套目标值与五态计划状态机上追加<strong>受控执行</strong>：
-/// 确认 → 创建并校验完整实例快照 → 通过 <see cref="IVersionInstallService.ReconfigureAsync"/>
-/// 执行变更 → 按领域返回的回滚信号区分「失败且已回滚」「失败且需要恢复」。
+/// 确认 → 通过 <see cref="IInstanceReconfigureService"/> 生成领域计划并执行
+/// （变更前快照、文件/共享 JSON 事务、元数据最后提交、复验都在领域服务内完成）
+/// → 按领域 journal 状态区分「失败且已回滚」「失败且需要恢复」。
 ///
 /// 计划内容只来自真实领域结论：
 /// - 目标版本目录来自 <see cref="IVersionCatalog"/>，加载器与组件按目标版本过滤后由
@@ -49,26 +50,6 @@ namespace Ecl.App.Workspace.ViewModels;
 public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposable
 {
     private const int MaxModNamesInPlan = 6;
-
-    /// <summary>
-    /// 可以直接展示给用户的安装错误代码：这些文案只描述失败类别与文件名，不含本地路径。
-    /// 其余错误一律显示通用说明，细节只写诊断文件。
-    /// </summary>
-    private static readonly HashSet<string> SafeInstallErrorCodes = new(StringComparer.Ordinal)
-    {
-        "install.cancelled",
-        "install.download_failed",
-        "install.instance_missing",
-        "install.unsupported_loader",
-        "install.loader_version_missing",
-        "install.client_missing",
-        "install.assets_missing",
-        "install.version_not_found",
-        "install.version_invalid",
-        "install.loader_failed",
-        "install.fabric_api_missing",
-        "install.optifine_missing",
-    };
 
     private static readonly IReadOnlyList<string> LoaderOrder =
     [
@@ -106,7 +87,7 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
     private readonly IContentPackService _contentPacks;
     private readonly IGameSessionService _sessions;
     private readonly IOperationService _operations;
-    private readonly IVersionInstallService _install;
+    private readonly IInstanceReconfigureService _reconfigure;
     private readonly IInstanceSnapshotService _snapshots;
     private readonly IDialogEngine _dialogs;
     private readonly ILocalizer _localizer;
@@ -130,7 +111,7 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         IContentPackService contentPacks,
         IGameSessionService sessions,
         IOperationService operations,
-        IVersionInstallService install,
+        IInstanceReconfigureService reconfigure,
         IInstanceSnapshotService snapshots,
         IDialogEngine dialogs,
         ILocalizer localizer)
@@ -144,7 +125,7 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         ArgumentNullException.ThrowIfNull(contentPacks);
         ArgumentNullException.ThrowIfNull(sessions);
         ArgumentNullException.ThrowIfNull(operations);
-        ArgumentNullException.ThrowIfNull(install);
+        ArgumentNullException.ThrowIfNull(reconfigure);
         ArgumentNullException.ThrowIfNull(snapshots);
         ArgumentNullException.ThrowIfNull(dialogs);
         ArgumentNullException.ThrowIfNull(localizer);
@@ -158,7 +139,7 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         _contentPacks = contentPacks;
         _sessions = sessions;
         _operations = operations;
-        _install = install;
+        _reconfigure = reconfigure;
         _snapshots = snapshots;
         _dialogs = dialogs;
         _localizer = localizer;
@@ -1190,81 +1171,58 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
     {
         try
         {
-            // 1. 可验证的完整实例快照：失败/不完整时不得开始安装。
-            ExecutionStage = _localizer.Get("instance.modify.execution.snapshot");
-            var snapshotCreated = await CreateSnapshotAsync().ConfigureAwait(true);
-            if (IsDisposed)
-            {
-                return;
-            }
-
-            if (!snapshotCreated.IsSuccess)
-            {
-                FailBeforeChange(
-                    _localizer.Get("instance.modify.execution.snapshotFailed", snapshotCreated.Error?.Message ?? string.Empty));
-                return;
-            }
-
-            var created = snapshotCreated.Value!;
-            SnapshotId = created.SnapshotId;
-            SnapshotSummary = _localizer.Get(
-                "instance.modify.snapshot.created",
-                created.SnapshotId,
-                created.FileCount);
-            ExecutionStage = _localizer.Get("instance.modify.execution.verify");
-
-            var verified = await _snapshots.VerifyAsync(InstanceId, created.SnapshotId).ConfigureAwait(true);
-            if (IsDisposed)
-            {
-                return;
-            }
-
-            if (!verified.IsSuccess)
-            {
-                FailBeforeChange(_localizer.Get(
-                    "instance.modify.execution.snapshotRejected",
-                    verified.Error?.Message ?? string.Empty));
-                return;
-            }
-
-            var verification = verified.Value!;
-            if (!verification.IsValid)
-            {
-                SnapshotSummary = _localizer.Get("instance.modify.snapshot.invalid", created.FileCount);
-                FailBeforeChange(_localizer.Get(
-                    "instance.modify.execution.snapshotRejected",
-                    _localizer.Get("instance.modify.execution.snapshotIncomplete")));
-                return;
-            }
-
-            SnapshotSummary = _localizer.Get(
-                "instance.modify.snapshot.verified",
-                created.SnapshotId,
-                verification.VerifiedObjects);
-
-            // 2. 原地变更：安装服务自己登记 Operation 并转发进度，本页不重复登记任务。
-            ExecutionStage = _localizer.Get("instance.modify.execution.install");
-            var progress = new Progress<InstallProgress>(update =>
-            {
-                if (IsDisposed || !IsExecuting)
-                {
-                    return;
-                }
-
-                ExecutionStage = update.TotalFiles > 0
-                    ? $"{update.Message} ({update.CompletedFiles}/{update.TotalFiles})"
-                    : update.Message;
-            });
-
-            var outcome = await _install
-                .ReconfigureAsync(
+            // 1. 领域计划：所有权、路径、活动门禁、目标有效性与计划哈希都由生命周期服务判定。
+            //    这里不再自建快照——变更前快照由 IInstanceReconfigureService 在锁内创建一次。
+            ExecutionStage = _localizer.Get("instance.modify.execution.planning");
+            var planned = await _reconfigure
+                .PlanAsync(
                     InstanceId,
                     target.Version,
                     target.Loader,
                     target.LoaderVersion,
                     target.FabricApiVersion,
                     target.OptiFineVersion,
-                    progress)
+                    externalWriteConfirmed: false)
+                .ConfigureAwait(true);
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            if (!planned.IsSuccess)
+            {
+                FailBeforeChange(_localizer.Get(
+                    "instance.modify.execution.planFailed",
+                    planned.Error?.Message ?? string.Empty));
+                return;
+            }
+
+            var plan = planned.Value!;
+            if (plan.Blockers.Count > 0)
+            {
+                ShowPlanBlockers(plan);
+                return;
+            }
+
+            // 2. 执行：快照 → 文件/共享 JSON 事务 → 元数据最后提交 → 复验。
+            //    任务与进度由领域服务的 journal 承载，页面只回写显示状态。
+            var progress = new Progress<InstanceReconfigureProgress>(update =>
+            {
+                if (IsDisposed || !IsExecuting)
+                {
+                    return;
+                }
+
+                ExecutionStage = update.Stage switch
+                {
+                    "snapshot" => _localizer.Get("instance.modify.execution.snapshot"),
+                    "files" => _localizer.Get("instance.modify.execution.install"),
+                    _ => ExecutionStage,
+                };
+            });
+
+            var outcome = await _reconfigure
+                .ExecuteAsync(plan, progress)
                 .ConfigureAwait(true);
             if (IsDisposed)
             {
@@ -1273,6 +1231,11 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
 
             if (outcome.IsSuccess)
             {
+                var result = outcome.Value!;
+                SnapshotId = result.SnapshotId ?? string.Empty;
+                SnapshotSummary = string.IsNullOrWhiteSpace(result.SnapshotId)
+                    ? string.Empty
+                    : _localizer.Get("instance.modify.snapshot.domainCreated", result.SnapshotId);
                 ExecutionStage = string.Empty;
                 ExecutionResult = _localizer.Get("instance.modify.execution.succeeded", DescribeTarget(target));
                 await RefreshWorkspaceAsync().ConfigureAwait(true);
@@ -1286,7 +1249,7 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
                 return;
             }
 
-            ApplyFailure(outcome.Failure!);
+            await ApplyLifecycleFailureAsync(plan, outcome.Error).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -1295,7 +1258,7 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
                 return;
             }
 
-            // 没有领域失败结果就无法证明回滚状态：按“需要恢复”处理，并保留已校验的快照。
+            // 没有领域结论就无法证明回滚状态：按“需要恢复”处理。
             ExecutionStage = string.Empty;
             ExecutionResult = _localizer.Get("instance.modify.execution.unknown", exception.Message);
             DiagnosticNote = _localizer.Get("instance.modify.diagnostic.unavailable");
@@ -1304,107 +1267,126 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
         }
     }
 
-    /// <summary>创建变更前完整快照；进度登记到统一 Operation，失败时返回真实原因。</summary>
-    private async Task<Result<SnapshotManifest>> CreateSnapshotAsync()
+    /// <summary>领域计划存在阻断项：不写入任何文件，把真实阻断项按领域结论文本呈现。</summary>
+    private void ShowPlanBlockers(InstanceReconfigurePlan plan)
     {
-        var progress = new Progress<SnapshotProgress>(update =>
+        ExecutionStage = string.Empty;
+        ExecutionResult = _localizer.Get(
+            "instance.modify.execution.blocked",
+            string.Join("、", plan.Blockers));
+        PlanState = InstanceModifyPlanState.NeedsAction;
+        PlanStateDetail = ModifyPlanPresentation.StateDetail(InstanceModifyPlanState.NeedsAction, _localizer);
+        ActionItems.Clear();
+        foreach (var warning in plan.Warnings)
         {
-            if (IsDisposed || !IsExecuting)
-            {
-                return;
-            }
-
-            ExecutionStage = update.Total > 0
-                ? _localizer.Get("instance.modify.execution.snapshotProgress", update.Processed, update.Total)
-                : _localizer.Get("instance.modify.execution.snapshot");
-        });
-
-        using var bridge = new OperationProgressBridge<SnapshotProgress>(
-            _operations,
-            new OperationStart
-            {
-                Kind = OperationKind.Backup,
-                Title = _localizer.Get("instance.modify.execution.snapshotTask", InstanceName),
-                StageId = "snapshot",
-                CanCancel = false,
-                CanRetry = false,
-            },
-            progress,
-            MapSnapshotProgress);
-
-        var result = await _snapshots
-            .CreateAsync(InstanceId, new SnapshotCreateOptions(SnapshotScope.Full), bridge)
-            .ConfigureAwait(true);
-
-        if (!result.IsSuccess)
-        {
-            bridge.Fail(new OperationError(
-                OperationErrorKind.LocalIO,
-                result.Error?.Code ?? "snapshot.failed",
-                result.Error?.Message ?? string.Empty));
-        }
-        else if (result.Value!.Status != SnapshotStatus.Complete)
-        {
-            bridge.Fail(new OperationError(
-                OperationErrorKind.LocalIO,
-                "snapshot.incomplete",
-                _localizer.Get("instance.modify.execution.snapshotIncomplete")));
-        }
-        else
-        {
-            bridge.Complete();
+            ActionItems.Add(warning);
         }
 
-        return result;
+        foreach (var blocker in plan.Blockers)
+        {
+            ActionItems.Add(DescribeLifecycleBlocker(blocker));
+        }
+
+        OnPropertyChanged(nameof(HasActionItems));
     }
 
-    /// <summary>执行前中止：实例还没有写入，快照与已生成的计划保留用于重试或放弃。</summary>
+    /// <summary>已知生命周期阻断码给出稳定文案；未知码原样展示，不编造原因。</summary>
+    private string DescribeLifecycleBlocker(string code) => code switch
+    {
+        "instance.lifecycle.instance_running" => _localizer.Get("instance.modify.block.runningChanged"),
+        "instance.lifecycle.operation_conflict" => _localizer.Get("instance.modify.block.tasksChanged"),
+        "instance.lifecycle.identity_conflict" => _localizer.Get("instance.modify.block.identityConflict"),
+        "instance.lifecycle.unsupported_ownership" => _localizer.Get("instance.modify.block.unknownOwnership"),
+        "instance.lifecycle.shared_write_requires_confirmation" => _localizer.Get("instance.modify.block.sharedWrite"),
+        "instance.lifecycle.external_write_requires_confirmation" => _localizer.Get("instance.modify.block.externalWrite"),
+        "instance.lifecycle.no_change" => _localizer.Get("instance.modify.block.noChange"),
+        _ => code,
+    };
+
+    /// <summary>
+    /// 执行失败后的状态只由领域 journal 的状态机决定：RolledBack 才显示“已回滚”，
+    /// NeedsRecovery/Interrupted 一律显示“需要恢复”，绝不按调用方猜测回滚结果。
+    /// </summary>
+    private async Task ApplyLifecycleFailureAsync(InstanceReconfigurePlan plan, EclError? error)
+    {
+        ExecutionStage = string.Empty;
+        var message = _localizer.Get("instance.modify.execution.failedGeneric");
+        var journal = await ReadJournalAsync(plan.PlanId).ConfigureAwait(true);
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        var journalState = ParseJournalState(journal);
+        // 失败结果本身不携带快照 ID；journal 是唯一权威来源，恢复入口据此指向变更前快照。
+        if (!string.IsNullOrWhiteSpace(journal?.SnapshotId))
+        {
+            SnapshotId = journal.SnapshotId;
+            SnapshotSummary = _localizer.Get("instance.modify.snapshot.domainCreated", journal.SnapshotId);
+            RestoreSnapshotCommand.NotifyCanExecuteChanged();
+        }
+
+        switch (journalState)
+        {
+            case InstanceReconfigureState.RolledBack:
+                ExecutionResult = _localizer.Get("instance.modify.execution.failedRolledBack", message);
+                PlanState = InstanceModifyPlanState.FailedRolledBack;
+                PlanStateDetail = _localizer.Get("instance.modify.state.failedRolledBackDetail");
+                break;
+            case InstanceReconfigureState.Failed:
+            case InstanceReconfigureState.Planned:
+                // 领域在“未进入写入阶段”就失败：实例没有被改动。
+                FailBeforeChange(_localizer.Get(
+                    "instance.modify.execution.planFailed",
+                    error?.Detail ?? error?.Message ?? string.Empty));
+                return;
+            default:
+                ExecutionResult = _localizer.Get(
+                    "instance.modify.execution.needsRecovery",
+                    message,
+                    error?.Code ?? journalState?.ToString() ?? "unknown");
+                PlanState = InstanceModifyPlanState.FailedNeedsRecovery;
+                PlanStateDetail = _localizer.Get("instance.modify.state.failedNeedsRecoveryDetail");
+                break;
+        }
+
+        DiagnosticNote = _localizer.Get("instance.modify.diagnostic.lifecycleJournal", plan.PlanId);
+        _diagnosticPath = _reconfigure.GetJournalPath(plan.PlanId);
+        OnPropertyChanged(nameof(HasDiagnosticFile));
+    }
+
+    private static InstanceReconfigureState? ParseJournalState(InstanceReconfigureJournal? journal) =>
+        journal is not null &&
+        Enum.TryParse<InstanceReconfigureState>(journal.State, ignoreCase: true, out var state)
+            ? state
+            : null;
+
+    /// <summary>读取领域 journal；读取失败返回 null（调用方按“需要恢复”处理）。</summary>
+    private async Task<InstanceReconfigureJournal?> ReadJournalAsync(string planId)
+    {
+        try
+        {
+            var journal = await _reconfigure.GetAsync(planId).ConfigureAwait(true);
+            if (journal.IsSuccess && journal.Value is not null)
+            {
+                return journal.Value;
+            }
+        }
+        catch (Exception)
+        {
+            // journal 读取失败不能把失败升级成“无需恢复”。
+        }
+
+        return null;
+    }
+
+    /// <summary>执行前中止：实例还没有写入，已生成的计划保留用于重试或放弃。</summary>
     private void FailBeforeChange(string message)
     {
         ExecutionStage = string.Empty;
         ExecutionResult = message;
         PlanState = InstanceModifyPlanState.FailedBeforeChange;
         PlanStateDetail = ModifyPlanPresentation.StateDetail(InstanceModifyPlanState.FailedBeforeChange, _localizer);
-    }
-
-    /// <summary>按领域返回的回滚信号显示结果；没有信号时不得显示「已回滚」。</summary>
-    private void ApplyFailure(InstallFailure failure)
-    {
-        ExecutionStage = string.Empty;
-        _diagnosticPath = failure.DiagnosticPath;
-        DiagnosticNote = failure.DiagnosticPath is not null
-            ? _localizer.Get("instance.modify.diagnostic.written")
-            : _localizer.Get("instance.modify.diagnostic.unavailable");
-
-        var message = DescribeInstallError(failure.Error);
-        if (failure.RecoveryRequired)
-        {
-            var problems = failure.Rollback.Failures.Count + (failure.MetadataRestored ? 0 : 1);
-            ExecutionResult = _localizer.Get(
-                "instance.modify.execution.failedNeedsRecovery",
-                message,
-                problems);
-            PlanState = InstanceModifyPlanState.FailedNeedsRecovery;
-            PlanStateDetail = _localizer.Get("instance.modify.state.failedNeedsRecoveryDetail");
-            return;
-        }
-
-        ExecutionResult = _localizer.Get("instance.modify.execution.failedRolledBack", message);
-        PlanState = InstanceModifyPlanState.FailedRolledBack;
-        PlanStateDetail = _localizer.Get("instance.modify.state.failedRolledBackDetail");
-    }
-
-    /// <summary>只展示不含本地路径的错误文案；其余细节交给诊断文件。</summary>
-    private string DescribeInstallError(EclError? error)
-    {
-        if (error is null)
-        {
-            return _localizer.Get("instance.modify.execution.failedGeneric");
-        }
-
-        return SafeInstallErrorCodes.Contains(error.Code)
-            ? error.Message
-            : _localizer.Get("instance.modify.execution.failedGeneric");
     }
 
     private string DescribeTarget(ModifyExecutionTarget target)
@@ -1627,13 +1609,6 @@ public sealed partial class InstanceModifyViewModel : ObservableObject, IDisposa
             DiagnosticNote = _localizer.Get("instance.modify.diagnostic.openFailed");
         }
     }
-
-    private static OperationProgressUpdate MapSnapshotProgress(SnapshotProgress progress) => new()
-    {
-        StageId = "snapshot",
-        Completed = progress.Processed,
-        Total = progress.Total > 0 ? progress.Total : null,
-    };
 
     private async Task<PlanBuild> BuildPlanAsync(CancellationToken token)
     {
