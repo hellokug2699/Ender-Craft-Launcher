@@ -601,7 +601,14 @@ public sealed class InstanceDiscoveryService : IInstanceDiscoveryService
                 switch (structure)
                 {
                     case InstanceRootStructure.EclManaged when request.IncludeManagedForeign:
-                        ScanEclManaged(root, scanId, maxEntries, entries, counters, scanToken);
+                        ScanEclManaged(
+                            root,
+                            scanId,
+                            maxEntries,
+                            entries,
+                            counters,
+                            scanToken,
+                            isPrimary: string.Equals(_workspace.Primary?.Id, root.Id, StringComparison.Ordinal));
                         break;
                     case InstanceRootStructure.EclManaged:
                         counters.SkippedByExclusion++;
@@ -822,7 +829,8 @@ public sealed class InstanceDiscoveryService : IInstanceDiscoveryService
         int maxEntries,
         List<DiscoveryEntry> entries,
         ScanCounters counters,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool isPrimary)
     {
         var instancesDirectory = Path.Combine(root.Path, "instances");
         var directories = EnumerateBounded(instancesDirectory, maxEntries, counters);
@@ -847,6 +855,13 @@ public sealed class InstanceDiscoveryService : IInstanceDiscoveryService
             if (!AppPaths.IsValidInstanceId(instanceId))
             {
                 counters.SkippedByExclusion++;
+                continue;
+            }
+
+            // 主工作区自己的实例由实例清单负责展示；发现目录只登记外部/其他工作区的记录。
+            if (isPrimary)
+            {
+                counters.FilesInspected++;
                 continue;
             }
 

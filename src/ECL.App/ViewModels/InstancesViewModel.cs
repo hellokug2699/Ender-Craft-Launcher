@@ -306,7 +306,9 @@ public sealed partial class InstancesViewModel : ObservableObject
             _dialogsEngine,
             _dialogs,
             _localizer,
-            DeleteInstancesInDirectoryAsync);
+            DeleteInstancesInDirectoryAsync,
+            _discovery,
+            _instances);
 
         await dialog.LoadAsync().ConfigureAwait(true);
         await _dialogsEngine.ShowAsync(new DialogRequest

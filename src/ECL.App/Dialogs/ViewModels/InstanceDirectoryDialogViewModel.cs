@@ -8,6 +8,8 @@ using Ecl.App.Dialogs;
 using Ecl.App.Services;
 using Ecl.Core.Localization;
 using Ecl.Core.Storage;
+using Ecl.Core.Storage.Discovery;
+using Ecl.Minecraft.Instances;
 
 namespace Ecl.App.Dialogs.ViewModels;
 
@@ -23,6 +25,8 @@ public sealed partial class InstanceDirectoryDialogViewModel : ObservableObject,
 {
     private readonly IWorkspaceService _workspace;
     private readonly InstanceSourceService _sources;
+    private readonly IInstanceDiscoveryService? _discovery;
+    private readonly IInstanceService? _instances;
     private readonly IDialogEngine _dialogs;
     private readonly IDialogService _fileDialogs;
     private readonly ILocalizer _localizer;
@@ -35,10 +39,14 @@ public sealed partial class InstanceDirectoryDialogViewModel : ObservableObject,
         IDialogEngine dialogs,
         IDialogService fileDialogs,
         ILocalizer localizer,
-        Func<string, Task>? deleteInstancesInDirectory = null)
+        Func<string, Task>? deleteInstancesInDirectory = null,
+        IInstanceDiscoveryService? discovery = null,
+        IInstanceService? instances = null)
     {
         _workspace = workspace;
         _sources = sources;
+        _discovery = discovery;
+        _instances = instances;
         _dialogs = dialogs;
         _fileDialogs = fileDialogs;
         _localizer = localizer;
@@ -81,18 +89,54 @@ public sealed partial class InstanceDirectoryDialogViewModel : ObservableObject,
         try
         {
             Directories.Clear();
+            Dictionary<string, int>? discoveryCounts = null;
+            if (_discovery is not null)
+            {
+                // F-02：来源分组与计数以持久发现目录为准；主工作区实例由实例清单计数。
+                var scan = await _discovery.ScanAsync(cancellationToken: cancellationToken).ConfigureAwait(true);
+                if (!scan.IsSuccess)
+                {
+                    ErrorText = _localizer.Get("instanceDirectories.scanFailed", string.Empty, scan.Error!.Message);
+                }
+
+                var catalog = await _discovery.GetCatalogAsync(includeInactive: true, cancellationToken)
+                    .ConfigureAwait(true);
+                if (catalog.IsSuccess)
+                {
+                    discoveryCounts = catalog.Value!.Entries
+                        .Where(entry => entry.Status is not (
+                            DiscoveryEntryStatus.Missing or
+                            DiscoveryEntryStatus.Unbound or
+                            DiscoveryEntryStatus.SourceMissing))
+                        .GroupBy(entry => entry.RootId, StringComparer.Ordinal)
+                        .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+                }
+            }
+
+            var importedInstances = _instances is null
+                ? []
+                : await _instances.GetInstancesAsync(cancellationToken).ConfigureAwait(true);
             foreach (var root in _workspace.Roots)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var count = 0;
-                try
+                if (discoveryCounts is not null)
                 {
-                    var scan = await _sources.ScanAsync(root, cancellationToken).ConfigureAwait(true);
-                    count = scan.Instances.Count;
+                    count = string.Equals(_workspace.Primary?.Id, root.Id, StringComparison.Ordinal)
+                        ? importedInstances.Count(instance => instance.SourceRootId is null)
+                        : discoveryCounts.GetValueOrDefault(root.Id);
                 }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                else
                 {
-                    ErrorText = _localizer.Get("instanceDirectories.scanFailed", root.Path, exception.Message);
+                    try
+                    {
+                        var scan = await _sources.ScanAsync(root, cancellationToken).ConfigureAwait(true);
+                        count = scan.Instances.Count;
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    {
+                        ErrorText = _localizer.Get("instanceDirectories.scanFailed", root.Path, exception.Message);
+                    }
                 }
 
                 Directories.Add(new InstanceDirectoryRowViewModel(
