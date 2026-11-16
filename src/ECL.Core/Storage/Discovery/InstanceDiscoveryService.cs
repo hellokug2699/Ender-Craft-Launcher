@@ -174,15 +174,27 @@ public sealed class InstanceDiscoveryService : IInstanceDiscoveryService
                 return Result<DiscoveryScanReport>.Fail("source.cancelled", "来源扫描已取消，未提交本次结果。");
             }
 
-            var committed = CommitUnderLock(
-                existing,
-                roots,
-                candidates,
-                rootStates,
-                scanId,
-                changes,
-                warnings,
-                cancellationToken);
+            Result committed;
+            try
+            {
+                committed = CommitUnderLock(
+                    existing,
+                    roots,
+                    candidates,
+                    rootStates,
+                    scanId,
+                    changes,
+                    warnings,
+                    cancellationToken);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                return Result<DiscoveryScanReport>.Fail(
+                    "discovery.write_failed",
+                    "写入发现目录失败，本次扫描结果未提交。",
+                    exception.Message);
+            }
+
             if (!committed.IsSuccess)
             {
                 return Result<DiscoveryScanReport>.Fail(committed.Error!);

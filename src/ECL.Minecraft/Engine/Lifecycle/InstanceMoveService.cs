@@ -418,8 +418,46 @@ public sealed class InstanceMoveService : IInstanceMoveService
             snapshotId = protection.Value!.Snapshot?.SnapshotId;
         }
 
-        var journal = await CreateJournalAsync(plan, snapshotId).ConfigureAwait(false);
-        return await ExecuteCoreAsync(plan, journal, progress, cancellationToken).ConfigureAwait(false);
+        InstanceMoveJournal journal;
+        try
+        {
+            journal = await CreateJournalAsync(plan, snapshotId).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return Result<InstanceMoveResult>.Fail(
+                "instance.lifecycle.journal_write_failed",
+                "无法写入生命周期 journal，已中止移动。",
+                exception.Message);
+        }
+
+        return await ExecuteCoreSafelyAsync(plan, journal, progress, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<Result<InstanceMoveResult>> ExecuteCoreSafelyAsync(
+        InstanceMovePlan plan,
+        InstanceMoveJournal journal,
+        IProgress<InstanceMoveProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await ExecuteCoreAsync(plan, journal, progress, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return Result<InstanceMoveResult>.Fail(
+                "source.cancelled",
+                "移动已取消；staging 与 journal 保留，可重试或丢弃。");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogError(exception, "移动实例 {InstanceId} 时发生 I/O 失败。", plan.InstanceId);
+            return Result<InstanceMoveResult>.Fail(
+                "instance.lifecycle.needs_recovery",
+                "移动过程中发生 I/O 失败，请检查生命周期 journal 与 staging。",
+                exception.Message);
+        }
     }
 
     public async Task<Result<InstanceMoveResult>> ResumeAsync(
@@ -468,8 +506,11 @@ public sealed class InstanceMoveService : IInstanceMoveService
         }
 
         await DeleteStagingAsync(journal.StagingPath).ConfigureAwait(false);
-        return await ExecuteCoreAsync(journal.Plan with { PlanId = journal.PlanId }, journal, progress, cancellationToken)
-            .ConfigureAwait(false);
+        return await ExecuteCoreSafelyAsync(
+            journal.Plan with { PlanId = journal.PlanId },
+            journal,
+            progress,
+            cancellationToken).ConfigureAwait(false);
     }
 
     public Task<Result<InstanceMoveJournal>> GetAsync(
