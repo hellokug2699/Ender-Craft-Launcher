@@ -4,6 +4,7 @@ using System.Globalization;
 using Ecl.Core;
 using Ecl.Core.Storage;
 using Ecl.Download;
+using Ecl.Minecraft.Engine.Lifecycle;
 using Ecl.Minecraft.Instances;
 using Ecl.Sessions;
 using Microsoft.Extensions.Logging;
@@ -49,7 +50,8 @@ public sealed class StorageInventoryService(
     DownloadArtifactLifecycle downloads,
     IGameSessionService sessions,
     ILogger<StorageInventoryService> logger,
-    IWorkspaceService? workspace = null) : IStorageInventoryService
+    IWorkspaceService? workspace = null,
+    IInstanceActivityGuard? activityGuard = null) : IStorageInventoryService
 {
     public async Task<StorageInventory> ScanAsync(
         StorageInventoryScanOptions? options = null,
@@ -199,16 +201,69 @@ public sealed class StorageInventoryService(
             warnings);
     }
 
-    public Task<StorageDeleteResult> DeleteAsync(
+    public async Task<StorageDeleteResult> DeleteAsync(
         IReadOnlyList<StorageFileEntry> entries,
         IProgress<StorageDeleteProgress>? progress = null,
-        CancellationToken cancellationToken = default) =>
-        Task.Run(
-            () => Delete(entries, progress, cancellationToken),
-            cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        // F-07 活动门禁扩展：实例事务进行中/身份冲突时，该实例的清理条目一律跳过；
+        // 运行中的游戏目录已由 ActiveRoots 保护，这里补的是领域写入状态。
+        var protectedInstances = await InspectProtectedInstancesAsync(entries, cancellationToken)
+            .ConfigureAwait(false);
+        return await Task.Run(
+            () => Delete(entries, protectedInstances, progress, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<HashSet<string>> InspectProtectedInstancesAsync(
+        IReadOnlyList<StorageFileEntry> entries,
+        CancellationToken cancellationToken)
+    {
+        var protectedInstances = new HashSet<string>(StringComparer.Ordinal);
+        if (activityGuard is null)
+        {
+            return protectedInstances;
+        }
+
+        foreach (var instanceId in entries
+                     .Select(entry => entry.InstanceId)
+                     .Where(id => !string.IsNullOrWhiteSpace(id))
+                     .Distinct(StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var inspected = await activityGuard.InspectAsync(instanceId!, cancellationToken)
+                    .ConfigureAwait(false);
+                if (!inspected.IsSuccess || inspected.Value is null)
+                {
+                    // 无法证明实例空闲时按受保护处理：清理可以延后，误删不可恢复。
+                    protectedInstances.Add(instanceId!);
+                    continue;
+                }
+
+                var state = inspected.Value;
+                if (state.HasActiveSession || state.HasPendingTransaction || state.IdentityConflict)
+                {
+                    protectedInstances.Add(instanceId!);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                protectedInstances.Add(instanceId!);
+            }
+        }
+
+        return protectedInstances;
+    }
 
     private StorageDeleteResult Delete(
         IReadOnlyList<StorageFileEntry> entries,
+        IReadOnlySet<string> protectedInstances,
         IProgress<StorageDeleteProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -219,7 +274,9 @@ public sealed class StorageInventoryService(
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new StorageDeleteProgress(entry.Id, StorageDeleteItemState.Running, 0, null));
 
-            var decision = EvaluateDeletion(entry, activeRoots, DateTimeOffset.UtcNow);
+            var decision = entry.InstanceId is { } instanceId && protectedInstances.Contains(instanceId)
+                ? (true, "activeInstanceOperation")
+                : EvaluateDeletion(entry, activeRoots, DateTimeOffset.UtcNow);
             if (decision is not null)
             {
                 var state = decision.Value.Skip ? StorageDeleteItemState.Skipped : StorageDeleteItemState.Failed;
@@ -1214,8 +1271,12 @@ internal static class StorageCleanupPolicy
         var age = now - lastWriteUtc.Value;
         return categoryId switch
         {
+            // 活动下载已在上方由 DownloadArtifactLifecycle 排除；这里只回收超过保留期的陈旧 .part，
+            // 与 StorageCleanupService/CLI 的 DownloadPart 判定共用同一条策略（F-07 口径收敛）。
             "ecl.downloads" when Path.GetExtension(path).Equals(".part", StringComparison.OrdinalIgnoreCase) =>
-                new CleanupDecision(false, "inProgressDownload", StorageRiskLevel.None, null),
+                age >= ShortRetention
+                    ? new CleanupDecision(true, null, StorageRiskLevel.None, "staleDownloadPart")
+                    : new CleanupDecision(false, "inProgressDownload", StorageRiskLevel.None, null),
             "ecl.downloads" => AgeDecision(age, ShortRetention, "downloadCache"),
             "ecl.installTemp" => AgeDecision(age, ShortRetention, "installTemp"),
             "ecl.updateLeftovers" => AgeDecision(age, ShortRetention, "updateLeftover"),

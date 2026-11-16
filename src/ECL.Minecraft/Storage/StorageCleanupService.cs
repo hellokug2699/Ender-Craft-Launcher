@@ -21,7 +21,8 @@ public sealed record CleanupPreviewItem(
     string AllowedRoot,
     long Bytes,
     string? InstanceId,
-    string Reason);
+    string Reason,
+    string? CategoryId = null);
 
 public sealed record CleanupPreview(
     IReadOnlyList<CleanupPreviewItem> Items,
@@ -55,293 +56,186 @@ public sealed record StorageCleanupRequest
 }
 
 /// <summary>
-/// 白名单清理。只处理下载 .part、可重建缓存、实例历史日志与诊断临时文件；
-/// 世界存档、模组、配置、资源包、截图和未知文件永远不在清理范围内。
-/// 预览与执行分离，执行前重新校验路径、活动下载与文件年龄。
+/// CLI 清理入口。F-07 起不再维护第二套白名单与保留期：预览直接读取
+/// <see cref="IStorageInventoryService"/> 的分类结果，执行仍由同一个清理服务重新校验并删除。
+/// 因此页面与 CLI 对“什么能删、什么时候能删、活动状态如何保护”给出同一结论。
 /// </summary>
-public sealed class StorageCleanupService(
-    IAppPaths paths,
-    IInstanceService instances,
-    DownloadArtifactLifecycle artifacts)
+public sealed class StorageCleanupService(IStorageInventoryService inventory)
 {
-    private static readonly TimeSpan PartRetention = TimeSpan.FromDays(7);
-    private static readonly TimeSpan CacheRetention = TimeSpan.FromDays(14);
-    private static readonly TimeSpan LogRetention = TimeSpan.FromDays(14);
-    private static readonly TimeSpan DiagnosticTempRetention = TimeSpan.FromDays(7);
+    private const int MaxEntriesPerCategory = 5_000;
 
     public async Task<CleanupPreview> PreviewAsync(
         StorageCleanupRequest request,
         CancellationToken cancellationToken = default)
     {
+        var inventoryResult = await inventory.ScanAsync(
+            new StorageInventoryScanOptions { MaxEntriesPerCategory = MaxEntriesPerCategory },
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
         var items = new List<CleanupPreviewItem>();
-        var warnings = new List<string>();
         var skipped = 0;
-
-        if (request.IncludeDownloadParts)
+        foreach (var category in inventoryResult.Categories)
         {
-            foreach (var root in new[] { paths.DownloadsDirectory, paths.CacheDirectory })
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var entry in category.Entries)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                foreach (var part in EnumerateFiles(root, "*.part", cancellationToken))
-                {
-                    if (!IsOlderThan(part, PartRetention))
-                    {
-                        skipped++;
-                        continue;
-                    }
-
-                    using var lease = artifacts.TryAcquire(part);
-                    if (lease is null)
-                    {
-                        skipped++;
-                        continue;
-                    }
-
-                    if (!File.Exists(part))
-                    {
-                        continue;
-                    }
-
-                    items.Add(new CleanupPreviewItem(
-                        "part:" + Path.GetRelativePath(paths.Root, part),
-                        CleanupItemKind.DownloadPart,
-                        part,
-                        root,
-                        new FileInfo(part).Length,
-                        null,
-                        "超过保留期且没有被活动下载引用的 .part 临时产物。"));
-                }
-            }
-        }
-
-        if (request.IncludeRebuildableCache)
-        {
-            foreach (var file in EnumerateFiles(paths.CacheDirectory, "*", cancellationToken))
-            {
-                if (file.EndsWith(".part", StringComparison.OrdinalIgnoreCase) ||
-                    file.EndsWith(".part.json", StringComparison.OrdinalIgnoreCase) ||
-                    file.EndsWith(".part.lock", StringComparison.OrdinalIgnoreCase))
+                var kind = SelectKind(request, entry);
+                if (kind is null)
                 {
                     continue;
                 }
 
-                if (!IsOlderThan(file, CacheRetention))
+                if (!entry.CanClean)
                 {
-                    continue;
-                }
-
-                // 事务恢复材料/日志不是普通缓存；旧版材料可能仍位于 cache，必须保留。
-                var relative = Path.GetRelativePath(paths.CacheDirectory, file).Replace('\\', '/');
-                if (relative.StartsWith("instance-engine/recovery/", StringComparison.OrdinalIgnoreCase) ||
-                    relative.StartsWith("instance-engine/transactions/", StringComparison.OrdinalIgnoreCase))
-                {
+                    skipped++;
                     continue;
                 }
 
                 items.Add(new CleanupPreviewItem(
-                    "cache:" + Path.GetRelativePath(paths.CacheDirectory, file),
-                    CleanupItemKind.RebuildableCache,
-                    file,
-                    paths.CacheDirectory,
-                    SafeLength(file),
-                    null,
-                    "ECL 可重新生成的缓存文件。"));
+                    entry.Id,
+                    kind.Value,
+                    entry.FullPath,
+                    entry.AllowedRoot,
+                    entry.Size ?? 0,
+                    entry.InstanceId,
+                    DescribeRule(entry),
+                    entry.CategoryId));
             }
         }
 
-        if (request.IncludeInstanceLogs)
+        var warnings = inventoryResult.Warnings.ToList();
+        if (!inventoryResult.IsComplete)
         {
-            var all = await instances.GetInstancesAsync(cancellationToken).ConfigureAwait(false);
-            var selected = request.InstanceId is null
-                ? all
-                : all.Where(instance => string.Equals(instance.Id, request.InstanceId, StringComparison.Ordinal)).ToArray();
-            foreach (var instance in selected)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var logRoots = new[]
-                {
-                    paths.GetInstanceLogsDirectory(instance.Id),
-                    Path.Combine(InstancePaths.GetGameDirectory(paths, instance), "logs"),
-                };
-                foreach (var root in logRoots.Where(Directory.Exists))
-                {
-                    foreach (var file in EnumerateFiles(root, "*", cancellationToken)
-                                 .Where(file => IsLogFile(file)))
-                    {
-                        if (!IsOlderThan(file, LogRetention))
-                        {
-                            continue;
-                        }
-
-                        items.Add(new CleanupPreviewItem(
-                            "log:" + Path.GetRelativePath(root, file),
-                            CleanupItemKind.InstanceLog,
-                            file,
-                            root,
-                            SafeLength(file),
-                            instance.Id,
-                            "超过保留期的实例历史日志。"));
-                    }
-                }
-            }
+            warnings.Add("存储扫描不完整；本次清理预览只包含已扫描到的项目。");
         }
 
-        if (request.IncludeDiagnosticTemps)
-        {
-            var diagnostics = Path.Combine(paths.ConfigDirectory, "diagnostics");
-            foreach (var file in EnumerateFiles(diagnostics, "*.tmp", cancellationToken))
-            {
-                if (!IsOlderThan(file, DiagnosticTempRetention))
-                {
-                    continue;
-                }
-
-                items.Add(new CleanupPreviewItem(
-                    "diag:" + Path.GetRelativePath(diagnostics, file),
-                    CleanupItemKind.DiagnosticTemp,
-                    file,
-                    diagnostics,
-                    SafeLength(file),
-                    null,
-                    "诊断导出留下的临时文件。"));
-            }
-        }
-
-        return new CleanupPreview(items, skipped, warnings);
+        return new CleanupPreview(
+            items
+                .OrderBy(item => item.Kind)
+                .ThenBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            skipped,
+            warnings);
     }
+
+    /// <summary>按请求类型与分类白名单选择条目；未知分类不进入 CLI 清理。</summary>
+    private static CleanupItemKind? SelectKind(StorageCleanupRequest request, StorageFileEntry entry)
+    {
+        // InstanceId 只约束实例日志；ECL 自有缓存不属于某个实例，不因 --instance 被排除。
+        if (entry.CategoryId == "instance.logs" &&
+            request.InstanceId is { Length: > 0 } instanceId &&
+            !string.Equals(entry.InstanceId, instanceId, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return entry.CategoryId switch
+        {
+            "ecl.downloads" when request.IncludeDownloadParts &&
+                                  entry.FileName.EndsWith(".part", StringComparison.OrdinalIgnoreCase) =>
+                CleanupItemKind.DownloadPart,
+            "ecl.imageCache" or
+                "ecl.metadataCache" or
+                "ecl.installTemp" or
+                "ecl.updateLeftovers" or
+                "ecl.tempFiles" when request.IncludeRebuildableCache =>
+                CleanupItemKind.RebuildableCache,
+            "instance.logs" when request.IncludeInstanceLogs =>
+                CleanupItemKind.InstanceLog,
+            "ecl.diagnostics" when request.IncludeDiagnosticTemps &&
+                                   string.Equals(entry.CleanupRule, "diagnosticTemp", StringComparison.Ordinal) =>
+                CleanupItemKind.DiagnosticTemp,
+            _ => null,
+        };
+    }
+
+    private static string DescribeRule(StorageFileEntry entry) => entry.CleanupRule switch
+    {
+        "staleDownloadPart" => "超过保留期且没有被活动下载引用的 .part 临时产物。",
+        "instanceLog" => "超过保留期的实例历史日志。",
+        "diagnosticTemp" => "诊断导出留下的临时文件。",
+        _ => "ECL 可重新生成的缓存文件。",
+    };
 
     public async Task<CleanupExecutionResult> ExecuteAsync(
         CleanupPreview preview,
         CancellationToken cancellationToken = default)
     {
-        var deleted = 0;
-        var skipped = 0;
-        var failed = 0;
-        long freed = 0;
-        var errors = new List<string>();
+        ArgumentNullException.ThrowIfNull(preview);
+
+        var entries = new List<StorageFileEntry>(preview.Items.Count);
         foreach (var item in preview.Items)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!StoragePathSafety.IsContainedIn(item.AllowedRoot, item.Path) ||
-                string.Equals(
-                    Path.TrimEndingDirectorySeparator(Path.GetFullPath(item.Path)),
-                    Path.TrimEndingDirectorySeparator(Path.GetFullPath(item.AllowedRoot)),
-                    StringComparison.OrdinalIgnoreCase))
+            var categoryId = ResolveCategoryId(item);
+            var spec = StorageCategorySpec.All.FirstOrDefault(candidate =>
+                string.Equals(candidate.Id, categoryId, StringComparison.Ordinal));
+            if (spec is null)
             {
-                failed++;
-                errors.Add($"拒绝越界清理：{item.Path}");
+                // 没有分类的条目不能重建成领域条目；执行阶段按“未可删除”跳过，不猜一个分类。
                 continue;
             }
 
-            if (!File.Exists(item.Path))
+            entries.Add(new StorageFileEntry
             {
-                skipped++;
+                Id = item.Id,
+                CategoryId = spec.Id,
+                Group = spec.Group,
+                FullPath = item.Path,
+                AllowedRoot = item.AllowedRoot,
+                Size = item.Bytes,
+                InstanceId = item.InstanceId,
+                CanClean = true,
+            });
+        }
+
+        var deleteResult = await inventory
+            .DeleteAsync(entries, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        // 路径逃逸/重解析点属于安全拒绝，按失败报告而不是“跳过”，避免被当成可延后的普通情况。
+        var securityViolations = 0;
+        var errors = new List<string>();
+        foreach (var failed in deleteResult.Items.Where(result =>
+                     result.State is StorageDeleteItemState.Failed))
+        {
+            errors.Add($"删除失败：{failed.Entry.FullPath}（{failed.Reason}）");
+        }
+
+        foreach (var skippedItem in deleteResult.Items.Where(result =>
+                     result.State is StorageDeleteItemState.Skipped))
+        {
+            if (skippedItem.Reason is "outsideAllowedRoot" or "reparsePoint")
+            {
+                securityViolations++;
+                errors.Add($"拒绝越界清理：{skippedItem.Entry.FullPath}");
                 continue;
             }
 
-            if ((File.GetAttributes(item.Path) & FileAttributes.ReparsePoint) != 0)
-            {
-                skipped++;
-                continue;
-            }
-
-            if (item.Kind == CleanupItemKind.DownloadPart)
-            {
-                using var lease = artifacts.TryAcquire(item.Path);
-                if (lease is null)
-                {
-                    skipped++;
-                    continue;
-                }
-
-                if (!IsOlderThan(item.Path, PartRetention))
-                {
-                    skipped++;
-                    continue;
-                }
-            }
-
-            try
-            {
-                var length = SafeLength(item.Path);
-                File.Delete(item.Path);
-                if (item.Kind == CleanupItemKind.DownloadPart)
-                {
-                    TryDelete(DownloadArtifactLifecycle.MetadataPath(item.Path));
-                }
-
-                deleted++;
-                freed += length;
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                failed++;
-                errors.Add($"删除失败：{item.Path}（{exception.Message}）");
-            }
+            errors.Add($"跳过：{skippedItem.Entry.FullPath}（{skippedItem.Reason}）");
         }
 
-        return new CleanupExecutionResult(deleted, skipped, failed, freed, errors);
+        // .part 的伴随元数据（.part.json/.part.lock）不是清理条目；成功删除后尽力清掉。
+        foreach (var item in preview.Items.Where(item => item.Kind == CleanupItemKind.DownloadPart))
+        {
+            TryDelete(DownloadArtifactLifecycle.MetadataPath(item.Path));
+        }
+
+        return new CleanupExecutionResult(
+            deleteResult.Succeeded,
+            deleteResult.Skipped - securityViolations + (preview.Items.Count - entries.Count),
+            deleteResult.Failed + securityViolations,
+            deleteResult.BytesFreed,
+            errors);
     }
 
-    private static IEnumerable<string> EnumerateFiles(string root, string pattern, CancellationToken cancellationToken)
+    /// <summary>旧调用方（CLI/测试）可能只给 Kind；映射到唯一策略使用的分类 ID。</summary>
+    private static string ResolveCategoryId(CleanupPreviewItem item) => item.CategoryId ?? item.Kind switch
     {
-        if (!Directory.Exists(root))
-        {
-            return [];
-        }
-
-        try
-        {
-            return Directory.EnumerateFiles(
-                    root,
-                    pattern,
-                    new EnumerationOptions
-                    {
-                        RecurseSubdirectories = true,
-                        IgnoreInaccessible = true,
-                        AttributesToSkip = FileAttributes.ReparsePoint,
-                        MaxRecursionDepth = 8,
-                    })
-                .Take(50_000)
-                .ToArray();
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            return [];
-        }
-    }
-
-    private static bool IsOlderThan(string path, TimeSpan retention)
-    {
-        try
-        {
-            return DateTime.UtcNow - File.GetLastWriteTimeUtc(path) >= retention;
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            return false;
-        }
-    }
-
-    private static bool IsLogFile(string path)
-    {
-        var name = Path.GetFileName(path);
-        return name.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ||
-               name.EndsWith(".log.gz", StringComparison.OrdinalIgnoreCase) ||
-               name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static long SafeLength(string path)
-    {
-        try
-        {
-            return new FileInfo(path).Length;
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            return 0;
-        }
-    }
+        CleanupItemKind.DownloadPart => "ecl.downloads",
+        CleanupItemKind.InstanceLog => "instance.logs",
+        CleanupItemKind.DiagnosticTemp => "ecl.diagnostics",
+        _ => "ecl.tempFiles",
+    };
 
     private static void TryDelete(string path)
     {

@@ -94,6 +94,8 @@ public sealed class InstanceSourceAndCleanupTests
         var oldPart = Path.Combine(paths.DownloadsDirectory, "old.bin.part");
         await File.WriteAllBytesAsync(oldPart, new byte[64]);
         File.SetLastWriteTimeUtc(oldPart, DateTime.UtcNow.AddDays(-30));
+        var freshPart = Path.Combine(paths.DownloadsDirectory, "fresh.bin.part");
+        await File.WriteAllBytesAsync(freshPart, new byte[8]);
         var oldCache = Path.Combine(paths.CacheDirectory, "old.cache");
         await File.WriteAllTextAsync(oldCache, "cache");
         File.SetLastWriteTimeUtc(oldCache, DateTime.UtcNow.AddDays(-30));
@@ -106,8 +108,11 @@ public sealed class InstanceSourceAndCleanupTests
         var cleanup = provider.GetRequiredService<StorageCleanupService>();
         var preview = await cleanup.PreviewAsync(new StorageCleanupRequest());
         Assert.Contains(preview.Items, item => item.Kind == CleanupItemKind.DownloadPart && item.Path == oldPart);
+        Assert.DoesNotContain(preview.Items, item => item.Path == freshPart);
         Assert.Contains(preview.Items, item => item.Kind == CleanupItemKind.InstanceLog && item.Path == oldLog);
-        Assert.DoesNotContain(preview.Items, item => item.Path == recentLog);
+        // F-07 口径收敛：页面与 CLI 共用同一实例日志策略；运行中的实例由活动会话门禁保护，
+        // 未运行实例的 latest.log 与历史日志同样可清理。
+        Assert.Contains(preview.Items, item => item.Path == recentLog);
         Assert.DoesNotContain(preview.Items, item => item.Path.StartsWith(Path.Combine(gameDirectory, "saves"), StringComparison.OrdinalIgnoreCase));
 
         var executed = await cleanup.ExecuteAsync(preview);
@@ -115,8 +120,8 @@ public sealed class InstanceSourceAndCleanupTests
         Assert.False(File.Exists(oldPart));
         Assert.False(File.Exists(oldLog));
         Assert.False(File.Exists(oldCache));
+        Assert.True(File.Exists(freshPart));
         Assert.True(File.Exists(Path.Combine(world, "level.dat")));
-        Assert.True(File.Exists(recentLog));
     }
 
     [Fact]

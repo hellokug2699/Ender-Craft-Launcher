@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.Core;
+using Ecl.Minecraft.Engine.Lifecycle;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Storage;
 using Ecl.Sessions;
@@ -49,6 +50,7 @@ public sealed class StorageInventoryTests : IDisposable
         Touch(Path.Combine(game, "saves", "world", "region", "r.0.0.mca"), old);
         Touch(Path.Combine(_root, "downloads", "done.zip"), old);
         Touch(Path.Combine(_root, "downloads", "active.part"), old);
+        Touch(Path.Combine(_root, "downloads", "fresh.part"), DateTime.UtcNow.AddMinutes(-1));
         Touch(Path.Combine(_root, "cache", "thumbnails", "a.png"), old);
         Touch(Path.Combine(_root, "logs", "ecl-20200101.log"), old);
         Touch(Path.Combine(_root, "logs", "crash-20200101.log"), old);
@@ -97,9 +99,13 @@ public sealed class StorageInventoryTests : IDisposable
 
         var downloads = Category(inventory, "ecl.downloads");
         Assert.True(downloads.Entries.Single(entry => entry.FileName == "done.zip").CanClean);
-        var partial = downloads.Entries.Single(entry => entry.FileName == "active.part");
-        Assert.False(partial.CanClean);
-        Assert.Equal("inProgressDownload", partial.ProtectionReason);
+        // F-07：陈旧 .part（无活动下载、超过保留期）可回收；新鲜 .part 仍按“下载中”保护。
+        var stalePartial = downloads.Entries.Single(entry => entry.FileName == "active.part");
+        Assert.True(stalePartial.CanClean);
+        Assert.Equal("staleDownloadPart", stalePartial.CleanupRule);
+        var freshPartial = downloads.Entries.Single(entry => entry.FileName == "fresh.part");
+        Assert.False(freshPartial.CanClean);
+        Assert.Equal("inProgressDownload", freshPartial.ProtectionReason);
 
         Assert.True(Category(inventory, "ecl.imageCache").Entries.Single().CanClean);
         Assert.True(Category(inventory, "ecl.logs").Entries.Single(entry => entry.FileName == "ecl-20200101.log").CanClean);
@@ -311,6 +317,37 @@ public sealed class StorageInventoryTests : IDisposable
         Assert.True(Directory.Exists(nested));
     }
 
+    /// <summary>
+    /// F-07 活动门禁扩展：实例事务进行中（含 NeedsRecovery）时，即使条目满足年龄策略也不得删除。
+    /// </summary>
+    [Fact]
+    public async Task InstanceWithPendingTransactionIsProtectedFromCleanup()
+    {
+        var instance = CreateInstance();
+        var log = Touch(
+            Path.Combine(instance.GameDirectory!, "logs", "old.log"),
+            DateTime.UtcNow.AddDays(-30));
+        var service = new StorageInventoryService(
+            new AppPaths(_root, _gameRoot),
+            new FakeInstanceService([instance]),
+            new Ecl.Download.DownloadArtifactLifecycle(),
+            new GameSessionService(new AppPaths(_root, _gameRoot), NullLogger<GameSessionService>.Instance),
+            NullLogger<StorageInventoryService>.Instance,
+            workspace: null,
+            activityGuard: new FakeActivityGuard(instance.Id, pendingTransaction: true));
+
+        var inventory = await service.ScanAsync();
+        var entry = Category(inventory, "instance.logs").Entries.Single(item => item.FileName == "old.log");
+        Assert.True(entry.CanClean);
+
+        var result = await service.DeleteAsync([entry]);
+
+        Assert.Equal(0, result.Succeeded);
+        Assert.Equal(1, result.Skipped);
+        Assert.Equal("activeInstanceOperation", Assert.Single(result.Items).Reason);
+        Assert.True(File.Exists(log));
+    }
+
     private StorageInventoryService CreateService(params GameInstance[] instances) =>
         new(
             new AppPaths(_root, _gameRoot),
@@ -318,6 +355,26 @@ public sealed class StorageInventoryTests : IDisposable
             new Ecl.Download.DownloadArtifactLifecycle(),
             new GameSessionService(new AppPaths(_root, _gameRoot), NullLogger<GameSessionService>.Instance),
             NullLogger<StorageInventoryService>.Instance);
+
+    private sealed class FakeActivityGuard(string instanceId, bool pendingTransaction) : IInstanceActivityGuard
+    {
+        public Task<Result<InstanceActivityGuardState>> InspectAsync(
+            string id,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result<InstanceActivityGuardState>.Ok(new InstanceActivityGuardState(
+                instanceId,
+                Exists: true,
+                HasActiveSession: false,
+                SessionId: null,
+                ProcessId: null,
+                ProcessAlive: false,
+                HasPendingTransaction: pendingTransaction,
+                pendingTransaction
+                    ? Ecl.Minecraft.Engine.Transactions.InstanceActivityState.Writing
+                    : Ecl.Minecraft.Engine.Transactions.InstanceActivityState.Idle,
+                IdentityConflict: false,
+                Detail: null)));
+    }
 
     private static StorageCategory Category(StorageInventory inventory, string id) =>
         inventory.Categories.Single(category => category.Id == id);
