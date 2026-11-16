@@ -59,7 +59,7 @@ public sealed class StorageInventoryTests : IDisposable
 
         var inventory = await CreateService(instance).ScanAsync();
 
-        Assert.Equal(17, inventory.Categories.Count);
+        Assert.Equal(20, inventory.Categories.Count);
         Assert.Equal(
             StorageCategorySpec.All.Select(spec => spec.Id).OrderBy(id => id, StringComparer.Ordinal),
             inventory.Categories.Select(category => category.Id).OrderBy(id => id, StringComparer.Ordinal));
@@ -129,6 +129,99 @@ public sealed class StorageInventoryTests : IDisposable
         Assert.False(current.CanClean);
         Assert.Equal("currentSession", current.ProtectionReason);
         Assert.True(logs.Entries.Single(entry => entry.FullPath == yesterday).CanClean);
+    }
+
+    [Fact]
+    public async Task LifecycleMaterialsAndDetachedDataAreReportedButNeverCleanable()
+    {
+        var instance = CreateInstance();
+        var trash = Path.Combine(_gameRoot, ".ecl-trash", "inst1-plan");
+        Touch(Path.Combine(trash, "instance.json"), DateTime.UtcNow.AddDays(-30));
+        var retired = Path.Combine(_gameRoot, ".ecl-retired", "inst1-plan");
+        Touch(Path.Combine(retired, "minecraft", "options.txt"), DateTime.UtcNow.AddDays(-30));
+        var staging = Path.Combine(_gameRoot, "instances", ".ecl-migrate-plan");
+        Touch(Path.Combine(staging, "instance.json"), DateTime.UtcNow.AddDays(-30));
+        Touch(
+            Path.Combine(_root, "config", "instance-engine", "transactions", "inst1", "tx.json"),
+            DateTime.UtcNow.AddDays(-30));
+        Touch(
+            Path.Combine(_root, "cache", "instance-engine", "recovery", "inst1", "before.bin"),
+            DateTime.UtcNow.AddDays(-30));
+        Touch(
+            Path.Combine(_gameRoot, "instances", "orphan-instance", "minecraft", "saves", "world", "level.dat"),
+            DateTime.UtcNow.AddDays(-30));
+
+        var inventory = await CreateService(instance).ScanAsync();
+
+        var lifecycle = Category(inventory, "ecl.lifecycleMaterials");
+        Assert.Contains(lifecycle.Entries, entry => entry.FullPath == trash);
+        Assert.Contains(lifecycle.Entries, entry => entry.FullPath == retired);
+        Assert.Contains(lifecycle.Entries, entry => entry.FullPath == staging);
+        Assert.All(lifecycle.Entries, entry =>
+        {
+            Assert.False(entry.CanClean);
+            Assert.Equal("lifecycleMaterial", entry.ProtectionReason);
+        });
+
+        var engine = Category(inventory, "ecl.instanceEngine");
+        Assert.Contains(engine.Entries, entry => entry.FileName == "instance-engine");
+        Assert.All(engine.Entries, entry => Assert.False(entry.CanClean));
+
+        var detached = Category(inventory, "ecl.detachedGameData");
+        var orphan = Assert.Single(detached.Entries);
+        Assert.Equal("orphan-instance", orphan.InstanceId);
+        Assert.False(orphan.CanClean);
+        Assert.Equal("detachedGameData", orphan.ProtectionReason);
+
+        // 供 F-04 使用的 legacy 恢复材料不能落入 14 天可删的元数据缓存分类。
+        Assert.DoesNotContain(
+            Category(inventory, "ecl.metadataCache").Entries,
+            entry => entry.FullPath.Contains("instance-engine", StringComparison.OrdinalIgnoreCase));
+
+        var deletion = await CreateService(instance).DeleteAsync(lifecycle.Entries.Concat(detached.Entries).ToArray());
+        Assert.Equal(0, deletion.Succeeded);
+        Assert.True(Directory.Exists(trash));
+        Assert.True(Directory.Exists(retired));
+        Assert.True(Directory.Exists(staging));
+        Assert.True(Directory.Exists(Path.Combine(_gameRoot, "instances", "orphan-instance")));
+    }
+
+    [Fact]
+    public async Task ExternalInstanceUserDataIsNotOfferedForCleanup()
+    {
+        var managed = CreateInstance();
+        var externalRoot = Path.Combine(_root, "external", "game");
+        var external = new GameInstance
+        {
+            Id = "external-inst",
+            Name = "External",
+            GameVersion = "1.20.1",
+            VersionId = "1.20.1",
+            GameDirectory = externalRoot,
+        };
+        Touch(Path.Combine(externalRoot, "logs", "old.log"), DateTime.UtcNow.AddDays(-30));
+        Touch(Path.Combine(externalRoot, "screenshots", "a.png"), DateTime.UtcNow.AddDays(-30));
+        Touch(Path.Combine(externalRoot, "saves", "world", "level.dat"), DateTime.UtcNow.AddDays(-30));
+        Touch(Path.Combine(managed.GameDirectory!, "logs", "old.log"), DateTime.UtcNow.AddDays(-30));
+
+        var inventory = await CreateService(managed, external).ScanAsync();
+
+        var externalEntries = inventory.Categories
+            .SelectMany(category => category.Entries)
+            .Where(entry => string.Equals(entry.InstanceId, "external-inst", StringComparison.Ordinal))
+            .ToArray();
+        Assert.NotEmpty(externalEntries);
+        Assert.All(externalEntries, entry =>
+        {
+            Assert.False(entry.CanClean);
+            Assert.Equal("externalInstance", entry.ProtectionReason);
+        });
+
+        // 托管实例的同类数据保持原有可清理行为。
+        var managedLog = Category(inventory, "instance.logs").Entries
+            .Single(entry => entry.FullPath.EndsWith("old.log", StringComparison.Ordinal) &&
+                             entry.InstanceId == managed.Id);
+        Assert.True(managedLog.CanClean);
     }
 
     [Fact]
@@ -218,10 +311,10 @@ public sealed class StorageInventoryTests : IDisposable
         Assert.True(Directory.Exists(nested));
     }
 
-    private StorageInventoryService CreateService(GameInstance instance) =>
+    private StorageInventoryService CreateService(params GameInstance[] instances) =>
         new(
             new AppPaths(_root, _gameRoot),
-            new FakeInstanceService([instance]),
+            new FakeInstanceService(instances),
             new Ecl.Download.DownloadArtifactLifecycle(),
             new GameSessionService(new AppPaths(_root, _gameRoot), NullLogger<GameSessionService>.Instance),
             NullLogger<StorageInventoryService>.Instance);

@@ -43,6 +43,12 @@ public sealed record StorageCategorySpec(string Id, StorageGroup Group)
         new("ecl.imageCache", StorageGroup.EclOwn),
         new("ecl.metadataCache", StorageGroup.EclOwn),
         new("ecl.tempFiles", StorageGroup.EclOwn),
+        // F-07：生命周期恢复材料（隔离区/退休区/迁移 staging/事务与快照状态）只展示占用，
+        // 只能由生命周期恢复入口或专用事务清理，永远不进入普通清理。
+        new("ecl.lifecycleMaterials", StorageGroup.EclOwn),
+        new("ecl.instanceEngine", StorageGroup.EclOwn),
+        // F-03 §4.4：已移除记录但保留在原位的游戏数据（RemoveRecordOnly 残留）。
+        new("ecl.detachedGameData", StorageGroup.MinecraftInstance),
         new("additions.cache", StorageGroup.Additions),
         new("additions.temp", StorageGroup.Additions),
     ];

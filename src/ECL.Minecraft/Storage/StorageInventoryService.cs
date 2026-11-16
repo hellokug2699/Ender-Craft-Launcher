@@ -2,6 +2,7 @@
 
 using System.Globalization;
 using Ecl.Core;
+using Ecl.Core.Storage;
 using Ecl.Download;
 using Ecl.Minecraft.Instances;
 using Ecl.Sessions;
@@ -47,7 +48,8 @@ public sealed class StorageInventoryService(
     IInstanceService instances,
     DownloadArtifactLifecycle downloads,
     IGameSessionService sessions,
-    ILogger<StorageInventoryService> logger) : IStorageInventoryService
+    ILogger<StorageInventoryService> logger,
+    IWorkspaceService? workspace = null) : IStorageInventoryService
 {
     public async Task<StorageInventory> ScanAsync(
         StorageInventoryScanOptions? options = null,
@@ -78,10 +80,11 @@ public sealed class StorageInventoryService(
                 continue;
             }
 
+            var owned = IsEclOwned(instance);
             roots.Add(new ScanRoot(
                 gameDirectory,
-                (full, root) => ClassifyInstance(instance, root, full),
-                BuildSaveTargets(instance, gameDirectory)));
+                (full, root) => ClassifyInstance(instance, root, full, owned),
+                BuildSaveTargets(instance, gameDirectory, owned)));
         }
 
         if (Directory.Exists(paths.GameRoot) && !IsSameDirectory(paths.GameRoot, paths.Root))
@@ -94,9 +97,27 @@ public sealed class StorageInventoryService(
             roots.Add(new ScanRoot(paths.Root, ClassifyEclRoot, []));
         }
 
+        // F-07：生命周期材料（隔离区/退休区/迁移 staging/事务材料/已分离数据）单独列出，
+        // 只报告占用，不接受普通清理；删除必须走删除计划或生命周期恢复入口。
+        var lifecycleTargets = BuildLifecycleTargets(allInstances);
+
         await Task.Run(
                 () =>
                 {
+                    foreach (var target in lifecycleTargets)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        if (!Directory.Exists(target.Path) && !File.Exists(target.Path))
+                        {
+                            continue;
+                        }
+
+                        var (lifecycleSize, lifecycleWrite) = Directory.Exists(target.Path)
+                            ? MeasureDirectory(target.Path, cancellationToken)
+                            : (new FileInfo(target.Path).Length, new DateTimeOffset(File.GetLastWriteTimeUtc(target.Path), TimeSpan.Zero));
+                        ScanDirectory(target, lifecycleSize, lifecycleWrite, scanners, diskBytes, activeRoots, now);
+                    }
+
                     foreach (var root in roots)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
@@ -281,10 +302,12 @@ public sealed class StorageInventoryService(
                 InstanceId = resolved.InstanceId,
                 InstanceName = resolved.InstanceName,
                 Owner = resolved.Owner,
-                CanClean = rule is { CanClean: true } && size is not null,
-                ProtectionReason = size is null ? "sizeUnknown" : rule?.Reason,
-                Risk = rule?.Risk ?? StorageRiskLevel.None,
-                CleanupRule = rule?.RuleId,
+                CanClean = resolved.EclOwned && rule is { CanClean: true } && size is not null,
+                ProtectionReason = !resolved.EclOwned
+                    ? "externalInstance"
+                    : size is null ? "sizeUnknown" : rule?.Reason,
+                Risk = resolved.EclOwned ? rule?.Risk ?? StorageRiskLevel.None : StorageRiskLevel.None,
+                CleanupRule = resolved.EclOwned ? rule?.RuleId : null,
             };
 
             accumulator.Add(entry);
@@ -327,10 +350,12 @@ public sealed class StorageInventoryService(
             InstanceId = target.InstanceId,
             InstanceName = target.InstanceName,
             Owner = target.Owner,
-            CanClean = rule is { CanClean: true } && size is not null,
-            ProtectionReason = size is null ? "sizeUnknown" : rule?.Reason,
-            Risk = rule?.Risk ?? StorageRiskLevel.None,
-            CleanupRule = rule?.RuleId,
+            CanClean = target.EclOwned && rule is { CanClean: true } && size is not null,
+            ProtectionReason = !target.EclOwned
+                ? "externalInstance"
+                : size is null ? "sizeUnknown" : rule?.Reason,
+            Risk = target.EclOwned ? rule?.Risk ?? StorageRiskLevel.None : StorageRiskLevel.None,
+            CleanupRule = target.EclOwned ? rule?.RuleId : null,
         };
 
         accumulator.Add(entry);
@@ -394,7 +419,10 @@ public sealed class StorageInventoryService(
         }
     }
 
-    private static IReadOnlyList<DirectoryTarget> BuildSaveTargets(GameInstance instance, string gameDirectory)
+    private static IReadOnlyList<DirectoryTarget> BuildSaveTargets(
+        GameInstance instance,
+        string gameDirectory,
+        bool owned)
     {
         var savesRoot = Path.Combine(gameDirectory, "saves");
         if (!Directory.Exists(savesRoot))
@@ -422,7 +450,8 @@ public sealed class StorageInventoryService(
                     savesRoot,
                     instance.Id,
                     instance.Name,
-                    instance.Name));
+                    instance.Name,
+                    EclOwned: owned));
             }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -704,7 +733,187 @@ public sealed class StorageInventoryService(
             .ToArray();
     }
 
-    private static ClassifiedPath? ClassifyInstance(GameInstance instance, string root, string fullPath)
+    /// <summary>
+    /// ECL 是否拥有该实例的游戏目录：托管实例（<see cref="GameInstance.GameDirectory"/> 为空或仍指向
+    /// ECL 管理的目录）归 ECL；外部/共享目录归用户，清理列表不得删除其中的用户数据（F-03 §7.3）。
+    /// </summary>
+    private bool IsEclOwned(GameInstance instance)
+    {
+        if (string.IsNullOrWhiteSpace(instance.GameDirectory))
+        {
+            return true;
+        }
+
+        // 只有仍指向 ECL 自己的 instances/<id>/minecraft 才视为 ECL 拥有；
+        // 不能使用 InstancePaths.GetGameDirectory（它会原样返回外部路径，永远相等）。
+        var managedGameDirectory = Path.Combine(paths.GetInstanceDirectory(instance.Id), "minecraft");
+        return PathIdentity.PathsEqual(managedGameDirectory, instance.GameDirectory!);
+    }
+
+    /// <summary>
+    /// 构造生命周期材料与已分离数据的目录条目：它们只用于展示占用，策略层会拒绝普通清理。
+    /// </summary>
+    private List<DirectoryTarget> BuildLifecycleTargets(IReadOnlyList<GameInstance> allInstances)
+    {
+        var targets = new List<DirectoryTarget>();
+        var roots = new List<string> { paths.Root, paths.GameRoot };
+        if (workspace is not null)
+        {
+            roots.AddRange(workspace.Roots
+                .Where(root => root.Kind == WorkspaceKind.Managed)
+                .Select(root => root.Path));
+        }
+
+        var knownInstanceIds = allInstances.Select(instance => instance.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in roots.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            AddLifecycle("quarantine", Path.Combine(root, ".ecl-trash"));
+            AddLifecycle("retired", Path.Combine(root, ".ecl-retired"));
+            AddLifecycleEntries("staging", Path.Combine(root, "instances"), ".ecl-migrate-*");
+
+            foreach (var entry in EnumerateDetachedDirectories(Path.Combine(root, "instances"), knownInstanceIds))
+            {
+                targets.Add(new DirectoryTarget(
+                    "ecl.detachedGameData",
+                    StorageGroup.MinecraftInstance,
+                    entry,
+                    Path.Combine(root, "instances"),
+                    Path.GetFileName(entry),
+                    Path.GetFileName(entry),
+                    Path.GetFileName(entry),
+                    EclOwned: true));
+            }
+        }
+
+        void AddLifecycle(string owner, string directory)
+        {
+            if (!Directory.Exists(directory))
+            {
+                return;
+            }
+
+            try
+            {
+                foreach (var entry in Directory.EnumerateDirectories(directory))
+                {
+                    targets.Add(new DirectoryTarget(
+                        "ecl.lifecycleMaterials",
+                        StorageGroup.EclOwn,
+                        entry,
+                        directory,
+                        null,
+                        null,
+                        owner,
+                        EclOwned: true));
+                }
+
+                // 空目录本身也要可见，否则“隔离区里没有可清理项”会被误读成“没有隔离区”。
+                if (!Directory.EnumerateFileSystemEntries(directory).Any())
+                {
+                    targets.Add(new DirectoryTarget(
+                        "ecl.lifecycleMaterials",
+                        StorageGroup.EclOwn,
+                        directory,
+                        Path.GetDirectoryName(directory)!,
+                        null,
+                        null,
+                        owner,
+                        EclOwned: true));
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                logger.LogDebug(exception, "无法枚举生命周期材料：{Directory}", directory);
+            }
+        }
+
+        void AddLifecycleEntries(string owner, string directory, string pattern)
+        {
+            if (!Directory.Exists(directory))
+            {
+                return;
+            }
+
+            try
+            {
+                foreach (var entry in Directory.EnumerateDirectories(directory, pattern))
+                {
+                    targets.Add(new DirectoryTarget(
+                        "ecl.lifecycleMaterials",
+                        StorageGroup.EclOwn,
+                        entry,
+                        directory,
+                        null,
+                        null,
+                        owner,
+                        EclOwned: true));
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                logger.LogDebug(exception, "无法枚举迁移 staging：{Directory}", directory);
+            }
+        }
+
+        // F-04 §6.6：事务/恢复/共享 JSON 状态与锁是崩溃恢复材料，必须显式可见且永不自动清理。
+        foreach (var path in new[]
+                 {
+                     Path.Combine(paths.ConfigDirectory, "instance-engine"),
+                     Path.Combine(paths.Root, "locks", "instance-engine"),
+                     Path.Combine(paths.CacheDirectory, "instance-engine"),
+                 })
+        {
+            if (Directory.Exists(path))
+            {
+                targets.Add(new DirectoryTarget(
+                    "ecl.instanceEngine",
+                    StorageGroup.EclOwn,
+                    path,
+                    Path.GetDirectoryName(path)!,
+                    null,
+                    null,
+                    "engineRecovery",
+                    EclOwned: true));
+            }
+        }
+
+        return targets;
+    }
+
+    private static IEnumerable<string> EnumerateDetachedDirectories(
+        string instancesDirectory,
+        HashSet<string> knownInstanceIds)
+    {
+        if (!Directory.Exists(instancesDirectory))
+        {
+            return [];
+        }
+
+        try
+        {
+            return Directory.EnumerateDirectories(instancesDirectory)
+                .Where(entry =>
+                {
+                    var name = Path.GetFileName(entry);
+                    if (name.StartsWith(".ecl-", StringComparison.OrdinalIgnoreCase) ||
+                        knownInstanceIds.Contains(name))
+                    {
+                        return false;
+                    }
+
+                    return !File.Exists(Path.Combine(entry, "instance.json")) &&
+                           Directory.EnumerateFileSystemEntries(entry).Any();
+                })
+                .ToArray();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
+    private static ClassifiedPath? ClassifyInstance(GameInstance instance, string root, string fullPath, bool owned)
     {
         var relative = Path.GetRelativePath(root, fullPath).Replace('\\', '/');
         var lower = relative.ToLowerInvariant();
@@ -734,7 +943,8 @@ public sealed class StorageInventoryService(
             root,
             instance.Name,
             instance.Id,
-            instance.Name);
+            instance.Name,
+            EclOwned: owned);
     }
 
     private static ClassifiedPath? ClassifySharedGameRoot(string fullPath, string root)
@@ -765,6 +975,18 @@ public sealed class StorageInventoryService(
             lower.StartsWith("java/", StringComparison.Ordinal))
         {
             // Java 运行环境不属于本页面的清理范围。
+            return null;
+        }
+
+        // F-07/F-04：事务与恢复材料、生命周期隔离区/退休区/staging 由专用目录条目展示，
+        // 这里跳过文件级分类，避免重复统计，也避免被 cache/tmp 规则误判为可清理。
+        if (lower.StartsWith("config/instance-engine/", StringComparison.Ordinal) ||
+            lower.StartsWith("locks/instance-engine/", StringComparison.Ordinal) ||
+            lower.StartsWith("cache/instance-engine/", StringComparison.Ordinal) ||
+            lower.StartsWith(".ecl-trash/", StringComparison.Ordinal) ||
+            lower.StartsWith(".ecl-retired/", StringComparison.Ordinal) ||
+            lower.StartsWith("instances/.ecl-migrate-", StringComparison.Ordinal))
+        {
             return null;
         }
 
@@ -880,7 +1102,8 @@ public sealed class StorageInventoryService(
         string AllowedRoot,
         string? InstanceId,
         string? InstanceName,
-        string? Owner);
+        string? Owner,
+        bool EclOwned = true);
 
     private sealed record ClassifiedPath(
         string? CategoryId,
@@ -888,7 +1111,8 @@ public sealed class StorageInventoryService(
         string AllowedRoot,
         string? Owner,
         string? InstanceId,
-        string? InstanceName);
+        string? InstanceName,
+        bool EclOwned = true);
 
     private sealed class CategoryAccumulator(StorageCategorySpec spec, int maxEntries)
     {
@@ -967,6 +1191,21 @@ internal static class StorageCleanupPolicy
             return new CleanupDecision(false, "activeDownload", StorageRiskLevel.None, null);
         }
 
+        // F-07 显式排除（不依赖“没有分类”这种隐式保护）：生命周期恢复材料、
+        // 事务/共享 JSON 状态、隔离区/退休区/staging 与已分离数据永远不由普通清理删除。
+        var normalized = path.Replace('\\', '/');
+        if (normalized.Contains("/.ecl-trash/", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("/.ecl-retired/", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("/.ecl-migrate-", StringComparison.OrdinalIgnoreCase))
+        {
+            return new CleanupDecision(false, "lifecycleMaterial", StorageRiskLevel.None, null);
+        }
+
+        if (normalized.Contains("/instance-engine/", StringComparison.OrdinalIgnoreCase))
+        {
+            return new CleanupDecision(false, "engineRecoveryMaterial", StorageRiskLevel.None, null);
+        }
+
         if (lastWriteUtc is null)
         {
             return new CleanupDecision(false, "unreadable", StorageRiskLevel.None, null);
@@ -1000,6 +1239,9 @@ internal static class StorageCleanupPolicy
             "instance.runtimeCache" => new CleanupDecision(true, null, StorageRiskLevel.Caution, "runtimeCache"),
             "additions.cache" => AgeDecision(age, LongRetention, "additionCache"),
             "additions.temp" => AgeDecision(age, ShortRetention, "additionTemp"),
+            "ecl.lifecycleMaterials" => new CleanupDecision(false, "lifecycleMaterial", StorageRiskLevel.None, null),
+            "ecl.instanceEngine" => new CleanupDecision(false, "engineRecoveryMaterial", StorageRiskLevel.None, null),
+            "ecl.detachedGameData" => new CleanupDecision(false, "detachedGameData", StorageRiskLevel.None, null),
             _ => new CleanupDecision(false, "notWhitelisted", StorageRiskLevel.None, null),
         };
     }

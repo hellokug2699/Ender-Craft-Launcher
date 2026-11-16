@@ -39,8 +39,8 @@ public sealed class StoragePageTests
 
         Assert.True(vm.HasScanned);
         Assert.Equal(3, vm.Groups.Count);
-        Assert.Equal(17, vm.Categories.Count);
-        Assert.Equal(17, vm.Groups.Sum(group => group.Categories.Count));
+        Assert.Equal(20, vm.Categories.Count);
+        Assert.Equal(20, vm.Groups.Sum(group => group.Categories.Count));
         Assert.Contains(vm.Groups, group => group.Title == "Minecraft 实例内容");
         Assert.Contains(vm.Groups, group => group.Title == "ECL 自身文件");
         Assert.Contains(vm.Groups, group => group.Title == "扩展数据");
@@ -134,7 +134,7 @@ public sealed class StoragePageTests
 
         Assert.Empty(category.Groups);
         Assert.True(category.IsEmpty);
-        Assert.Equal(17, vm.Categories.Count);
+        Assert.Equal(20, vm.Categories.Count);
     }
 
     [Fact]
@@ -154,7 +154,7 @@ public sealed class StoragePageTests
         Assert.True(vm.HasInstanceFocus);
         var group = Assert.Single(category.Groups);
         Assert.Equal("A", group.Title);
-        Assert.Equal(17, vm.Categories.Count);
+        Assert.Equal(20, vm.Categories.Count);
 
         vm.ClearInstanceFocus();
         Assert.False(vm.HasInstanceFocus);
