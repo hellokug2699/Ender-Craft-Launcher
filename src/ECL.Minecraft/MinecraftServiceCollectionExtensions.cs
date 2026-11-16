@@ -9,6 +9,7 @@ using Ecl.Minecraft.Diagnostics;
 using Ecl.Minecraft.Engine.Files;
 using Ecl.Minecraft.Engine.Identity;
 using Ecl.Minecraft.Engine.Inventory;
+using Ecl.Minecraft.Engine.Lifecycle;
 using Ecl.Minecraft.Engine.Snapshots;
 using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Eula;
@@ -52,6 +53,10 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IInstanceInventoryService, InstanceInventoryScanner>();
         services.AddSingleton<IInstanceWriteGate, InstanceWriteGate>();
         services.AddSingleton<InstanceDataGeneration>();
+        services.AddSingleton<IInstancePathPolicy, InstancePathPolicy>();
+        services.AddSingleton<IInstanceOwnershipClassifier, InstanceOwnershipClassifier>();
+        services.AddSingleton<IInstanceActivityGuard, InstanceActivityGuard>();
+        services.AddSingleton<IInstanceDeletionService, InstanceDeletionService>();
         services.AddSingleton<InstanceTransactionCoordinator>();
         services.AddSingleton<IInstanceTransactionService>(provider =>
             provider.GetRequiredService<InstanceTransactionCoordinator>());
