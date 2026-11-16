@@ -51,6 +51,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<InstanceFileAccessService>();
         services.AddSingleton<IInstanceInventoryService, InstanceInventoryScanner>();
         services.AddSingleton<IInstanceWriteGate, InstanceWriteGate>();
+        services.AddSingleton<InstanceDataGeneration>();
         services.AddSingleton<InstanceTransactionCoordinator>();
         services.AddSingleton<IInstanceTransactionService>(provider =>
             provider.GetRequiredService<InstanceTransactionCoordinator>());

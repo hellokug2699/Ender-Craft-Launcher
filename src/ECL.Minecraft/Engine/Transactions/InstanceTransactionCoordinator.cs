@@ -7,6 +7,7 @@ using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Minecraft.Engine.Files;
 using Ecl.Minecraft.Engine.Identity;
+using Ecl.Minecraft.Engine.Inventory;
 using Ecl.Minecraft.Instances;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -178,6 +179,7 @@ public sealed class InstanceTransactionCoordinator : IInstanceTransactionService
     private readonly IInstanceService _instances;
     private readonly InstanceIdentityService _identity;
     private readonly IInstanceWriteGate _gate;
+    private readonly InstanceDataGeneration _generation;
     private readonly IAppPaths _paths;
     private readonly ILogger<InstanceTransactionCoordinator> _logger;
     private readonly TimeProvider _time;
@@ -186,6 +188,7 @@ public sealed class InstanceTransactionCoordinator : IInstanceTransactionService
         IInstanceService instances,
         InstanceIdentityService identity,
         IInstanceWriteGate gate,
+        InstanceDataGeneration generation,
         IAppPaths paths,
         ILogger<InstanceTransactionCoordinator>? logger = null,
         TimeProvider? time = null)
@@ -193,6 +196,7 @@ public sealed class InstanceTransactionCoordinator : IInstanceTransactionService
         _instances = instances;
         _identity = identity;
         _gate = gate;
+        _generation = generation;
         _paths = paths;
         _logger = logger ?? NullLogger<InstanceTransactionCoordinator>.Instance;
         _time = time ?? TimeProvider.System;
@@ -359,6 +363,7 @@ public sealed class InstanceTransactionCoordinator : IInstanceTransactionService
             record = record with { State = InstanceTransactionState.Committed, UpdatedAt = _time.GetUtcNow() };
             await WriteJournalAsync(record, cancellationToken).ConfigureAwait(false);
             TryDeleteDirectory(recoveryDirectory);
+            _generation.Increment(instanceId);
             InvalidateInventoryCache(instanceId);
             _logger.LogInformation(
                 "实例 {InstanceId} 事务 {TransactionId} 已提交：{Reason}，变更 {Count} 项。",
@@ -999,6 +1004,7 @@ public sealed class InstanceTransactionCoordinator : IInstanceTransactionService
             };
             await WriteJournalAsync(resolved, CancellationToken.None).ConfigureAwait(false);
             TryDeleteDirectory(record.RecoveryDirectory);
+            _generation.Increment(record.InstanceId);
             InvalidateInventoryCache(record.InstanceId);
             return resolved;
         }
@@ -1023,6 +1029,7 @@ public sealed class InstanceTransactionCoordinator : IInstanceTransactionService
             };
             await WriteJournalAsync(marked, CancellationToken.None).ConfigureAwait(false);
             TryDeleteDirectory(record.RecoveryDirectory);
+            _generation.Increment(record.InstanceId);
             InvalidateInventoryCache(record.InstanceId);
             return marked;
         }
@@ -1036,6 +1043,7 @@ public sealed class InstanceTransactionCoordinator : IInstanceTransactionService
             };
             await WriteJournalAsync(noop, CancellationToken.None).ConfigureAwait(false);
             TryDeleteDirectory(record.RecoveryDirectory);
+            _generation.Increment(record.InstanceId);
             InvalidateInventoryCache(record.InstanceId);
             return noop;
         }
@@ -1121,6 +1129,7 @@ public sealed class InstanceTransactionCoordinator : IInstanceTransactionService
             };
             await WriteJournalAsync(rolledBack, CancellationToken.None).ConfigureAwait(false);
             TryDeleteDirectory(record.RecoveryDirectory);
+            _generation.Increment(record.InstanceId);
             InvalidateInventoryCache(record.InstanceId);
             return rolledBack;
         }

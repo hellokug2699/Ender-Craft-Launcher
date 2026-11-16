@@ -102,7 +102,8 @@ public sealed record InstanceInventory(
     IReadOnlyList<InventoryResource> Resources,
     IReadOnlyList<EvidenceItem> Evidence,
     IReadOnlyList<string> Warnings,
-    bool IsComplete);
+    bool IsComplete,
+    long DataGeneration = 0);
 
 public sealed record InventoryScanOptions(
     bool IncludeIcons = true,

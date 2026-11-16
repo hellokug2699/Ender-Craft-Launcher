@@ -6,6 +6,7 @@ using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Minecraft.Engine.Files;
 using Ecl.Minecraft.Engine.Identity;
+using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Mods;
 using Microsoft.Extensions.Logging;
@@ -41,15 +42,21 @@ public sealed class InstanceInventoryScanner : IInstanceInventoryService
     };
 
     private readonly IInstanceService _instances;
+    private readonly IInstanceWriteGate _gate;
+    private readonly InstanceDataGeneration _generation;
     private readonly IAppPaths _paths;
     private readonly ILogger<InstanceInventoryScanner> _logger;
 
     public InstanceInventoryScanner(
         IInstanceService instances,
+        IInstanceWriteGate gate,
+        InstanceDataGeneration generation,
         IAppPaths paths,
         ILogger<InstanceInventoryScanner>? logger = null)
     {
         _instances = instances;
+        _gate = gate;
+        _generation = generation;
         _paths = paths;
         _logger = logger ?? NullLogger<InstanceInventoryScanner>.Instance;
     }
@@ -81,6 +88,15 @@ public sealed class InstanceInventoryScanner : IInstanceInventoryService
         }
 
         options ??= new InventoryScanOptions();
+        var leaseResult = await _gate.AcquireReadAsync(instanceId, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        if (!leaseResult.IsSuccess)
+        {
+            return Result<InstanceInventory>.Fail(leaseResult.Error!);
+        }
+
+        await using var lease = leaseResult.Value!;
+        var generation = _generation.Get(instanceId);
         var started = Stopwatch.StartNew();
         var warnings = new List<string>();
         var quick = await QuickScanAsync(gameDirectory, instanceId, options, warnings, progress, cancellationToken)
@@ -150,7 +166,17 @@ public sealed class InstanceInventoryScanner : IInstanceInventoryService
             resources,
             evidence,
             warnings,
-            !quick.Truncated && quick.Inaccessible == 0);
+            !quick.Truncated && quick.Inaccessible == 0,
+            generation);
+
+        // 扫描期间若有事务提交/回滚，代次会变化：本次结果不得作为稳定缓存发布。
+        if (_generation.Get(instanceId) != generation)
+        {
+            return Result<InstanceInventory>.Fail(
+                "inventory.changing",
+                "扫描期间实例内容发生了变化，请重新扫描。",
+                "Changing");
+        }
 
         await SaveCacheAsync(inventory, cancellationToken).ConfigureAwait(false);
         progress?.Report(new InventoryScanProgress("complete", resources.Count, resources.Count));
@@ -168,6 +194,14 @@ public sealed class InstanceInventoryScanner : IInstanceInventoryService
         CancellationToken cancellationToken = default)
     {
         var path = CachePath(instanceId);
+        var leaseResult = await _gate.AcquireReadAsync(instanceId, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        if (!leaseResult.IsSuccess)
+        {
+            return Result<InstanceInventory?>.Fail(leaseResult.Error!);
+        }
+
+        await using var lease = leaseResult.Value!;
         if (!File.Exists(path))
         {
             return Result<InstanceInventory?>.Ok(null);
@@ -180,7 +214,8 @@ public sealed class InstanceInventoryScanner : IInstanceInventoryService
             if (inventory is null ||
                 inventory.SchemaVersion != InstanceEngineVersions.InventorySchema ||
                 inventory.ScannerVersion != InstanceEngineVersions.Scanner ||
-                inventory.RulesVersion != InstanceEngineVersions.Rules)
+                inventory.RulesVersion != InstanceEngineVersions.Rules ||
+                inventory.DataGeneration != _generation.Get(instanceId))
             {
                 return Result<InstanceInventory?>.Ok(null);
             }
