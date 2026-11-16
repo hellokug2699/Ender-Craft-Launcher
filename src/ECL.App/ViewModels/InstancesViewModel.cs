@@ -21,6 +21,7 @@ using Ecl.Download;
 using Ecl.Java;
 using Ecl.Minecraft.Content;
 using Ecl.Minecraft.Diagnostics;
+using Ecl.Minecraft.Engine.Lifecycle;
 using Ecl.Minecraft.Eula;
 using Ecl.Minecraft.Install;
 using Ecl.Minecraft.Instances;
@@ -58,6 +59,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IDialogEngine _dialogsEngine;
     private readonly Ecl.Operations.IOperationService _operations;
     private readonly Ecl.App.Services.IExternalLinkService _links;
+    private readonly Ecl.Minecraft.Engine.Lifecycle.IInstanceDeletionService _deletions;
     private bool _initialized;
     private bool _suppressAccountSelection;
 
@@ -214,7 +216,8 @@ public sealed partial class InstancesViewModel : ObservableObject
         Ecl.Core.Storage.IWorkspaceService workspace,
         IDialogEngine dialogsEngine,
         Ecl.Operations.IOperationService operations,
-        Ecl.App.Services.IExternalLinkService links)
+        Ecl.App.Services.IExternalLinkService links,
+        Ecl.Minecraft.Engine.Lifecycle.IInstanceDeletionService deletions)
     {
         _instances = instances;
         _accounts = accounts;
@@ -241,6 +244,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         _dialogsEngine = dialogsEngine;
         _operations = operations;
         _links = links;
+        _deletions = deletions;
 
         DownloadPauseButtonText = _localizer.Get("instances.download.pause");
     }
@@ -487,7 +491,9 @@ public sealed partial class InstancesViewModel : ObservableObject
             return;
         }
 
-        var planResult = await _instances.GetDeletionPlanAsync(instance.Model.Id).ConfigureAwait(true);
+        var planResult = await _deletions
+            .PlanAsync(instance.Model.Id, deleteSnapshots: false, InstanceDeletionMode.DeleteManagedData)
+            .ConfigureAwait(true);
         if (!planResult.IsSuccess)
         {
             StatusMessage = planResult.Error?.Message ?? string.Empty;
@@ -495,18 +501,17 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
 
         var plan = planResult.Value!;
-
-        // 默认行为：有 ECL 托管数据时删除托管数据；导入实例只移除记录，外部目录永远保留。
-        var mode = plan.HasManagedGameData
-            ? InstanceDeletionMode.DeleteManagedData
-            : InstanceDeletionMode.RemoveRecordOnly;
-
+        var mode = plan.Mode;
         if (_settings.Get<bool>("launcher.confirmBeforeDelete"))
         {
+            var hasManagedData = plan.Entries.Any(entry =>
+                entry.Role == InstanceDeletionEntryRole.ManagedGameData &&
+                entry.Exists &&
+                entry.CanDelete);
             var choice = _dialogs.ChooseInstanceDeletion(
                 _localizer.Get("instances.deletePlanTitle"),
                 BuildDeletionMessage(plan),
-                plan.HasManagedGameData);
+                hasManagedData);
 
             if (choice == InstanceDeletionChoice.Cancel)
             {
@@ -516,17 +521,38 @@ public sealed partial class InstancesViewModel : ObservableObject
             mode = choice == InstanceDeletionChoice.DeleteManagedData
                 ? InstanceDeletionMode.DeleteManagedData
                 : InstanceDeletionMode.RemoveRecordOnly;
+            var replanned = await _deletions
+                .PlanAsync(instance.Model.Id, deleteSnapshots: false, mode)
+                .ConfigureAwait(true);
+            if (!replanned.IsSuccess)
+            {
+                StatusMessage = replanned.Error?.Message ?? string.Empty;
+                return;
+            }
+
+            plan = replanned.Value!;
+        }
+
+        if (plan.Blockers.Count > 0)
+        {
+            StatusMessage = string.Join("; ", plan.Blockers);
+            return;
         }
 
         IsBusy = true;
         try
         {
-            var result = await _instances
-                .DeleteAsync(instance.Model.Id, new InstanceDeleteOptions { Mode = mode })
-                .ConfigureAwait(true);
+            var result = await _deletions.DeleteAsync(plan).ConfigureAwait(true);
             if (!result.IsSuccess)
             {
                 StatusMessage = result.Error?.Message ?? string.Empty;
+                return;
+            }
+
+            if (result.Value!.Journal.State != InstanceDeletionState.Purged)
+            {
+                StatusMessage = result.Value.Journal.ErrorMessage
+                    ?? $"实例已隔离，但清理未完成：{result.Value.Journal.ErrorCode}";
                 return;
             }
 
@@ -542,33 +568,31 @@ public sealed partial class InstancesViewModel : ObservableObject
     }
 
     /// <summary>把结构化删除计划转成用户可读的影响预览，而不是只确认实例名称。</summary>
-    private string BuildDeletionMessage(InstanceDeletionPlan plan)
+    private string BuildDeletionMessage(InstanceDeletionPlanV2 plan)
     {
         var builder = new StringBuilder();
         builder.AppendLine(_localizer.Get("instances.deletePlanHeader", plan.InstanceName));
         builder.AppendLine();
-        builder.AppendLine(_localizer.Get("instances.deletePlanRecord", plan.RecordDirectory));
-
-        if (plan.Find(InstanceDeletionEntryKind.ManagedGameData) is { } managedGameData)
+        foreach (var entry in plan.Entries.Where(item => item.Exists))
         {
-            builder.AppendLine(_localizer.Get("instances.deletePlanManagedData", managedGameData.Path));
-            builder.AppendLine();
-            builder.Append(_localizer.Get("instances.deletePlanChoose"));
-            return builder.ToString();
+            builder.AppendLine($"[{entry.Role}] {entry.Path}");
         }
 
-        if (plan.Find(InstanceDeletionEntryKind.ExternalGameData) is { } externalGameData)
+        builder.AppendLine();
+        builder.AppendLine($"预计：{plan.EstimatedFiles} 文件 / {plan.EstimatedBytes} 字节");
+        if (plan.IncludesWorldSaves)
         {
-            builder.AppendLine(_localizer.Get("instances.deletePlanExternal", externalGameData.Path));
-            if (plan.IsShared)
-            {
-                builder.AppendLine(_localizer.Get(
-                    "instances.deletePlanShared",
-                    string.Join("、", plan.SharedWith.Select(reference => reference.Name))));
-            }
+            builder.AppendLine(_localizer.Get("instances.deletePlanManagedData", plan.InstanceId));
+        }
 
-            builder.AppendLine();
-            builder.Append(_localizer.Get("instances.deletePlanRecordOnlyNote"));
+        if (plan.Snapshots.SnapshotCount > 0)
+        {
+            builder.AppendLine($"快照：{plan.Snapshots.SnapshotCount} 个，默认保留。");
+        }
+
+        if (plan.Blockers.Count > 0)
+        {
+            builder.AppendLine(string.Join("；", plan.Blockers));
         }
 
         return builder.ToString();

@@ -47,6 +47,7 @@ public sealed record InstanceDeletionPlanV2(
     string InstanceId,
     string InstanceName,
     InstanceOwnership Ownership,
+    InstanceDeletionMode Mode,
     IReadOnlyList<InstanceDeletionPlanEntry> Entries,
     long EstimatedBytes,
     int EstimatedFiles,
@@ -98,6 +99,7 @@ public interface IInstanceDeletionService
     Task<Result<InstanceDeletionPlanV2>> PlanAsync(
         string instanceId,
         bool deleteSnapshots = false,
+        InstanceDeletionMode mode = InstanceDeletionMode.DeleteManagedData,
         CancellationToken cancellationToken = default);
 
     Task<Result<InstanceDeletionResult>> DeleteAsync(
@@ -148,6 +150,7 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
     public async Task<Result<InstanceDeletionPlanV2>> PlanAsync(
         string instanceId,
         bool deleteSnapshots = false,
+        InstanceDeletionMode mode = InstanceDeletionMode.DeleteManagedData,
         CancellationToken cancellationToken = default)
     {
         if (!AppPaths.IsValidInstanceId(instanceId))
@@ -190,12 +193,19 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
 
         var ownershipKind = ownership.Value!.Ownership;
         var managedData = instance.GameDirectory is null;
+        var deleteManagedData = managedData &&
+                                mode == InstanceDeletionMode.DeleteManagedData &&
+                                ownershipKind == InstanceOwnership.EclManaged;
         entries.Add(Entry(
             gameDirectory,
             managedData ? InstanceDeletionEntryRole.ManagedGameData : InstanceDeletionEntryRole.ExternalGameData,
             ownershipKind,
-            canDelete: managedData && ownershipKind == InstanceOwnership.EclManaged,
-            protectedReason: managedData ? null : "外部/共享实例的游戏目录不受 ECL 删除。"));
+            canDelete: deleteManagedData,
+            protectedReason: deleteManagedData
+                ? null
+                : managedData
+                    ? "用户选择仅移除记录，游戏数据保留。"
+                    : "外部/共享实例的游戏目录不受 ECL 删除。"));
 
         var snapshotGroups = await _snapshots.ListGroupsAsync(cancellationToken).ConfigureAwait(false);
         var group = snapshotGroups.IsSuccess
@@ -264,6 +274,7 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
             recordDirectory,
             gameDirectory,
             ownershipKind,
+            mode,
             deleteSnapshots,
             entries,
             group?.SnapshotCount ?? 0);
@@ -275,6 +286,7 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
             instanceId,
             instance.Name,
             ownershipKind,
+            mode,
             entries,
             estimatedBytes,
             estimatedFiles,
@@ -302,7 +314,11 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
                 "删除计划已过期，请重新生成。");
         }
 
-        var current = await PlanAsync(plan.InstanceId, plan.DeleteSnapshots, cancellationToken).ConfigureAwait(false);
+        var current = await PlanAsync(
+            plan.InstanceId,
+            plan.DeleteSnapshots,
+            plan.Mode,
+            cancellationToken).ConfigureAwait(false);
         if (!current.IsSuccess)
         {
             return Result<InstanceDeletionResult>.Fail(current.Error!);
@@ -336,7 +352,9 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
         }
 
         var gameDirectory = InstancePaths.GetGameDirectory(_paths, instance);
-        var managedData = instance.GameDirectory is null && plan.Ownership == InstanceOwnership.EclManaged;
+        var managedData = instance.GameDirectory is null &&
+                          plan.Ownership == InstanceOwnership.EclManaged &&
+                          plan.Mode == InstanceDeletionMode.DeleteManagedData;
         var trashRoot = Path.Combine(_paths.GameRoot, ".ecl-trash");
         var tombstone = Path.Combine(trashRoot, $"{plan.InstanceId}-{plan.PlanId}");
         var journalRoot = Path.Combine(_paths.ConfigDirectory, "instance-engine", "lifecycle", plan.InstanceId);
@@ -537,6 +555,7 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
         string recordDirectory,
         string gameDirectory,
         InstanceOwnership ownership,
+        InstanceDeletionMode mode,
         bool deleteSnapshots,
         IReadOnlyList<InstanceDeletionPlanEntry> entries,
         int snapshotCount)
@@ -546,6 +565,7 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
             .Append(recordDirectory).Append('|')
             .Append(gameDirectory).Append('|')
             .Append(ownership).Append('|')
+            .Append(mode).Append('|')
             .Append(deleteSnapshots).Append('|')
             .Append(snapshotCount);
         foreach (var entry in entries.OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase))

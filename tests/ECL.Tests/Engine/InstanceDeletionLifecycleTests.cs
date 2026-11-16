@@ -44,6 +44,31 @@ public sealed class InstanceDeletionLifecycleTests
     }
 
     [Fact]
+    public async Task ManagedRecordOnlyKeepsGameData()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+        var deletions = provider.GetRequiredService<IInstanceDeletionService>();
+        var created = (await instances.CreateAsync("RecordOnlyLifecycle", "1.21.1")).Value!;
+        var game = environment.Paths.GetInstanceGameDirectory(created.Id);
+        var save = Path.Combine(game, "saves", "world", "level.dat");
+        Directory.CreateDirectory(Path.GetDirectoryName(save)!);
+        await File.WriteAllTextAsync(save, "world");
+
+        var plan = await deletions.PlanAsync(created.Id, mode: InstanceDeletionMode.RemoveRecordOnly);
+        Assert.True(plan.IsSuccess, plan.Error?.ToString());
+        Assert.Equal(InstanceDeletionMode.RemoveRecordOnly, plan.Value!.Mode);
+        Assert.DoesNotContain(plan.Value.Entries, entry => entry.CanDelete && entry.Role == InstanceDeletionEntryRole.ManagedGameData);
+
+        var deleted = await deletions.DeleteAsync(plan.Value);
+        Assert.True(deleted.IsSuccess, deleted.Error?.ToString());
+        Assert.False(File.Exists(environment.Paths.GetInstanceMetadataFile(created.Id)));
+        Assert.True(Directory.Exists(game));
+        Assert.Equal("world", await File.ReadAllTextAsync(save));
+    }
+
+    [Fact]
     public async Task ExternalInstanceOnlyRemovesRecordAndKeepsGameDirectory()
     {
         using var environment = new TestEnvironment();

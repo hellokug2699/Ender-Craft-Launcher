@@ -17,6 +17,7 @@ using Ecl.Minecraft.CurseForge;
 using Ecl.Minecraft.Diagnostics;
 using Ecl.Minecraft.Engine.Identity;
 using Ecl.Minecraft.Engine.Inventory;
+using Ecl.Minecraft.Engine.Lifecycle;
 using Ecl.Minecraft.Engine.Snapshots;
 using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Eula;
@@ -274,14 +275,45 @@ internal sealed class CliApplication
                         return UsageError("instance delete 需要实例 ID。");
                     }
 
-                    var planResult = await instances.GetDeletionPlanAsync(instanceId).ConfigureAwait(false);
+                    var mode = _commandLine.HasFlag("keep-data")
+                        ? InstanceDeletionMode.RemoveRecordOnly
+                        : InstanceDeletionMode.DeleteManagedData;
+                    var deletions = _provider.GetRequiredService<IInstanceDeletionService>();
+                    var planResult = await deletions
+                        .PlanAsync(instanceId, _commandLine.HasFlag("delete-snapshots"), mode)
+                        .ConfigureAwait(false);
                     if (!planResult.IsSuccess)
                     {
                         return WriteError(planResult.Error);
                     }
 
                     var plan = planResult.Value!;
-                    PrintDeletionPlan(plan, _commandLine.HasFlag("json"));
+                    if (_commandLine.HasFlag("json"))
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(plan, EclJson.Indented));
+                    }
+                    else
+                    {
+                        Console.WriteLine($"实例 {plan.InstanceName}（{plan.InstanceId}）");
+                        Console.WriteLine($"  所有权 : {plan.Ownership} · 模式 {plan.Mode}");
+                        Console.WriteLine($"  预计   : {plan.EstimatedFiles} 文件 / {FormatBytes(plan.EstimatedBytes)}");
+                        Console.WriteLine($"  世界   : {(plan.IncludesWorldSaves ? "包含世界存档" : "不含世界存档")}");
+                        Console.WriteLine($"  快照   : {plan.Snapshots.SnapshotCount} 个 / {FormatBytes(plan.Snapshots.TotalBytes)}（{(plan.DeleteSnapshots ? "将删除" : "默认保留")}）");
+                        foreach (var entry in plan.Entries.Where(item => item.Exists))
+                        {
+                            Console.WriteLine($"    [{entry.Role}] {entry.Path} · {(entry.CanDelete ? "删除" : "保留")}");
+                        }
+
+                        foreach (var blocker in plan.Blockers)
+                        {
+                            Console.WriteLine($"  ! {blocker}");
+                        }
+
+                        foreach (var warning in plan.Warnings)
+                        {
+                            Console.WriteLine($"  ? {warning}");
+                        }
+                    }
 
                     if (_commandLine.HasFlag("dry-run"))
                     {
@@ -293,24 +325,40 @@ internal sealed class CliApplication
                         return UsageError("删除实例需要 --force 确认；使用 --keep-data 可只移除启动器记录。");
                     }
 
-                    var mode = _commandLine.HasFlag("keep-data")
-                        ? InstanceDeletionMode.RemoveRecordOnly
-                        : InstanceDeletionMode.DeleteManagedData;
-                    var result = await instances
-                        .DeleteAsync(instanceId, new InstanceDeleteOptions { Mode = mode })
-                        .ConfigureAwait(false);
+                    if (plan.Blockers.Count > 0)
+                    {
+                        return WriteError(new EclError(
+                            "instance.lifecycle.blocked",
+                            "删除计划存在阻断项，未执行。",
+                            string.Join("; ", plan.Blockers)));
+                    }
+
+                    var result = await deletions.DeleteAsync(plan).ConfigureAwait(false);
                     if (!result.IsSuccess)
                     {
                         return WriteError(result.Error);
                     }
 
-                    var keptGameData = plan.HasManagedGameData && mode == InstanceDeletionMode.RemoveRecordOnly;
-                    Console.WriteLine(keptGameData
-                        ? $"已移除实例记录 {instanceId}，游戏数据保留在 {plan.GameDirectory}"
-                        : plan.HasManagedGameData
-                            ? $"已删除实例 {instanceId}（含 ECL 托管游戏数据）"
-                            : $"已移除实例记录 {instanceId}，外部游戏目录未删除：{plan.GameDirectory}");
-                    return 0;
+                    var journal = result.Value!.Journal;
+                    Console.WriteLine(journal.State switch
+                    {
+                        InstanceDeletionState.Purged when plan.Mode == InstanceDeletionMode.RemoveRecordOnly =>
+                            $"已移除实例记录 {instanceId}；游戏数据保留。",
+                        InstanceDeletionState.Purged =>
+                            $"已删除实例 {instanceId}（含 ECL 托管游戏数据）。",
+                        _ => $"已隔离实例 {instanceId}，清理未完成：{journal.ErrorCode} {journal.ErrorMessage}",
+                    });
+                    if (!string.IsNullOrWhiteSpace(result.Value.DetachedGameDataPath))
+                    {
+                        Console.WriteLine($"  保留的游戏目录：{result.Value.DetachedGameDataPath}");
+                    }
+
+                    foreach (var retained in result.Value.RetainedSnapshots)
+                    {
+                        Console.WriteLine($"  保留快照：{retained}");
+                    }
+
+                    return journal.State == InstanceDeletionState.Purged ? 0 : 1;
                 }
 
             default:
@@ -2609,18 +2657,59 @@ internal sealed class CliApplication
                     var path = args.ElementAtOrDefault(2);
                     if (string.IsNullOrWhiteSpace(instanceId) || string.IsNullOrWhiteSpace(path))
                     {
-                        return UsageError("engine relocate <实例ID> <新游戏目录>");
+                        return UsageError("engine relocate <实例ID> <新游戏目录> [--allow-missing-content]");
                     }
 
-                    var result = await _provider.GetRequiredService<IInstanceService>()
-                        .RelocateAsync(instanceId, path)
+                    var relocations = _provider.GetRequiredService<IInstanceRelocationService>();
+                    var plan = await relocations
+                        .PlanAsync(instanceId, path, _commandLine.HasFlag("allow-missing-content"))
                         .ConfigureAwait(false);
+                    if (!plan.IsSuccess)
+                    {
+                        return WriteError(plan.Error);
+                    }
+
+                    if (_commandLine.HasFlag("json"))
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(plan.Value, EclJson.Indented));
+                    }
+                    else
+                    {
+                        Console.WriteLine(
+                            $"重定位 {plan.Value!.InstanceId}：{plan.Value.SourceDirectory} → {plan.Value.TargetDirectory}");
+                        Console.WriteLine(
+                            $"  文件 : 源 {plan.Value.SourceFiles} / 目标 {plan.Value.TargetFiles}");
+                        foreach (var evidence in plan.Value.Evidence)
+                        {
+                            Console.WriteLine($"  · {evidence}");
+                        }
+
+                        foreach (var blocker in plan.Value.Blockers)
+                        {
+                            Console.WriteLine($"  ! {blocker}");
+                        }
+
+                        foreach (var warning in plan.Value.Warnings)
+                        {
+                            Console.WriteLine($"  ? {warning}");
+                        }
+                    }
+
+                    if (plan.Value!.Blockers.Count > 0)
+                    {
+                        return WriteError(new EclError(
+                            "instance.lifecycle.blocked",
+                            "重定位计划存在阻断项，未执行。",
+                            string.Join("; ", plan.Value.Blockers)));
+                    }
+
+                    var result = await relocations.ExecuteAsync(plan.Value).ConfigureAwait(false);
                     if (!result.IsSuccess)
                     {
                         return WriteError(result.Error);
                     }
 
-                    Console.WriteLine($"实例 {instanceId} 已重新关联到 {result.Value!.GameDirectory}。");
+                    Console.WriteLine($"实例 {instanceId} 已重新关联到 {result.Value!.TargetDirectory}。");
                     return 0;
                 }
 
