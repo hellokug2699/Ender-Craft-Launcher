@@ -170,7 +170,7 @@ public sealed record InstanceWriteLeaseState(string InstanceId, bool WriteHeld, 
 /// 实例级写事务协调器（ADR 0047 / F-04）。首期采用实例级串行化：一个实例同时只允许一个事务进入 Apply。
 /// 事务日志、前态备份与阶段状态持久化；失败时按指纹对账回滚；无法证明恢复成功时进入 NeedsRecovery。
 /// </summary>
-public sealed class InstanceTransactionCoordinator
+public sealed class InstanceTransactionCoordinator : IInstanceTransactionService
 {
     private const int JournalFlushInterval = 25;
     private const int CurrentSchemaVersion = 2;

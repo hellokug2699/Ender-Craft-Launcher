@@ -2113,8 +2113,7 @@ internal sealed class CliApplication
     {
         if (args.Length == 0)
         {
-            return UsageError("engine 支持 inventory、snapshot、verify、transactions、clone、relocate。");
-        }
+            return UsageError("engine 支持 inventory、snapshot、verify、transactions、clone、relocate。");        }
 
         var sub = args[0].ToLowerInvariant();
         switch (sub)
@@ -2346,15 +2345,111 @@ internal sealed class CliApplication
 
             case "transactions":
                 {
+                    var action = args.ElementAtOrDefault(1);
+                    var service = _provider.GetRequiredService<IInstanceTransactionService>();
+                    if (string.Equals(action, "recover-all", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var sweep = await service.RecoverPendingAsync().ConfigureAwait(false);
+                        if (!sweep.IsSuccess)
+                        {
+                            return WriteError(sweep.Error);
+                        }
+
+                        if (_commandLine.HasFlag("json"))
+                        {
+                            Console.WriteLine(JsonSerializer.Serialize(sweep.Value, EclJson.Indented));
+                            return 0;
+                        }
+
+                        var report = sweep.Value!;
+                        Console.WriteLine(
+                            $"扫描 {report.Scanned} · 已回滚 {report.RolledBack} · 需要恢复 {report.NeedsRecovery} · 跳过 {report.Skipped}");
+                        foreach (var problem in report.Problems)
+                        {
+                            Console.WriteLine($"  ! {problem}");
+                        }
+
+                        return report.NeedsRecovery > 0 ? 1 : 0;
+                    }
+
+                    if (string.Equals(action, "recover", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var recoverInstanceId = args.ElementAtOrDefault(2);
+                        if (string.IsNullOrWhiteSpace(recoverInstanceId))
+                        {
+                            return UsageError(
+                                "engine transactions recover <实例ID> [事务ID] [--accept-current|--mark-rolled-back] [--json]");
+                        }
+
+                        var resolution = _commandLine.HasFlag("accept-current")
+                            ? RecoveryResolution.AcceptCurrent
+                            : _commandLine.HasFlag("mark-rolled-back")
+                                ? RecoveryResolution.MarkRolledBack
+                                : RecoveryResolution.Auto;
+                        var transactionId = args.ElementAtOrDefault(3);
+                        if (string.IsNullOrWhiteSpace(transactionId))
+                        {
+                            var pending = await service
+                                .ListAsync(recoverInstanceId, new InstanceTransactionListFilter(IncludeTerminal: false))
+                                .ConfigureAwait(false);
+                            if (!pending.IsSuccess)
+                            {
+                                return WriteError(pending.Error);
+                            }
+
+                            if (pending.Value!.Count == 0)
+                            {
+                                Console.WriteLine("该实例没有未完成事务。");
+                                return 0;
+                            }
+
+                            var failures = 0;
+                            foreach (var record in pending.Value)
+                            {
+                                var recovered = await service
+                                    .RecoverAsync(recoverInstanceId, record.TransactionId, resolution)
+                                    .ConfigureAwait(false);
+                                if (!recovered.IsSuccess)
+                                {
+                                    failures++;
+                                    Console.Error.WriteLine($"{record.TransactionId}: {recovered.Error!.Code} {recovered.Error.Message}");
+                                    continue;
+                                }
+
+                                Console.WriteLine(
+                                    $"  {record.TransactionId} → {recovered.Value!.State}{(recovered.Value.ErrorCode is null ? string.Empty : $" · {recovered.Value.ErrorCode}")}");
+                            }
+
+                            return failures > 0 ? 1 : 0;
+                        }
+
+                        var single = await service
+                            .RecoverAsync(recoverInstanceId, transactionId, resolution)
+                            .ConfigureAwait(false);
+                        if (!single.IsSuccess)
+                        {
+                            return WriteError(single.Error);
+                        }
+
+                        if (_commandLine.HasFlag("json"))
+                        {
+                            Console.WriteLine(JsonSerializer.Serialize(single.Value, EclJson.Indented));
+                            return 0;
+                        }
+
+                        Console.WriteLine(
+                            $"  {single.Value!.TransactionId} → {single.Value.State}{(single.Value.ErrorCode is null ? string.Empty : $" · {single.Value.ErrorCode}")}");
+                        return single.Value.State == InstanceTransactionState.NeedsRecovery ? 1 : 0;
+                    }
+
                     var instanceId = args.ElementAtOrDefault(1);
                     if (string.IsNullOrWhiteSpace(instanceId))
                     {
-                        return UsageError("engine transactions <实例ID> [--json]");
+                        return UsageError(
+                            "engine transactions <实例ID> [--json] | recover <实例ID> [事务ID] | recover-all");
                     }
 
-                    var result = await _provider.GetRequiredService<InstanceTransactionCoordinator>()
-                        .ListAsync(instanceId)
-                        .ConfigureAwait(false);
+                    var result = await service.ListAsync(instanceId).ConfigureAwait(false);
                     if (!result.IsSuccess)
                     {
                         return WriteError(result.Error);
@@ -2369,7 +2464,7 @@ internal sealed class CliApplication
                     foreach (var record in result.Value!)
                     {
                         Console.WriteLine(
-                            $"  {record.TransactionId} · {record.State} · {record.Reason} · {record.UpdatedAt:O}{(record.ErrorMessage is null ? string.Empty : $" · {record.ErrorMessage}")}");
+                            $"  {record.TransactionId} · {record.State} · v{record.SchemaVersion} · {record.Reason} · {record.UpdatedAt:O}{(record.ErrorCode is null ? string.Empty : $" · {record.ErrorCode}")}{(record.ErrorMessage is null ? string.Empty : $" · {record.ErrorMessage}")}");
                     }
 
                     return 0;
