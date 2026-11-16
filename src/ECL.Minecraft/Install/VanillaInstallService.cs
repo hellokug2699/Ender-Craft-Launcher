@@ -2,11 +2,14 @@
 
 using System.Diagnostics;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Core.Localization;
+using Ecl.Core.Storage;
 using Ecl.Download;
+using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Loaders;
@@ -34,6 +37,7 @@ public sealed class VanillaInstallService : IVersionInstallService
     private readonly ILocalizer _localizer;
     private readonly IOperationService? _operations;
     private readonly ILogger<VanillaInstallService> _logger;
+    private readonly ISharedJsonTransactionService? _sharedJson;
 
     public VanillaInstallService(
         IInstanceService instances,
@@ -45,7 +49,8 @@ public sealed class VanillaInstallService : IVersionInstallService
         IForgeProcessorRunner forgeRunner,
         ILocalizer localizer,
         ILogger<VanillaInstallService> logger,
-        IOperationService? operations = null)
+        IOperationService? operations = null,
+        ISharedJsonTransactionService? sharedJson = null)
     {
         _instances = instances;
         _paths = paths;
@@ -57,6 +62,7 @@ public sealed class VanillaInstallService : IVersionInstallService
         _localizer = localizer;
         _operations = operations;
         _logger = logger;
+        _sharedJson = sharedJson;
     }
 
     public async Task<Result<InstallReport>> InstallAsync(
@@ -202,18 +208,36 @@ public sealed class VanillaInstallService : IVersionInstallService
 
             if (result.IsSuccess)
             {
+                var sharedTransactions = transaction.SharedTransactions.ToArray();
                 transaction.Commit();
+                if (_sharedJson is not null)
+                {
+                    foreach (var sharedTransaction in sharedTransactions)
+                    {
+                        var confirmed = await _sharedJson
+                            .ConfirmAsync(sharedTransaction, CancellationToken.None)
+                            .ConfigureAwait(false);
+                        if (!confirmed.IsSuccess)
+                        {
+                            _logger.LogWarning(
+                                "安装成功后清理共享事务 {TransactionId} 的恢复材料失败：{Code}",
+                                sharedTransaction,
+                                confirmed.Error!.Code);
+                        }
+                    }
+                }
+
                 operation.Complete();
                 return InstallOutcome.Ok(result.Value!);
             }
 
-            return FailedWithRollback(instance, transaction, operation, result.Error!);
+            return await FailedWithRollbackAsync(instance, transaction, operation, result.Error!).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
             operation.Cancel();
             var error = new EclError("install.cancelled", _localizer.Get("install.cancelled"));
-            return FailedWithRollback(instance, transaction, operation, error, failOperation: false);
+            return await FailedWithRollbackAsync(instance, transaction, operation, error, failOperation: false).ConfigureAwait(false);
         }
         catch (DownloadException exception)
         {
@@ -227,7 +251,17 @@ public sealed class VanillaInstallService : IVersionInstallService
                 "install.download_failed",
                 _localizer.Get("install.downloadFailed", exception.Message),
                 string.Join("; ", exception.Failures.Take(5)));
-            return FailedWithRollback(instance, transaction, operation, error, failOperation: false);
+            return await FailedWithRollbackAsync(instance, transaction, operation, error, failOperation: false).ConfigureAwait(false);
+        }
+        catch (SharedJsonInstallException exception)
+        {
+            operation.Fail(ToOperationError(exception.Error));
+            _logger.LogError(
+                "安装实例 {InstanceId} 时共享 JSON 事务失败：{Code} {Message}",
+                instance.Id,
+                exception.Error.Code,
+                exception.Error.Message);
+            return await FailedWithRollbackAsync(instance, transaction, operation, exception.Error, failOperation: false).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException
                                               or InvalidOperationException or InvalidDataException
@@ -236,12 +270,12 @@ public sealed class VanillaInstallService : IVersionInstallService
             operation.Fail(OperationErrors.FromException("install.failed", exception));
             _logger.LogError(exception, "安装实例 {InstanceId} 失败。", instance.Id);
             var error = new EclError("install.failed", _localizer.Get("install.failed", exception.Message));
-            return FailedWithRollback(instance, transaction, operation, error, failOperation: false);
+            return await FailedWithRollbackAsync(instance, transaction, operation, error, failOperation: false).ConfigureAwait(false);
         }
     }
 
     /// <summary>回滚并提供可验证的失败结果；诊断文件路径与回滚失败项一并返回。</summary>
-    private InstallOutcome FailedWithRollback(
+    private async Task<InstallOutcome> FailedWithRollbackAsync(
         GameInstance instance,
         InstallTransaction transaction,
         OperationProgressBridge<InstallProgress> operation,
@@ -249,6 +283,36 @@ public sealed class VanillaInstallService : IVersionInstallService
         bool failOperation = true)
     {
         var rollback = transaction.Rollback();
+        var actions = rollback.Actions.ToList();
+        var failures = rollback.Failures.ToList();
+        if (_sharedJson is not null)
+        {
+            foreach (var transactionId in transaction.SharedTransactions)
+            {
+                var reverted = await _sharedJson.RevertAsync(transactionId, CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (!reverted.IsSuccess)
+                {
+                    failures.Add($"shared {transactionId}: {reverted.Error!.Code}");
+                }
+                else if (reverted.Value!.State == SharedJsonTransactionState.NeedsRecovery)
+                {
+                    failures.Add(
+                        $"shared {transactionId}: needs recovery ({reverted.Value.ErrorCode}: {reverted.Value.ErrorMessage})");
+                }
+                else
+                {
+                    foreach (var target in reverted.Value!.Targets)
+                    {
+                        actions.Add($"reverted shared {target.TargetPath}");
+                    }
+                }
+            }
+
+            transaction.ClearSharedTransactions();
+        }
+
+        rollback = new InstallRollbackResult(actions, failures);
         var diagnosticPath = WriteDiagnostics(instance, error, rollback.Actions);
         if (failOperation)
         {
@@ -258,7 +322,7 @@ public sealed class VanillaInstallService : IVersionInstallService
         return InstallOutcome.Fail(new InstallFailure(
             error,
             rollback,
-            MetadataRestored: true,
+            MetadataRestored: failures.Count == 0,
             diagnosticPath));
     }
 
@@ -575,7 +639,16 @@ public sealed class VanillaInstallService : IVersionInstallService
 
         version.Id = instance.VersionId;
         version.InheritsFrom = instance.GameVersion;
-        WriteVersionJson(instance.VersionId, version, transaction);
+        var jsonWritten = await WriteVersionJsonAsync(
+            instance.Id,
+            instance.VersionId,
+            version,
+            transaction,
+            cancellationToken).ConfigureAwait(false);
+        if (!jsonWritten.IsSuccess)
+        {
+            return Result<MinecraftVersion>.Fail(jsonWritten.Error!);
+        }
 
         var merged = VersionMerger.Merge(baseVersion, version);
         return Result<MinecraftVersion>.Ok(merged);
@@ -613,8 +686,15 @@ public sealed class VanillaInstallService : IVersionInstallService
         {
             var content = CleanroomInstallerReader.Read(installerPath);
             content.Version.Id = instance.VersionId;
-            WriteVersionJson(instance.VersionId, content.Version, transaction);
-            return Result<MinecraftVersion>.Ok(content.Version);
+            var jsonWritten = await WriteVersionJsonAsync(
+                instance.Id,
+                instance.VersionId,
+                content.Version,
+                transaction,
+                cancellationToken).ConfigureAwait(false);
+            return jsonWritten.IsSuccess
+                ? Result<MinecraftVersion>.Ok(content.Version)
+                : Result<MinecraftVersion>.Fail(jsonWritten.Error!);
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or JsonException)
         {
@@ -656,7 +736,16 @@ public sealed class VanillaInstallService : IVersionInstallService
             var version = content.Version;
             version.Id = instance.VersionId;
             version.InheritsFrom = instance.GameVersion;
-            WriteVersionJson(instance.VersionId, version, transaction);
+            var jsonWritten = await WriteVersionJsonAsync(
+                instance.Id,
+                instance.VersionId,
+                version,
+                transaction,
+                cancellationToken).ConfigureAwait(false);
+            if (!jsonWritten.IsSuccess)
+            {
+                return Result<ForgeInstallPlan>.Fail(jsonWritten.Error!);
+            }
 
             _logger.LogInformation(
                 "已解析 {Loader} 安装器：spec {Spec}，processors {Processors}，libraries {Libraries}。",
@@ -1143,21 +1232,46 @@ public sealed class VanillaInstallService : IVersionInstallService
             .ConfigureAwait(false);
     }
 
-    private void WriteVersionJson(string versionId, MinecraftVersion version, InstallTransaction transaction)
+    private async Task<Result> WriteVersionJsonAsync(
+        string instanceId,
+        string versionId,
+        MinecraftVersion version,
+        InstallTransaction transaction,
+        CancellationToken cancellationToken)
     {
         var path = VersionFilePlanner.GetVersionJsonPath(_paths, versionId);
-        transaction.TrackFileWithBackup(path);
-        transaction.TrackDirectory(Path.GetDirectoryName(path)!);
-
-        var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(directory))
+        if (_sharedJson is null)
         {
-            Directory.CreateDirectory(directory);
+            transaction.TrackFileWithBackup(path);
+            transaction.TrackDirectory(Path.GetDirectoryName(path)!);
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var temporary = $"{path}.{Guid.NewGuid():N}.tmp";
+            File.WriteAllText(temporary, JsonSerializer.Serialize(version, EclJson.Default));
+            File.Move(temporary, path, overwrite: true);
+            return Result.Ok();
         }
 
-        var temporary = $"{path}.{Guid.NewGuid():N}.tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(version, EclJson.Default));
-        File.Move(temporary, path, overwrite: true);
+        var written = await _sharedJson.ExecuteAsync(
+            new SharedJsonTransactionPlan(
+                [new SharedJsonWrite(
+                    SharedJsonTargetKind.VersionManifest,
+                    path,
+                    JsonSerializer.SerializeToUtf8Bytes(version, EclJson.Default))],
+                $"安装/重配置版本清单 {versionId}",
+                InstanceId: instanceId,
+                KeepRecoveryOnCommit: true),
+            cancellationToken).ConfigureAwait(false);
+        if (written.IsSuccess)
+        {
+            transaction.TrackSharedTransaction(written.Value!.TransactionId);
+        }
+
+        return written.IsSuccess ? Result.Ok() : Result.Fail(written.Error!);
     }
 
     /// <summary>
@@ -1185,6 +1299,29 @@ public sealed class VanillaInstallService : IVersionInstallService
             .DownloadTextAsync(urls, expectedHash, expectedSize, HashingAlgorithm.Sha1, cancellationToken)
             .ConfigureAwait(false);
 
+        if (_sharedJson is not null && IsSharedJsonTarget(destination))
+        {
+            // 共享版本 JSON / 资产索引必须经过独立事务：journal + 备份 + E2-1 所有权检查。
+            var kind = WorkspacePathValidator.IsUnder(
+                destination,
+                Path.Combine(_paths.AssetsDirectory, "indexes"))
+                ? SharedJsonTargetKind.AssetIndex
+                : SharedJsonTargetKind.VersionManifest;
+            var written = await _sharedJson.ExecuteAsync(
+                new SharedJsonTransactionPlan(
+                    [new SharedJsonWrite(kind, destination, Encoding.UTF8.GetBytes(text))],
+                    $"安装共享 JSON {Path.GetFileName(destination)}",
+                    KeepRecoveryOnCommit: true),
+                cancellationToken).ConfigureAwait(false);
+            if (!written.IsSuccess)
+            {
+                throw new SharedJsonInstallException(written.Error!);
+            }
+
+            transaction.TrackSharedTransaction(written.Value!.TransactionId);
+            return text;
+        }
+
         var directory = Path.GetDirectoryName(destination);
         var existed = File.Exists(destination);
         if (existed)
@@ -1207,6 +1344,13 @@ public sealed class VanillaInstallService : IVersionInstallService
         await File.WriteAllTextAsync(temporary, text, cancellationToken).ConfigureAwait(false);
         File.Move(temporary, destination, overwrite: true);
         return text;
+    }
+
+    private bool IsSharedJsonTarget(string path)
+    {
+        var full = Path.GetFullPath(path);
+        return WorkspacePathValidator.IsUnder(full, _paths.VersionsDirectory) ||
+               WorkspacePathValidator.IsUnder(full, Path.Combine(_paths.AssetsDirectory, "indexes"));
     }
 
     private static bool MatchesHash(string path, string? expectedHash, long? expectedSize)
@@ -1294,6 +1438,11 @@ public sealed class VanillaInstallService : IVersionInstallService
         ForgeInstallProfile Profile,
         string InstallerPath,
         string MavenRoot);
+
+    private sealed class SharedJsonInstallException(EclError error) : Exception(error.Message)
+    {
+        public EclError Error { get; } = error;
+    }
 
     private sealed class ForwardingProgress<T>(Action<T> callback) : IProgress<T>
     {

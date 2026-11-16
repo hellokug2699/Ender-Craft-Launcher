@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using Ecl.Core;
 using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Instances;
 using Microsoft.Extensions.DependencyInjection;
@@ -127,11 +128,7 @@ public sealed class InstanceTransactionTests
         var created = (await instances.CreateAsync("Concurrent", "1.21.1")).Value!;
 
         var tasks = Enumerable.Range(0, 6)
-            .Select(index => transactions.ExecuteAsync(
-                created.Id,
-                new InstanceChangePlan(
-                    [InstanceChangeOperation.WriteText("shared.txt", $"writer-{index}\n")],
-                    $"concurrent-{index}")))
+            .Select(index => WriteWithRetryAsync(transactions, created.Id, index))
             .ToArray();
         var results = await Task.WhenAll(tasks);
 
@@ -139,5 +136,28 @@ public sealed class InstanceTransactionTests
         var content = await File.ReadAllTextAsync(
             Path.Combine(environment.Paths.GetInstanceGameDirectory(created.Id), "shared.txt"));
         Assert.StartsWith("writer-", content);
+    }
+
+    private static async Task<Result<InstanceTransactionRecord>> WriteWithRetryAsync(
+        InstanceTransactionCoordinator transactions,
+        string instanceId,
+        int index)
+    {
+        for (var attempt = 0; attempt < 6; attempt++)
+        {
+            var result = await transactions.ExecuteAsync(
+                instanceId,
+                new InstanceChangePlan(
+                    [InstanceChangeOperation.WriteText("shared.txt", $"writer-{index}\n")],
+                    $"concurrent-{index}"));
+            if (result.IsSuccess || result.Error?.Code != "instance.write_busy")
+            {
+                return result;
+            }
+
+            await Task.Delay(100);
+        }
+
+        throw new InvalidOperationException("并发写重试次数耗尽。");
     }
 }

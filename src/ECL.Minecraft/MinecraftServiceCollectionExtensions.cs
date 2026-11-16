@@ -54,6 +54,9 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<InstanceTransactionCoordinator>();
         services.AddSingleton<IInstanceTransactionService>(provider =>
             provider.GetRequiredService<InstanceTransactionCoordinator>());
+        services.AddSingleton<SharedJsonTransactionCoordinator>();
+        services.AddSingleton<ISharedJsonTransactionService>(provider =>
+            provider.GetRequiredService<SharedJsonTransactionCoordinator>());
         services.AddSingleton<InstanceSnapshotService>();
         services.AddSingleton<IInstanceSnapshotService>(provider =>
             provider.GetRequiredService<InstanceSnapshotService>());

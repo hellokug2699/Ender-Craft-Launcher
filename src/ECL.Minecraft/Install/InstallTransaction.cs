@@ -15,8 +15,23 @@ public sealed class InstallTransaction
 {
     private readonly Dictionary<string, TrackedFile> _files = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _directories = [];
+    private readonly List<string> _sharedTransactions = [];
     private bool _committed;
     private bool _rolledBack;
+
+    /// <summary>本次安装已提交、需要在失败时整体撤销的共享 JSON 事务。</summary>
+    public IReadOnlyList<string> SharedTransactions => _sharedTransactions;
+
+    public void TrackSharedTransaction(string transactionId)
+    {
+        if (!string.IsNullOrWhiteSpace(transactionId) &&
+            !_sharedTransactions.Contains(transactionId, StringComparer.Ordinal))
+        {
+            _sharedTransactions.Add(transactionId);
+        }
+    }
+
+    public void ClearSharedTransactions() => _sharedTransactions.Clear();
 
     public void TrackFile(string path)
     {
@@ -59,6 +74,7 @@ public sealed class InstallTransaction
         _committed = true;
         _directories.Clear();
         _files.Clear();
+        _sharedTransactions.Clear();
     }
 
     /// <summary>

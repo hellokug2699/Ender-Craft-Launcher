@@ -283,7 +283,9 @@ public sealed class InstallServiceTests
         Assert.False(outcome.IsSuccess);
         Assert.Equal("install.download_failed", outcome.Error?.Code);
         var failure = outcome.Failure!;
-        Assert.True(failure.Rollback.IsComplete);
+        Assert.True(
+            failure.Rollback.IsComplete,
+            $"rollback failures: {string.Join(" | ", failure.Rollback.Failures)}; actions: {string.Join(" | ", failure.Rollback.Actions)}");
         Assert.False(failure.RecoveryRequired);
 
         // 回滚必须写回原始字节，而不是留下官方 JSON。
