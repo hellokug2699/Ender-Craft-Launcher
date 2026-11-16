@@ -37,7 +37,9 @@ public sealed class CurseForgeServiceTests
         Assert.Equal("demo.jar", Assert.Single(report.InstalledFiles));
 
         var request = Assert.Single(downloads.Requests);
-        Assert.EndsWith(Path.Combine("mods", "demo.jar"), request.DestinationPath);
+        // F-06 S4：下载落在 ECL staging，文件经实例事务写入 mods（不再直写实例目录）。
+        Assert.Contains("content-staging", request.DestinationPath);
+        Assert.Equal("demo.jar", Path.GetFileName(request.DestinationPath));
         Assert.Equal("https://edge.forgecdn.net/files/0/10/demo.jar", request.Urls[0].ToString());
         Assert.Equal("0000000000000000000000000000000000000000", request.Hash);
         Assert.Equal(4L, request.Size);

@@ -32,7 +32,7 @@ public sealed class ContentInstallPlanTests
         [
             Version("v-dep", "mod-b", "2.0.0", "mod-b.jar", ["1.21.1"], ["fabric"], []),
         ];
-        var planner = new ContentInstallPlanner(instances, modrinth);
+        var planner = new ContentInstallPlanner(instances, modrinth, new FakeCurseForgeClient());
 
         var planned = await planner.PlanAsync(
             instance.Id,
@@ -61,7 +61,7 @@ public sealed class ContentInstallPlanTests
         modrinth.VersionsById["v-root"] = Version("v-root", "mod-a", "1.0.0", "mod-a.jar", ["1.21.1"], ["fabric"],
             [new ModrinthDependency { VersionId = "v-old", ProjectId = "mod-b", DependencyType = "required" }]);
         modrinth.VersionsById["v-old"] = Version("v-old", "mod-b", "0.9.0", "mod-b-old.jar", ["1.19.2"], ["fabric"], []);
-        var planner = new ContentInstallPlanner(instances, modrinth);
+        var planner = new ContentInstallPlanner(instances, modrinth, new FakeCurseForgeClient());
 
         var planned = await planner.PlanAsync(
             instance.Id,
@@ -85,7 +85,7 @@ public sealed class ContentInstallPlanTests
         var modrinth = new FakeModrinthClient();
         modrinth.VersionsById["v-root"] = Version("v-root", "mod-a", "1.0.0", "mod-a.jar", ["1.21.1"], ["fabric"],
             [new ModrinthDependency { ProjectId = "mod-missing", DependencyType = "required" }]);
-        var planner = new ContentInstallPlanner(instances, modrinth);
+        var planner = new ContentInstallPlanner(instances, modrinth, new FakeCurseForgeClient());
 
         var planned = await planner.PlanAsync(
             instance.Id,
@@ -172,6 +172,166 @@ public sealed class ContentInstallPlanTests
         Assert.True(blocked.Value!.UpdatesBlocked);
         Assert.Equal(0, blocked.Value.AvailableCount);
         Assert.Equal("policy.block", Assert.Single(blocked.Value.Candidates).Reason);
+    }
+
+    [Fact]
+    public async Task CurseForgePlanResolvesStableFileAndRequiredDependency()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+        var instance = (await instances.CreateAsync("Plan CF", "1.21.1", "fabric", "0.16.0")).Value!;
+        var curseForge = new FakeCurseForgeClient();
+        curseForge.Mods[1] = new CurseForgeMod
+        {
+            Id = 1,
+            Slug = "demo",
+            Name = "Demo",
+            LatestFilesIndexes =
+            [
+                new CurseForgeFileIndex
+                {
+                    GameVersion = "1.21.1",
+                    FileId = 10,
+                    ModLoader = (int)CurseForgeModLoader.Fabric,
+                    ReleaseType = 1,
+                },
+            ],
+        };
+        curseForge.Mods[2] = new CurseForgeMod
+        {
+            Id = 2,
+            Slug = "library",
+            Name = "Library",
+            LatestFilesIndexes =
+            [
+                new CurseForgeFileIndex
+                {
+                    GameVersion = "1.21.1",
+                    FileId = 20,
+                    ModLoader = (int)CurseForgeModLoader.Fabric,
+                    ReleaseType = 1,
+                },
+            ],
+        };
+        curseForge.Files[10] = new CurseForgeFile
+        {
+            Id = 10,
+            ModId = 1,
+            FileName = "demo.jar",
+            DownloadUrl = "https://edge.forgecdn.net/files/0/10/demo.jar",
+            FileLength = 10,
+            GameVersions = ["1.21.1", "Fabric"],
+            Dependencies = [new CurseForgeFileDependency { ModId = 2, RelationType = 3 }],
+        };
+        curseForge.Files[20] = new CurseForgeFile
+        {
+            Id = 20,
+            ModId = 2,
+            FileName = "library.jar",
+            DownloadUrl = "https://edge.forgecdn.net/files/0/20/library.jar",
+            FileLength = 8,
+            GameVersions = ["1.21.1", "Fabric"],
+        };
+
+        var planner = new ContentInstallPlanner(instances, new FakeModrinthClient(), curseForge);
+        var planned = await planner.PlanAsync(
+            instance.Id,
+            new ContentInstallPlanRequest(ContentSourceKind.CurseForge, "1"));
+
+        Assert.True(planned.IsSuccess, planned.Error?.ToString());
+        var plan = planned.Value!;
+        Assert.Equal(ContentSourceKind.CurseForge, plan.Source);
+        Assert.True(plan.IsInstallable);
+        Assert.Equal(2, plan.Files.Count);
+        var root = plan.Root!;
+        Assert.Equal("10", root.VersionId);
+        Assert.Equal("demo.jar", root.FileName);
+        Assert.Contains(plan.Files, file => file.FileName == "library.jar");
+        Assert.All(plan.Files, file => Assert.False(string.IsNullOrWhiteSpace(file.DownloadUrl)));
+    }
+
+    [Fact]
+    public async Task ExecutorRejectsPlanWhenInstanceConfigurationChanged()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+        var instance = (await instances.CreateAsync("Plan Stale", "1.21.1", "fabric", "0.16.0")).Value!;
+        var modrinth = new FakeModrinthClient();
+        modrinth.VersionsById["v-root"] = Version("v-root", "mod-a", "1.0.0", "mod-a.jar", ["1.21.1"], ["fabric"], []);
+        var planner = new ContentInstallPlanner(instances, modrinth, new FakeCurseForgeClient());
+        var plan = (await planner.PlanAsync(
+            instance.Id,
+            new ContentInstallPlanRequest(ContentSourceKind.Modrinth, "mod-a", "v-root"))).Value!;
+
+        var executor = provider.GetRequiredService<IContentPlanExecutor>();
+        var stale = await executor.ExecuteAsync(plan with { GameVersion = "1.20.1", Loader = "forge" });
+
+        Assert.False(stale.IsSuccess);
+        Assert.Equal("content.plan.stale", stale.Error!.Code);
+    }
+
+    [Fact]
+    public async Task ExecutorAppliesOnlyThePlannedFilesWithoutAskingTheSourceAgain()
+    {
+        var payload = System.Text.Encoding.UTF8.GetBytes("demo");
+        using var environment = new TestEnvironment();
+        var modrinth = new FakeModrinthClient();
+        modrinth.VersionsById["v-root"] = Version("v-root", "mod-a", "1.0.0", "mod-a.jar", ["1.21.1"], ["fabric"], []);
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<Ecl.Download.IDownloadService>(new PayloadDownloadService(payload));
+            services.AddSingleton<IModrinthClient>(modrinth);
+        });
+        var instances = provider.GetRequiredService<IInstanceService>();
+        var instance = (await instances.CreateAsync("Plan Execute", "1.21.1", "fabric", "0.16.0")).Value!;
+        var planner = new ContentInstallPlanner(instances, modrinth, new FakeCurseForgeClient());
+        var plan = (await planner.PlanAsync(
+            instance.Id,
+            new ContentInstallPlanRequest(ContentSourceKind.Modrinth, "mod-a", "v-root"))).Value!;
+
+        // 计划生成后来源不可用：执行器仍必须只按计划文件安装。
+        modrinth.Versions.Clear();
+        modrinth.VersionsById.Clear();
+        var versionCallsBefore = modrinth.VersionCalls;
+
+        var executed = await provider.GetRequiredService<IContentPlanExecutor>().ExecuteAsync(plan);
+
+        Assert.True(executed.IsSuccess, executed.Error?.ToString());
+        Assert.Equal(versionCallsBefore, modrinth.VersionCalls);
+        Assert.True(File.Exists(Path.Combine(
+            environment.Paths.GetInstanceGameDirectory(instance.Id),
+            "mods",
+            "mod-a.jar")));
+    }
+
+    [Fact]
+    public async Task ExecutorRejectsBlockedPlanWithoutDownloading()
+    {
+        var payload = System.Text.Encoding.UTF8.GetBytes("demo");
+        using var environment = new TestEnvironment();
+        var downloads = new PayloadDownloadService(payload);
+        var modrinth = new FakeModrinthClient();
+        modrinth.VersionsById["v-root"] = Version("v-root", "mod-a", "1.0.0", "mod-a.jar", ["1.21.1"], ["fabric"], []);
+        await using var provider = environment.CreateServices(services =>
+        {
+            services.AddSingleton<Ecl.Download.IDownloadService>(downloads);
+            services.AddSingleton<IModrinthClient>(modrinth);
+        });
+        var instances = provider.GetRequiredService<IInstanceService>();
+        var instance = (await instances.CreateAsync("Plan Blocked", "1.21.1", "fabric", "0.16.0")).Value!;
+        var planner = new ContentInstallPlanner(instances, modrinth, new FakeCurseForgeClient());
+        var plan = (await planner.PlanAsync(
+            instance.Id,
+            new ContentInstallPlanRequest(ContentSourceKind.Modrinth, "mod-a", "v-root"))).Value!;
+
+        var blocked = await provider.GetRequiredService<IContentPlanExecutor>()
+            .ExecuteAsync(plan with { Blockers = ["content.plan.unresolved_dependency"] });
+
+        Assert.False(blocked.IsSuccess);
+        Assert.Equal("content.plan.blocked", blocked.Error!.Code);
+        Assert.Empty(downloads.Requests);
     }
 
     private static ModrinthVersion Version(

@@ -128,7 +128,8 @@ public sealed class ContentInstallService(
     ILocalizer localizer,
     ILogger<ContentInstallService> logger,
     IDatapackService datapacks,
-    IInstanceTransactionService transactions,
+    IContentInstallPlanner planner,
+    IContentPlanExecutor planExecutor,
     IOperationService? operations = null) : IContentInstallService
 {
     private const int MaxDependencyDepth = 4;
@@ -228,32 +229,27 @@ public sealed class ContentInstallService(
 
         try
         {
-            var targetDirectory = Path.Combine(
-                InstancePaths.GetGameDirectory(paths, instance),
-                ContentKinds.FolderName(ContentKind.Mod));
-            var installed = await DownloadFilesAsync(
-                    new ResolvedDownload(
-                        [
-                            new RemoteFile(
-                                dependency.FileName,
-                                dependency.FileUrl,
-                                dependency.Sha1,
-                                dependency.Size,
-                                dependency.VersionId,
-                                dependency.ProjectId),
-                        ],
-                        []),
-                    targetDirectory,
-                    operation,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (!installed.IsSuccess)
+            // F-06 S4：已解析依赖不再二次解析，直接变成只含一个节点的计划并交给唯一执行器。
+            var planned = CreateResolvedPlan(instance, dependency);
+            if (!planned.IsSuccess)
             {
-                Finish(operation, installed);
-                return Result<ContentInstallReport>.Fail(installed.Error!);
+                var failed = Result<ContentInstallReport>.Fail(planned.Error!);
+                Finish(operation, failed);
+                return failed;
             }
 
-            var files = installed.Value!;
+            var plan = planned.Value!;
+            var executed = await planExecutor
+                .ExecuteAsync(plan, operation, cancellationToken)
+                .ConfigureAwait(false);
+            if (!executed.IsSuccess)
+            {
+                var failed = Result<ContentInstallReport>.Fail(executed.Error!);
+                Finish(operation, failed);
+                return failed;
+            }
+
+            var files = executed.Value!.InstalledFiles;
             var report = new ContentInstallReport(
                 dependency.DisplayName,
                 dependency.Source!.Value,
@@ -261,7 +257,7 @@ public sealed class ContentInstallService(
                 instance.Id,
                 files.FirstOrDefault(),
                 files,
-                []);
+                executed.Value.Warnings);
             Finish(operation, Result<ContentInstallReport>.Ok(report));
             return Result<ContentInstallReport>.Ok(report);
         }
@@ -360,47 +356,45 @@ public sealed class ContentInstallService(
 
         try
         {
-            var resolved = await ResolveVersionFilesAsync(
-                    hit,
-                    version,
-                    instance.GameVersion,
-                    ContentKinds.UsesLoader(hit.Kind) ? instance.Loader : null,
+            // F-06 S4：先由统一 Planner 解析出计划，再由唯一执行器落盘；不在安装阶段按项目/版本二次选文件。
+            var planned = await planner.PlanAsync(
+                    instance.Id,
+                    new ContentInstallPlanRequest(
+                        ToSourceKind(hit.Source),
+                        hit.Id,
+                        version.VersionId,
+                        IncludeOptionalDependencies: false,
+                        IncludeRequiredDependencies: true,
+                        Kind: hit.Kind),
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (!resolved.IsSuccess)
+            if (!planned.IsSuccess)
             {
-                var failed = Result<ContentInstallReport>.Fail(resolved.Error!);
+                var failed = Result<ContentInstallReport>.Fail(planned.Error!);
                 Finish(operation, failed);
                 return failed;
             }
 
-            var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
-            var targetDirectory = Path.Combine(
-                gameDirectory,
-                ContentKinds.FolderName(hit.Kind));
-            var downloadResult = await DownloadFilesAsync(
-                    resolved.Value!,
-                    targetDirectory,
-                    operation,
-                    cancellationToken,
-                    instance.Id,
-                    gameDirectory)
+            var plan = planned.Value!;
+            var executed = await planExecutor
+                .ExecuteAsync(plan, operation, cancellationToken)
                 .ConfigureAwait(false);
-            if (!downloadResult.IsSuccess)
+            if (!executed.IsSuccess)
             {
-                var failed = Result<ContentInstallReport>.Fail(downloadResult.Error!);
+                var failed = Result<ContentInstallReport>.Fail(executed.Error!);
                 Finish(operation, failed);
                 return failed;
             }
 
-            var installedFiles = downloadResult.Value!;
+            var installedFiles = executed.Value!.InstalledFiles;
             logger.LogInformation(
-                "已把 {Source} {Kind} {Name} 的版本 {Version} 安装到实例 {InstanceId}：{Files}",
+                "已把 {Source} {Kind} {Name} 的版本 {Version} 安装到实例 {InstanceId}（计划 {PlanId}）：{Files}",
                 hit.Source,
                 hit.Kind,
                 hit.Name,
                 version.VersionId,
                 instance.Id,
+                plan.PlanId,
                 string.Join(", ", installedFiles));
 
             var report = new ContentInstallReport(
@@ -410,7 +404,7 @@ public sealed class ContentInstallService(
                 instance.Id,
                 installedFiles.FirstOrDefault(),
                 installedFiles,
-                resolved.Value!.Warnings);
+                executed.Value.Warnings);
             Finish(operation, Result<ContentInstallReport>.Ok(report));
             return Result<ContentInstallReport>.Ok(report);
         }
@@ -685,6 +679,55 @@ public sealed class ContentInstallService(
             : Result<string>.Fail("content.target_directory_missing", "下载目标目录不存在。");
     }
 
+    /// <summary>
+    /// F-06 S4：已解析依赖转成单节点计划。此路径不访问任何来源 API，也不重新选择版本。
+    /// </summary>
+    private static Result<ContentInstallPlan> CreateResolvedPlan(
+        GameInstance instance,
+        ResolvedDependency dependency)
+    {
+        var source = dependency.Source == ContentSource.CurseForge
+            ? ContentSourceKind.CurseForge
+            : ContentSourceKind.Modrinth;
+        var projectKey = dependency.ProjectId ?? dependency.RequestedId;
+        var versionKey = dependency.VersionId ?? "latest";
+        var key = $"{source.ToString().ToLowerInvariant()}:{projectKey}@{versionKey}";
+        var node = new ContentDependencyNode(
+            key,
+            source,
+            dependency.ProjectId ?? projectKey,
+            dependency.VersionId,
+            ProjectName: dependency.ProjectName,
+            VersionNumber: dependency.VersionNumber,
+            FileName: dependency.FileName,
+            DownloadUrl: dependency.FileUrl!.ToString(),
+            Sha1: dependency.Sha1,
+            Size: dependency.Size,
+            Required: true,
+            RequestedBy: null,
+            Status: ContentDependencyStatus.Resolved);
+        var now = DateTimeOffset.UtcNow;
+        return Result<ContentInstallPlan>.Ok(new ContentInstallPlan(
+            1,
+            $"resolved-{now:yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N")[..6]}",
+            now,
+            now.AddMinutes(30),
+            instance.Id,
+            instance.GameVersion,
+            instance.Loader,
+            source,
+            ContentKind.Mod,
+            key,
+            [node],
+            [],
+            [],
+            [],
+            []));
+    }
+
+    private static ContentSourceKind ToSourceKind(ContentSource source) =>
+        source == ContentSource.CurseForge ? ContentSourceKind.CurseForge : ContentSourceKind.Modrinth;
+
     /// <summary>清理暂存目录；残留不改变已完成的安装结果。</summary>
     private static void TryDeleteDirectory(string path)
     {
@@ -886,41 +929,36 @@ public sealed class ContentInstallService(
         }
 
         progress?.Report(new ContentProgress("resolve", localizer.Get("content.stage.resolve")));
-        var resolved = await ResolveFilesAsync(
-                hit,
-                instance.GameVersion,
-                ContentKinds.UsesLoader(hit.Kind) ? instance.Loader : null,
+        var planned = await planner.PlanAsync(
+                instance.Id,
+                new ContentInstallPlanRequest(
+                    ToSourceKind(hit.Source),
+                    hit.Id,
+                    Kind: hit.Kind),
                 cancellationToken)
             .ConfigureAwait(false);
-        if (!resolved.IsSuccess)
+        if (!planned.IsSuccess)
         {
-            return Result<ContentInstallReport>.Fail(resolved.Error!);
+            return Result<ContentInstallReport>.Fail(planned.Error!);
         }
 
-        var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
-        var targetDirectory = Path.Combine(
-            gameDirectory,
-            ContentKinds.FolderName(hit.Kind));
-        var downloadResult = await DownloadFilesAsync(
-                resolved.Value!,
-                targetDirectory,
-                progress,
-                cancellationToken,
-                instance.Id,
-                gameDirectory)
+        var plan = planned.Value!;
+        var executed = await planExecutor
+            .ExecuteAsync(plan, progress, cancellationToken)
             .ConfigureAwait(false);
-        if (!downloadResult.IsSuccess)
+        if (!executed.IsSuccess)
         {
-            return Result<ContentInstallReport>.Fail(downloadResult.Error!);
+            return Result<ContentInstallReport>.Fail(executed.Error!);
         }
 
-        var installedFiles = downloadResult.Value!;
+        var installedFiles = executed.Value!.InstalledFiles;
         logger.LogInformation(
-            "已从 {Source} 安装 {Kind} {Name} 到实例 {InstanceId}：{Files}",
+            "已从 {Source} 安装 {Kind} {Name} 到实例 {InstanceId}（计划 {PlanId}）：{Files}",
             hit.Source,
             hit.Kind,
             hit.Name,
             instance.Id,
+            plan.PlanId,
             string.Join(", ", installedFiles));
 
         return Result<ContentInstallReport>.Ok(new ContentInstallReport(
@@ -930,7 +968,7 @@ public sealed class ContentInstallService(
             instance.Id,
             installedFiles.FirstOrDefault(),
             installedFiles,
-            resolved.Value!.Warnings));
+            executed.Value.Warnings));
     }
 
     public async Task<Result<ContentDownloadReport>> DownloadAsync(
@@ -1793,19 +1831,13 @@ public sealed class ContentInstallService(
         ResolvedDownload resolved,
         string targetDirectory,
         IProgress<ContentProgress>? progress,
-        CancellationToken cancellationToken,
-        string? instanceId = null,
-        string? gameDirectory = null)
+        CancellationToken cancellationToken)
     {
-        var transactional = instanceId is not null && gameDirectory is not null;
-        var downloadDirectory = transactional
-            ? Path.Combine(paths.CacheDirectory, "content-staging", Guid.NewGuid().ToString("N"))
-            : targetDirectory;
-        Directory.CreateDirectory(downloadDirectory);
+        Directory.CreateDirectory(targetDirectory);
 
         var requests = resolved.Files
             .Select(file => new DownloadRequest(
-                Path.Combine(downloadDirectory, file.FileName),
+                Path.Combine(targetDirectory, file.FileName),
                 [file.Url],
                 file.Sha1,
                 HashingAlgorithm.Sha1,
@@ -1833,49 +1865,15 @@ public sealed class ContentInstallService(
         }
         catch (DownloadException exception)
         {
-            if (transactional)
-            {
-                TryDeleteDirectory(downloadDirectory);
-            }
-
             return Result<IReadOnlyList<string>>.Fail(
                 "download.failed",
                 $"下载失败：{exception.Message}",
                 string.Join("; ", exception.Failures.Take(5)));
         }
 
-        var fileNames = requests
+        return Result<IReadOnlyList<string>>.Ok(requests
             .Select(request => Path.GetFileName(request.DestinationPath))
-            .ToArray();
-        if (!transactional)
-        {
-            return Result<IReadOnlyList<string>>.Ok(fileNames);
-        }
-
-        try
-        {
-            Directory.CreateDirectory(targetDirectory);
-            var operations = requests
-                .Select(request =>
-                {
-                    var destination = Path.Combine(targetDirectory, Path.GetFileName(request.DestinationPath));
-                    var relative = Path.GetRelativePath(gameDirectory!, destination)
-                        .Replace(Path.DirectorySeparatorChar, '/');
-                    return InstanceChangeOperation.CopyFrom(relative, request.DestinationPath);
-                })
-                .ToArray();
-            var written = await transactions.ExecuteAsync(
-                instanceId!,
-                new InstanceChangePlan(operations, "安装内容文件"),
-                cancellationToken).ConfigureAwait(false);
-            return written.IsSuccess
-                ? Result<IReadOnlyList<string>>.Ok(fileNames)
-                : Result<IReadOnlyList<string>>.Fail(written.Error!);
-        }
-        finally
-        {
-            TryDeleteDirectory(downloadDirectory);
-        }
+            .ToArray());
     }
 
     private static bool TryCreateModrinthUri(string? value, out Uri uri)

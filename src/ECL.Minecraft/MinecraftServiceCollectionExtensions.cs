@@ -111,6 +111,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IContentVersionCatalog, ContentVersionCatalog>();
         services.AddSingleton<IDependencyResolver, DependencyResolver>();
         services.AddSingleton<IContentInstallPlanner, ContentInstallPlanner>();
+        services.AddSingleton<IContentPlanExecutor, ContentPlanExecutor>();
         services.AddSingleton<IInstanceContentUpdatePolicyService, InstanceContentUpdatePolicyService>();
         services.AddSingleton<IContentUpdateService, ContentUpdateService>();
         services.AddSingleton<IContentInstallService, ContentInstallService>();

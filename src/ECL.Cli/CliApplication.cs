@@ -694,16 +694,27 @@ internal sealed class CliApplication
                 var projectId = _commandLine.GetValue("project");
                 if (string.IsNullOrWhiteSpace(instanceId) || string.IsNullOrWhiteSpace(projectId))
                 {
-                    return UsageError("content plan <实例ID> --project <Modrinth项目ID> [--version <版本ID>] [--json]");
+                    return UsageError("content plan <实例ID> --project <项目ID> [--source modrinth|curseforge] [--version <版本ID>] [--kind mod|resourcepack|shaderpack] [--json]");
+                }
+
+                if (!TryParseContentSource(_commandLine.GetValue("source"), out var planSource))
+                {
+                    return UsageError("--source 只支持 modrinth 或 curseforge。");
+                }
+
+                if (!TryParseContentKind(_commandLine.GetValue("kind"), out var planKind))
+                {
+                    return UsageError("--kind 只支持 mod、resourcepack 或 shaderpack。");
                 }
 
                 var planner = _provider.GetRequiredService<IContentInstallPlanner>();
                 var planned = await planner.PlanAsync(
                     instanceId,
                     new ContentInstallPlanRequest(
-                        ContentSourceKind.Modrinth,
+                        planSource,
                         projectId,
-                        _commandLine.GetValue("version"))).ConfigureAwait(false);
+                        _commandLine.GetValue("version"),
+                        Kind: planKind)).ConfigureAwait(false);
                 if (!planned.IsSuccess)
                 {
                     return WriteError(planned.Error);
@@ -743,6 +754,73 @@ internal sealed class CliApplication
                 }
 
                 return plan.IsInstallable ? 0 : 1;
+            }
+
+            case "install":
+            {
+                var instanceId = args.ElementAtOrDefault(1);
+                var projectId = _commandLine.GetValue("project");
+                if (string.IsNullOrWhiteSpace(instanceId) || string.IsNullOrWhiteSpace(projectId))
+                {
+                    return UsageError("content install <实例ID> --project <项目ID> [--source modrinth|curseforge] [--version <版本ID>] [--kind mod|resourcepack|shaderpack]");
+                }
+
+                if (!TryParseContentSource(_commandLine.GetValue("source"), out var installSource))
+                {
+                    return UsageError("--source 只支持 modrinth 或 curseforge。");
+                }
+
+                if (!TryParseContentKind(_commandLine.GetValue("kind"), out var installKind))
+                {
+                    return UsageError("--kind 只支持 mod、resourcepack 或 shaderpack。");
+                }
+
+                // F-06 S4：CLI 也走“计划 → 唯一执行器”，不直接拼下载地址或选版本。
+                var planner = _provider.GetRequiredService<IContentInstallPlanner>();
+                var planned = await planner.PlanAsync(
+                    instanceId,
+                    new ContentInstallPlanRequest(
+                        installSource,
+                        projectId,
+                        _commandLine.GetValue("version"),
+                        Kind: installKind)).ConfigureAwait(false);
+                if (!planned.IsSuccess)
+                {
+                    return WriteError(planned.Error);
+                }
+
+                var plan = planned.Value!;
+                if (!plan.IsInstallable)
+                {
+                    Console.WriteLine($"计划 {plan.PlanId} 存在阻断项，未执行任何写入。");
+                    foreach (var blocker in plan.Blockers)
+                    {
+                        Console.WriteLine($"  ! {blocker}");
+                    }
+
+                    foreach (var warning in plan.Warnings)
+                    {
+                        Console.WriteLine($"  ? {warning}");
+                    }
+
+                    return 1;
+                }
+
+                var executed = await _provider.GetRequiredService<IContentPlanExecutor>()
+                    .ExecuteAsync(plan).ConfigureAwait(false);
+                if (!executed.IsSuccess)
+                {
+                    return WriteError(executed.Error);
+                }
+
+                Console.WriteLine(
+                    $"已按计划 {plan.PlanId} 把 {plan.Kind} 安装到实例 {instanceId}：{string.Join(", ", executed.Value!.InstalledFiles)}");
+                foreach (var warning in executed.Value.Warnings)
+                {
+                    Console.WriteLine($"  ? {warning}");
+                }
+
+                return 0;
             }
 
             case "updates":
@@ -825,7 +903,47 @@ internal sealed class CliApplication
             }
 
             default:
-                return UsageError("content 支持 plan <实例ID> --project <项目ID> [--version <版本ID>]、updates <实例ID>、policy <实例ID> [allow|notify|block]。");
+                return UsageError("content 支持 plan|install <实例ID> --project <项目ID> [--source modrinth|curseforge] [--version <版本ID>]、updates <实例ID>、policy <实例ID> [allow|notify|block]。");
+        }
+    }
+
+    private static bool TryParseContentSource(string? value, out ContentSourceKind source)
+    {
+        switch (value?.Trim().ToLowerInvariant())
+        {
+            case null or "":
+            case "modrinth":
+                source = ContentSourceKind.Modrinth;
+                return true;
+            case "curseforge":
+            case "cf":
+                source = ContentSourceKind.CurseForge;
+                return true;
+            default:
+                source = ContentSourceKind.Modrinth;
+                return false;
+        }
+    }
+
+    private static bool TryParseContentKind(string? value, out ContentKind kind)
+    {
+        switch (value?.Trim().ToLowerInvariant())
+        {
+            case null or "":
+            case "mod":
+                kind = ContentKind.Mod;
+                return true;
+            case "resourcepack":
+            case "resource-pack":
+                kind = ContentKind.ResourcePack;
+                return true;
+            case "shaderpack":
+            case "shader":
+                kind = ContentKind.ShaderPack;
+                return true;
+            default:
+                kind = ContentKind.Mod;
+                return false;
         }
     }
 

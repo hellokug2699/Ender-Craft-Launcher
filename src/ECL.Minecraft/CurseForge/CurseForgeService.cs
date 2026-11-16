@@ -4,7 +4,7 @@ using System.Text.Json;
 using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Core.Localization;
-using Ecl.Download;
+using Ecl.Minecraft.Content;
 using Ecl.Minecraft.Instances;
 using Ecl.Operations;
 using Microsoft.Extensions.Logging;
@@ -29,19 +29,20 @@ public interface ICurseForgeService
 }
 
 /// <summary>
-/// 把 CurseForge 搜索结果与文件解析成“可安装到某个实例”的具体文件，并处理必需依赖。
-/// 所有下载都落在实例的 <c>minecraft/mods/</c>。
+/// CurseForge 安装入口。F-06 S4 起不再自带依赖解析与下载循环：只负责把用户给的引用解析成稳定项目身份，
+/// 然后交给统一 Planner 生成计划、由唯一执行器落盘，最后按计划节点写安装记录（更新检查的依据）。
+/// 依赖版本选择只发生在计划阶段，安装阶段不二次猜测。
 /// </summary>
 public sealed class CurseForgeService(
     IInstanceService instances,
     IAppPaths paths,
     ICurseForgeClient client,
-    IDownloadService downloads,
     ILocalizer localizer,
     ILogger<CurseForgeService> logger,
+    IContentInstallPlanner planner,
+    IContentPlanExecutor planExecutor,
     IOperationService? operations = null) : ICurseForgeService
 {
-    private const int MaxDependencyDepth = 6;
     private const string InstallStateFileName = ".ecl-curseforge.json";
 
     public CurseForgeStatus Status => client.Status;
@@ -70,14 +71,6 @@ public sealed class CurseForgeService(
             return Result<CurseForgeInstallReport>.Fail("instance.not_found", "实例不存在。");
         }
 
-        var loader = CurseForgeLoaders.FromInstanceLoader(instance.Loader);
-        if (loader is null)
-        {
-            return Result<CurseForgeInstallReport>.Fail(
-                "curseforge.loader_unsupported",
-                "原版实例不能安装 CurseForge Mod，请先创建带加载器的实例。");
-        }
-
         using var operation = new OperationProgressBridge<CurseForgeProgress>(
             operations,
             new OperationStart
@@ -102,7 +95,6 @@ public sealed class CurseForgeService(
         {
             var result = await InstallCoreAsync(
                     instance,
-                    loader.Value,
                     modReference,
                     fileId,
                     includeDependencies,
@@ -135,7 +127,6 @@ public sealed class CurseForgeService(
 
     private async Task<Result<CurseForgeInstallReport>> InstallCoreAsync(
         GameInstance instance,
-        CurseForgeModLoader loader,
         string modReference,
         int? fileId,
         bool includeDependencies,
@@ -143,128 +134,139 @@ public sealed class CurseForgeService(
         CancellationToken cancellationToken)
     {
         progress?.Report(new CurseForgeProgress("resolve", localizer.Get("curseforge.stage.resolve")));
-        var modResult = await ResolveModAsync(modReference, instance, loader, cancellationToken)
-            .ConfigureAwait(false);
+        if (CurseForgeLoaders.FromInstanceLoader(instance.Loader) is null)
+        {
+            return Result<CurseForgeInstallReport>.Fail(
+                "curseforge.loader_unsupported",
+                "原版实例不能安装 CurseForge Mod，请先创建带加载器的实例。");
+        }
+
+        var modResult = await ResolveModAsync(modReference, instance, cancellationToken).ConfigureAwait(false);
         if (!modResult.IsSuccess)
         {
             return Result<CurseForgeInstallReport>.Fail(modResult.Error!);
         }
 
         var mod = modResult.Value!;
-        var fileResult = await ResolveFileAsync(mod, instance, loader, fileId, cancellationToken)
+
+        var planned = await planner.PlanAsync(
+                instance.Id,
+                new ContentInstallPlanRequest(
+                    ContentSourceKind.CurseForge,
+                    mod.Id.ToString(),
+                    fileId?.ToString(),
+                    IncludeOptionalDependencies: false,
+                    IncludeRequiredDependencies: includeDependencies,
+                    Kind: ContentKind.Mod),
+                cancellationToken)
             .ConfigureAwait(false);
-        if (!fileResult.IsSuccess)
+        if (!planned.IsSuccess)
         {
-            return Result<CurseForgeInstallReport>.Fail(fileResult.Error!);
+            return Result<CurseForgeInstallReport>.Fail(planned.Error!);
         }
 
-        var primaryFile = fileResult.Value!;
-        var warnings = new List<string>();
-        var plan = new List<PlannedMod> { new(mod, primaryFile) };
-        var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
-        var modsDirectory = Path.Combine(gameDirectory, "mods");
-        var knownProjects = LoadInstalled(gameDirectory)
-            .Where(record => File.Exists(Path.Combine(modsDirectory, record.FileName)))
-            .Select(record => record.ProjectId)
-            .ToHashSet();
-        knownProjects.Add(mod.Id);
-
-        if (includeDependencies)
+        var plan = planned.Value!;
+        if (!plan.IsInstallable)
         {
-            await AddDependenciesAsync(
-                    primaryFile,
-                    instance,
-                    loader,
-                    knownProjects,
-                    plan,
-                    warnings,
-                    depth: 0,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        Directory.CreateDirectory(modsDirectory);
-
-        var requests = new List<DownloadRequest>(plan.Count);
-        var downloadable = new List<PlannedMod>(plan.Count);
-        foreach (var item in plan)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var isPrimary = ReferenceEquals(item, plan[0]);
-            var uriResult = await ResolveDownloadUriAsync(item.Mod, item.File, cancellationToken)
-                .ConfigureAwait(false);
-            if (!uriResult.IsSuccess)
-            {
-                if (isPrimary)
-                {
-                    return Result<CurseForgeInstallReport>.Fail(uriResult.Error!);
-                }
-
-                warnings.Add($"{item.Mod.Name}：{uriResult.Error!.Message}");
-                continue;
-            }
-
-            if (!CurseForgeDownloads.IsSafeFileName(item.File.FileName))
-            {
-                var error = new EclError("curseforge.invalid_file_name", $"文件名为空或不安全：{item.File.FileName}");
-                if (isPrimary)
-                {
-                    return Result<CurseForgeInstallReport>.Fail(error);
-                }
-
-                warnings.Add($"{item.Mod.Name}：{error.Message}");
-                continue;
-            }
-
-            var destination = Path.Combine(modsDirectory, item.File.FileName);
-            requests.Add(new DownloadRequest(
-                destination,
-                [uriResult.Value!],
-                item.File.Sha1,
-                HashingAlgorithm.Sha1,
-                item.File.FileLength > 0 ? item.File.FileLength : null,
-                $"{item.Mod.Name} · {item.File.FileName}"));
-            downloadable.Add(item);
-        }
-
-        try
-        {
-            var downloading = localizer.Get("curseforge.stage.download");
-            progress?.Report(new CurseForgeProgress("download", downloading, 0, requests.Count));
-            var forwarding = new ForwardingProgress<DownloadProgress>(update =>
-                progress?.Report(new CurseForgeProgress(
-                    "download",
-                    downloading,
-                    update.CompletedFiles,
-                    update.TotalFiles)
-                {
-                    CompletedBytes = update.CompletedBytes,
-                    TotalBytes = update.IsTotalBytesKnown ? update.TotalBytes : 0,
-                    BytesPerSecond = update.BytesPerSecond,
-                    CurrentFile = update.CurrentFile,
-                }));
-
-            await downloads.DownloadAsync(requests, forwarding, cancellationToken).ConfigureAwait(false);
-        }
-        catch (DownloadException exception)
-        {
-            logger.LogError(exception, "安装 CurseForge 项目 {Mod} 时下载失败。", mod.Name);
             return Result<CurseForgeInstallReport>.Fail(
-                "curseforge.download_failed",
-                $"下载 CurseForge 文件失败：{exception.Message}",
-                string.Join("; ", exception.Failures.Take(5)));
+                "curseforge.plan_blocked",
+                $"{mod.Name} 的安装计划存在阻断项，未安装任何文件。",
+                string.Join("; ", plan.Blockers));
         }
 
-        var installed = LoadInstalled(InstancePaths.GetGameDirectory(paths, instance));
-        var installedAt = DateTimeOffset.UtcNow.ToString("O");
-        foreach (var item in downloadable)
+        var forwarding = new ForwardingProgress<ContentProgress>(update =>
+            progress?.Report(new CurseForgeProgress(
+                update.Stage,
+                update.Message,
+                update.CompletedFiles,
+                update.TotalFiles)
+            {
+                CompletedBytes = update.CompletedBytes,
+                TotalBytes = update.TotalBytes,
+                BytesPerSecond = update.BytesPerSecond,
+                CurrentFile = update.CurrentFile,
+            }));
+
+        var executed = await planExecutor
+            .ExecuteAsync(plan, forwarding, cancellationToken)
+            .ConfigureAwait(false);
+        if (!executed.IsSuccess)
         {
-            installed.RemoveAll(record => record.ProjectId == item.Mod.Id);
+            // 保留 CurseForge 入口的稳定错误码；下载失败仍以 curseforge.download_failed 报告。
+            return executed.Error!.Code == "download.failed"
+                ? Result<CurseForgeInstallReport>.Fail(
+                    "curseforge.download_failed",
+                    executed.Error.Message,
+                    executed.Error.Detail)
+                : Result<CurseForgeInstallReport>.Fail(executed.Error!);
+        }
+
+        var warnings = new List<string>(executed.Value!.Warnings);
+        var records = plan.Files
+            .Where(node => node.Source == ContentSourceKind.CurseForge &&
+                           int.TryParse(node.ProjectId, out _) &&
+                           int.TryParse(node.VersionId, out _) &&
+                           !string.IsNullOrWhiteSpace(node.FileName))
+            .ToArray();
+        WriteInstalledRecords(instance, records, warnings);
+
+        var root = plan.Root;
+        var rootFileId = int.TryParse(root?.VersionId, out var parsedFileId) ? parsedFileId : 0;
+        var installedFiles = executed.Value.InstalledFiles;
+        progress?.Report(new CurseForgeProgress(
+            "done",
+            localizer.Get("curseforge.stage.done"),
+            installedFiles.Count,
+            installedFiles.Count));
+        logger.LogInformation(
+            "已从 CurseForge 安装 {Mod}（项目 {ProjectId}，文件 {FileId}，计划 {PlanId}）到实例 {InstanceId}，共 {Count} 个文件。",
+            mod.Name,
+            mod.Id,
+            rootFileId,
+            plan.PlanId,
+            instance.Id,
+            installedFiles.Count);
+
+        return Result<CurseForgeInstallReport>.Ok(new CurseForgeInstallReport(
+            mod.Name,
+            mod.Id,
+            rootFileId,
+            root?.FileName ?? installedFiles.FirstOrDefault() ?? string.Empty,
+            installedFiles,
+            warnings));
+    }
+
+    /// <summary>
+    /// 按计划节点写安装记录：只有来自 CurseForge、带稳定项目/文件 ID 的节点才写入，
+    /// 失败只记警告，不把“记录未写”伪装成安装失败（文件已经提交）。
+    /// </summary>
+    private void WriteInstalledRecords(
+        GameInstance instance,
+        IReadOnlyList<ContentDependencyNode> records,
+        List<string> warnings)
+    {
+        if (records.Count == 0)
+        {
+            return;
+        }
+
+        var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
+        var installed = LoadInstalled(gameDirectory);
+        var installedAt = DateTimeOffset.UtcNow.ToString("O");
+        foreach (var node in records)
+        {
+            if (!int.TryParse(node.ProjectId, out var projectId) ||
+                !int.TryParse(node.VersionId, out var fileId))
+            {
+                continue;
+            }
+
+            installed.RemoveAll(record => record.ProjectId == projectId);
             installed.Add(new InstalledModRecord
             {
-                ProjectId = item.Mod.Id,
-                FileId = item.File.Id,
-                FileName = item.File.FileName,
+                ProjectId = projectId,
+                FileId = fileId,
+                FileName = node.FileName!,
                 InstalledAt = installedAt,
             });
         }
@@ -278,34 +280,11 @@ public sealed class CurseForgeService(
             warnings.Add($"无法写入安装记录：{exception.Message}");
             logger.LogWarning(exception, "写入 CurseForge 安装记录失败：{Directory}", gameDirectory);
         }
-
-        progress?.Report(new CurseForgeProgress(
-            "done",
-            localizer.Get("curseforge.stage.done"),
-            downloadable.Count,
-            downloadable.Count));
-        var installedFiles = downloadable.Select(item => item.File.FileName).ToArray();
-        logger.LogInformation(
-            "已从 CurseForge 安装 {Mod}（项目 {ProjectId}，文件 {FileId}）到实例 {InstanceId}，共 {Count} 个文件。",
-            mod.Name,
-            mod.Id,
-            primaryFile.Id,
-            instance.Id,
-            installedFiles.Length);
-
-        return Result<CurseForgeInstallReport>.Ok(new CurseForgeInstallReport(
-            mod.Name,
-            mod.Id,
-            primaryFile.Id,
-            primaryFile.FileName,
-            installedFiles,
-            warnings));
     }
 
     private async Task<Result<CurseForgeMod>> ResolveModAsync(
         string reference,
         GameInstance instance,
-        CurseForgeModLoader loader,
         CancellationToken cancellationToken)
     {
         var trimmed = reference.Trim();
@@ -331,7 +310,7 @@ public sealed class CurseForgeService(
                 {
                     SearchFilter = trimmed,
                     GameVersion = instance.GameVersion,
-                    Loader = loader,
+                    Loader = CurseForgeLoaders.FromInstanceLoader(instance.Loader),
                     PageSize = 10,
                 },
                 cancellationToken)
@@ -346,163 +325,8 @@ public sealed class CurseForgeService(
             ? Result<CurseForgeMod>.Fail(
                 "curseforge.mod_not_found",
                 $"没有找到 CurseForge 项目：{reference}",
-                $"游戏版本 {instance.GameVersion}，加载器 {CurseForgeLoaders.DisplayName(loader)}")
+                $"游戏版本 {instance.GameVersion}，加载器 {instance.Loader}")
             : Result<CurseForgeMod>.Ok(mod);
-    }
-
-    private async Task<Result<CurseForgeFile>> ResolveFileAsync(
-        CurseForgeMod mod,
-        GameInstance instance,
-        CurseForgeModLoader loader,
-        int? fileId,
-        CancellationToken cancellationToken)
-    {
-        if (fileId is { } explicitFileId)
-        {
-            var explicitFile = await client.GetFileAsync(mod.Id, explicitFileId, cancellationToken)
-                .ConfigureAwait(false);
-            return explicitFile.IsSuccess
-                ? ValidateFile(explicitFile.Value!, instance, loader)
-                : Result<CurseForgeFile>.Fail(explicitFile.Error!);
-        }
-
-        var candidates = mod.LatestFilesIndexes
-            .Where(index => index.FileId > 0 &&
-                            index.ModLoader == (int)loader &&
-                            string.Equals(index.GameVersion, instance.GameVersion, StringComparison.OrdinalIgnoreCase))
-            .ToArray();
-        var chosen = candidates.FirstOrDefault(index => index.ReleaseType == 1) ?? candidates.FirstOrDefault();
-        if (chosen is not null)
-        {
-            var file = await client.GetFileAsync(mod.Id, chosen.FileId, cancellationToken).ConfigureAwait(false);
-            if (file.IsSuccess)
-            {
-                var validated = ValidateFile(file.Value!, instance, loader);
-                if (validated.IsSuccess)
-                {
-                    return validated;
-                }
-            }
-        }
-
-        var listed = await client
-            .GetFilesForModAsync(mod.Id, instance.GameVersion, loader, 50, 0, cancellationToken)
-            .ConfigureAwait(false);
-        if (!listed.IsSuccess)
-        {
-            return Result<CurseForgeFile>.Fail(listed.Error!);
-        }
-
-        var fallback = listed.Value!
-            .FirstOrDefault(file => file.SupportsGameVersion(instance.GameVersion) && file.SupportsLoader(loader));
-        return fallback is null
-            ? Result<CurseForgeFile>.Fail(
-                "curseforge.no_compatible_file",
-                $"{mod.Name} 没有适用于 Minecraft {instance.GameVersion} / {CurseForgeLoaders.DisplayName(loader)} 的文件。")
-            : Result<CurseForgeFile>.Ok(fallback);
-    }
-
-    private async Task AddDependenciesAsync(
-        CurseForgeFile file,
-        GameInstance instance,
-        CurseForgeModLoader loader,
-        HashSet<int> knownProjects,
-        List<PlannedMod> plan,
-        List<string> warnings,
-        int depth,
-        CancellationToken cancellationToken)
-    {
-        if (depth >= MaxDependencyDepth)
-        {
-            warnings.Add("依赖层级超过限制，已停止自动解析；请手动检查缺失的依赖。");
-            return;
-        }
-
-        foreach (var dependency in file.Dependencies.Where(item => item.RelationType == 3))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!knownProjects.Add(dependency.ModId))
-            {
-                continue;
-            }
-
-            var modResult = await client.GetModAsync(dependency.ModId, cancellationToken).ConfigureAwait(false);
-            if (!modResult.IsSuccess)
-            {
-                warnings.Add($"依赖项目 {dependency.ModId} 解析失败：{modResult.Error!.Message}");
-                continue;
-            }
-
-            var dependencyMod = modResult.Value!;
-            var dependencyFile = await ResolveFileAsync(dependencyMod, instance, loader, null, cancellationToken)
-                .ConfigureAwait(false);
-            if (!dependencyFile.IsSuccess)
-            {
-                warnings.Add($"{dependencyMod.Name}：{dependencyFile.Error!.Message}");
-                continue;
-            }
-
-            plan.Add(new PlannedMod(dependencyMod, dependencyFile.Value!));
-            await AddDependenciesAsync(
-                    dependencyFile.Value!,
-                    instance,
-                    loader,
-                    knownProjects,
-                    plan,
-                    warnings,
-                    depth + 1,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
-
-    private async Task<Result<Uri>> ResolveDownloadUriAsync(
-        CurseForgeMod mod,
-        CurseForgeFile file,
-        CancellationToken cancellationToken)
-    {
-        var url = file.DownloadUrl;
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            var resolved = await client.GetDownloadUrlAsync(file.ModId, file.Id, cancellationToken)
-                .ConfigureAwait(false);
-            url = resolved.IsSuccess ? resolved.Value : null;
-        }
-
-        return CurseForgeDownloads.TryCreateUri(url, out var uri)
-            ? Result<Uri>.Ok(uri)
-            : Result<Uri>.Fail(
-                "curseforge.distribution_restricted",
-                $"{mod.Name} 的 {file.FileName} 没有可用的 CurseForge CDN 下载地址；作者可能禁止第三方分发。");
-    }
-
-    private static Result<CurseForgeFile> ValidateFile(
-        CurseForgeFile file,
-        GameInstance instance,
-        CurseForgeModLoader loader)
-    {
-        if (!file.SupportsGameVersion(instance.GameVersion))
-        {
-            return Result<CurseForgeFile>.Fail(
-                "curseforge.incompatible",
-                $"{file.FileName} 不支持 Minecraft {instance.GameVersion}。");
-        }
-
-        if (!file.SupportsLoader(loader))
-        {
-            return Result<CurseForgeFile>.Fail(
-                "curseforge.incompatible",
-                $"{file.FileName} 不支持 {CurseForgeLoaders.DisplayName(loader)} 加载器。");
-        }
-
-        if (!CurseForgeDownloads.IsSafeFileName(file.FileName))
-        {
-            return Result<CurseForgeFile>.Fail(
-                "curseforge.invalid_file_name",
-                $"CurseForge 返回了不安全的文件名：{file.FileName}");
-        }
-
-        return Result<CurseForgeFile>.Ok(file);
     }
 
     private static string ExtractSlug(string reference)
@@ -554,8 +378,6 @@ public sealed class CurseForgeService(
         File.WriteAllText(temporary, JsonSerializer.Serialize(state, EclJson.Indented));
         File.Move(temporary, path, overwrite: true);
     }
-
-    private sealed record PlannedMod(CurseForgeMod Mod, CurseForgeFile File);
 
     private sealed class InstallStateDocument
     {
