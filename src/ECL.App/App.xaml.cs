@@ -113,6 +113,8 @@ public partial class App : Application
             services.AddSingleton<EngineToolsViewModel>();
             services.AddSingleton<ToolsViewModel>();
             services.AddSingleton<IMemoryPressureMonitor, MemoryPressureMonitor>();
+            // F-03 §5.8：启动自检只报告需要恢复/可继续/可清理的生命周期状态，不自动执行。
+            services.AddSingleton<LifecycleStartupCheck>();
             services.AddSingleton<AboutViewModel>();
             services.AddSingleton<OperationCenterViewModel>();
             // B11：安全目的地、两份页面与真实运行时状态数据源。
@@ -191,6 +193,10 @@ public partial class App : Application
                 token => CleanupDownloadArtifactsAsync(_services, paths, token));
 
             lifecycle.MarkRunning();
+            var provider = _services;
+            lifecycle.TrackWork(
+                new BackgroundWorkDescriptor("lifecycle-recovery-check", "App", BackgroundWorkKind.Io),
+                token => provider.GetRequiredService<LifecycleStartupCheck>().RunAsync(token));
             await _services.GetRequiredService<ShellViewModel>().InitializeAsync();
         }
         catch (Exception exception)
