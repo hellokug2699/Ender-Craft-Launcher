@@ -288,6 +288,55 @@ public sealed class InstanceTransactionRecoveryTests
     }
 
     [Fact]
+    public async Task PruneJournalsDeletesOldTerminalButKeepsNeedsRecovery()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+        var transactions = provider.GetRequiredService<InstanceTransactionCoordinator>();
+        var created = (await instances.CreateAsync("JournalRetention", "1.21.1")).Value!;
+        var game = environment.Paths.GetInstanceGameDirectory(created.Id);
+        var old = DateTimeOffset.UtcNow.AddDays(-40);
+        var directory = Path.Combine(
+            environment.Paths.ConfigDirectory,
+            "instance-engine",
+            "transactions",
+            "instances",
+            created.Id);
+        Directory.CreateDirectory(directory);
+
+        async Task WriteAsync(string id, InstanceTransactionState state, DateTimeOffset updated)
+        {
+            var record = new InstanceTransactionRecord(
+                id,
+                created.Id,
+                game,
+                "retention",
+                state,
+                updated,
+                updated,
+                [],
+                [],
+                0,
+                SchemaVersion: 2);
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, $"{id}.json"),
+                JsonSerializer.Serialize(record, EclJson.Indented));
+        }
+
+        await WriteAsync("tx-old-1", InstanceTransactionState.Committed, old);
+        await WriteAsync("tx-old-2", InstanceTransactionState.RolledBack, old);
+        await WriteAsync("tx-needs", InstanceTransactionState.NeedsRecovery, old);
+
+        var pruned = await transactions.PruneJournalsAsync(retainDays: 30, maxPerInstance: 200);
+        Assert.True(pruned.IsSuccess, pruned.Error?.ToString());
+        Assert.Equal(2, pruned.Value);
+        Assert.False(File.Exists(Path.Combine(directory, "tx-old-1.json")));
+        Assert.False(File.Exists(Path.Combine(directory, "tx-old-2.json")));
+        Assert.True(File.Exists(Path.Combine(directory, "tx-needs.json")));
+    }
+
+    [Fact]
     public async Task ActivityStateReportsNeedsRecoveryAndWriting()
     {
         using var environment = new TestEnvironment();

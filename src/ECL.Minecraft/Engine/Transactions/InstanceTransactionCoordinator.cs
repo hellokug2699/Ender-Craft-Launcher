@@ -626,10 +626,68 @@ public sealed class InstanceTransactionCoordinator : IInstanceTransactionService
             new RecoverySweepReport(scanned, rolledBack, needsRecovery, skipped, problems.Take(100).ToArray()));
     }
 
-    public async Task<Result<InstanceActivityState>> GetActivityStateAsync(
-        string instanceId,
+    /// <summary>
+    /// 清理终态 journal（F-04 §6.6）：保留每个实例最近 N 条与保留天数内的记录；
+    /// NeedsRecovery 与非终态永不清理。恢复材料由终态转换时立即删除，不在此处理。
+    /// </summary>
+    public async Task<Result<int>> PruneJournalsAsync(
+        int retainDays = 30,
+        int maxPerInstance = 200,
         CancellationToken cancellationToken = default)
     {
+        if (!Directory.Exists(TransactionsRoot))
+        {
+            return Result<int>.Ok(0);
+        }
+
+        var cutoff = _time.GetUtcNow().AddDays(-Math.Max(1, retainDays));
+        var deleted = 0;
+        foreach (var directory in Directory.EnumerateDirectories(TransactionsRoot))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var records = new List<(string Path, InstanceTransactionRecord Record)>();
+            foreach (var path in Directory.EnumerateFiles(directory, "*.json"))
+            {
+                var record = await TryReadJournalAsync(path, cancellationToken).ConfigureAwait(false);
+                if (record is null || !IsTerminal(record.State) ||
+                    record.State == InstanceTransactionState.NeedsRecovery)
+                {
+                    continue;
+                }
+
+                records.Add((path, record));
+            }
+
+            var keep = records
+                .OrderByDescending(item => item.Record.UpdatedAt)
+                .Take(Math.Max(1, maxPerInstance))
+                .Select(item => item.Path)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var (path, record) in records)
+            {
+                if (keep.Contains(path) && record.UpdatedAt >= cutoff)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    File.Delete(path);
+                    deleted++;
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning(exception, "删除终态事务日志失败：{Path}", path);
+                }
+            }
+        }
+
+        return Result<int>.Ok(deleted);
+    }
+
+    public async Task<Result<InstanceActivityState>> GetActivityStateAsync(
+        string instanceId,
+        CancellationToken cancellationToken = default)    {
         if (!AppPaths.IsValidInstanceId(instanceId))
         {
             return Result<InstanceActivityState>.Fail("instance.invalid_id", "实例 ID 不合法。");
