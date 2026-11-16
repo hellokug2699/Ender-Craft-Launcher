@@ -277,6 +277,43 @@ public sealed class InstanceSnapshotConsistencyTests
         _ = snapshot;
     }
 
+    [Fact]
+    public async Task ProtectionRequiredCreatesVerifiedSnapshotAndRecommendedDoesNotBlock()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+        var sessions = provider.GetRequiredService<IGameSessionService>();
+        var protection = provider.GetRequiredService<ISnapshotProtectionService>();
+        var created = (await instances.CreateAsync("Protection", "1.21.1")).Value!;
+        await File.WriteAllTextAsync(
+            Path.Combine(environment.Paths.GetInstanceGameDirectory(created.Id), "options.txt"),
+            "fov:70\n");
+
+        var required = await protection.EnsureAsync(
+            created.Id,
+            SnapshotProtectionRequirement.Required,
+            SnapshotOrigin.PreChange);
+        Assert.True(required.IsSuccess, required.Error?.ToString());
+        Assert.NotNull(required.Value!.Snapshot);
+
+        AttachRunningSession(sessions, created, environment);
+        var blocked = await protection.EnsureAsync(
+            created.Id,
+            SnapshotProtectionRequirement.Required,
+            SnapshotOrigin.PreChange);
+        Assert.False(blocked.IsSuccess);
+        Assert.Equal("snapshot.protection_failed", blocked.Error?.Code);
+
+        var recommended = await protection.EnsureAsync(
+            created.Id,
+            SnapshotProtectionRequirement.Recommended,
+            SnapshotOrigin.PreChange);
+        Assert.True(recommended.IsSuccess, recommended.Error?.ToString());
+        Assert.Null(recommended.Value!.Snapshot);
+        Assert.Equal("snapshot.instance_running", recommended.Value.FailureCode);
+    }
+
     private static async Task WriteImportedMetadataAsync(
         TestEnvironment environment,
         string instanceId,

@@ -19,7 +19,7 @@ namespace Ecl.Minecraft.Engine.Snapshots;
 /// 用户快照与恢复（ADR 0048）。快照与事务恢复材料使用不同目录和生命周期：
 /// 本服务只管理用户快照；事务备份由 <see cref="InstanceTransactionCoordinator"/> 管理。
 /// </summary>
-public sealed class InstanceSnapshotService : IInstanceSnapshotService, ISnapshotMaintenanceService
+public sealed class InstanceSnapshotService : IInstanceSnapshotService, ISnapshotMaintenanceService, ISnapshotProtectionService
 {
     private const int MaxFiles = 200_000;
     private const int MaxSnapshotIdLength = 80;
@@ -997,6 +997,58 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService, ISnapsho
             manifestBytes,
             groups.Value.Count(item => item.Orphaned),
             orphanObjects));
+    }
+
+    public async Task<Result<SnapshotProtectionResult>> EnsureAsync(
+        string instanceId,
+        SnapshotProtectionRequirement requirement,
+        SnapshotOrigin origin = SnapshotOrigin.PreChange,
+        CancellationToken cancellationToken = default)
+    {
+        if (requirement == SnapshotProtectionRequirement.None)
+        {
+            return Result<SnapshotProtectionResult>.Ok(
+                new SnapshotProtectionResult(requirement, null, null, null));
+        }
+
+        var created = await CreateAsync(
+            instanceId,
+            new SnapshotCreateOptions(
+                SnapshotScope.Full,
+                Origin: origin,
+                RetentionClass: SnapshotRetentionClass.Automatic),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (!created.IsSuccess)
+        {
+            return requirement == SnapshotProtectionRequirement.Required
+                ? Result<SnapshotProtectionResult>.Fail(
+                    "snapshot.protection_failed",
+                    "无法创建变更前快照，已中止操作。",
+                    created.Error?.Code)
+                : Result<SnapshotProtectionResult>.Ok(new SnapshotProtectionResult(
+                    requirement,
+                    null,
+                    created.Error?.Code,
+                    created.Error?.Message));
+        }
+
+        var verification = await VerifyAsync(instanceId, created.Value!.SnapshotId, cancellationToken)
+            .ConfigureAwait(false);
+        if (!verification.IsSuccess || !verification.Value!.IsValid)
+        {
+            return requirement == SnapshotProtectionRequirement.Required
+                ? Result<SnapshotProtectionResult>.Fail(
+                    "snapshot.protection_failed",
+                    "变更前快照未通过完整性校验，已中止操作。")
+                : Result<SnapshotProtectionResult>.Ok(new SnapshotProtectionResult(
+                    requirement,
+                    null,
+                    "snapshot.verify_failed",
+                    "变更前快照未通过完整性校验。"));
+        }
+
+        return Result<SnapshotProtectionResult>.Ok(
+            new SnapshotProtectionResult(requirement, created.Value, null, null));
     }
 
     private async Task<HashSet<string>> CollectReferencedHashesAsync(CancellationToken cancellationToken)

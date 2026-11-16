@@ -2170,9 +2170,64 @@ internal sealed class CliApplication
                 {
                     var action = args.ElementAtOrDefault(1)?.ToLowerInvariant();
                     var instanceId = args.ElementAtOrDefault(2);
+                    if (action is "groups" or "prune")
+                    {
+                        var maintenance = _provider.GetRequiredService<ISnapshotMaintenanceService>();
+                        if (action == "groups")
+                        {
+                            var groups = await maintenance.ListGroupsAsync().ConfigureAwait(false);
+                            if (!groups.IsSuccess)
+                            {
+                                return WriteError(groups.Error);
+                            }
+
+                            if (_commandLine.HasFlag("json"))
+                            {
+                                Console.WriteLine(JsonSerializer.Serialize(groups.Value, EclJson.Indented));
+                                return 0;
+                            }
+
+                            if (groups.Value!.Count == 0)
+                            {
+                                Console.WriteLine("没有快照组。");
+                                return 0;
+                            }
+
+                            foreach (var group in groups.Value)
+                            {
+                                Console.WriteLine(
+                                    $"  {group.InstanceId} · {group.InstanceName ?? "(实例已删除)"} · {group.SnapshotCount} 个快照 · {FormatBytes(group.TotalBytes)}{(group.Orphaned ? " · 孤儿组" : string.Empty)}");
+                            }
+
+                            return 0;
+                        }
+
+                        var graceMinutes = int.TryParse(_commandLine.GetValue("grace-minutes"), out var minutes)
+                            ? Math.Max(0, minutes)
+                            : 60;
+                        var pruned = await maintenance.PruneOrphansAsync(new SnapshotPruneOptions(
+                                GracePeriod: TimeSpan.FromMinutes(graceMinutes),
+                                DryRun: _commandLine.HasFlag("dry-run")))
+                            .ConfigureAwait(false);
+                        if (!pruned.IsSuccess)
+                        {
+                            return WriteError(pruned.Error);
+                        }
+
+                        var result = pruned.Value!;
+                        Console.WriteLine(
+                            $"{(result.DeletedObjects == 0 ? "没有可回收对象" : $"回收 {result.DeletedObjects} 个对象")} · {FormatBytes(result.FreedBytes)}{(result.RetainedObjects > 0 ? $" · 保留 {result.RetainedObjects}" : string.Empty)}");
+                        foreach (var note in result.Notes)
+                        {
+                            Console.WriteLine($"  ! {note}");
+                        }
+
+                        return 0;
+                    }
+
                     if (string.IsNullOrWhiteSpace(action) || string.IsNullOrWhiteSpace(instanceId))
                     {
-                        return UsageError("engine snapshot <list|create|verify|restore|delete> <实例ID> [快照ID] [--scope full|environment|world] [--world <名称>]");
+                        return UsageError("engine snapshot <list|create|verify|restore|delete|diff|groups|prune> <实例ID> [快照ID] [--scope full|environment|world] [--world <名称>]");
                     }
 
                     var snapshots = _provider.GetRequiredService<IInstanceSnapshotService>();
@@ -2340,6 +2395,37 @@ internal sealed class CliApplication
                                 }
 
                                 Console.WriteLine($"已删除快照 {snapshotId}。");
+                                return 0;
+                            }
+
+                        case "diff":
+                            {
+                                var snapshotId = args.ElementAtOrDefault(3);
+                                if (string.IsNullOrWhiteSpace(snapshotId))
+                                {
+                                    return UsageError("engine snapshot diff <实例ID> <快照ID>");
+                                }
+
+                                var diff = await snapshots.DiffAsync(instanceId, snapshotId).ConfigureAwait(false);
+                                if (!diff.IsSuccess)
+                                {
+                                    return WriteError(diff.Error);
+                                }
+
+                                if (_commandLine.HasFlag("json"))
+                                {
+                                    Console.WriteLine(JsonSerializer.Serialize(diff.Value, EclJson.Indented));
+                                    return 0;
+                                }
+
+                                var summary = diff.Value!;
+                                Console.WriteLine(
+                                    $"新增 {summary.Added} · 删除 {summary.Removed} · 修改 {summary.Modified} · 未变 {summary.Unchanged} · 未知 {summary.Unknown}");
+                                foreach (var entry in summary.Entries.Take(100))
+                                {
+                                    Console.WriteLine($"  {entry.Status} {entry.RelativePath}");
+                                }
+
                                 return 0;
                             }
 
