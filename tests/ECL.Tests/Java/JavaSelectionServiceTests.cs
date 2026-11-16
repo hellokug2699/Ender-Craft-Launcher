@@ -294,6 +294,69 @@ public sealed class JavaSelectionServiceTests
         Assert.Contains("32", selection.BlockReason, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// F-08：普通警告抑制只是呈现偏好。开启后必须保持兼容结论、风险令牌、确认状态与
+    /// 32 位硬阻断完全不变，且按实例隔离。
+    /// </summary>
+    [Fact]
+    public async Task SuppressionPreferenceNeverChangesAdmissionOrRiskAcceptance()
+    {
+        using var environment = new TestEnvironment();
+        var java8 = Runtime(environment, "8.0.412");
+        var java17 = Runtime(environment, "17.0.15");
+        var java8x86 = Runtime(environment, "8.0.412", architecture: "x86");
+        await using var provider = environment.CreateServices(services =>
+            services.AddSingleton<IJavaLocator>(new FakeJavaLocator([java8, java17, java8x86])));
+
+        var instance = await CreateVersionAsync(provider, environment, "1.20.1");
+        var version = (await provider.GetRequiredService<IVersionResolver>().ResolveAsync(instance.VersionId)).Value!;
+        var settings = provider.GetRequiredService<ISettingsService>();
+        var selection = provider.GetRequiredService<IJavaSelectionService>();
+
+        var byDefault = await selection.ResolveAsync(instance, version);
+        Assert.False(byDefault.IsCompatibilityWarningSuppressed);
+
+        Assert.True(settings.TrySetRaw(
+            "instance.java.suppressCompatibilityWarnings",
+            "true",
+            instance.Id,
+            out var preferenceError), preferenceError);
+
+        var suppressed = await selection.ResolveAsync(instance, version);
+        Assert.True(suppressed.IsCompatibilityWarningSuppressed);
+        Assert.True(suppressed.Compatibility?.IsCompatible);
+        Assert.False(suppressed.IsBlocked);
+
+        // 显式选择不兼容 Java：抑制不改变兼容结论、风险令牌与确认状态。
+        Assert.True(settings.TrySetRaw(
+            "instance.java.executablePath", java8.ExecutablePath, instance.Id, out var pathError), pathError);
+        var incompatible = await selection.ResolveAsync(instance, version);
+        Assert.True(incompatible.IsCompatibilityWarningSuppressed);
+        Assert.Equal(JavaCompatibilityStatus.TooOld, incompatible.Compatibility?.Status);
+        Assert.False(incompatible.IsBlocked);
+        Assert.NotNull(incompatible.CompatibilityAcknowledgementToken);
+        Assert.False(incompatible.IsCompatibilityWarningAcknowledged);
+
+        // 32 位仍按 ADR 0014 硬阻断，抑制无法绕过。
+        Assert.True(settings.TrySetRaw(
+            "instance.java.executablePath", java8x86.ExecutablePath, instance.Id, out var x86Error), x86Error);
+        var blocked = await selection.ResolveAsync(instance, version);
+        Assert.True(blocked.IsCompatibilityWarningSuppressed);
+        Assert.True(blocked.IsBlocked);
+        Assert.Equal(JavaCompatibilityStatus.UnsupportedArchitecture, blocked.Compatibility?.Status);
+
+        // 实例隔离：其他实例不继承该偏好。
+        var other = await CreateVersionAsync(provider, environment, "1.20.1", instanceName: "Java Test Other");
+        var otherVersion = (await provider.GetRequiredService<IVersionResolver>()
+            .ResolveAsync(other.VersionId)).Value!;
+        var otherSelection = await selection.ResolveAsync(other, otherVersion);
+        Assert.False(otherSelection.IsCompatibilityWarningSuppressed);
+
+        Assert.True(settings.TryClear("instance.java.suppressCompatibilityWarnings", instance.Id, out _));
+        var restored = await selection.ResolveAsync(instance, version);
+        Assert.False(restored.IsCompatibilityWarningSuppressed);
+    }
+
     private static void CreateClassJar(string path, int classMajor)
     {
         using var archive = ZipFile.Open(path, ZipArchiveMode.Create);

@@ -55,6 +55,20 @@ internal sealed class MinecraftOptionsProvider : IOptionProvider
 
         // 旧版 instance.java.disableCompatibilityCheck 已移除：风险确认只能是显式 pin 的一次记录，
         // 不能成为关闭兼容性检测的全局开关。
+        //
+        // F-08 普通警告抑制：只抑制“兼容性/未知版本”的常规提示，不改变 Java 选择、
+        // 32 位拒绝、要求冲突和不兼容硬阻断（ADR 0014 的启动准入与风险接受不受影响）。
+        yield return new OptionDefinition<bool>
+        {
+            Key = "instance.java.suppressCompatibilityWarnings",
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Instance,
+            CategoryKey = "category.instance",
+            DisplayNameKey = "option.instance.suppressJavaWarnings.name",
+            DescriptionKey = "option.instance.suppressJavaWarnings.desc",
+            Default = false,
+            Order = 21,
+        };
 
         yield return new OptionDefinition<string?>
         {

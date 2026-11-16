@@ -116,14 +116,15 @@ public sealed class JavaStatusPresentationTests
     }
 
     [Fact]
-    public void BlockedSelectionIsAlwaysIncompatible()
+    public void BlockedSelectionIsAlwaysIncompatibleEvenWhenWarningsAreSuppressed()
     {
         var tile = JavaStatusPresentation.Describe(
             Selection(Runtime(), JavaCompatibilityStatus.UnsupportedArchitecture, isBlocked: true),
-            suppressCompatibilityWarnings: false,
+            suppressCompatibilityWarnings: true,
             Localizer());
 
         Assert.Equal(JavaCompatibilityBadge.Incompatible, tile.Badge);
+        Assert.DoesNotContain("已忽略", tile.StateText);
     }
 
     [Fact]

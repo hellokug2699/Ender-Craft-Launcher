@@ -24,7 +24,8 @@ public sealed record JavaSelectionResult(
     JavaSelectionDecision? Decision = null,
     JavaLaunchPlan? Plan = null,
     bool IsBlocked = false,
-    string? BlockReason = null);
+    string? BlockReason = null,
+    bool IsCompatibilityWarningSuppressed = false);
 
 public interface IJavaSelectionService
 {
@@ -149,6 +150,12 @@ public sealed class JavaSelectionService(
 
         var plan = JavaLaunchPlan.From(decision, compatibility, isCompatibilityWarningAcknowledged);
 
+        // F-08：普通兼容警告抑制只是实例级呈现偏好；它不进入 IsBlocked、不生成风险令牌、
+        // 不改变启动准入（ADR 0014 的风险接受仍由令牌/AcceptJavaRisk 决定）。
+        var isCompatibilityWarningSuppressed = settings.Get<bool>(
+            "instance.java.suppressCompatibilityWarnings",
+            instance.Id);
+
         return new JavaSelectionResult(
             decision.Runtime,
             requirements.ToRequirement(),
@@ -164,7 +171,8 @@ public sealed class JavaSelectionService(
             decision,
             plan,
             decision.IsBlocked,
-            decision.IsBlocked ? decision.Explanation : null);
+            decision.IsBlocked ? decision.Explanation : null,
+            isCompatibilityWarningSuppressed);
     }
 
     public async Task<EffectiveJavaRequirements> ResolveRequirementsAsync(

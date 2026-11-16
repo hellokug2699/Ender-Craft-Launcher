@@ -86,9 +86,12 @@ public static class JavaStatusPresentation
 
         if (selection.IsBlocked || status != JavaCompatibilityStatus.Compatible)
         {
-            var badge = suppressCompatibilityWarnings
-                ? JavaCompatibilityBadge.IncompatibleAcknowledged
-                : JavaCompatibilityBadge.Incompatible;
+            // 32 位拒绝、要求冲突等硬阻断永远是红色不兼容；抑制偏好只影响可继续的普通警告。
+            var badge = selection.IsBlocked
+                ? JavaCompatibilityBadge.Incompatible
+                : suppressCompatibilityWarnings
+                    ? JavaCompatibilityBadge.IncompatibleAcknowledged
+                    : JavaCompatibilityBadge.Incompatible;
 
             return new JavaTilePresentation(
                 title,

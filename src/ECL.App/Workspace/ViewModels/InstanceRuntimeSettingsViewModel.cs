@@ -121,6 +121,13 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
     [ObservableProperty]
     private string _statusMessage = string.Empty;
 
+    /// <summary>
+    /// 实例级“抑制 Java 普通兼容警告”偏好（F-08）。只改变呈现与常规提示，
+    /// 不改变 Java 选择、32 位拒绝、不兼容硬阻断或 ADR 0014 的风险接受。
+    /// </summary>
+    [ObservableProperty]
+    private bool _suppressCompatibilityWarnings;
+
     /// <summary>实例填写了专属内存时才能编辑数值；“使用全局”状态下输入框不参与编辑。</summary>
     public bool IsMemoryEditable => !UseGlobalMemory;
 
@@ -421,6 +428,36 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
         _ = UpdateJavaStatusAsync();
     }
 
+    partial void OnSuppressCompatibilityWarningsChanged(bool value)
+    {
+        if (_suppressJavaSelection || IsDisposed)
+        {
+            return;
+        }
+
+        // 只是普通警告的呈现偏好：开启写 true，关闭清除该实例键（回落到默认 false）。
+        var saved = value
+            ? _settings.TrySetRaw(
+                "instance.java.suppressCompatibilityWarnings",
+                "true",
+                InstanceId,
+                out var setError)
+            : _settings.TryClear(
+                "instance.java.suppressCompatibilityWarnings",
+                InstanceId,
+                out setError);
+        if (!saved)
+        {
+            StatusMessage = setError ?? _localizer.Get("instance.java.suppressWarnings.saveFailed");
+            return;
+        }
+
+        StatusMessage = value
+            ? _localizer.Get("instance.java.suppressWarnings.enabled")
+            : _localizer.Get("instance.java.suppressWarnings.disabled");
+        _ = UpdateJavaStatusAsync();
+    }
+
     public void Dispose()
     {
         if (IsDisposed)
@@ -439,6 +476,18 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
         var instanceMemory = _settings.Get<int?>("instance.java.memoryMb", InstanceId);
         UseGlobalMemory = instanceMemory is null;
         MemoryMbText = instanceMemory?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        _suppressJavaSelection = true;
+        try
+        {
+            SuppressCompatibilityWarnings = _settings.Get<bool>(
+                "instance.java.suppressCompatibilityWarnings",
+                InstanceId);
+        }
+        finally
+        {
+            _suppressJavaSelection = false;
+        }
+
         RefreshGlobalMemoryText();
     }
 
@@ -546,7 +595,7 @@ public sealed partial class InstanceRuntimeSettingsViewModel : ObservableObject,
 
             JavaTile = JavaStatusPresentation.Describe(
                 selection,
-                suppressCompatibilityWarnings: false,
+                selection.IsCompatibilityWarningSuppressed,
                 _localizer);
             JavaStatus = JavaSelectionPresentation.Describe(selection, _localizer);
         }
