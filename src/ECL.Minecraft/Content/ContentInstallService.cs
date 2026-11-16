@@ -6,6 +6,7 @@ using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Download;
 using Ecl.Minecraft.CurseForge;
+using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Modrinth;
 using Ecl.Minecraft.Mods;
@@ -127,6 +128,7 @@ public sealed class ContentInstallService(
     ILocalizer localizer,
     ILogger<ContentInstallService> logger,
     IDatapackService datapacks,
+    IInstanceTransactionService transactions,
     IOperationService? operations = null) : IContentInstallService
 {
     private const int MaxDependencyDepth = 4;
@@ -372,14 +374,17 @@ public sealed class ContentInstallService(
                 return failed;
             }
 
+            var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
             var targetDirectory = Path.Combine(
-                InstancePaths.GetGameDirectory(paths, instance),
+                gameDirectory,
                 ContentKinds.FolderName(hit.Kind));
             var downloadResult = await DownloadFilesAsync(
                     resolved.Value!,
                     targetDirectory,
                     operation,
-                    cancellationToken)
+                    cancellationToken,
+                    instance.Id,
+                    gameDirectory)
                 .ConfigureAwait(false);
             if (!downloadResult.IsSuccess)
             {
@@ -892,14 +897,17 @@ public sealed class ContentInstallService(
             return Result<ContentInstallReport>.Fail(resolved.Error!);
         }
 
+        var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
         var targetDirectory = Path.Combine(
-            InstancePaths.GetGameDirectory(paths, instance),
+            gameDirectory,
             ContentKinds.FolderName(hit.Kind));
         var downloadResult = await DownloadFilesAsync(
                 resolved.Value!,
                 targetDirectory,
                 progress,
-                cancellationToken)
+                cancellationToken,
+                instance.Id,
+                gameDirectory)
             .ConfigureAwait(false);
         if (!downloadResult.IsSuccess)
         {
@@ -1785,13 +1793,19 @@ public sealed class ContentInstallService(
         ResolvedDownload resolved,
         string targetDirectory,
         IProgress<ContentProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? instanceId = null,
+        string? gameDirectory = null)
     {
-        Directory.CreateDirectory(targetDirectory);
+        var transactional = instanceId is not null && gameDirectory is not null;
+        var downloadDirectory = transactional
+            ? Path.Combine(paths.CacheDirectory, "content-staging", Guid.NewGuid().ToString("N"))
+            : targetDirectory;
+        Directory.CreateDirectory(downloadDirectory);
 
         var requests = resolved.Files
             .Select(file => new DownloadRequest(
-                Path.Combine(targetDirectory, file.FileName),
+                Path.Combine(downloadDirectory, file.FileName),
                 [file.Url],
                 file.Sha1,
                 HashingAlgorithm.Sha1,
@@ -1819,13 +1833,49 @@ public sealed class ContentInstallService(
         }
         catch (DownloadException exception)
         {
+            if (transactional)
+            {
+                TryDeleteDirectory(downloadDirectory);
+            }
+
             return Result<IReadOnlyList<string>>.Fail(
                 "download.failed",
                 $"下载失败：{exception.Message}",
                 string.Join("; ", exception.Failures.Take(5)));
         }
 
-        return Result<IReadOnlyList<string>>.Ok(requests.Select(request => Path.GetFileName(request.DestinationPath)).ToArray());
+        var fileNames = requests
+            .Select(request => Path.GetFileName(request.DestinationPath))
+            .ToArray();
+        if (!transactional)
+        {
+            return Result<IReadOnlyList<string>>.Ok(fileNames);
+        }
+
+        try
+        {
+            Directory.CreateDirectory(targetDirectory);
+            var operations = requests
+                .Select(request =>
+                {
+                    var destination = Path.Combine(targetDirectory, Path.GetFileName(request.DestinationPath));
+                    var relative = Path.GetRelativePath(gameDirectory!, destination)
+                        .Replace(Path.DirectorySeparatorChar, '/');
+                    return InstanceChangeOperation.CopyFrom(relative, request.DestinationPath);
+                })
+                .ToArray();
+            var written = await transactions.ExecuteAsync(
+                instanceId!,
+                new InstanceChangePlan(operations, "安装内容文件"),
+                cancellationToken).ConfigureAwait(false);
+            return written.IsSuccess
+                ? Result<IReadOnlyList<string>>.Ok(fileNames)
+                : Result<IReadOnlyList<string>>.Fail(written.Error!);
+        }
+        finally
+        {
+            TryDeleteDirectory(downloadDirectory);
+        }
     }
 
     private static bool TryCreateModrinthUri(string? value, out Uri uri)

@@ -7,6 +7,7 @@ using Ecl.Core.Json;
 using Ecl.Core.Localization;
 using Ecl.Download;
 using Ecl.Minecraft.CurseForge;
+using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Instances;
 using Ecl.Operations;
 using Microsoft.Extensions.Logging;
@@ -20,6 +21,7 @@ public sealed class ModpackService(
     ICurseForgeClient curseForge,
     ILocalizer localizer,
     ILogger<ModpackService> logger,
+    IInstanceTransactionService transactions,
     IOperationService? operations = null) : IModpackService
 {
     private static readonly string[] ModrinthOverrideRoots = ["overrides/", "client-overrides/"];
@@ -332,7 +334,7 @@ public sealed class ModpackService(
 
         progress?.Report(new ModpackProgress("overrides", localizer.Get("modpack.stage.overrides"), 0, 0, null));
         var overrides = ModpackArchiveExtractor.ExtractOverrides(archive, gameDirectory, ModrinthOverrideRoots);
-        WriteMarker(gameDirectory, name, version, archivePath, "modrinth", downloaded, skipped);
+        await WriteMarkerAsync(instance.Id, gameDirectory, name, version, archivePath, "modrinth", downloaded, skipped, cancellationToken).ConfigureAwait(false);
 
         logger.LogInformation(
             "已导入整合包 {Name} 到实例 {InstanceId}：下载 {Downloaded}，跳过 {Skipped}，覆盖 {Overrides}。",
@@ -531,7 +533,7 @@ public sealed class ModpackService(
         progress?.Report(new ModpackProgress("overrides", localizer.Get("modpack.stage.overrides"), 0, 0, null));
         var overrideRoots = BuildCurseForgeOverrideRoots(GetString(root, "overrides"));
         var overrides = ModpackArchiveExtractor.ExtractOverrides(archive, gameDirectory, overrideRoots);
-        WriteMarker(gameDirectory, name, version, archivePath, "curseforge", downloaded, skipped);
+        await WriteMarkerAsync(instance.Id, gameDirectory, name, version, archivePath, "curseforge", downloaded, skipped, cancellationToken).ConfigureAwait(false);
 
         logger.LogInformation(
             "已导入 CurseForge 整合包 {Name} 到实例 {InstanceId}：下载 {Downloaded}，跳过 {Skipped}，覆盖 {Overrides}。",
@@ -689,14 +691,16 @@ public sealed class ModpackService(
             }
             : null;
 
-    private static void WriteMarker(
+    private async Task WriteMarkerAsync(
+        string instanceId,
         string gameDirectory,
         string name,
         string? version,
         string archivePath,
         string sourceKind,
         int downloadedFiles,
-        int skippedFiles)
+        int skippedFiles,
+        CancellationToken cancellationToken)
     {
         var marker = new
         {
@@ -708,9 +712,18 @@ public sealed class ModpackService(
             skippedFiles,
             importedAt = DateTimeOffset.UtcNow.ToString("O"),
         };
-        File.WriteAllText(
-            Path.Combine(gameDirectory, ".ecl-modpack.json"),
-            JsonSerializer.Serialize(marker, EclJson.Indented));
+        var relative = Path.GetRelativePath(gameDirectory, Path.Combine(gameDirectory, ".ecl-modpack.json"))
+            .Replace(Path.DirectorySeparatorChar, '/');
+        var written = await transactions.ExecuteAsync(
+            instanceId,
+            new InstanceChangePlan(
+                [InstanceChangeOperation.WriteText(relative, JsonSerializer.Serialize(marker, EclJson.Indented))],
+                "写入整合包来源标记"),
+            cancellationToken).ConfigureAwait(false);
+        if (!written.IsSuccess)
+        {
+            throw new InvalidOperationException($"写入整合包标记失败：{written.Error!.Message}");
+        }
     }
 
     private static IReadOnlyList<Uri> ReadDownloadUrls(JsonElement file)
