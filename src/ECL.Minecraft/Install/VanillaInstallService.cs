@@ -9,6 +9,7 @@ using Ecl.Core.Json;
 using Ecl.Core.Localization;
 using Ecl.Core.Storage;
 using Ecl.Download;
+using Ecl.Minecraft.Engine.Snapshots;
 using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Instances;
 using Ecl.Minecraft.Java;
@@ -38,6 +39,7 @@ public sealed class VanillaInstallService : IVersionInstallService
     private readonly IOperationService? _operations;
     private readonly ILogger<VanillaInstallService> _logger;
     private readonly ISharedJsonTransactionService? _sharedJson;
+    private readonly ISnapshotProtectionService? _snapshotProtection;
 
     public VanillaInstallService(
         IInstanceService instances,
@@ -50,7 +52,8 @@ public sealed class VanillaInstallService : IVersionInstallService
         ILocalizer localizer,
         ILogger<VanillaInstallService> logger,
         IOperationService? operations = null,
-        ISharedJsonTransactionService? sharedJson = null)
+        ISharedJsonTransactionService? sharedJson = null,
+        ISnapshotProtectionService? snapshotProtection = null)
     {
         _instances = instances;
         _paths = paths;
@@ -63,6 +66,7 @@ public sealed class VanillaInstallService : IVersionInstallService
         _operations = operations;
         _logger = logger;
         _sharedJson = sharedJson;
+        _snapshotProtection = snapshotProtection;
     }
 
     public async Task<Result<InstallReport>> InstallAsync(
@@ -112,6 +116,19 @@ public sealed class VanillaInstallService : IVersionInstallService
         if (!target.IsSuccess)
         {
             return Failed(target.Error!);
+        }
+
+        if (_snapshotProtection is not null)
+        {
+            var protection = await _snapshotProtection.EnsureAsync(
+                instanceId,
+                SnapshotProtectionRequirement.Required,
+                SnapshotOrigin.PreChange,
+                cancellationToken).ConfigureAwait(false);
+            if (!protection.IsSuccess)
+            {
+                return Failed(protection.Error!);
+            }
         }
 
         InstallOutcome outcome;
