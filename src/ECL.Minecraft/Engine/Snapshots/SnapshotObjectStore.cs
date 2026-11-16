@@ -73,6 +73,12 @@ public sealed class SnapshotObjectStore(string root)
                 throw new InvalidDataException($"复制后长度不一致：{sha256}");
             }
 
+            var copiedHash = ComputeHash(temporary);
+            if (!string.Equals(copiedHash, sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException($"复制后内容哈希不一致：{sha256}");
+            }
+
             File.Move(temporary, path, overwrite: false);
             return path;
         }

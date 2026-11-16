@@ -224,8 +224,52 @@ public sealed partial class InstanceService : IInstanceService
             return Result<GameInstance>.Fail("instance.not_found", "实例不存在。");
         }
 
-        gameVersion = gameVersion.Trim();
-        loader = loader.Trim().ToLowerInvariant();
+        var preview = PreviewConfiguration(
+            current,
+            gameVersion,
+            loader,
+            loaderVersion,
+            fabricApiVersion,
+            optiFineVersion);
+        if (!preview.IsSuccess)
+        {
+            return preview;
+        }
+
+        var updated = preview.Value!;
+        await _store.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
+        var registered = await _identity.EnsureRegisteredAsync(updated, writeMarker: true, cancellationToken)
+            .ConfigureAwait(false);
+        if (!registered.IsSuccess)
+        {
+            _logger.LogWarning(
+                "实例 {InstanceId} 配置已保存，但身份登记未更新：{Error}",
+                instanceId,
+                registered.Error);
+        }
+
+        _logger.LogInformation(
+            "已更新实例 {InstanceId} 配置：Minecraft {GameVersion}，加载器 {Loader} {LoaderVersion}。",
+            instanceId, updated.GameVersion, updated.Loader, updated.LoaderVersion);
+        return Result<GameInstance>.Ok(updated);
+    }
+
+    /// <summary>
+    /// 纯配置预览：校验目标版本/加载器组合并返回更新后的记录，不写盘。
+    /// 安装/重配置用它先准备目标配置，待文件与共享 JSON 事务提交后再写元数据（F-04 §8.8）。
+    /// </summary>
+    public static Result<GameInstance> PreviewConfiguration(
+        GameInstance current,
+        string gameVersion,
+        string loader,
+        string? loaderVersion = null,
+        string? fabricApiVersion = null,
+        string? optiFineVersion = null)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+
+        gameVersion = (gameVersion ?? string.Empty).Trim();
+        loader = (loader ?? string.Empty).Trim().ToLowerInvariant();
         loaderVersion = string.IsNullOrWhiteSpace(loaderVersion) ? null : loaderVersion.Trim();
         fabricApiVersion = string.IsNullOrWhiteSpace(fabricApiVersion) ? null : fabricApiVersion.Trim();
         optiFineVersion = string.IsNullOrWhiteSpace(optiFineVersion) ? null : optiFineVersion.Trim();
@@ -268,7 +312,7 @@ public sealed partial class InstanceService : IInstanceService
             return Result<GameInstance>.Fail("instance.invalid_optifine", "OptiFine 仅支持 Forge / Cleanroom，且版本键格式必须有效。");
         }
 
-        var updated = current with
+        return Result<GameInstance>.Ok(current with
         {
             GameVersion = gameVersion,
             VersionId = BuildVersionId(gameVersion, loader, loaderVersion),
@@ -276,23 +320,7 @@ public sealed partial class InstanceService : IInstanceService
             LoaderVersion = loaderVersion,
             FabricApiVersion = loader == "fabric" ? fabricApiVersion : null,
             OptiFineVersion = optiFineVersion,
-        };
-
-        await _store.SaveAsync(updated, cancellationToken).ConfigureAwait(false);
-        var registered = await _identity.EnsureRegisteredAsync(updated, writeMarker: true, cancellationToken)
-            .ConfigureAwait(false);
-        if (!registered.IsSuccess)
-        {
-            _logger.LogWarning(
-                "实例 {InstanceId} 配置已保存，但身份登记未更新：{Error}",
-                instanceId,
-                registered.Error);
-        }
-
-        _logger.LogInformation(
-            "已更新实例 {InstanceId} 配置：Minecraft {GameVersion}，加载器 {Loader} {LoaderVersion}。",
-            instanceId, gameVersion, loader, loaderVersion);
-        return Result<GameInstance>.Ok(updated);
+        });
     }
 
     public async Task<Result<GameInstance>> RestoreConfigurationAsync(

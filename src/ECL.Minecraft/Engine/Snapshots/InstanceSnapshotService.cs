@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Ecl.Core;
 using Ecl.Core.Json;
+using Ecl.Minecraft.Engine.Identity;
 using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Instances;
+using Ecl.Sessions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -29,10 +32,14 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
         "natives",
         "downloads",
         ".cache",
+        ".ecl-modpack.json",
+        "eula.txt",
     ];
 
     private readonly IInstanceService _instances;
     private readonly InstanceTransactionCoordinator _transactions;
+    private readonly IInstanceWriteGate _gate;
+    private readonly IGameSessionService _sessions;
     private readonly IAppPaths _paths;
     private readonly ILogger<InstanceSnapshotService> _logger;
     private readonly TimeProvider _time;
@@ -40,12 +47,16 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
     public InstanceSnapshotService(
         IInstanceService instances,
         InstanceTransactionCoordinator transactions,
+        IInstanceWriteGate gate,
+        IGameSessionService sessions,
         IAppPaths paths,
         ILogger<InstanceSnapshotService>? logger = null,
         TimeProvider? time = null)
     {
         _instances = instances;
         _transactions = transactions;
+        _gate = gate;
+        _sessions = sessions;
         _paths = paths;
         _logger = logger ?? NullLogger<InstanceSnapshotService>.Instance;
         _time = time ?? TimeProvider.System;
@@ -78,6 +89,24 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
             return Result<SnapshotManifest>.Fail("snapshot.root_missing", "实例游戏目录不存在。");
         }
 
+        var leaseResult = await _gate.AcquireReadAsync(instanceId, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        if (!leaseResult.IsSuccess)
+        {
+            return Result<SnapshotManifest>.Fail(leaseResult.Error!);
+        }
+
+        await using var lease = leaseResult.Value!;
+
+        var running = IsInstanceRunning(instanceId);
+        var allowRunning = options.AllowRunningInstance || options.AllowRunningWorld;
+        if (running && !allowRunning)
+        {
+            return Result<SnapshotManifest>.Fail(
+                "snapshot.instance_running",
+                "实例正在运行；请关闭游戏后重试，或显式允许创建一致性不足的快照。");
+        }
+
         IReadOnlyList<string> roots;
         IReadOnlyList<string> excludes;
         string? worldName;
@@ -93,13 +122,15 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
         {
             return Result<SnapshotManifest>.Fail("snapshot.scope_empty", "快照范围内没有可包含的内容。");
         }
-        var consistencyWarning = (string?)null;
+        var consistencyWarning = running
+            ? "实例在游戏运行期间创建快照，跨文件状态可能不一致；该快照不会被视为可恢复快照。"
+            : null;
         if (options.Scope == SnapshotScope.World && worldName is not null)
         {
             var sessionLock = Path.Combine(gameDirectory, "saves", worldName, "session.lock");
             if (File.Exists(sessionLock))
             {
-                if (!options.AllowRunningWorld)
+                if (!allowRunning)
                 {
                     return Result<SnapshotManifest>.Fail(
                         "snapshot.world_running",
@@ -107,7 +138,7 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
                         worldName);
                 }
 
-                consistencyWarning = "世界在游戏运行期间创建快照，跨文件状态可能不一致。";
+                consistencyWarning ??= "世界在游戏运行期间创建快照，跨文件状态可能不一致。";
             }
         }
 
@@ -135,7 +166,14 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
             0,
             SnapshotStatus.Incomplete,
             "快照正在创建。",
-            consistencyWarning);
+            consistencyWarning,
+            options.Name,
+            options.Origin,
+            options.RetentionClass,
+            InstancePathIdentity.Normalize(gameDirectory),
+            instance.GameDirectory is null ? "EclManaged" : "External",
+            "f05-1",
+            typeof(InstanceSnapshotService).Assembly.GetName().Version?.ToString(3));
         await WriteManifestAsync(manifestPath, initial, cancellationToken).ConfigureAwait(false);
 
         try
@@ -162,14 +200,17 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
                 }
             }
 
+            var consistent = !incomplete && string.IsNullOrWhiteSpace(consistencyWarning);
             var manifest = initial with
             {
                 Files = files,
                 TotalBytes = totalBytes,
-                Status = incomplete ? SnapshotStatus.Incomplete : SnapshotStatus.Complete,
+                Status = consistent ? SnapshotStatus.Complete : SnapshotStatus.Incomplete,
                 Note = incomplete
                     ? $"快照不完整：{warnings.Count} 个文件无法读取。"
-                    : null,
+                    : string.IsNullOrWhiteSpace(consistencyWarning)
+                        ? null
+                        : "一致性不足：该快照仅作为证据，不用于恢复。",
             };
             await WriteManifestAsync(manifestPath, manifest, cancellationToken).ConfigureAwait(false);
             _logger.LogInformation(
@@ -413,6 +454,13 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
         CancellationToken cancellationToken = default)
     {
         options ??= new SnapshotRestoreOptions();
+        if (IsInstanceRunning(instanceId) && !options.AllowRunningInstance)
+        {
+            return Result<SnapshotRestoreResult>.Fail(
+                "snapshot.instance_running",
+                "实例正在运行，不能恢复快照；请先关闭游戏。");
+        }
+
         var verification = await VerifyAsync(instanceId, snapshotId, cancellationToken).ConfigureAwait(false);
         if (!verification.IsSuccess)
         {
@@ -605,6 +653,46 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
         }
 
         return Result<long>.Ok(freed);
+    }
+
+    private bool IsInstanceRunning(string instanceId)
+    {
+        foreach (var session in _sessions.List())
+        {
+            var manifest = session.Manifest;
+            if (!string.Equals(manifest.InstanceId, instanceId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (manifest.State is not (
+                GameSessionState.Preparing or
+                GameSessionState.Starting or
+                GameSessionState.Running))
+            {
+                continue;
+            }
+
+            if (manifest.ProcessId is not { } processId || processId <= 0)
+            {
+                return true;
+            }
+
+            try
+            {
+                using var process = Process.GetProcessById(processId);
+                if (!process.HasExited)
+                {
+                    return true;
+                }
+            }
+            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+            {
+                // 进程已退出：会话状态尚未收尾，不视为运行中。
+            }
+        }
+
+        return false;
     }
 
     private (IReadOnlyList<string> Roots, IReadOnlyList<string> Excludes, string? WorldName) ResolveScope(

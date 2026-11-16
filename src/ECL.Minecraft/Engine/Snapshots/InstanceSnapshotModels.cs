@@ -23,6 +23,20 @@ public enum SnapshotStatus
     Corrupt,
 }
 
+public enum SnapshotOrigin
+{
+    User,
+    PreChange,
+    Safety,
+    Cli,
+}
+
+public enum SnapshotRetentionClass
+{
+    User,
+    Automatic,
+}
+
 public sealed record SnapshotFile(
     string RelativePath,
     long Size,
@@ -30,8 +44,8 @@ public sealed record SnapshotFile(
     DateTimeOffset ModifiedAt);
 
 /// <summary>
-/// 用户快照清单（ADR 0048 §2）。清单与内容寻址对象共同构成可验证快照；
-/// 不完整创建的快照不得标记为 Complete。
+/// 用户快照清单（ADR 0048 §2 / F-05）。清单与内容寻址对象共同构成可验证快照；
+/// 不完整创建或一致性不足的快照不得标记为 Complete。
 /// </summary>
 public sealed record SnapshotManifest(
     string SchemaVersion,
@@ -48,15 +62,32 @@ public sealed record SnapshotManifest(
     long TotalBytes,
     SnapshotStatus Status,
     string? Note = null,
-    string? ConsistencyWarning = null)
+    string? ConsistencyWarning = null,
+    string? Name = null,
+    SnapshotOrigin Origin = SnapshotOrigin.User,
+    SnapshotRetentionClass RetentionClass = SnapshotRetentionClass.User,
+    string? InstancePathIdentity = null,
+    string? InstanceOwnership = null,
+    string? RangePolicyVersion = null,
+    string? ToolVersion = null)
 {
     public int FileCount => Files.Count;
+
+    /// <summary>只有完整、一致、未被更高 schema 改写且对象可验证的快照才可恢复。</summary>
+    public bool IsRestoreEligible =>
+        Status == SnapshotStatus.Complete &&
+        string.IsNullOrWhiteSpace(ConsistencyWarning) &&
+        string.CompareOrdinal(SchemaVersion, InstanceEngineVersions.SnapshotSchema) <= 0;
 }
 
 public sealed record SnapshotCreateOptions(
     SnapshotScope Scope,
     string? WorldName = null,
-    bool AllowRunningWorld = false);
+    bool AllowRunningWorld = false,
+    bool AllowRunningInstance = false,
+    SnapshotOrigin Origin = SnapshotOrigin.User,
+    SnapshotRetentionClass RetentionClass = SnapshotRetentionClass.User,
+    string? Name = null);
 
 public sealed record SnapshotProgress(string Stage, int Processed, int Total, string? CurrentItem = null);
 
@@ -95,7 +126,8 @@ public sealed record SnapshotDiffSummary(
 
 public sealed record SnapshotRestoreOptions(
     bool DeleteExtraFiles = true,
-    bool CreateSafetySnapshot = true);
+    bool CreateSafetySnapshot = true,
+    bool AllowRunningInstance = false);
 
 public sealed record SnapshotRestoreResult(
     string SnapshotId,

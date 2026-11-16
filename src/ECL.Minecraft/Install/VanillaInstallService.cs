@@ -101,54 +101,70 @@ public sealed class VanillaInstallService : IVersionInstallService
             return Failed("install.instance_missing", _localizer.Get("install.error.instanceMissing", instanceId));
         }
 
-        var update = await _instances.UpdateConfigurationAsync(
-            instanceId, gameVersion, loader, loaderVersion, fabricApiVersion, optiFineVersion, cancellationToken)
-            .ConfigureAwait(false);
-        if (!update.IsSuccess)
+        // F-04 §8.8：先准备目标配置（不写元数据），文件/共享 JSON 事务提交后再写元数据。
+        var target = InstanceService.PreviewConfiguration(
+            original,
+            gameVersion,
+            loader,
+            loaderVersion,
+            fabricApiVersion,
+            optiFineVersion);
+        if (!target.IsSuccess)
         {
-            // 配置没有写成，本次变更还没有开始写入任何文件。
-            return Failed(update.Error!);
+            return Failed(target.Error!);
         }
 
         InstallOutcome outcome;
         try
         {
-            outcome = await RunInstallAsync(instanceId, progress, cancellationToken).ConfigureAwait(false);
+            outcome = await RunInstallAsync(instanceId, progress, cancellationToken, target.Value!)
+                .ConfigureAwait(false);
         }
         catch (Exception exception)
         {
-            // 未被安装事务捕获的异常无法证明文件级回滚是否发生；只恢复已知的元数据，
-            // 并如实报告“回滚状态未知”，由调用方按需要恢复处理。
-            var restored = await RestoreConfigurationAsync(original).ConfigureAwait(false);
+            // 文件级回滚状态未知；元数据尚未提交，实例仍指向旧配置。
             var error = new EclError("install.failed", _localizer.Get("install.failed", exception.Message));
             var rollback = new InstallRollbackResult(
                 [],
                 [$"rollback state unknown: {exception.Message}"]);
             return InstallOutcome.Fail(new InstallFailure(
                 error,
-                restored ? rollback : WithMetadataFailure(rollback, "failed to restore instance configuration"),
-                MetadataRestored: restored,
+                rollback,
+                MetadataRestored: true,
                 DiagnosticPath: null));
         }
 
-        if (outcome.IsSuccess)
+        if (!outcome.IsSuccess)
         {
-            _logger.LogInformation(
-                "实例 {InstanceId} 已完成原地配置变更；旧版本文件保留以便安全回退。",
-                instanceId);
+            // 安装失败时共享 JSON 已由安装事务撤销；元数据从未写入，实例仍使用旧配置。
             return outcome;
         }
 
-        var metadataRestored = await RestoreConfigurationAsync(original).ConfigureAwait(false);
-        var failure = outcome.Failure!;
-        var rollbackResult = metadataRestored
-            ? failure.Rollback
-            : WithMetadataFailure(failure.Rollback, "failed to restore instance configuration");
-        return InstallOutcome.Fail(failure with
+        var metadata = await _instances.UpdateConfigurationAsync(
+            instanceId,
+            gameVersion,
+            loader,
+            loaderVersion,
+            fabricApiVersion,
+            optiFineVersion,
+            cancellationToken).ConfigureAwait(false);
+        if (!metadata.IsSuccess)
         {
-            Rollback = rollbackResult,
-            MetadataRestored = metadataRestored,
-        });
+            var failure = new InstallFailure(
+                new EclError(
+                    "install.metadata_failed",
+                    "文件已安装，但实例配置未能提交；当前实例仍使用旧配置。",
+                    metadata.Error?.Message),
+                InstallRollbackResult.Empty,
+                MetadataRestored: true,
+                DiagnosticPath: null);
+            return InstallOutcome.Fail(failure);
+        }
+
+        _logger.LogInformation(
+            "实例 {InstanceId} 已完成原地配置变更；旧版本文件保留以便安全回退。",
+            instanceId);
+        return outcome;
     }
 
     /// <summary>
@@ -158,9 +174,10 @@ public sealed class VanillaInstallService : IVersionInstallService
     private async Task<InstallOutcome> RunInstallAsync(
         string instanceId,
         IProgress<InstallProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        GameInstance? configurationOverride = null)
     {
-        var instance = await _instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        var instance = configurationOverride ?? await _instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
         if (instance is null)
         {
             return Failed("install.instance_missing", _localizer.Get("install.error.instanceMissing", instanceId));
