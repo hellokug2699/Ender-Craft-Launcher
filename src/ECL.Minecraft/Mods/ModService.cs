@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.Core;
+using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Instances;
 using Microsoft.Extensions.Logging;
 
@@ -9,6 +10,7 @@ namespace Ecl.Minecraft.Mods;
 public sealed class ModService(
     IInstanceService instances,
     IAppPaths paths,
+    IInstanceTransactionService transactions,
     ILogger<ModService> logger) : IModService
 {
     private static readonly HashSet<string> PlatformDependencies = new(StringComparer.OrdinalIgnoreCase)
@@ -84,7 +86,12 @@ public sealed class ModService(
             return Result.Fail(resolved.Error!);
         }
 
-        return SetEnabledCore(resolved.Value!.Directory, resolved.Value.FileName, enabled);
+        return await SetEnabledCoreAsync(
+            instanceId,
+            resolved.Value!.Directory,
+            resolved.Value.FileName,
+            enabled,
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<Result<ModBatchResult>> SetAllEnabledAsync(
@@ -109,7 +116,12 @@ public sealed class ModService(
                      .ToArray())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var result = SetEnabledCore(modsDirectory, Path.GetFileName(file), enabled);
+            var result = await SetEnabledCoreAsync(
+                instanceId,
+                modsDirectory,
+                Path.GetFileName(file),
+                enabled,
+                cancellationToken).ConfigureAwait(false);
             if (result.IsSuccess)
             {
                 succeeded++;
@@ -182,7 +194,21 @@ public sealed class ModService(
 
             try
             {
-                File.Copy(source, destination, overwrite);
+                var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
+                var relative = Path.GetRelativePath(gameDirectory, destination)
+                    .Replace(Path.DirectorySeparatorChar, '/');
+                var written = await transactions.ExecuteAsync(
+                    instanceId,
+                    new InstanceChangePlan(
+                        [InstanceChangeOperation.CopyFrom(relative, source)],
+                        $"导入 Mod {fileName}"),
+                    cancellationToken).ConfigureAwait(false);
+                if (!written.IsSuccess)
+                {
+                    errors.Add($"{fileName}: {written.Error!.Message}");
+                    continue;
+                }
+
                 succeeded++;
                 logger.LogInformation("已导入 Mod {File} 到实例 {InstanceId}。", fileName, instance.Id);
             }
@@ -208,8 +234,23 @@ public sealed class ModService(
 
         try
         {
-            File.Delete(Path.Combine(resolved.Value!.Directory, resolved.Value.FileName));
-            return Result.Ok();
+            var instance = await instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+            if (instance is null)
+            {
+                return Result.Fail("instance.not_found", "实例不存在。");
+            }
+
+            var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
+            var target = Path.Combine(resolved.Value!.Directory, resolved.Value.FileName);
+            var relative = Path.GetRelativePath(gameDirectory, target)
+                .Replace(Path.DirectorySeparatorChar, '/');
+            var deleted = await transactions.ExecuteAsync(
+                instanceId,
+                new InstanceChangePlan(
+                    [InstanceChangeOperation.Delete(relative)],
+                    $"删除 Mod {resolved.Value.FileName}"),
+                cancellationToken).ConfigureAwait(false);
+            return deleted.IsSuccess ? Result.Ok() : Result.Fail(deleted.Error!);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -217,7 +258,12 @@ public sealed class ModService(
         }
     }
 
-    private static Result SetEnabledCore(string modsDirectory, string fileName, bool enabled)
+    private async Task<Result> SetEnabledCoreAsync(
+        string instanceId,
+        string modsDirectory,
+        string fileName,
+        bool enabled,
+        CancellationToken cancellationToken)
     {
         var source = Path.Combine(modsDirectory, fileName);
         if (!File.Exists(source))
@@ -248,8 +294,28 @@ public sealed class ModService(
 
         try
         {
-            File.Move(source, target);
-            return Result.Ok();
+            var instance = await instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+            if (instance is null)
+            {
+                return Result.Fail("instance.not_found", "实例不存在。");
+            }
+
+            var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
+            var sourceRelative = Path.GetRelativePath(gameDirectory, source)
+                .Replace(Path.DirectorySeparatorChar, '/');
+            var targetRelative = Path.GetRelativePath(gameDirectory, target)
+                .Replace(Path.DirectorySeparatorChar, '/');
+            var content = await File.ReadAllBytesAsync(source, cancellationToken).ConfigureAwait(false);
+            var written = await transactions.ExecuteAsync(
+                instanceId,
+                new InstanceChangePlan(
+                    [
+                        InstanceChangeOperation.WriteBytes(targetRelative, content),
+                        InstanceChangeOperation.Delete(sourceRelative),
+                    ],
+                    enabled ? $"启用 Mod {targetName}" : $"禁用 Mod {fileName}"),
+                cancellationToken).ConfigureAwait(false);
+            return written.IsSuccess ? Result.Ok() : Result.Fail(written.Error!);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {

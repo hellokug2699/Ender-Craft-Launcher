@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Ecl.Core;
+using Ecl.Minecraft.Engine.Transactions;
 using IOPath = System.IO.Path;
 
 namespace Ecl.Minecraft.Mods;
@@ -287,6 +288,54 @@ public sealed class GameOptionsFile
         }
 
         return Result.Ok();
+    }
+
+    /// <summary>
+    /// 通过实例事务写入 options.txt：原文件与 .bak 由事务前态/备份保护，
+    /// 失败时回滚，提交后由数据代次使 Inventory 缓存失效。
+    /// </summary>
+    public async Task<Result> SaveThroughTransactionAsync(
+        IInstanceTransactionService transactions,
+        string instanceId,
+        string gameDirectory,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_dirty && Exists)
+        {
+            return Result.Ok();
+        }
+
+        var builder = new StringBuilder();
+        foreach (var line in _lines)
+        {
+            builder.Append(line.Changed ? $"{line.Key}:{line.Value}" : line.RawText);
+            builder.Append(_newLine);
+        }
+
+        var encoding = new UTF8Encoding(_hasByteOrderMark);
+        var bytes = encoding.GetBytes(builder.ToString());
+        var relative = IOPath.GetRelativePath(gameDirectory, Path)
+            .Replace(IOPath.DirectorySeparatorChar, '/');
+        var operations = new List<InstanceChangeOperation>
+        {
+            InstanceChangeOperation.WriteBytes(relative, bytes),
+        };
+
+        // 保持既有 .bak 兼容；它同样受事务保护，失败时不会留下更新一半的选项。
+        if (Exists && File.Exists(Path))
+        {
+            var backupRelative = IOPath.GetRelativePath(gameDirectory, BackupPath)
+                .Replace(IOPath.DirectorySeparatorChar, '/');
+            operations.Add(InstanceChangeOperation.WriteBytes(
+                backupRelative,
+                await File.ReadAllBytesAsync(Path, cancellationToken).ConfigureAwait(false)));
+        }
+
+        var written = await transactions.ExecuteAsync(
+            instanceId,
+            new InstanceChangePlan(operations, "保存 options.txt"),
+            cancellationToken).ConfigureAwait(false);
+        return written.IsSuccess ? Result.Ok() : Result.Fail(written.Error!);
     }
 
     private static Result<IReadOnlyList<string>> InvalidList(string key, string detail) =>

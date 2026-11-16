@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Ecl.Core;
 using Ecl.Minecraft.Engine.Identity;
+using Ecl.Minecraft.Engine.Transactions;
 using Microsoft.Extensions.Logging;
 
 namespace Ecl.Minecraft.Instances;
@@ -35,17 +36,20 @@ public sealed partial class InstanceService : IInstanceService
     private readonly IInstanceStore _store;
     private readonly IAppPaths _paths;
     private readonly InstanceIdentityService _identity;
+    private readonly IInstanceWriteGate _gate;
     private readonly ILogger<InstanceService> _logger;
 
     public InstanceService(
         IInstanceStore store,
         IAppPaths paths,
         InstanceIdentityService identity,
+        IInstanceWriteGate gate,
         ILogger<InstanceService> logger)
     {
         _store = store;
         _paths = paths;
         _identity = identity;
+        _gate = gate;
         _logger = logger;
     }
 
@@ -206,6 +210,14 @@ public sealed partial class InstanceService : IInstanceService
             return Result<GameInstance>.Fail("instance.invalid_id", "实例 ID 不合法。");
         }
 
+        var leaseResult = await _gate.AcquireAsync(instanceId, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        if (!leaseResult.IsSuccess)
+        {
+            return Result<GameInstance>.Fail(leaseResult.Error!);
+        }
+
+        await using var lease = leaseResult.Value!;
         var current = await _store.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
         if (current is null)
         {
@@ -294,6 +306,14 @@ public sealed partial class InstanceService : IInstanceService
             return Result<GameInstance>.Fail("instance.invalid_id", "实例 ID 不合法。");
         }
 
+        var leaseResult = await _gate.AcquireAsync(restorePoint.Id, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        if (!leaseResult.IsSuccess)
+        {
+            return Result<GameInstance>.Fail(leaseResult.Error!);
+        }
+
+        await using var lease = leaseResult.Value!;
         var current = await _store.GetAsync(restorePoint.Id, cancellationToken).ConfigureAwait(false);
         if (current is null)
         {
@@ -1072,6 +1092,20 @@ public sealed partial class InstanceService : IInstanceService
 
     public async Task TouchLastPlayedAsync(string instanceId, CancellationToken cancellationToken = default)
     {
+        if (!AppPaths.IsValidInstanceId(instanceId))
+        {
+            return;
+        }
+
+        var leaseResult = await _gate.AcquireAsync(instanceId, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        if (!leaseResult.IsSuccess)
+        {
+            _logger.LogDebug("跳过最后游玩时间更新：{Code}", leaseResult.Error!.Code);
+            return;
+        }
+
+        await using var lease = leaseResult.Value!;
         var instance = await _store.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
         if (instance is null)
         {

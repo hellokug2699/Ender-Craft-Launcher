@@ -3,6 +3,7 @@
 using System.IO.Compression;
 using System.Text.Json;
 using Ecl.Core;
+using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Instances;
 
 namespace Ecl.Minecraft.Mods;
@@ -129,7 +130,8 @@ public interface IContentPackService
 
 public sealed class ContentPackService(
     IInstanceService instances,
-    IAppPaths paths) : IContentPackService
+    IAppPaths paths,
+    IInstanceTransactionService transactions) : IContentPackService
 {
     private const string ResourcePackEntryPrefix = "file/";
     private const string VanillaResourcePack = "vanilla";
@@ -251,7 +253,19 @@ public sealed class ContentPackService(
 
         try
         {
-            File.Copy(sourcePath, destination, overwrite);
+            var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
+            var relative = Path.GetRelativePath(gameDirectory, destination)
+                .Replace(Path.DirectorySeparatorChar, '/');
+            var written = await transactions.ExecuteAsync(
+                instanceId,
+                new InstanceChangePlan(
+                    [InstanceChangeOperation.CopyFrom(relative, sourcePath)],
+                    $"导入内容包 {Path.GetFileName(sourcePath)}"),
+                cancellationToken).ConfigureAwait(false);
+            if (!written.IsSuccess)
+            {
+                return Result<ContentPackEntry>.Fail(written.Error!);
+            }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -298,7 +312,19 @@ public sealed class ContentPackService(
 
         try
         {
-            File.Delete(path);
+            var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
+            var relative = Path.GetRelativePath(gameDirectory, path)
+                .Replace(Path.DirectorySeparatorChar, '/');
+            var deleted = await transactions.ExecuteAsync(
+                instanceId,
+                new InstanceChangePlan(
+                    [InstanceChangeOperation.Delete(relative)],
+                    $"删除内容包 {fileName}"),
+                cancellationToken).ConfigureAwait(false);
+            if (!deleted.IsSuccess)
+            {
+                return Result.Fail(deleted.Error!);
+            }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -307,7 +333,7 @@ public sealed class ContentPackService(
 
         // 删除文件后同步清理 options.txt 中对应的启用条目，避免游戏读到失效引用。
         // 清理失败不影响文件删除，下一次 list 会把残留条目报告为“文件缺失”。
-        PruneSelection(instance, kind, fileName);
+        await PruneSelectionAsync(instance, kind, fileName, cancellationToken).ConfigureAwait(false);
         return Result.Ok();
     }
 
@@ -365,7 +391,13 @@ public sealed class ContentPackService(
             }
         }
 
-        return document.IsDirty ? document.Save() : Result.Ok();
+        return document.IsDirty
+            ? await document.SaveThroughTransactionAsync(
+                transactions,
+                instanceId,
+                InstancePaths.GetGameDirectory(paths, instance),
+                cancellationToken).ConfigureAwait(false)
+            : Result.Ok();
     }
 
     public async Task<Result> ApplyAsync(
@@ -437,7 +469,13 @@ public sealed class ContentPackService(
             ApplyResourcePackOrder(document, selection, desired);
         }
 
-        return document.IsDirty ? document.Save() : Result.Ok();
+        return document.IsDirty
+            ? await document.SaveThroughTransactionAsync(
+                transactions,
+                instanceId,
+                InstancePaths.GetGameDirectory(paths, instance),
+                cancellationToken).ConfigureAwait(false)
+            : Result.Ok();
     }
 
     /// <summary>
@@ -577,7 +615,11 @@ public sealed class ContentPackService(
         }
     }
 
-    private void PruneSelection(GameInstance instance, ContentPackKind kind, string fileName)
+    private async Task PruneSelectionAsync(
+        GameInstance instance,
+        ContentPackKind kind,
+        string fileName,
+        CancellationToken cancellationToken)
     {
         var options = GameOptionsFile.Load(GetOptionsPath(instance));
         if (!options.IsSuccess)
@@ -622,7 +664,11 @@ public sealed class ContentPackService(
 
         if (document.IsDirty)
         {
-            document.Save();
+            await document.SaveThroughTransactionAsync(
+                transactions,
+                instance.Id,
+                InstancePaths.GetGameDirectory(paths, instance),
+                cancellationToken).ConfigureAwait(false);
         }
     }
 
