@@ -130,6 +130,14 @@ public sealed class StorageCleanupService(
                     continue;
                 }
 
+                // 事务恢复材料/日志不是普通缓存；旧版材料可能仍位于 cache，必须保留。
+                var relative = Path.GetRelativePath(paths.CacheDirectory, file).Replace('\\', '/');
+                if (relative.StartsWith("instance-engine/recovery/", StringComparison.OrdinalIgnoreCase) ||
+                    relative.StartsWith("instance-engine/transactions/", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 items.Add(new CleanupPreviewItem(
                     "cache:" + Path.GetRelativePath(paths.CacheDirectory, file),
                     CleanupItemKind.RebuildableCache,

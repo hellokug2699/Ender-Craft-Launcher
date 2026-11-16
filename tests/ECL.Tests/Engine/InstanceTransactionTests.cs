@@ -48,25 +48,25 @@ public sealed class InstanceTransactionTests
         var created = (await instances.CreateAsync("Rollback", "1.21.1")).Value!;
         var game = environment.Paths.GetInstanceGameDirectory(created.Id);
 
-        // 目标路径是已存在目录：写入会在 Apply 阶段失败，前面的写入必须回滚。
-        Directory.CreateDirectory(Path.Combine(game, "blocked"));
+        // 父路径是文件：Apply 阶段创建目录失败，前面的写入必须回滚。
+        await File.WriteAllTextAsync(Path.Combine(game, "blocked"), "not-a-directory");
         var result = await transactions.ExecuteAsync(
             created.Id,
             new InstanceChangePlan(
                 [
                     InstanceChangeOperation.WriteText("first.txt", "first"),
-                    InstanceChangeOperation.WriteText("blocked", "cannot-write"),
+                    InstanceChangeOperation.WriteText("blocked/child.txt", "cannot-write"),
                 ],
                 "rollback test"));
 
         Assert.False(result.IsSuccess);
         Assert.Equal("transaction.apply_failed", result.Error?.Code);
         Assert.False(File.Exists(Path.Combine(game, "first.txt")));
-        Assert.True(Directory.Exists(Path.Combine(game, "blocked")));
+        Assert.Equal("not-a-directory", await File.ReadAllTextAsync(Path.Combine(game, "blocked")));
     }
 
     [Fact]
-    public async Task SameTransactionIdIsIdempotent()
+    public async Task SameTransactionIdIsIdempotentUntilTargetChanges()
     {
         using var environment = new TestEnvironment();
         await using var provider = environment.CreateServices();
@@ -81,10 +81,17 @@ public sealed class InstanceTransactionTests
         var first = await transactions.ExecuteAsync(created.Id, plan, transactionId: "tx-fixed-1");
         Assert.True(first.IsSuccess, first.Error?.ToString());
 
-        await File.WriteAllTextAsync(Path.Combine(game, "data.txt"), "externally-changed");
+        // 目标仍等于写后指纹：重复提交返回同一已提交结果，不重复执行。
         var second = await transactions.ExecuteAsync(created.Id, plan, transactionId: "tx-fixed-1");
         Assert.True(second.IsSuccess, second.Error?.ToString());
         Assert.Equal(InstanceTransactionState.Committed, second.Value!.State);
+        Assert.Equal("one", await File.ReadAllTextAsync(Path.Combine(game, "data.txt")));
+
+        // 提交后目标被外部修改：不得静默重放，也不得覆盖外部内容。
+        await File.WriteAllTextAsync(Path.Combine(game, "data.txt"), "externally-changed");
+        var third = await transactions.ExecuteAsync(created.Id, plan, transactionId: "tx-fixed-1");
+        Assert.False(third.IsSuccess);
+        Assert.Equal("transaction.target_changed_after_commit", third.Error?.Code);
         Assert.Equal("externally-changed", await File.ReadAllTextAsync(Path.Combine(game, "data.txt")));
     }
 
