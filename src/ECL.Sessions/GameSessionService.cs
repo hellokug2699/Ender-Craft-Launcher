@@ -38,6 +38,18 @@ public interface IGameSessionService
 
     void SetExitCode(string sessionId, int exitCode);
 
+    /// <summary>
+    /// 记录一次结构化启动阶段事件（F-09 S1）。阶段事实落在会话 journal 中，
+    /// UI 关闭/重启不丢失；不改变会话状态机。
+    /// </summary>
+    void AppendLaunchStage(string sessionId, LaunchStageEvent stage);
+
+    /// <summary>启动步骤补齐 Java 路径与版本：会话在流水线开始前创建，此时 Java 尚未解析。</summary>
+    void SetLaunchJava(string sessionId, string? javaPath, string? javaVersion);
+
+    /// <summary>读取会话 journal 中的全部事件（含启动阶段事件）；损坏的行按既有 torn 语义处理。</summary>
+    IReadOnlyList<SessionEvent> ReadEvents(string sessionId);
+
     /// <summary>ECL 启动后的恢复。幂等：重复执行不会重复登记文件或破坏证据。</summary>
     SessionRecoveryReport Recover();
 }
@@ -237,6 +249,41 @@ public sealed class GameSessionService : IGameSessionService
         Update(session, session.Manifest with { ExitCode = exitCode });
     }
 
+    public void AppendLaunchStage(string sessionId, LaunchStageEvent stage)
+    {
+        ArgumentNullException.ThrowIfNull(stage);
+        var session = Require(sessionId);
+        var type = stage.Phase switch
+        {
+            LaunchStageEvent.PhaseStarted => "launch.stage.started",
+            LaunchStageEvent.PhaseCompleted => "launch.stage.completed",
+            _ => "launch.stage." + stage.Phase,
+        };
+        AppendEvent(session, type, stage.Message, stage);
+    }
+
+    public void SetLaunchJava(string sessionId, string? javaPath, string? javaVersion)
+    {
+        if (string.IsNullOrWhiteSpace(javaPath) && string.IsNullOrWhiteSpace(javaVersion))
+        {
+            return;
+        }
+
+        var session = Require(sessionId);
+        Update(session, session.Manifest with
+        {
+            JavaPath = javaPath ?? session.Manifest.JavaPath,
+            JavaVersion = javaVersion ?? session.Manifest.JavaVersion,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+        });
+    }
+
+    public IReadOnlyList<SessionEvent> ReadEvents(string sessionId)
+    {
+        var session = Get(sessionId);
+        return session is null ? [] : SessionJournal.ReadAll(session.JournalPath, out _);
+    }
+
     public SessionRecoveryReport Recover()
     {
         var sessions = _store.LoadAll();
@@ -365,7 +412,11 @@ public sealed class GameSessionService : IGameSessionService
         return updated;
     }
 
-    private void AppendEvent(GameLogSession session, string type, string? detail)
+    private void AppendEvent(
+        GameLogSession session,
+        string type,
+        string? detail,
+        LaunchStageEvent? stage = null)
     {
         long sequence;
         lock (_gate)
@@ -379,7 +430,17 @@ public sealed class GameSessionService : IGameSessionService
         {
             SessionJournal.Append(
                 session.JournalPath,
-                new SessionEvent(sequence, DateTimeOffset.UtcNow, type, detail));
+                new SessionEvent(
+                    sequence,
+                    DateTimeOffset.UtcNow,
+                    type,
+                    detail,
+                    stage?.StepId,
+                    stage?.Phase,
+                    stage?.Index,
+                    stage?.Total,
+                    stage?.Status,
+                    stage?.DurationMs));
 
             var refreshed = session with
             {

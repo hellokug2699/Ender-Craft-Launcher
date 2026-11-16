@@ -313,5 +313,56 @@ public sealed class SessionTests : IDisposable
         Assert.DoesNotContain("session.recovered.hostUnverified", manifest.Warnings);
     }
 
+    /// <summary>
+    /// F-09 S7：导出副本把本地绝对路径替换为占位符；原始 manifest/日志文件保持原样，
+    /// 这样用户仍能在本机看到真实路径，而分享出去的诊断包不含本机目录。
+    /// </summary>
+    [Fact]
+    public async Task ExportRedactsLocalAbsolutePathsOnlyInTheArchiveCopy()
+    {
+        var service = CreateService();
+        var session = service.Create(Request());
+        const string rawLog = "C:\\Users\\player\\game\\crash.log\nno path here\n";
+        await File.WriteAllTextAsync(session.StdoutPath, rawLog);
+        var crashPath = Path.Combine(_environment.Root, "crash.txt");
+        await File.WriteAllTextAsync(crashPath, "crash");
+        service.RegisterArtifact(session.SessionId, new SessionArtifact
+        {
+            Id = "crash",
+            Kind = SessionArtifactKinds.ClientCrashReport,
+            SourcePath = crashPath,
+            CapturedPath = crashPath,
+            Ownership = ArtifactOwnership.Direct,
+        });
+
+        var exporter = new SessionExportService(service, _environment.Paths);
+        var output = Path.Combine(_environment.Root, "redacted.zip");
+        var result = await exporter.ExportAsync(session.SessionId, output);
+
+        Assert.True(result.IsSuccess, result.Error?.ToString());
+        using var archive = ZipFile.OpenRead(output);
+        var manifest = await ReadEntryAsync(archive, "manifest.json");
+        var artifacts = await ReadEntryAsync(archive, "artifacts.json");
+        var stdout = await ReadEntryAsync(archive, "logs/game.stdout.log");
+
+        Assert.Contains("<local-path>", manifest);
+        Assert.Contains("<local-path>", stdout);
+        Assert.Contains("<local-path>", artifacts);
+        Assert.DoesNotContain("C:", manifest);
+        Assert.DoesNotContain("C:", artifacts);
+
+        // 原始文件不被改写：脱敏只作用于导出副本。
+        Assert.Contains("C:", await File.ReadAllTextAsync(session.ManifestPath));
+        Assert.Equal(rawLog, await File.ReadAllTextAsync(session.StdoutPath));
+    }
+
+    private static async Task<string> ReadEntryAsync(ZipArchive archive, string name)
+    {
+        var entry = archive.GetEntry(name);
+        Assert.NotNull(entry);
+        using var reader = new StreamReader(entry!.Open());
+        return await reader.ReadToEndAsync();
+    }
+
     public void Dispose() => _environment.Dispose();
 }

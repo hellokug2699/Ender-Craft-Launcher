@@ -1607,6 +1607,16 @@ public sealed class InstanceModifyPageTests
         {
         }
 
+        public void AppendLaunchStage(string sessionId, LaunchStageEvent stage)
+        {
+        }
+
+        public void SetLaunchJava(string sessionId, string? javaPath, string? javaVersion)
+        {
+        }
+
+        public IReadOnlyList<SessionEvent> ReadEvents(string sessionId) => [];
+
         public SessionRecoveryReport Recover() => new(0, 0, 0, 0, []);
     }
 }

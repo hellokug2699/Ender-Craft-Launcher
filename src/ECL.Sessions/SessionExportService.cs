@@ -296,8 +296,33 @@ public sealed class SessionExportService : ISessionExportService
         }
     }
 
+    /// <summary>
+    /// 导出副本脱敏（F-09 S7）：先按密钥规则脱敏，再把本地绝对路径替换为占位符。
+    /// 只影响导出副本；原始 manifest 与日志文件保持不变。
+    /// </summary>
     private static string Sanitize(string text, SessionExportOptions options) =>
-        options.Redact ? SecretRedaction.Text(text) : text;
+        options.Redact ? RedactLocalPaths(SecretRedaction.Text(text)) : text;
+
+    private static readonly System.Text.RegularExpressions.Regex WindowsAbsolutePath = new(
+        "(?<![A-Za-z0-9])[A-Za-z]:\\\\[^\\r\\n\"'<>|*?]*",
+        System.Text.RegularExpressions.RegexOptions.Compiled |
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private static readonly System.Text.RegularExpressions.Regex UncAbsolutePath = new(
+        "\\\\\\\\[^\\s\"']+",
+        System.Text.RegularExpressions.RegexOptions.Compiled |
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    internal static string RedactLocalPaths(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text;
+        }
+
+        var redacted = WindowsAbsolutePath.Replace(text, "<local-path>");
+        return UncAbsolutePath.Replace(redacted, "<local-path>");
+    }
 
     private static bool IsTextEvidence(string path)
     {

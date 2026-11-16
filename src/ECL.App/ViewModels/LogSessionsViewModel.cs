@@ -1553,6 +1553,8 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             new(_localizer.Get("logs.inspector.evidenceCount"), manifest.Artifacts.Count.ToString()),
         };
 
+        AddLaunchStageFields(manifest.SessionId, fields);
+
         if (!string.IsNullOrWhiteSpace(manifest.CaptureFault))
         {
             fields.Add(new(_localizer.Get("logs.inspector.captureFault"), manifest.CaptureFault));
@@ -1595,6 +1597,49 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             row.InstanceName,
             $"{row.StateText} · {manifest.MinecraftVersion ?? _localizer.Get("logs.unknownVersion")}",
             fields);
+    }
+
+    /// <summary>
+    /// F-09 S2：启动阶段事实来自会话 journal，不属于面板状态。没有阶段事件的旧会话
+    /// 不显示这一组字段（不伪造“0 步”）。
+    /// </summary>
+    private void AddLaunchStageFields(string sessionId, List<InspectorSelectionField> fields)
+    {
+        var stages = _sessions.ReadEvents(sessionId)
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.StepId))
+            .ToArray();
+        if (stages.Length == 0)
+        {
+            return;
+        }
+
+        var completed = stages
+            .Where(entry => string.Equals(entry.Phase, LaunchStageEvent.PhaseCompleted, StringComparison.Ordinal))
+            .ToArray();
+        var failed = completed
+            .Where(entry => string.Equals(entry.Status, "Failed", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        fields.Add(new(
+            _localizer.Get("logs.inspector.launchStages"),
+            _localizer.Get("logs.inspector.launchStagesSummary", completed.Length, failed.Length)));
+
+        var slowest = completed
+            .Where(entry => entry.DurationMs is not null)
+            .OrderByDescending(entry => entry.DurationMs)
+            .FirstOrDefault();
+        if (slowest is not null)
+        {
+            fields.Add(new(
+                _localizer.Get("logs.inspector.launchSlowest"),
+                $"{slowest.StepId} · {slowest.DurationMs} ms"));
+        }
+
+        if (failed.Length > 0)
+        {
+            fields.Add(new(
+                _localizer.Get("logs.inspector.launchFailed"),
+                string.Join(_localizer.Get("logs.listSeparator"), failed.Select(entry => entry.StepId))));
+        }
     }
 
     private string DescribeIsolation(SessionManifest manifest)

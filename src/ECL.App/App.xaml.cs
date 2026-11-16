@@ -197,6 +197,10 @@ public partial class App : Application
             lifecycle.TrackWork(
                 new BackgroundWorkDescriptor("lifecycle-recovery-check", "App", BackgroundWorkKind.Io),
                 token => provider.GetRequiredService<LifecycleStartupCheck>().RunAsync(token));
+            // F-09 S6：GUI 启动也执行会话恢复，让“UI 重启后重新连接会话”不只存在于 CLI。
+            lifecycle.TrackWork(
+                new BackgroundWorkDescriptor("session-recovery", "App", BackgroundWorkKind.Io),
+                token => RecoverSessionsAsync(provider, token));
             await _services.GetRequiredService<ShellViewModel>().InitializeAsync();
         }
         catch (Exception exception)
@@ -238,6 +242,46 @@ public partial class App : Application
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
             Shutdown(-1);
+        }
+    }
+
+    /// <summary>
+    /// F-09 S6：启动时收敛上次留下的会话状态（Running 但进程已消失 → Interrupted，
+    /// 进程仍在 → 重连）。与 CLI <c>session recover</c> 使用同一幂等实现；失败不阻塞启动。
+    /// </summary>
+    private static async Task RecoverSessionsAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        var logger = services.GetRequiredService<ILogger<App>>();
+        try
+        {
+            var sessions = services.GetRequiredService<Ecl.Sessions.IGameSessionService>();
+            var report = await Task.Run(sessions.Recover, cancellationToken);
+            if (report.Interrupted + report.Reattached + report.Unknown > 0)
+            {
+                logger.LogWarning(
+                    "会话恢复：扫描 {Scanned}，中断 {Interrupted}，重连 {Reattached}，未知 {Unknown}。",
+                    report.Scanned,
+                    report.Interrupted,
+                    report.Reattached,
+                    report.Unknown);
+            }
+            else
+            {
+                logger.LogInformation("会话恢复：扫描 {Scanned}，没有需要处理的会话。", report.Scanned);
+            }
+
+            foreach (var warning in report.Warnings)
+            {
+                logger.LogWarning("会话恢复：{Warning}", warning);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // 关闭应用时取消；下次启动会再次执行同一幂等恢复。
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "会话恢复失败；不影响启动。");
         }
     }
 

@@ -175,6 +175,25 @@ public sealed class LaunchPipelineTests
         Assert.False(report.Success);
         Assert.Equal(0, fake.Calls);
         Assert.Contains(report.Steps, step => step.StepId == "version" && step.Status == LaunchStepStatus.Failed);
+
+        // F-09 S1：进程启动前的失败同样有会话与阶段证据，会话不残留为 Preparing。
+        Assert.False(string.IsNullOrWhiteSpace(report.SessionId));
+        var sessions = provider.GetRequiredService<Ecl.Sessions.IGameSessionService>();
+        var session = sessions.Get(report.SessionId!);
+        Assert.NotNull(session);
+        Assert.Equal(Ecl.Sessions.GameSessionState.Interrupted, session!.Manifest.State);
+        var events = sessions.ReadEvents(report.SessionId!);
+        var totalSteps = provider.GetRequiredService<ILaunchService>().Steps.Count;
+        Assert.Contains(events, entry =>
+            entry.Type == "launch.stage.started" &&
+            entry.StepId == "version" &&
+            entry.Index == 1 &&
+            entry.Total == totalSteps);
+        Assert.Contains(events, entry =>
+            entry.Type == "launch.stage.completed" &&
+            entry.StepId == "version" &&
+            entry.Status == nameof(LaunchStepStatus.Failed) &&
+            entry.DurationMs is not null);
     }
 
     [Fact]
@@ -229,6 +248,17 @@ public sealed class LaunchPipelineTests
         var reloaded = await provider.GetRequiredService<IInstanceService>().GetAsync(instance.Id);
         Assert.NotNull(reloaded);
         Assert.NotNull(reloaded!.LastPlayedAt);
+
+        // F-09 S1：成功启动的每个阶段都以结构化事件落盘，并带真实状态与耗时。
+        var sessions = provider.GetRequiredService<Ecl.Sessions.IGameSessionService>();
+        var totalSteps = provider.GetRequiredService<ILaunchService>().Steps.Count;
+        var events = sessions.ReadEvents(report.SessionId!);
+        Assert.Equal(totalSteps, events.Count(entry => entry.Type == "launch.stage.started"));
+        Assert.Equal(totalSteps, events.Count(entry => entry.Type == "launch.stage.completed"));
+        Assert.Contains(events, entry =>
+            entry.StepId == "start" &&
+            entry.Phase == "completed" &&
+            entry.Status == nameof(LaunchStepStatus.Success));
     }
 
     [Fact]

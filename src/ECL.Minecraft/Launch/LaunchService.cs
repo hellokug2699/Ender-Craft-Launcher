@@ -7,6 +7,7 @@ using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Java;
 using Ecl.Minecraft.Instances;
+using Ecl.Sessions;
 using Microsoft.Extensions.Logging;
 
 namespace Ecl.Minecraft.Launch;
@@ -45,6 +46,7 @@ public sealed class LaunchService : ILaunchService
     private readonly IReadOnlyList<ILaunchStep> _steps;
     private readonly IReadOnlyList<string> _stepIds;
     private readonly ILaunchStatusStore _status;
+    private readonly Ecl.Sessions.IGameSessionService _sessions;
     private readonly ILocalizer _localizer;
     private readonly ILogger<LaunchService> _logger;
 
@@ -55,6 +57,7 @@ public sealed class LaunchService : ILaunchService
         IAppPaths paths,
         IEnumerable<ILaunchStep> steps,
         ILaunchStatusStore status,
+        Ecl.Sessions.IGameSessionService sessions,
         ILocalizer localizer,
         ILogger<LaunchService> logger)
     {
@@ -65,6 +68,7 @@ public sealed class LaunchService : ILaunchService
         _steps = steps.OrderBy(step => step.Order).ToArray();
         _stepIds = _steps.Select(step => step.Id).ToArray();
         _status = status;
+        _sessions = sessions;
         _localizer = localizer;
         _logger = logger;
     }
@@ -201,6 +205,13 @@ public sealed class LaunchService : ILaunchService
             AcceptSecurityRisk = acceptSecurityRisk,
         };
 
+        // F-09 S1：真实启动在进入第一条步骤前就建立会话，使 validate/version/java 等
+        // 前置阶段也能带上 sessionId 写入结构化事件；Dry Run 不是一次启动，不建会话。
+        if (!dryRun)
+        {
+            EnsureSession(context);
+        }
+
         var results = new List<LaunchStepResult>();
         var success = true;
 
@@ -218,6 +229,7 @@ public sealed class LaunchService : ILaunchService
                 Index = index,
                 Total = _steps.Count,
             });
+            RecordStage(context.SessionId, LaunchStageEvent.Started(step.Id, index, _steps.Count));
 
             try
             {
@@ -246,6 +258,15 @@ public sealed class LaunchService : ILaunchService
                 Message = result.Message,
                 Duration = result.Duration,
             });
+            RecordStage(
+                context.SessionId,
+                LaunchStageEvent.Completed(
+                    result.StepId,
+                    index,
+                    _steps.Count,
+                    result.Status.ToString(),
+                    result.Message,
+                    (long)result.Duration.TotalMilliseconds));
 
             if (result.Status == LaunchStepStatus.Failed)
             {
@@ -255,6 +276,23 @@ public sealed class LaunchService : ILaunchService
                     result.Message);
                 success = false;
                 break;
+            }
+        }
+
+        // 进程启动前失败：会话已经有阶段证据，标为中断而不是让它停在 Preparing。
+        if (!success && context.ProcessId is null && context.SessionId is { } failedSession &&
+            results.Count > 0 && !string.Equals(results[^1].StepId, "start", StringComparison.Ordinal))
+        {
+            try
+            {
+                _sessions.MarkState(
+                    failedSession,
+                    Ecl.Sessions.GameSessionState.Interrupted,
+                    "启动在进程启动前失败");
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                _logger.LogWarning(exception, "标记启动失败会话状态时出错：{SessionId}", failedSession);
             }
         }
 
@@ -282,6 +320,51 @@ public sealed class LaunchService : ILaunchService
             context.SessionId);
         PersistJavaPlan(instance.Id, dryRun, success, context.JavaPlan);
         return report;
+    }
+
+    /// <summary>
+    /// F-09 S1：进入流水线前建立会话，使所有阶段事件都带 sessionId。失败不阻塞启动，
+    /// start 步骤会再次尝试创建（保持原有“进程启动前必须有会话”的约束）。
+    /// </summary>
+    private void EnsureSession(LaunchContext context)
+    {
+        try
+        {
+            var showConsole = _settings.Get<bool>("game.showConsole");
+            var session = _sessions.Create(new Ecl.Sessions.SessionCreateRequest
+            {
+                InstanceId = context.Instance.Id,
+                InstanceName = context.Instance.Name,
+                GameDirectory = context.GameDirectory,
+                MinecraftVersion = context.Instance.GameVersion,
+                Loader = context.Instance.Loader,
+                LogIsolation = showConsole ? "unavailable" : "pending",
+            });
+            context.SessionId = session.SessionId;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(exception, "创建启动会话失败；启动继续，由 start 步骤再次尝试。");
+        }
+    }
+
+    /// <summary>阶段事件写入失败只记警告：观察数据缺失不能改变启动结果。</summary>
+    private void RecordStage(string? sessionId, LaunchStageEvent stage)
+    {
+        if (sessionId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _sessions.AppendLaunchStage(sessionId, stage);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            _logger.LogWarning(exception, "写入启动阶段事件失败：{StepId}/{Phase}", stage.StepId, stage.Phase);
+        }
     }
 
     /// <summary>

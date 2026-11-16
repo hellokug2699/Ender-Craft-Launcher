@@ -132,6 +132,36 @@ public sealed record GameLogSession(SessionManifest Manifest, string DirectoryPa
     public string ArtifactsDirectory => Path.Combine(DirectoryPath, "artifacts");
 }
 
+/// <summary>
+/// 结构化启动阶段事件（F-09 S1）。阶段事实属于会话 journal，不属于 UI 观察窗口：
+/// 窗口关闭、界面重启或进程崩溃都不会让已发生的阶段事件消失。
+/// </summary>
+public sealed record LaunchStageEvent(
+    string StepId,
+    string Phase,
+    int Index,
+    int Total,
+    string? Status = null,
+    string? Message = null,
+    long? DurationMs = null)
+{
+    public const string PhaseStarted = "started";
+
+    public const string PhaseCompleted = "completed";
+
+    public static LaunchStageEvent Started(string stepId, int index, int total) =>
+        new(stepId, PhaseStarted, index, total);
+
+    public static LaunchStageEvent Completed(
+        string stepId,
+        int index,
+        int total,
+        string status,
+        string? message,
+        long? durationMs) =>
+        new(stepId, PhaseCompleted, index, total, status, message, durationMs);
+}
+
 public sealed record SessionCreateRequest
 {
     public string? InstanceId { get; init; }

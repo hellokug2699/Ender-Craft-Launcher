@@ -6,8 +6,21 @@ using Ecl.Core.Json;
 
 namespace Ecl.Sessions;
 
-/// <summary>带序号的追加式生命周期事件。</summary>
-public sealed record SessionEvent(long Sequence, DateTimeOffset TimestampUtc, string Type, string? Detail = null);
+/// <summary>
+/// 带序号的追加式生命周期事件。启动阶段事件（F-09）额外携带结构化字段；
+/// 旧 journal 缺少这些字段时反序列化为 null，不影响既有读取。
+/// </summary>
+public sealed record SessionEvent(
+    long Sequence,
+    DateTimeOffset TimestampUtc,
+    string Type,
+    string? Detail = null,
+    string? StepId = null,
+    string? Phase = null,
+    int? Index = null,
+    int? Total = null,
+    string? Status = null,
+    long? DurationMs = null);
 
 /// <summary>
 /// 会话 journal：逐行追加、带序号。恢复时只忽略最后一条不完整记录，

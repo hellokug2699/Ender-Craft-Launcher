@@ -41,18 +41,31 @@ internal sealed class StartGameStep(
 
         try
         {
-            // ADR 0015：进程启动之前先持久化会话，保证异常退出后仍可追溯。
-            var session = sessions.Create(new SessionCreateRequest
+            // F-09 S1：会话在流水线开始时已创建；这里复用它并补齐 Java 信息。
+            // 仅当没有预先创建的会话（例如旧调用方直接执行本步骤）时才新建。
+            var session = context.SessionId is { } existing ? sessions.Get(existing) : null;
+            if (session is null)
             {
-                InstanceId = context.Instance.Id,
-                InstanceName = context.Instance.Name,
-                GameDirectory = context.GameDirectory,
-                JavaPath = context.JavaPlan?.ExecutablePath ?? context.JavaExecutable,
-                JavaVersion = context.JavaPlan?.Version,
-                MinecraftVersion = context.Instance.GameVersion,
-                Loader = context.Instance.Loader,
-                LogIsolation = showConsole ? "unavailable" : "pending",
-            });
+                // ADR 0015：进程启动之前先持久化会话，保证异常退出后仍可追溯。
+                session = sessions.Create(new SessionCreateRequest
+                {
+                    InstanceId = context.Instance.Id,
+                    InstanceName = context.Instance.Name,
+                    GameDirectory = context.GameDirectory,
+                    JavaPath = context.JavaPlan?.ExecutablePath ?? context.JavaExecutable,
+                    JavaVersion = context.JavaPlan?.Version,
+                    MinecraftVersion = context.Instance.GameVersion,
+                    Loader = context.Instance.Loader,
+                    LogIsolation = showConsole ? "unavailable" : "pending",
+                });
+            }
+            else
+            {
+                sessions.SetLaunchJava(
+                    session.SessionId,
+                    context.JavaPlan?.ExecutablePath ?? context.JavaExecutable,
+                    context.JavaPlan?.Version);
+            }
 
             sessionId = session.SessionId;
             context.SessionId = sessionId;

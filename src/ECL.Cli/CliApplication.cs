@@ -4479,6 +4479,69 @@ internal sealed class CliApplication
                     return pruned.IsSuccess ? 0 : WriteError(pruned.Error);
                 }
 
+            case "stages":
+                {
+                    var sessionId = args.ElementAtOrDefault(1);
+                    if (string.IsNullOrWhiteSpace(sessionId))
+                    {
+                        return UsageError("session stages 需要会话 ID。");
+                    }
+
+                    var session = sessions.Get(sessionId);
+                    if (session is null)
+                    {
+                        return WriteError(new EclError("session.not_found", $"会话不存在：{sessionId}"));
+                    }
+
+                    // F-09 S2：阶段时间线只读自会话 journal；缺失阶段不推断为成功。
+                    var stages = sessions.ReadEvents(sessionId)
+                        .Where(entry => !string.IsNullOrWhiteSpace(entry.StepId))
+                        .ToArray();
+                    if (json)
+                    {
+                        WriteJson(new
+                        {
+                            session = session.Manifest,
+                            stages = stages.Select(entry => new
+                            {
+                                entry.Sequence,
+                                entry.TimestampUtc,
+                                entry.StepId,
+                                entry.Phase,
+                                entry.Index,
+                                entry.Total,
+                                entry.Status,
+                                entry.DurationMs,
+                                entry.Detail,
+                            }),
+                        });
+                        return 0;
+                    }
+
+                    if (stages.Length == 0)
+                    {
+                        Console.WriteLine($"会话 {sessionId} 没有启动阶段记录。");
+                        return 0;
+                    }
+
+                    Console.WriteLine($"会话 {sessionId} · {session.Manifest.State} · 启动阶段：");
+                    foreach (var stage in stages)
+                    {
+                        var position = $"[{(stage.Index ?? 0) + 1}/{(stage.Total ?? 0)}]";
+                        if (string.Equals(stage.Phase, LaunchStageEvent.PhaseStarted, StringComparison.Ordinal))
+                        {
+                            Console.WriteLine($"{position} {stage.StepId} …");
+                            continue;
+                        }
+
+                        var duration = stage.DurationMs is { } milliseconds ? $" {milliseconds} ms" : string.Empty;
+                        var message = string.IsNullOrWhiteSpace(stage.Detail) ? string.Empty : $"  {stage.Detail}";
+                        Console.WriteLine($"{position} {stage.StepId} {stage.Status}{duration}{message}");
+                    }
+
+                    return 0;
+                }
+
             case "recover":
                 {
                     var report = sessions.Recover();
@@ -4498,7 +4561,7 @@ internal sealed class CliApplication
                 }
 
             default:
-                return UsageError("session 支持 list、show、export、recover 与 prune。");
+                return UsageError("session 支持 list、show、stages、export、recover 与 prune。");
         }
     }
 
