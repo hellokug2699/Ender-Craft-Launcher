@@ -1381,6 +1381,14 @@ public sealed class InstanceModifyPageTests
             return Task.FromResult(Result<SnapshotVerification>.Ok(verification));
         }
 
+        public Task<Result<SnapshotRestorePreview>> PreviewRestoreAsync(
+            string instanceId,
+            string snapshotId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result<SnapshotRestorePreview>.Fail(
+                "snapshot.preview_required",
+                "测试替身不提供恢复预览。"));
+
         public Task<Result<SnapshotRestoreResult>> RestoreAsync(
             string instanceId,
             string snapshotId,

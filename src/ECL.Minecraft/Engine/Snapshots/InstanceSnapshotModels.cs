@@ -127,7 +127,33 @@ public sealed record SnapshotDiffSummary(
 public sealed record SnapshotRestoreOptions(
     bool DeleteExtraFiles = true,
     bool CreateSafetySnapshot = true,
-    bool AllowRunningInstance = false);
+    bool AllowRunningInstance = false,
+    bool AllowExternalWrite = false,
+    bool AllowSharedTarget = false,
+    string? PreviewHash = null);
+
+public sealed record SnapshotRestorePreview(
+    string SnapshotId,
+    string InstanceId,
+    string PlanHash,
+    DateTimeOffset IssuedAt,
+    DateTimeOffset ExpiresAt,
+    SnapshotManifest Manifest,
+    string SnapshotGameDirectory,
+    string CurrentGameDirectory,
+    string Ownership,
+    IReadOnlyList<string> SharedWith,
+    SnapshotDiffSummary Diff,
+    int FilesToWrite,
+    int FilesToSkip,
+    int FilesToDelete,
+    long RequiredBytes,
+    long? FreeBytes,
+    bool IsInstanceRunning,
+    bool HasPendingTransaction,
+    bool IsSharedTarget,
+    IReadOnlyList<string> Blockers,
+    IReadOnlyList<string> Warnings);
 
 public sealed record SnapshotRestoreResult(
     string SnapshotId,
@@ -161,6 +187,11 @@ public interface IInstanceSnapshotService
         CancellationToken cancellationToken = default);
 
     Task<Result<SnapshotDiffSummary>> DiffAsync(
+        string instanceId,
+        string snapshotId,
+        CancellationToken cancellationToken = default);
+
+    Task<Result<SnapshotRestorePreview>> PreviewRestoreAsync(
         string instanceId,
         string snapshotId,
         CancellationToken cancellationToken = default);

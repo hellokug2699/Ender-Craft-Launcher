@@ -2220,7 +2220,8 @@ internal sealed class CliApplication
                                         new SnapshotCreateOptions(
                                             scope,
                                             _commandLine.GetValue("world"),
-                                            _commandLine.HasFlag("allow-running")))
+                                            AllowRunningWorld: _commandLine.HasFlag("allow-running"),
+                                            AllowRunningInstance: _commandLine.HasFlag("allow-running")))
                                     .ConfigureAwait(false);
                                 if (!created.IsSuccess)
                                 {
@@ -2274,7 +2275,28 @@ internal sealed class CliApplication
                                 var snapshotId = args.ElementAtOrDefault(3);
                                 if (string.IsNullOrWhiteSpace(snapshotId))
                                 {
-                                    return UsageError("engine snapshot restore <实例ID> <快照ID> [--keep-extra] [--no-safety]");
+                                    return UsageError(
+                                        "engine snapshot restore <实例ID> <快照ID> [--keep-extra] [--no-safety] [--allow-running] [--allow-external] [--allow-shared]");
+                                }
+
+                                var preview = await snapshots.PreviewRestoreAsync(instanceId, snapshotId)
+                                    .ConfigureAwait(false);
+                                if (!preview.IsSuccess)
+                                {
+                                    return WriteError(preview.Error);
+                                }
+
+                                var plan = preview.Value!;
+                                Console.WriteLine(
+                                    $"预览：写入 {plan.FilesToWrite}，跳过 {plan.FilesToSkip}，删除 {plan.FilesToDelete}，所有权 {plan.Ownership}，空间 {FormatBytes(plan.RequiredBytes)}。");
+                                foreach (var blocker in plan.Blockers)
+                                {
+                                    Console.WriteLine($"  ! {blocker}");
+                                }
+
+                                foreach (var warning in plan.Warnings)
+                                {
+                                    Console.WriteLine($"  ? {warning}");
                                 }
 
                                 var restored = await snapshots.RestoreAsync(
@@ -2282,7 +2304,11 @@ internal sealed class CliApplication
                                         snapshotId,
                                         new SnapshotRestoreOptions(
                                             DeleteExtraFiles: !_commandLine.HasFlag("keep-extra"),
-                                            CreateSafetySnapshot: !_commandLine.HasFlag("no-safety")))
+                                            CreateSafetySnapshot: !_commandLine.HasFlag("no-safety"),
+                                            AllowRunningInstance: _commandLine.HasFlag("allow-running"),
+                                            AllowExternalWrite: _commandLine.HasFlag("allow-external"),
+                                            AllowSharedTarget: _commandLine.HasFlag("allow-shared"),
+                                            PreviewHash: plan.PlanHash))
                                     .ConfigureAwait(false);
                                 if (!restored.IsSuccess)
                                 {
@@ -2290,7 +2316,7 @@ internal sealed class CliApplication
                                 }
 
                                 Console.WriteLine(
-                                    $"已从快照 {snapshotId} 恢复：写入 {restored.Value!.Written}，删除 {restored.Value.Deleted}；恢复前快照 {restored.Value.SafetySnapshotId ?? "无"}。");
+                                    $"已从快照 {snapshotId} 恢复：写入 {restored.Value!.Written}，跳过 {restored.Value.Unchanged}，删除 {restored.Value.Deleted}；恢复前快照 {restored.Value.SafetySnapshotId ?? "无"}。");
                                 foreach (var warning in restored.Value.Warnings)
                                 {
                                     Console.WriteLine($"  ! {warning}");

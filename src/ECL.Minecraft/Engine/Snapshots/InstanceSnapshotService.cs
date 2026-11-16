@@ -446,6 +446,127 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
             entries.OrderBy(item => item.RelativePath, StringComparer.OrdinalIgnoreCase).ToArray()));
     }
 
+    public async Task<Result<SnapshotRestorePreview>> PreviewRestoreAsync(
+        string instanceId,
+        string snapshotId,
+        CancellationToken cancellationToken = default)
+    {
+        var loaded = await GetAsync(instanceId, snapshotId, cancellationToken).ConfigureAwait(false);
+        if (!loaded.IsSuccess)
+        {
+            return Result<SnapshotRestorePreview>.Fail(loaded.Error!);
+        }
+
+        var manifest = loaded.Value!;
+        var instance = await _instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        if (instance is null)
+        {
+            return Result<SnapshotRestorePreview>.Fail("instance.not_found", "实例不存在。");
+        }
+
+        var currentDirectory = InstancePaths.GetGameDirectory(_paths, instance);
+        var (ownership, sharedWith) = await DescribeOwnershipAsync(instance, currentDirectory, cancellationToken)
+            .ConfigureAwait(false);
+        var verification = await VerifyAsync(instanceId, snapshotId, cancellationToken).ConfigureAwait(false);
+        var diff = await DiffAsync(instanceId, snapshotId, cancellationToken).ConfigureAwait(false);
+        var activity = await _transactions.GetActivityStateAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        var running = IsInstanceRunning(instanceId);
+
+        var blockers = new List<string>();
+        var warnings = new List<string>();
+        if (!verification.IsSuccess || !verification.Value!.IsValid)
+        {
+            blockers.Add("snapshot.incomplete");
+        }
+
+        if (string.CompareOrdinal(manifest.SchemaVersion, InstanceEngineVersions.SnapshotSchema) > 0)
+        {
+            blockers.Add("snapshot.format_unsupported");
+        }
+
+        if (running)
+        {
+            blockers.Add("snapshot.instance_running");
+        }
+
+        if (activity.IsSuccess && activity.Value is
+            InstanceActivityState.NeedsRecovery or
+            InstanceActivityState.Recovering or
+            InstanceActivityState.Writing or
+            InstanceActivityState.Changing)
+        {
+            blockers.Add("snapshot.conflict_transaction");
+        }
+
+        if (string.Equals(ownership, "SharedExternal", StringComparison.Ordinal))
+        {
+            blockers.Add("snapshot.shared_target_requires_confirmation");
+            warnings.Add("该游戏目录被多个实例共享；恢复会影响其他实例。");
+        }
+        else if (string.Equals(ownership, "External", StringComparison.Ordinal))
+        {
+            warnings.Add("该实例的游戏目录位于外部目录；恢复会修改外部数据。");
+        }
+
+        var filesToWrite = 0;
+        var filesToSkip = 0;
+        var filesToDelete = 0;
+        long requiredBytes = 0;
+        if (diff.IsSuccess)
+        {
+            foreach (var entry in diff.Value!.Entries)
+            {
+                switch (entry.Status)
+                {
+                    case SnapshotDiffStatus.Unchanged:
+                        filesToSkip++;
+                        break;
+                    case SnapshotDiffStatus.Added:
+                        filesToDelete++;
+                        break;
+                    default:
+                        filesToWrite++;
+                        var file = manifest.Files.FirstOrDefault(item =>
+                            string.Equals(item.RelativePath, entry.RelativePath, StringComparison.OrdinalIgnoreCase));
+                        requiredBytes += file?.Size ?? 0;
+                        break;
+                }
+            }
+        }
+
+        var freeBytes = TryGetFreeBytes(currentDirectory);
+        if (freeBytes is { } free && requiredBytes > 0 && free < requiredBytes + 16L * 1024 * 1024)
+        {
+            blockers.Add("snapshot.insufficient_space");
+        }
+
+        var issued = _time.GetUtcNow();
+        var planHash = ComputeRestorePlanHash(snapshotId, instanceId, manifest.CreatedAt, currentDirectory);
+        var preview = new SnapshotRestorePreview(
+            snapshotId,
+            instanceId,
+            planHash,
+            issued,
+            issued.AddMinutes(10),
+            manifest,
+            manifest.GameDirectory,
+            currentDirectory,
+            ownership,
+            sharedWith,
+            diff.IsSuccess ? diff.Value! : new SnapshotDiffSummary(snapshotId, 0, 0, 0, 0, 0, []),
+            filesToWrite,
+            filesToSkip,
+            filesToDelete,
+            requiredBytes,
+            freeBytes,
+            running,
+            activity.IsSuccess && activity.Value != InstanceActivityState.Idle,
+            string.Equals(ownership, "SharedExternal", StringComparison.Ordinal),
+            blockers,
+            warnings);
+        return Result<SnapshotRestorePreview>.Ok(preview);
+    }
+
     public async Task<Result<SnapshotRestoreResult>> RestoreAsync(
         string instanceId,
         string snapshotId,
@@ -454,34 +575,73 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
         CancellationToken cancellationToken = default)
     {
         options ??= new SnapshotRestoreOptions();
-        if (IsInstanceRunning(instanceId) && !options.AllowRunningInstance)
+        var previewResult = await PreviewRestoreAsync(instanceId, snapshotId, cancellationToken)
+            .ConfigureAwait(false);
+        if (!previewResult.IsSuccess)
+        {
+            return Result<SnapshotRestoreResult>.Fail(previewResult.Error!);
+        }
+
+        var preview = previewResult.Value!;
+        if (!string.IsNullOrWhiteSpace(options.PreviewHash) &&
+            !string.Equals(options.PreviewHash, preview.PlanHash, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<SnapshotRestoreResult>.Fail(
+                "snapshot.preview_stale",
+                "恢复预览已过期或目标已变化，请重新检查。");
+        }
+
+        if (preview.Blockers.Any(blocker => blocker == "snapshot.incomplete"))
+        {
+            return Result<SnapshotRestoreResult>.Fail(
+                "snapshot.incomplete",
+                "快照不完整、对象损坏或一致性不足，拒绝恢复。");
+        }
+
+        if (preview.Blockers.Any(blocker => blocker == "snapshot.format_unsupported"))
+        {
+            return Result<SnapshotRestoreResult>.Fail(
+                "snapshot.format_unsupported",
+                "快照格式版本高于当前 ECL，禁止恢复。");
+        }
+
+        if (preview.IsInstanceRunning && !options.AllowRunningInstance)
         {
             return Result<SnapshotRestoreResult>.Fail(
                 "snapshot.instance_running",
                 "实例正在运行，不能恢复快照；请先关闭游戏。");
         }
 
-        var verification = await VerifyAsync(instanceId, snapshotId, cancellationToken).ConfigureAwait(false);
-        if (!verification.IsSuccess)
-        {
-            return Result<SnapshotRestoreResult>.Fail(verification.Error!);
-        }
-
-        if (!verification.Value!.IsValid)
+        if (preview.HasPendingTransaction)
         {
             return Result<SnapshotRestoreResult>.Fail(
-                "snapshot.incomplete",
-                "快照不完整或对象损坏，拒绝恢复。",
-                string.Join("；", verification.Value.Problems.Take(5)));
+                "snapshot.conflict_transaction",
+                "实例存在未完成事务或正在变更，请先处理后再恢复。");
         }
 
-        var loaded = await GetAsync(instanceId, snapshotId, cancellationToken).ConfigureAwait(false);
-        if (!loaded.IsSuccess)
+        if (preview.IsSharedTarget && !options.AllowSharedTarget)
         {
-            return Result<SnapshotRestoreResult>.Fail(loaded.Error!);
+            return Result<SnapshotRestoreResult>.Fail(
+                "snapshot.shared_target_requires_confirmation",
+                "该游戏目录被多个实例共享，恢复会影响其他实例；需要显式确认。");
         }
 
-        var manifest = loaded.Value!;
+        if (string.Equals(preview.Ownership, "External", StringComparison.Ordinal) &&
+            !options.AllowExternalWrite &&
+            !options.AllowSharedTarget)
+        {
+            return Result<SnapshotRestoreResult>.Fail(
+                "snapshot.external_target_requires_confirmation",
+                "恢复会修改外部游戏目录；需要显式确认。");
+        }
+
+        if (preview.Blockers.Any(blocker => blocker == "snapshot.insufficient_space"))
+        {
+            return Result<SnapshotRestoreResult>.Fail(
+                "snapshot.insufficient_space",
+                "目标磁盘空间不足，无法安全恢复。");
+        }
+
         var instance = await _instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
         if (instance is null)
         {
@@ -495,9 +655,11 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
             var safety = await CreateAsync(
                 instanceId,
                 new SnapshotCreateOptions(
-                    manifest.Scope,
-                    manifest.WorldName,
-                    AllowRunningWorld: true),
+                    preview.Manifest.Scope,
+                    preview.Manifest.WorldName,
+                    AllowRunningInstance: true,
+                    Origin: SnapshotOrigin.Safety,
+                    RetentionClass: SnapshotRetentionClass.Automatic),
                 progress,
                 cancellationToken).ConfigureAwait(false);
             if (!safety.IsSuccess)
@@ -511,23 +673,36 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
             safetySnapshotId = safety.Value!.SnapshotId;
         }
 
-        var warnings = new List<string>();
+        var warnings = new List<string>(preview.Warnings);
         var currentFiles = EnumerateScopeFiles(
             gameDirectory,
-            manifest.IncludeRoots,
-            manifest.ExcludeRoots,
+            preview.Manifest.IncludeRoots,
+            preview.Manifest.ExcludeRoots,
             warnings,
             cancellationToken);
-        var current = currentFiles
-            .Select(item => item.RelativePath)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var currentByPath = currentFiles.ToDictionary(
+            item => item.RelativePath,
+            item => item,
+            StringComparer.OrdinalIgnoreCase);
         var operations = new List<InstanceChangeOperation>();
-        foreach (var file in manifest.Files)
+        var unchanged = 0;
+        foreach (var file in preview.Manifest.Files)
         {
             var objectPath = Objects.GetObjectPath(file.Sha256);
             if (!File.Exists(objectPath))
             {
                 return Result<SnapshotRestoreResult>.Fail("snapshot.object_missing", "快照对象缺失，无法恢复。", file.RelativePath);
+            }
+
+            if (currentByPath.TryGetValue(file.RelativePath, out var current) &&
+                current.Size == file.Size &&
+                string.Equals(
+                    SnapshotObjectStore.ComputeHash(current.FullPath),
+                    file.Sha256,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                unchanged++;
+                continue;
             }
 
             operations.Add(InstanceChangeOperation.CopyFrom(
@@ -537,7 +712,9 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
         }
 
         var extraFiles = options.DeleteExtraFiles
-            ? current.Except(manifest.Files.Select(item => item.RelativePath), StringComparer.OrdinalIgnoreCase).ToArray()
+            ? currentByPath.Keys
+                .Except(preview.Manifest.Files.Select(item => item.RelativePath), StringComparer.OrdinalIgnoreCase)
+                .ToArray()
             : [];
         foreach (var extra in extraFiles)
         {
@@ -551,14 +728,17 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
                 string.Empty,
                 0,
                 0,
-                manifest.Files.Count,
+                unchanged,
                 safetySnapshotId,
                 warnings));
         }
 
         var transaction = await _transactions.ExecuteAsync(
             instanceId,
-            new InstanceChangePlan(operations, $"恢复快照 {snapshotId}"),
+            new InstanceChangePlan(
+                operations,
+                $"恢复快照 {snapshotId}",
+                Kind: InstanceTransactionKind.SnapshotRestore),
             cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!transaction.IsSuccess)
         {
@@ -568,9 +748,9 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
         return Result<SnapshotRestoreResult>.Ok(new SnapshotRestoreResult(
             snapshotId,
             transaction.Value!.TransactionId,
-            manifest.Files.Count,
+            operations.Count - extraFiles.Length,
             extraFiles.Length,
-            0,
+            unchanged,
             safetySnapshotId,
             warnings));
     }
@@ -653,6 +833,67 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
         }
 
         return Result<long>.Ok(freed);
+    }
+
+    private async Task<(string Ownership, IReadOnlyList<string> SharedWith)> DescribeOwnershipAsync(
+        GameInstance instance,
+        string gameDirectory,
+        CancellationToken cancellationToken)
+    {
+        if (instance.GameDirectory is null)
+        {
+            return ("EclManaged", []);
+        }
+
+        var all = await _instances.GetInstancesAsync(cancellationToken).ConfigureAwait(false);
+        var shared = all
+            .Where(other => !string.Equals(other.Id, instance.Id, StringComparison.Ordinal))
+            .Where(other =>
+            {
+                try
+                {
+                    return string.Equals(
+                        InstancePaths.GetGameDirectory(_paths, other),
+                        gameDirectory,
+                        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+                }
+                catch (Exception exception) when (exception is ArgumentException or NotSupportedException)
+                {
+                    return false;
+                }
+            })
+            .Select(other => other.Id)
+            .ToArray();
+        return shared.Length > 0 ? ("SharedExternal", shared) : ("External", []);
+    }
+
+    private static long? TryGetFreeBytes(string directory)
+    {
+        try
+        {
+            var root = Path.GetPathRoot(Path.GetFullPath(directory));
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                return null;
+            }
+
+            var drive = new DriveInfo(root);
+            return drive.IsReady ? drive.AvailableFreeSpace : null;
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static string ComputeRestorePlanHash(
+        string snapshotId,
+        string instanceId,
+        DateTimeOffset createdAt,
+        string currentDirectory)
+    {
+        var text = $"{snapshotId}|{instanceId}|{createdAt:O}|{currentDirectory}";
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
     }
 
     private bool IsInstanceRunning(string instanceId)

@@ -2,6 +2,8 @@
 
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using Ecl.Core.Json;
 using Ecl.Minecraft.Engine.Snapshots;
 using Ecl.Minecraft.Engine.Transactions;
 using Ecl.Minecraft.Instances;
@@ -46,7 +48,8 @@ public sealed class InstanceSnapshotConsistencyTests
 
         var restore = await snapshots.RestoreAsync(created.Id, allowed.Value.SnapshotId);
         Assert.False(restore.IsSuccess);
-        Assert.Equal("snapshot.instance_running", restore.Error?.Code);
+        // 运行中创建的快照本身是 Incomplete，永远不能作为恢复点。
+        Assert.Equal("snapshot.incomplete", restore.Error?.Code);
     }
 
     [Fact]
@@ -118,6 +121,117 @@ public sealed class InstanceSnapshotConsistencyTests
         await Assert.ThrowsAsync<InvalidDataException>(() =>
             objects.PutAsync(source, wrongHash, new FileInfo(source).Length));
         Assert.False(File.Exists(objects.GetObjectPath(wrongHash)));
+    }
+
+    [Fact]
+    public async Task RestorePreviewHasPlanHashAndRestoreUsesDedicatedTransactionKind()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+        var snapshots = provider.GetRequiredService<IInstanceSnapshotService>();
+        var transactions = provider.GetRequiredService<InstanceTransactionCoordinator>();
+        var created = (await instances.CreateAsync("Preview", "1.21.1")).Value!;
+        var game = environment.Paths.GetInstanceGameDirectory(created.Id);
+        await File.WriteAllTextAsync(Path.Combine(game, "options.txt"), "fov:70\n");
+        var snapshot = (await snapshots.CreateAsync(created.Id, new SnapshotCreateOptions(SnapshotScope.Full))).Value!;
+
+        await File.WriteAllTextAsync(Path.Combine(game, "options.txt"), "fov:90\n");
+        var preview = await snapshots.PreviewRestoreAsync(created.Id, snapshot.SnapshotId);
+        Assert.True(preview.IsSuccess, preview.Error?.ToString());
+        Assert.False(string.IsNullOrWhiteSpace(preview.Value!.PlanHash));
+        Assert.Equal(1, preview.Value.FilesToWrite);
+        Assert.Equal("EclManaged", preview.Value.Ownership);
+        Assert.Empty(preview.Value.Blockers);
+
+        var stale = await snapshots.RestoreAsync(
+            created.Id,
+            snapshot.SnapshotId,
+            new SnapshotRestoreOptions(PreviewHash: "deadbeef"));
+        Assert.False(stale.IsSuccess);
+        Assert.Equal("snapshot.preview_stale", stale.Error?.Code);
+
+        var restored = await snapshots.RestoreAsync(
+            created.Id,
+            snapshot.SnapshotId,
+            new SnapshotRestoreOptions(PreviewHash: preview.Value.PlanHash));
+        Assert.True(restored.IsSuccess, restored.Error?.ToString());
+        Assert.Equal("fov:70\n", await File.ReadAllTextAsync(Path.Combine(game, "options.txt")));
+
+        var journals = await transactions.ListAsync(created.Id);
+        Assert.Contains(journals.Value!, record => record.Kind == InstanceTransactionKind.SnapshotRestore);
+    }
+
+    [Fact]
+    public async Task ExternalAndSharedTargetsRequireExplicitConfirmation()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+        var snapshots = provider.GetRequiredService<IInstanceSnapshotService>();
+        var external = Path.Combine(environment.Root, "external", "shared");
+        var level = Path.Combine(external, "saves", "world", "level.dat");
+        Directory.CreateDirectory(Path.GetDirectoryName(level)!);
+        await File.WriteAllTextAsync(level, "user-world");
+        await WriteImportedMetadataAsync(environment, "import-a", "A", external);
+        await WriteImportedMetadataAsync(environment, "import-b", "B", external);
+
+        var snapshot = await snapshots.CreateAsync(
+            "import-a",
+            new SnapshotCreateOptions(SnapshotScope.Full, Origin: SnapshotOrigin.User));
+        Assert.True(snapshot.IsSuccess, snapshot.Error?.ToString());
+
+        var preview = await snapshots.PreviewRestoreAsync("import-a", snapshot.Value!.SnapshotId);
+        Assert.True(preview.IsSuccess, preview.Error?.ToString());
+        Assert.Equal("SharedExternal", preview.Value!.Ownership);
+        Assert.Contains("import-b", preview.Value.SharedWith);
+        Assert.Contains("snapshot.shared_target_requires_confirmation", preview.Value.Blockers);
+
+        var blocked = await snapshots.RestoreAsync("import-a", snapshot.Value.SnapshotId);
+        Assert.False(blocked.IsSuccess);
+        Assert.Equal("snapshot.shared_target_requires_confirmation", blocked.Error?.Code);
+    }
+
+    [Fact]
+    public async Task SingleExternalTargetRequiresExplicitConfirmation()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var snapshots = provider.GetRequiredService<IInstanceSnapshotService>();
+        var external = Path.Combine(environment.Root, "external", "single");
+        var level = Path.Combine(external, "saves", "world", "level.dat");
+        Directory.CreateDirectory(Path.GetDirectoryName(level)!);
+        await File.WriteAllTextAsync(level, "user-world");
+        await WriteImportedMetadataAsync(environment, "import-single", "Single", external);
+
+        var snapshot = await snapshots.CreateAsync(
+            "import-single",
+            new SnapshotCreateOptions(SnapshotScope.Full));
+        Assert.True(snapshot.IsSuccess, snapshot.Error?.ToString());
+        var blocked = await snapshots.RestoreAsync("import-single", snapshot.Value!.SnapshotId);
+        Assert.False(blocked.IsSuccess);
+        Assert.Equal("snapshot.external_target_requires_confirmation", blocked.Error?.Code);
+    }
+
+    private static async Task WriteImportedMetadataAsync(
+        TestEnvironment environment,
+        string instanceId,
+        string name,
+        string gameDirectory)
+    {
+        var record = Path.Combine(environment.Paths.GetInstanceDirectory(instanceId));
+        Directory.CreateDirectory(record);
+        var instance = new GameInstance
+        {
+            Id = instanceId,
+            Name = name,
+            GameVersion = "1.21.1",
+            VersionId = "1.21.1",
+            GameDirectory = gameDirectory,
+        };
+        await File.WriteAllTextAsync(
+            environment.Paths.GetInstanceMetadataFile(instanceId),
+            JsonSerializer.Serialize(instance, EclJson.Default));
     }
 
     private static void AttachRunningSession(

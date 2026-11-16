@@ -42,6 +42,7 @@ public enum InstanceTransactionKind
 {
     InstanceContent,
     InstanceMetadata,
+    SnapshotRestore,
 }
 
 public enum InstanceActivityState
@@ -107,7 +108,8 @@ public sealed record InstanceChangePlan(
     IReadOnlyList<InstanceChangeOperation> Operations,
     string Reason,
     string? TransactionId = null,
-    string? CorrelationId = null);
+    string? CorrelationId = null,
+    InstanceTransactionKind Kind = InstanceTransactionKind.InstanceContent);
 
 public sealed record InstanceFileFingerprint(
     bool Exists,
@@ -301,7 +303,8 @@ public sealed class InstanceTransactionCoordinator : IInstanceTransactionService
             0,
             RecoveryDirectory: recoveryDirectory,
             SchemaVersion: CurrentSchemaVersion,
-            CorrelationId: plan.CorrelationId);
+            CorrelationId: plan.CorrelationId,
+            Kind: plan.Kind);
 
         try
         {
