@@ -135,7 +135,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 
 ## 最高优先级 UI 架构约束
 
-[ADR 0050: ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) 是 ECL **UI 全局架构与设计系统的最高优先级约束**，负责 Design System、Application Shell、全局导航职责、统一排版及 DPI/分辨率适配。[ADR 0056: Right Auxiliary Rail and Inspector Integration](0056-right-auxiliary-rail-and-inspector-integration.md) 是其右侧辅助区域的专门协调决策，具体规定 Rail 的组成、Inspector/Tools 模式职责与交互；两者按此分工共同生效，不存在 0056 取代 0050 全文的关系。
+[ADR 0050: ECL UI Architecture and Design System Overhaul](0050-ecl-ui-architecture-and-design-system-overhaul.md) 是 ECL **UI 全局架构与设计系统的最高优先级约束**，负责共享 Design System、Application Shell、全局导航职责、统一排版及 DPI/分辨率适配；其中固定深色模式的历史约束已由 [ADR 0073: Adaptive Light and Dark Theme Architecture](0073-adaptive-light-and-dark-theme-architecture.md) 局部取代。ADR 0073 专门规定 Light/Dark/System 模式、语义色板、主题资源切换与主题适配验收，不取代 ADR 0050 的其他全局 UI 决策。[ADR 0056: Right Auxiliary Rail and Inspector Integration](0056-right-auxiliary-rail-and-inspector-integration.md) 是右侧辅助区域的专门协调决策，具体规定 Rail 的组成、Inspector/Tools 模式职责与交互；三者按此分工共同生效，不存在 0056 或 0073 取代 0050 全文的关系。
 
 具体页面的布局、信息组织、功能入口、页面内导航、交互流程、用户可见状态、文案和页面级验收，以已确认的 UI 页面规划（Feature Spec）为准。页面规划可以取代其他 ADR 中过时的局部 UI 假设，但不得改变该 ADR 中仍然有效的领域架构决策。
 
@@ -219,3 +219,4 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0070 Account Appearance and Appearance Enhance Addition Architecture](0070-account-appearance-and-appearance-enhance-addition-architecture.md) | Accepted | Not Started | Core 基础外观读取与 2D 展示、Appearance Enhance Addition、衣柜及账户类型能力边界 |
 | [0071 Self-Contained Installer Executable and Embedded Deployment Media](0071-self-contained-installer-and-embedded-deployment-media.md) | Accepted | Implemented | Installer 单文件分发、嵌入完整介质、自包含 Bootstrapper 与无运行时安装 |
 | [0072 Separation of Human-Facing Releases and Channel Update Feeds](0072-separation-of-human-facing-releases-and-channel-update-feeds.md) | Accepted | In Progress | 人工 Release 仅两个 EXE、Cloudflare Pages 静态频道 Feed、三个机器专用 GitHub Package Releases、三频道隔离发布、首次迁移及不可变 Package URL 安全校验 |
+| [0073 Adaptive Light and Dark Theme Architecture](0073-adaptive-light-and-dark-theme-architecture.md) | Proposed | Not Started | ECL Light/Dark/System 主题模式、语义色板、运行时资源切换、窗口与控件主题适配及可访问性验收 |
