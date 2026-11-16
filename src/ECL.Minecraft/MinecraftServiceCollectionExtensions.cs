@@ -2,6 +2,7 @@
 
 using Ecl.Configuration;
 using Ecl.Core;
+using Ecl.Core.Storage;
 using Ecl.Java;
 using Ecl.Minecraft.Content;
 using Ecl.Minecraft.CurseForge;
@@ -58,6 +59,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IInstanceActivityGuard, InstanceActivityGuard>();
         services.AddSingleton<IInstanceDeletionService, InstanceDeletionService>();
         services.AddSingleton<IInstanceRelocationService, InstanceRelocationService>();
+        services.AddSingleton<IInstanceMoveService, InstanceMoveService>();
         services.AddSingleton<InstanceTransactionCoordinator>();
         services.AddSingleton<IInstanceTransactionService>(provider =>
             provider.GetRequiredService<InstanceTransactionCoordinator>());
@@ -72,6 +74,8 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<ISnapshotProtectionService>(provider =>
             provider.GetRequiredService<InstanceSnapshotService>());
         services.AddSingleton<IInstanceService, InstanceService>();
+        services.AddSingleton<IExternalInstanceImportService, ExternalInstanceImportService>();
+        services.AddSingleton<IInstanceSourceActivityProbe, InstanceSourceActivityProbe>();
         services.AddSingleton<IVersionResolver, VersionResolver>();
         services.AddSingleton<IVersionCatalog, MojangVersionCatalog>();
         services.AddSingleton<IVersionDownloadSizeEstimator, VersionDownloadSizeEstimator>();

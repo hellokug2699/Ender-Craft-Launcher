@@ -117,8 +117,27 @@ internal sealed class FakeWorkspaceService : IWorkspaceService
         return Task.FromResult(InitializeResult);
     }
 
+    public WorkspacePathCheck Check(string path, WorkspaceCheckMode mode) => Check(path, mode != WorkspaceCheckMode.ReadOnlyExisting);
+
     public Task<Result<WorkspaceRoot>> RegisterExternalAsync(string path, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
+
+    public Task<Result<WorkspaceRegistrationResult>> RegisterExternalDetailedAsync(
+        string path,
+        CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+    public Task<Result<WorkspaceRoot>> AddManagedRootAsync(
+        string path,
+        CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+    public Task<Result<WorkspaceRoot>> RelocateRootAsync(
+        string rootId,
+        string newPath,
+        CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+    public Task<Result<WorkspacePathCheck>> ValidateRootAsync(
+        string rootId,
+        CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
     public Task<Result<WorkspacePathCheck>> ValidatePrimaryAsync(CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
@@ -134,6 +153,11 @@ internal sealed class FakeWorkspaceService : IWorkspaceService
 
     public Task<Result<bool>> RemoveRootAsync(string id, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
+
+    public Task<Result<bool>> RemoveRootAsync(
+        string id,
+        RootRemovalMode mode,
+        CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
     public WorkspaceLegacyInfo DetectLegacy() => Legacy;
 

@@ -55,6 +55,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IDiagnosticPackageService _diagnostics;
     private readonly Ecl.Minecraft.World.WorldWorkbenchService _worldWorkbench;
     private readonly Ecl.Core.Storage.InstanceSourceService _instanceSources;
+    private readonly Ecl.Core.Storage.Discovery.IInstanceDiscoveryService? _discovery;
     private readonly Ecl.Core.Storage.IWorkspaceService _workspace;
     private readonly IDialogEngine _dialogsEngine;
     private readonly Ecl.Operations.IOperationService _operations;
@@ -217,7 +218,8 @@ public sealed partial class InstancesViewModel : ObservableObject
         IDialogEngine dialogsEngine,
         Ecl.Operations.IOperationService operations,
         Ecl.App.Services.IExternalLinkService links,
-        Ecl.Minecraft.Engine.Lifecycle.IInstanceDeletionService deletions)
+        Ecl.Minecraft.Engine.Lifecycle.IInstanceDeletionService deletions,
+        Ecl.Core.Storage.Discovery.IInstanceDiscoveryService? discovery = null)
     {
         _instances = instances;
         _accounts = accounts;
@@ -245,6 +247,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         _operations = operations;
         _links = links;
         _deletions = deletions;
+        _discovery = discovery;
 
         DownloadPauseButtonText = _localizer.Get("instances.download.pause");
     }
@@ -404,9 +407,57 @@ public sealed partial class InstancesViewModel : ObservableObject
     {
         try
         {
-            var catalog = await _instanceSources.ScanAllAsync();
             SourceGroups.Clear();
-            foreach (var group in catalog.Groups)
+            if (_discovery is not null)
+            {
+                // F-02：来源分组以持久发现目录为准，扫描只刷新证据，不用内存结果冒充身份。
+                await _discovery.ScanAsync().ConfigureAwait(true);
+                var catalog = await _discovery.GetCatalogAsync(includeInactive: true).ConfigureAwait(true);
+                if (!catalog.IsSuccess)
+                {
+                    StatusMessage = catalog.Error!.Message;
+                    OnPropertyChanged(nameof(HasSourceGroups));
+                    return;
+                }
+
+                var primaryId = _workspace.Primary?.Id;
+                foreach (var root in _workspace.Roots.Where(root =>
+                             !string.Equals(root.Id, primaryId, StringComparison.Ordinal)))
+                {
+                    var samples = catalog.Value!.Entries
+                        .Where(entry => string.Equals(entry.RootId, root.Id, StringComparison.Ordinal))
+                        .Where(entry => entry.Status is not (
+                            Ecl.Core.Storage.Discovery.DiscoveryEntryStatus.Missing or
+                            Ecl.Core.Storage.Discovery.DiscoveryEntryStatus.Unbound or
+                            Ecl.Core.Storage.Discovery.DiscoveryEntryStatus.SourceMissing))
+                        .ToArray();
+                    var accessible = root.Status is not (
+                        Ecl.Core.Storage.WorkspaceStatus.Missing or
+                        Ecl.Core.Storage.WorkspaceStatus.NotAccessible or
+                        Ecl.Core.Storage.WorkspaceStatus.Unavailable);
+                    SourceGroups.Add(new InstanceSourceGroupViewModel(
+                        root.Name,
+                        root.Path,
+                        accessible,
+                        samples.Select(entry => new InstanceSourceItemViewModel(
+                            entry.DisplayName,
+                            entry.GameVersion ?? _localizer.Get("instances.source.versionUnknown"),
+                            entry.Loader,
+                            false)
+                        {
+                            Availability = entry.ImportedInstanceId is not null
+                                ? _localizer.Get("instances.source.managed")
+                                : _localizer.Get("instances.source.readOnly"),
+                        }).ToArray(),
+                        _localizer));
+                }
+
+                OnPropertyChanged(nameof(HasSourceGroups));
+                return;
+            }
+
+            var legacy = await _instanceSources.ScanAllAsync().ConfigureAwait(true);
+            foreach (var group in legacy.Groups)
             {
                 SourceGroups.Add(new InstanceSourceGroupViewModel(
                     group.Source.Name,

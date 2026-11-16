@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Ecl.Core;
 using Ecl.Core.Json;
+using Ecl.Core.Storage;
 using Ecl.Minecraft.Engine.Identity;
 using Ecl.Minecraft.Engine.Snapshots;
 using Ecl.Minecraft.Instances;
@@ -121,6 +122,7 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
     private readonly IInstanceActivityGuard _guard;
     private readonly IInstancePathPolicy _pathPolicy;
     private readonly ISnapshotMaintenanceService _snapshots;
+    private readonly IWorkspaceService _workspace;
     private readonly IAppPaths _paths;
     private readonly ILogger<InstanceDeletionService> _logger;
     private readonly TimeProvider _time;
@@ -132,6 +134,7 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
         IInstanceActivityGuard guard,
         IInstancePathPolicy pathPolicy,
         ISnapshotMaintenanceService snapshots,
+        IWorkspaceService workspace,
         IAppPaths paths,
         ILogger<InstanceDeletionService>? logger = null,
         TimeProvider? time = null)
@@ -142,6 +145,7 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
         _guard = guard;
         _pathPolicy = pathPolicy;
         _snapshots = snapshots;
+        _workspace = workspace;
         _paths = paths;
         _logger = logger ?? NullLogger<InstanceDeletionService>.Instance;
         _time = time ?? TimeProvider.System;
@@ -355,7 +359,9 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
         var managedData = instance.GameDirectory is null &&
                           plan.Ownership == InstanceOwnership.EclManaged &&
                           plan.Mode == InstanceDeletionMode.DeleteManagedData;
-        var trashRoot = Path.Combine(_paths.GameRoot, ".ecl-trash");
+        // 隔离区必须与实例记录同卷，才能在切换时使用原子重命名（多受管理根 F-02）。
+        var deleteRoot = ResolveRootPath(instance, recordDirectory);
+        var trashRoot = Path.Combine(deleteRoot, ".ecl-trash");
         var tombstone = Path.Combine(trashRoot, $"{plan.InstanceId}-{plan.PlanId}");
         var journalRoot = Path.Combine(_paths.ConfigDirectory, "instance-engine", "lifecycle", plan.InstanceId);
         Directory.CreateDirectory(journalRoot);
@@ -482,6 +488,8 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
                 State = InstanceDeletionState.Purged,
                 UpdatedAt = _time.GetUtcNow(),
             }, cancellationToken).ConfigureAwait(false);
+
+            _paths.UnregisterInstanceRoot(plan.InstanceId);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -499,6 +507,14 @@ public sealed class InstanceDeletionService : IInstanceDeletionService
             quarantinedBytes,
             retainedSnapshots,
             journal.DetachedGameDataPath));
+    }
+
+    private string ResolveRootPath(GameInstance instance, string recordDirectory)
+    {
+        var match = _workspace.Roots.FirstOrDefault(root =>
+            string.Equals(root.Kind, WorkspaceKind.Managed) &&
+            PathIdentity.PathsEqual(Path.Combine(root.Path, "instances", instance.Id), recordDirectory));
+        return match?.Path ?? _paths.GameRoot;
     }
 
     private InstanceDeletionPlanEntry Entry(

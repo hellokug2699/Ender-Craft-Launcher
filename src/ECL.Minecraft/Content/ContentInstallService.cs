@@ -1383,7 +1383,7 @@ public sealed class ContentInstallService(
     {
         try
         {
-            var rollback = await instances.DeleteAsync(instanceId, CancellationToken.None).ConfigureAwait(false);
+            var rollback = await instances.RollbackCreatedInstanceAsync(instanceId, CancellationToken.None).ConfigureAwait(false);
             if (rollback.IsSuccess)
             {
                 return null;

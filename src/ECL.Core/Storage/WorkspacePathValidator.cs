@@ -150,9 +150,54 @@ public sealed class WorkspacePathValidator
 
         if (Directory.Exists(fullPath))
         {
+            if (mode == WorkspaceCheckMode.ReadOnlyExisting)
+            {
+                // 外部来源根：只要求可读。绝不写探针/临时文件/锁（ADR 0023 §7、ADR 0046 §3、D1-1）。
+                if (!TryReadDirectory(fullPath, out var accessError))
+                {
+                    return new WorkspacePathCheck(
+                        fullPath,
+                        false,
+                        WorkspaceStatus.NotAccessible,
+                        "workspace.path.accessDenied",
+                        accessError ?? "工作区目录不可读取。",
+                        freeBytes,
+                        warnings)
+                    {
+                        CanonicalPath = PathIdentity.TryGetFinalPath(fullPath) ?? fullPath,
+                        PathIdentityKey = PathIdentity.TryGetKey(fullPath),
+                    };
+                }
+
+                if (!string.Equals(
+                        Path.GetFileName(fullPath),
+                        ".minecraft",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    warnings.Add("workspace.path.notMinecraft");
+                }
+
+                return new WorkspacePathCheck(
+                    fullPath,
+                    true,
+                    WorkspaceStatus.Ready,
+                    null,
+                    null,
+                    freeBytes,
+                    warnings)
+                {
+                    CanonicalPath = PathIdentity.TryGetFinalPath(fullPath) ?? fullPath,
+                    PathIdentityKey = PathIdentity.TryGetKey(fullPath),
+                };
+            }
+
             var writable = ProbeWrite(fullPath, out var writeError);
             return writable
                 ? new WorkspacePathCheck(fullPath, true, WorkspaceStatus.Ready, null, null, freeBytes, warnings)
+                {
+                    CanonicalPath = PathIdentity.TryGetFinalPath(fullPath) ?? fullPath,
+                    PathIdentityKey = PathIdentity.TryGetKey(fullPath),
+                }
                 : new WorkspacePathCheck(
                     fullPath,
                     false,
@@ -168,7 +213,7 @@ public sealed class WorkspacePathValidator
             return WorkspacePathCheck.Invalid(fullPath, "workspace.path.notDirectory", "该路径已经是一个文件，不能作为工作区。");
         }
 
-        if (mode == WorkspaceCheckMode.RequireExisting)
+        if (mode is WorkspaceCheckMode.RequireExisting or WorkspaceCheckMode.ReadOnlyExisting)
         {
             // 已登记工作区缺失：保留登记，提示重新连接或重新定位，绝不创建空目录。
             return new WorkspacePathCheck(
@@ -176,7 +221,9 @@ public sealed class WorkspacePathValidator
                 false,
                 WorkspaceStatus.Missing,
                 "workspace.path.missing",
-                "工作区目录不存在。请重新连接磁盘或选择新的工作区位置。",
+                mode == WorkspaceCheckMode.ReadOnlyExisting
+                    ? "来源目录不存在或当前不可访问。请重新连接磁盘或重新定位来源。"
+                    : "工作区目录不存在。请重新连接磁盘或选择新的工作区位置。",
                 freeBytes,
                 warnings);
         }
@@ -284,6 +331,30 @@ public sealed class WorkspacePathValidator
         }
         catch (Exception exception) when (exception is ArgumentException or IOException)
         {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 只读校验目录可枚举性：不创建任何文件、不写探针、不修改时间戳。
+    /// </summary>
+    private static bool TryReadDirectory(string directory, out string? error)
+    {
+        error = null;
+        try
+        {
+            using var entries = Directory.EnumerateFileSystemEntries(directory).GetEnumerator();
+            entries.MoveNext();
+            return true;
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            error = $"工作区目录不可读取：{exception.Message}";
+            return false;
+        }
+        catch (Exception exception) when (exception is IOException or System.Security.SecurityException)
+        {
+            error = $"工作区目录不可读取：{exception.Message}";
             return false;
         }
     }

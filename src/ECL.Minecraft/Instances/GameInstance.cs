@@ -35,6 +35,12 @@ public sealed record GameInstance
     /// </summary>
     public string? GameDirectory { get; init; }
 
+    /// <summary>
+    /// 记录所属的受管理根 ID（F-02/F-03）。为空表示主工作区；
+    /// 跨受管理根移动后指向目标根的稳定 ID。旧记录无需迁移。
+    /// </summary>
+    public string? SourceRootId { get; init; }
+
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset? LastPlayedAt { get; init; }

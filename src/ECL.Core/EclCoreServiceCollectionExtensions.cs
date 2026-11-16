@@ -5,6 +5,7 @@ using Ecl.Core.Diagnostics;
 using Ecl.Core.Localization;
 using Ecl.Core.Runtime;
 using Ecl.Core.Storage;
+using Ecl.Core.Storage.Discovery;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -19,12 +20,14 @@ public static class EclCoreServiceCollectionExtensions
         services.AddSingleton<IAppPaths>(paths);
         services.AddSingleton<IWorkspaceService>(provider => new WorkspaceService(
             paths,
-            provider.GetService<ILogger<WorkspaceService>>() ?? NullLogger<WorkspaceService>.Instance));
+            provider.GetService<ILogger<WorkspaceService>>() ?? NullLogger<WorkspaceService>.Instance,
+            provider));
         services.AddSingleton<IWorkspaceMigrationService>(provider => new WorkspaceMigrationService(
             paths,
             provider.GetRequiredService<IWorkspaceService>(),
             provider.GetService<ILogger<WorkspaceMigrationService>>() ?? NullLogger<WorkspaceMigrationService>.Instance));
         services.AddSingleton<InstanceSourceService>();
+        services.AddSingleton<IInstanceDiscoveryService, InstanceDiscoveryService>();
         services.AddSingleton<ILocalizer>(_ => new JsonLocalizer(culture));
 
         // 顶部内存压力监控与启动服务的自动内存策略共用同一份系统采样。

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using Ecl.Core.Storage;
 
 namespace Ecl.Core;
 
@@ -61,6 +63,25 @@ public interface IAppPaths
     /// </summary>
     void SetGameRoot(string? path);
 
+    /// <summary>
+    /// 登记某个实例的记录根目录（多受管理根 F-02/F-03）。记录目录解析为
+    /// <c>&lt;root&gt;/instances/&lt;id&gt;</c>；切换主工作区不影响已登记的其他受管理根。
+    /// </summary>
+    void RegisterInstanceRoot(string instanceId, string managedRootPath);
+
+    void UnregisterInstanceRoot(string instanceId);
+
+    bool TryGetInstanceRoot(string instanceId, out string? managedRootPath);
+
+    /// <summary>当前进程内已登记的实例→受管理根映射（诊断/测试用只读快照）。</summary>
+    IReadOnlyDictionary<string, string> InstanceRootMappings { get; }
+
+    /// <summary>
+    /// 按工作区登记重建实例→受管理根映射：主工作区实例保持默认解析，
+    /// 其他受管理根按其 <c>instances/&lt;id&gt;</c> 目录登记。只读磁盘，不修改文件。
+    /// </summary>
+    void SyncInstanceRootMappings(IReadOnlyList<WorkspaceRoot> roots, string? primaryId);
+
     void SetWorkspaceConfigured(bool configured);
 
     void EnsureCreated();
@@ -68,6 +89,8 @@ public interface IAppPaths
 
 public sealed partial class AppPaths : IAppPaths
 {
+    private readonly ConcurrentDictionary<string, string> _instanceRoots = new(StringComparer.Ordinal);
+
     public const string ProductDirectoryName = "EnderCraftLauncher";
     public const string PortableMarkerFileName = "portable.flag";
     public const string DataDirectoryEnvironmentVariable = "ECL_DATA_DIR";
@@ -152,10 +175,67 @@ public sealed partial class AppPaths : IAppPaths
 
     public void SetWorkspaceConfigured(bool configured) => WorkspaceConfigured = configured;
 
+    public IReadOnlyDictionary<string, string> InstanceRootMappings => _instanceRoots;
+
+    public void RegisterInstanceRoot(string instanceId, string managedRootPath)
+    {
+        if (!IsValidInstanceId(instanceId) || string.IsNullOrWhiteSpace(managedRootPath))
+        {
+            return;
+        }
+
+        var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(managedRootPath));
+        _instanceRoots[instanceId] = normalized;
+    }
+
+    public void UnregisterInstanceRoot(string instanceId) => _instanceRoots.TryRemove(instanceId, out _);
+
+    public bool TryGetInstanceRoot(string instanceId, out string? managedRootPath) =>
+        _instanceRoots.TryGetValue(instanceId, out managedRootPath);
+
+    public void SyncInstanceRootMappings(IReadOnlyList<WorkspaceRoot> roots, string? primaryId)
+    {
+        _instanceRoots.Clear();
+        foreach (var root in roots)
+        {
+            if (root.Kind != WorkspaceKind.Managed ||
+                !root.Enabled ||
+                string.Equals(root.Id, primaryId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var instancesDirectory = Path.Combine(root.Path, "instances");
+            if (!Directory.Exists(instancesDirectory))
+            {
+                continue;
+            }
+
+            try
+            {
+                foreach (var directory in Directory.EnumerateDirectories(instancesDirectory))
+                {
+                    var instanceId = Path.GetFileName(directory);
+                    if (IsValidInstanceId(instanceId) &&
+                        File.Exists(Path.Combine(directory, "instance.json")))
+                    {
+                        RegisterInstanceRoot(instanceId, root.Path);
+                    }
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // 不可读的受管理根不阻塞启动；其实例将在下次成功读取时登记。
+            }
+        }
+    }
+
     public string GetInstanceDirectory(string instanceId)
     {
         EnsureValidInstanceId(instanceId);
-        return Path.Combine(InstancesDirectory, instanceId);
+        return _instanceRoots.TryGetValue(instanceId, out var rootPath)
+            ? Path.Combine(rootPath, "instances", instanceId)
+            : Path.Combine(InstancesDirectory, instanceId);
     }
 
     public string GetInstanceMetadataFile(string instanceId) => Path.Combine(GetInstanceDirectory(instanceId), "instance.json");

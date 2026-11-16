@@ -3,11 +3,20 @@
 using System.Text.Json;
 using Ecl.Core;
 using Ecl.Core.Json;
+using Ecl.Core.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace Ecl.Minecraft.Instances;
 
-internal sealed class FileSystemInstanceStore(IAppPaths paths, ILogger<FileSystemInstanceStore> logger) : IInstanceStore
+/// <summary>
+/// 文件系统实例仓库（F-02/F-03 多受管理根）。记录目录解析统一走
+/// <see cref="IAppPaths.GetInstanceDirectory"/>：主工作区与已登记的其他受管理根
+/// 都由 AppPaths 的实例→根映射解析，避免各调用方自行拼接路径。
+/// </summary>
+internal sealed class FileSystemInstanceStore(
+    IAppPaths paths,
+    IWorkspaceService workspace,
+    ILogger<FileSystemInstanceStore> logger) : IInstanceStore
 {
     private static readonly string[] ManagedGameDirectories =
     [
@@ -24,25 +33,36 @@ internal sealed class FileSystemInstanceStore(IAppPaths paths, ILogger<FileSyste
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!Directory.Exists(paths.InstancesDirectory))
-        {
-            return Task.FromResult<IReadOnlyList<GameInstance>>([]);
-        }
-
         var instances = new List<GameInstance>();
-        foreach (var directory in Directory.EnumerateDirectories(paths.InstancesDirectory))
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (rootId, instancesDirectory) in EnumerateInstanceDirectories())
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            var instanceId = Path.GetFileName(directory);
-            if (!AppPaths.IsValidInstanceId(instanceId))
+            if (!Directory.Exists(instancesDirectory))
             {
                 continue;
             }
 
-            var instance = TryLoad(instanceId);
-            if (instance is not null)
+            foreach (var directory in Directory.EnumerateDirectories(instancesDirectory))
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                var instanceId = Path.GetFileName(directory);
+                if (!AppPaths.IsValidInstanceId(instanceId) || !seen.Add(instanceId))
+                {
+                    continue;
+                }
+
+                var instance = TryLoadAt(directory);
+                if (instance is null)
+                {
+                    continue;
+                }
+
+                if (rootId is not null && instance.SourceRootId is null)
+                {
+                    instance = instance with { SourceRootId = rootId };
+                }
+
                 instances.Add(instance);
             }
         }
@@ -54,7 +74,40 @@ internal sealed class FileSystemInstanceStore(IAppPaths paths, ILogger<FileSyste
     public Task<GameInstance?> GetAsync(string instanceId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(TryLoad(instanceId));
+        if (!AppPaths.IsValidInstanceId(instanceId))
+        {
+            return Task.FromResult<GameInstance?>(null);
+        }
+
+        var instance = TryLoadAt(paths.GetInstanceDirectory(instanceId));
+        if (instance is not null)
+        {
+            return Task.FromResult<GameInstance?>(instance);
+        }
+
+        // 映射缺失（例如外部登记后未刷新）：退回按受管理根查找同一记录。
+        foreach (var (rootId, instancesDirectory) in EnumerateInstanceDirectories())
+        {
+            if (rootId is null)
+            {
+                continue;
+            }
+
+            var candidate = Path.Combine(instancesDirectory, instanceId);
+            if (!Directory.Exists(candidate))
+            {
+                continue;
+            }
+
+            instance = TryLoadAt(candidate);
+            if (instance is not null)
+            {
+                paths.RegisterInstanceRoot(instanceId, Path.GetDirectoryName(instancesDirectory)!);
+                return Task.FromResult<GameInstance?>(instance with { SourceRootId = instance.SourceRootId ?? rootId });
+            }
+        }
+
+        return Task.FromResult<GameInstance?>(null);
     }
 
     public Task SaveAsync(GameInstance instance, CancellationToken cancellationToken = default)
@@ -64,14 +117,15 @@ internal sealed class FileSystemInstanceStore(IAppPaths paths, ILogger<FileSyste
         var directory = paths.GetInstanceDirectory(instance.Id);
         Directory.CreateDirectory(directory);
 
-        // 自建实例：版本隔离始终开启，游戏目录固定在 instances/<id>/minecraft。
+        // 自建实例：版本隔离始终开启，游戏目录固定在 <根>/instances/<id>/minecraft。
         // 导入的既有安装直接引用原目录，这里不创建、也不改写它。
         if (string.IsNullOrWhiteSpace(instance.GameDirectory))
         {
-            Directory.CreateDirectory(paths.GetInstanceGameDirectory(instance.Id));
+            var gameDirectory = paths.GetInstanceGameDirectory(instance.Id);
+            Directory.CreateDirectory(gameDirectory);
             foreach (var name in ManagedGameDirectories)
             {
-                Directory.CreateDirectory(Path.Combine(paths.GetInstanceGameDirectory(instance.Id), name));
+                Directory.CreateDirectory(Path.Combine(gameDirectory, name));
             }
         }
 
@@ -145,9 +199,32 @@ internal sealed class FileSystemInstanceStore(IAppPaths paths, ILogger<FileSyste
         }
     }
 
-    private GameInstance? TryLoad(string instanceId)
+    /// <summary>
+    /// 枚举主工作区与所有已登记受管理根的实例目录。主工作区在前；
+    /// 同一 InstanceId 出现在多个根时只取第一条并记录警告（身份冲突由生命周期计划阻断）。
+    /// </summary>
+    private IEnumerable<(string? RootId, string InstancesDirectory)> EnumerateInstanceDirectories()
     {
-        var path = paths.GetInstanceMetadataFile(instanceId);
+        var primary = workspace.Primary;
+        yield return (primary?.Id, paths.InstancesDirectory);
+
+        foreach (var root in workspace.Roots)
+        {
+            if (root.Kind != WorkspaceKind.Managed ||
+                !root.Enabled ||
+                string.Equals(root.Id, primary?.Id, StringComparison.Ordinal) ||
+                PathIdentity.PathsEqual(root.Path, paths.GameRoot))
+            {
+                continue;
+            }
+
+            yield return (root.Id, Path.Combine(root.Path, "instances"));
+        }
+    }
+
+    private GameInstance? TryLoadAt(string recordDirectory)
+    {
+        var path = Path.Combine(recordDirectory, "instance.json");
         if (!File.Exists(path))
         {
             return null;

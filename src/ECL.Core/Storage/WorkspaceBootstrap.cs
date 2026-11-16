@@ -22,6 +22,7 @@ public static class WorkspaceBootstrap
         if (primary is not null)
         {
             paths.SetGameRoot(primary.Path);
+            paths.SyncInstanceRootMappings(state.Roots, state.PrimaryId);
             return state;
         }
 
@@ -72,6 +73,7 @@ public static class WorkspaceBootstrap
         }
 
         paths.SetGameRoot(root.Path);
+        paths.SyncInstanceRootMappings(migrated.Roots, migrated.PrimaryId);
         return migrated;
     }
 

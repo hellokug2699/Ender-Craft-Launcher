@@ -10,6 +10,7 @@ using Ecl.Core;
 using Ecl.Core.Json;
 using Ecl.Core.Localization;
 using Ecl.Core.Storage;
+using Ecl.Core.Storage.Discovery;
 using Ecl.Deployment;
 using Ecl.Download;
 using Ecl.Java;
@@ -58,6 +59,7 @@ internal sealed class CliApplication
         {
             "version" => PrintVersion(),
             "workspace" => await WorkspaceCommandAsync(rest).ConfigureAwait(false),
+            "source" => await SourceCommandAsync(rest).ConfigureAwait(false),
             "session" => await SessionCommandAsync(rest).ConfigureAwait(false),
             "instance" => await InstanceCommandAsync(rest).ConfigureAwait(false),
             "install" => await InstallCommandAsync(rest).ConfigureAwait(false),
@@ -361,10 +363,378 @@ internal sealed class CliApplication
                     return journal.State == InstanceDeletionState.Purged ? 0 : 1;
                 }
 
+            case "move":
+                return await MoveInstanceAsync(args.ElementAtOrDefault(1)).ConfigureAwait(false);
+
             default:
                 return UsageError($"未知的 instance 子命令：{subCommand}");
         }
     }
+
+    /// <summary>
+    /// F-03 跨受管理根移动：先出计划（含阻断项/空间/快照要求），--dry-run 只显示计划，
+    /// 执行必须 --force 确认；目标根必须已登记为受管理根。
+    /// </summary>
+    private async Task<int> MoveInstanceAsync(string? instanceId)
+    {
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            return UsageError("instance move 需要实例 ID。");
+        }
+
+        var targetRootId = _commandLine.GetValue("target-root") ?? _commandLine.GetValue("target");
+        if (string.IsNullOrWhiteSpace(targetRootId))
+        {
+            return UsageError("instance move 需要 --target-root <rootId>。");
+        }
+
+        var moves = _provider.GetRequiredService<IInstanceMoveService>();
+        var planResult = await moves.PlanAsync(instanceId, targetRootId).ConfigureAwait(false);
+        if (!planResult.IsSuccess)
+        {
+            return WriteError(planResult.Error);
+        }
+
+        var plan = planResult.Value!;
+        if (_commandLine.HasFlag("json"))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(plan, EclJson.Indented));
+        }
+        else
+        {
+            Console.WriteLine($"实例 {plan.InstanceName}（{plan.InstanceId}）");
+            Console.WriteLine($"  所有权 : {plan.Ownership}");
+            Console.WriteLine($"  源根   : {plan.SourceRootPath}");
+            Console.WriteLine($"  目标根 : {plan.TargetRootPath}");
+            Console.WriteLine($"  记录   : {plan.SourceRecordDirectory} → {plan.TargetRecordDirectory}");
+            Console.WriteLine($"  内容   : {plan.FileCount} 文件 / {FormatBytes(plan.ByteCount)}");
+            Console.WriteLine($"  空间   : 可用 {FormatBytes(plan.TargetFreeBytes)}");
+            foreach (var blocker in plan.Blockers)
+            {
+                Console.WriteLine($"  ! {blocker}");
+            }
+
+            foreach (var warning in plan.Warnings)
+            {
+                Console.WriteLine($"  ? {warning}");
+            }
+        }
+
+        if (_commandLine.HasFlag("dry-run"))
+        {
+            return 0;
+        }
+
+        if (!_commandLine.HasFlag("force"))
+        {
+            return UsageError("移动实例需要 --force 确认；先用 --dry-run 检查计划。");
+        }
+
+        if (plan.Blockers.Count > 0)
+        {
+            return WriteError(new EclError(
+                "instance.lifecycle.blocked",
+                "移动计划存在阻断项，未执行。",
+                string.Join("; ", plan.Blockers)));
+        }
+
+        var result = await moves.ExecuteAsync(plan).ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return WriteError(result.Error);
+        }
+
+        var move = result.Value!;
+        Console.WriteLine($"已把实例 {instanceId} 移动到 {plan.TargetRootPath}");
+        Console.WriteLine($"  目标记录：{move.TargetRecordDirectory}");
+        Console.WriteLine($"  快照    ：{move.SnapshotId ?? "(未创建)"}");
+        Console.WriteLine($"  源退休  ：{move.RetiredSourcePath ?? "(待处理)"}");
+        return 0;
+    }
+
+    /// <summary>F-02 来源命令：登记/扫描/目录/重新定位/解绑/导入。</summary>
+    private async Task<int> SourceCommandAsync(string[] args)
+    {
+        var workspace = _provider.GetRequiredService<IWorkspaceService>();
+        var discovery = _provider.GetRequiredService<IInstanceDiscoveryService>();
+        var subCommand = args.ElementAtOrDefault(0)?.ToLowerInvariant();
+        switch (subCommand)
+        {
+            case "list":
+            {
+                if (_commandLine.HasFlag("json"))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(workspace.Roots, EclJson.Indented));
+                    return 0;
+                }
+
+                if (workspace.Roots.Count == 0)
+                {
+                    Console.WriteLine("尚未登记任何实例来源。");
+                    return 0;
+                }
+
+                foreach (var root in workspace.Roots)
+                {
+                    var primary = string.Equals(root.Id, workspace.Primary?.Id, StringComparison.Ordinal)
+                        ? " [主工作区]"
+                        : string.Empty;
+                    Console.WriteLine($"{root.Name}（{root.Id}）· {root.Kind} · {root.Status}{primary}");
+                    Console.WriteLine($"  路径   : {root.Path}");
+                    Console.WriteLine($"  结构   : {root.Structure ?? "未知"} · 扫描 {(root.LastScannedAtUtc is { } time ? time.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "从未")}");
+                    if (!string.IsNullOrWhiteSpace(root.LastScanErrorCode))
+                    {
+                        Console.WriteLine($"  最近错误: {root.LastScanErrorCode} {root.LastScanError}");
+                    }
+                }
+
+                return 0;
+            }
+
+            case "add":
+            {
+                var path = args.ElementAtOrDefault(1);
+                if (string.IsNullOrWhiteSpace(path))
+                {
+                    return UsageError("source add 需要一个已存在的目录路径。");
+                }
+
+                Result<WorkspaceRegistrationResult> result;
+                if (_commandLine.HasFlag("managed"))
+                {
+                    var added = await workspace.AddManagedRootAsync(path).ConfigureAwait(false);
+                    result = added.IsSuccess
+                        ? Result<WorkspaceRegistrationResult>.Ok(new WorkspaceRegistrationResult(
+                            added.Value!,
+                            workspace.Check(path, WorkspaceCheckMode.RequireExisting),
+                            Created: true))
+                        : Result<WorkspaceRegistrationResult>.Fail(added.Error!);
+                }
+                else
+                {
+                    result = await workspace.RegisterExternalDetailedAsync(path).ConfigureAwait(false);
+                }
+
+                if (!result.IsSuccess)
+                {
+                    return WriteError(result.Error);
+                }
+
+                var registration = result.Value!;
+                Console.WriteLine($"已登记来源 {registration.Root.Name}（{registration.Root.Id}）");
+                Console.WriteLine($"  路径   : {registration.Root.Path}");
+                Console.WriteLine($"  类型   : {registration.Root.Kind} · 仅登记引用，未写入来源目录");
+                foreach (var warning in registration.Check.WarningCodes)
+                {
+                    Console.WriteLine($"  ? {warning}");
+                }
+
+                return 0;
+            }
+
+            case "validate":
+            {
+                var rootId = args.ElementAtOrDefault(1);
+                if (string.IsNullOrWhiteSpace(rootId))
+                {
+                    return UsageError("source validate 需要来源 ID。");
+                }
+
+                var check = await workspace.ValidateRootAsync(rootId).ConfigureAwait(false);
+                if (!check.IsSuccess)
+                {
+                    return WriteError(check.Error);
+                }
+
+                Console.WriteLine($"来源 {rootId}：{check.Value!.Status} · {check.Value.ProblemCode ?? "可用"}");
+                return check.Value.IsUsable ? 0 : 1;
+            }
+
+            case "relocate":
+            {
+                var rootId = args.ElementAtOrDefault(1);
+                var newPath = args.ElementAtOrDefault(2);
+                if (string.IsNullOrWhiteSpace(rootId) || string.IsNullOrWhiteSpace(newPath))
+                {
+                    return UsageError("source relocate 需要 <来源 ID> <新路径>。");
+                }
+
+                var relocated = await workspace.RelocateRootAsync(rootId, newPath).ConfigureAwait(false);
+                if (!relocated.IsSuccess)
+                {
+                    return WriteError(relocated.Error);
+                }
+
+                Console.WriteLine($"已重新定位来源 {rootId} → {relocated.Value!.Path}（未移动文件）");
+                return 0;
+            }
+
+            case "remove":
+            {
+                var rootId = args.ElementAtOrDefault(1);
+                if (string.IsNullOrWhiteSpace(rootId))
+                {
+                    return UsageError("source remove 需要来源 ID。");
+                }
+
+                var forget = _commandLine.HasFlag("forget");
+                var removed = await workspace
+                    .RemoveRootAsync(rootId, forget ? RootRemovalMode.Forget : RootRemovalMode.Unbind)
+                    .ConfigureAwait(false);
+                if (!removed.IsSuccess)
+                {
+                    return WriteError(removed.Error);
+                }
+
+                if (forget)
+                {
+                    var entries = await discovery.ForgetRootEntriesAsync(rootId).ConfigureAwait(false);
+                    if (entries.IsSuccess)
+                    {
+                        Console.WriteLine($"已移除来源发现条目：{entries.Value} 条。");
+                    }
+                }
+
+                Console.WriteLine("已解除来源登记；未删除磁盘文件或已导入实例记录。");
+                return 0;
+            }
+
+            case "scan":
+            {
+                var rootId = args.ElementAtOrDefault(1);
+                var rootIds = string.IsNullOrWhiteSpace(rootId) ? null : new[] { rootId };
+                var request = new DiscoveryScanRequest
+                {
+                    RootIds = rootIds,
+                    MaxEntriesPerRoot = TryParseInt(_commandLine.GetValue("max-entries")),
+                    PerRootTimeout = TryParseInt(_commandLine.GetValue("timeout")) is { } seconds
+                        ? TimeSpan.FromSeconds(seconds)
+                        : null,
+                };
+                var report = await discovery.ScanAsync(request).ConfigureAwait(false);
+                if (!report.IsSuccess)
+                {
+                    return WriteError(report.Error);
+                }
+
+                if (_commandLine.HasFlag("json"))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(report.Value, EclJson.Indented));
+                    return report.Value!.IsComplete ? 0 : 1;
+                }
+
+                foreach (var root in report.Value!.Roots)
+                {
+                    Console.WriteLine($"{root.RootId}：{root.Structure} · {root.EntriesFound} 条目 · {(root.IsComplete ? "完整" : "不完整")} · {root.Duration.TotalMilliseconds:0}ms");
+                    if (root.SkippedByLimit > 0 || root.TimedOut || root.Cancelled)
+                    {
+                        Console.WriteLine($"  截断={root.SkippedByLimit} 超时={root.TimedOut} 取消={root.Cancelled}");
+                    }
+
+                    foreach (var error in root.Errors)
+                    {
+                        Console.WriteLine($"  ! {error.Code} {error.Detail}");
+                    }
+                }
+
+                return report.Value.IsComplete ? 0 : 1;
+            }
+
+            case "catalog":
+            {
+                var catalog = await discovery.GetCatalogAsync(_commandLine.HasFlag("all")).ConfigureAwait(false);
+                if (!catalog.IsSuccess)
+                {
+                    return WriteError(catalog.Error);
+                }
+
+                if (_commandLine.HasFlag("json"))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(catalog.Value, EclJson.Indented));
+                    return 0;
+                }
+
+                if (catalog.Value!.Entries.Count == 0)
+                {
+                    Console.WriteLine("发现目录为空；先运行 source scan。");
+                    return 0;
+                }
+
+                foreach (var entry in catalog.Value.Entries)
+                {
+                    var imported = entry.ImportedInstanceId is null ? string.Empty : $" · 已导入 {entry.ImportedInstanceId}";
+                    Console.WriteLine($"{entry.DisplayName}（{entry.DiscoveryId}）· {entry.Kind} · {entry.Status}{imported}");
+                    Console.WriteLine($"  目录   : {entry.GameDirectory}");
+                    Console.WriteLine($"  版本   : {entry.GameVersion ?? "未知"} · {entry.Loader}");
+                    if (!string.IsNullOrWhiteSpace(entry.ProblemCode))
+                    {
+                        Console.WriteLine($"  问题   : {entry.ProblemCode} {entry.ProblemDetail}");
+                    }
+                }
+
+                return 0;
+            }
+
+            case "import":
+            {
+                var discoveryId = args.ElementAtOrDefault(1);
+                if (string.IsNullOrWhiteSpace(discoveryId))
+                {
+                    return UsageError("source import 需要发现条目 ID。");
+                }
+
+                var imported = await _provider.GetRequiredService<IExternalInstanceImportService>()
+                    .ImportAsync(discoveryId, new ExternalImportOptions { DisplayName = _commandLine.GetValue("name") })
+                    .ConfigureAwait(false);
+                if (!imported.IsSuccess)
+                {
+                    return WriteError(imported.Error);
+                }
+
+                Console.WriteLine($"已导入实例 {imported.Value!.Name}（{imported.Value.Id}）");
+                Console.WriteLine($"  游戏目录: {imported.Value.GameDirectory}");
+                Console.WriteLine("  外部目录未复制、未移动、未写入。");
+                return 0;
+            }
+
+            case "forget-entry":
+            {
+                var discoveryId = args.ElementAtOrDefault(1);
+                if (string.IsNullOrWhiteSpace(discoveryId))
+                {
+                    return UsageError("source forget-entry 需要发现条目 ID。");
+                }
+
+                var forgotten = await discovery.ForgetEntryAsync(discoveryId).ConfigureAwait(false);
+                return forgotten.IsSuccess ? 0 : WriteError(forgotten.Error);
+            }
+
+            case "resolve-duplicate":
+            {
+                var discoveryId = args.ElementAtOrDefault(1);
+                var resolution = args.ElementAtOrDefault(2)?.ToLowerInvariant() switch
+                {
+                    "keep-separate" => DuplicateResolution.KeepSeparate,
+                    "use-representative" => DuplicateResolution.UseRepresentative,
+                    "forget-duplicate" => DuplicateResolution.ForgetDuplicate,
+                    _ => (DuplicateResolution?)null,
+                };
+                if (string.IsNullOrWhiteSpace(discoveryId) || resolution is null)
+                {
+                    return UsageError("source resolve-duplicate 需要 <条目 ID> keep-separate|use-representative|forget-duplicate。");
+                }
+
+                var resolved = await discovery.ResolveDuplicateAsync(discoveryId, resolution.Value).ConfigureAwait(false);
+                return resolved.IsSuccess ? 0 : WriteError(resolved.Error);
+            }
+
+            default:
+                return UsageError("未知的 source 子命令：list|add|validate|relocate|remove|scan|catalog|import|forget-entry|resolve-duplicate");
+        }
+    }
+
+    private static int? TryParseInt(string? value) =>
+        int.TryParse(value, out var parsed) ? parsed : null;
 
     private async Task<int> ListInstancesAsync()
     {

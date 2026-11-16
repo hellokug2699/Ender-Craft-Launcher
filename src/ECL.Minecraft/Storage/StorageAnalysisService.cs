@@ -2,6 +2,7 @@
 
 using Ecl.Core;
 using Ecl.Core.Storage;
+using Ecl.Core.Storage.Discovery;
 using Ecl.Minecraft.Instances;
 
 namespace Ecl.Minecraft.Storage;
@@ -34,6 +35,9 @@ public sealed record StorageScanOptions
     public bool IncludeExternalSources { get; init; } = true;
 
     public bool IncludeInstanceSources { get; init; } = true;
+
+    /// <summary>分析前是否刷新来源发现目录；关闭时只读取已有目录。</summary>
+    public bool RefreshSources { get; init; } = true;
 }
 
 public sealed record StorageScanProgress(string Stage, string? Detail, double? Fraction);
@@ -55,7 +59,8 @@ public sealed record StorageAnalysisResult(
 /// </summary>
 public sealed class StorageAnalysisService(
     IAppPaths paths,
-    InstanceSourceService sources)
+    IWorkspaceService workspace,
+    IInstanceDiscoveryService discovery)
 {
     private const long MaxFilesPerRoot = 250_000;
 
@@ -134,23 +139,47 @@ public sealed class StorageAnalysisService(
         var instanceCount = 0;
         if (options.IncludeInstanceSources)
         {
-            var catalog = await sources.ScanAllAsync(cancellationToken).ConfigureAwait(false);
-            instanceCount = catalog.InstanceCount;
-            warnings.AddRange(catalog.Warnings);
-            foreach (var group in catalog.Groups)
+            var catalog = await LoadDiscoveryCatalogAsync(options.RefreshSources, warnings, cancellationToken)
+                .ConfigureAwait(false);
+            var entries = catalog.Entries;
+            var states = catalog.Roots.ToDictionary(state => state.RootId, StringComparer.Ordinal);
+            foreach (var root in workspace.Roots)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var id = "source:" + group.Source.Id;
-                if (PathsOverlap(group.Source.Path, paths.Root) || PathsOverlap(group.Source.Path, paths.GameRoot))
+                var samples = entries.Where(entry =>
+                        string.Equals(entry.RootId, root.Id, StringComparison.Ordinal) &&
+                        IsRepresentativeEntry(entry))
+                    .ToArray();
+                if (root.Kind == WorkspaceKind.External)
+                {
+                    instanceCount += samples.Length;
+                }
+
+                var id = "source:" + root.Id;
+                var overlapping = root.Kind == WorkspaceKind.Managed ||
+                                  PathsOverlap(root.Path, paths.Root) ||
+                                  PathsOverlap(root.Path, paths.GameRoot);
+                var state = states.GetValueOrDefault(root.Id);
+                var incomplete = state is not null && !state.IsComplete;
+                var detail = new List<string>
+                {
+                    $"{samples.Length} 个实例（{root.Structure ?? "未扫描"}）",
+                };
+                if (incomplete)
+                {
+                    detail.Add("上次扫描不完整");
+                }
+
+                if (overlapping)
                 {
                     usages.Add(new StorageUsage(
                         id,
-                        $"实例来源 · {group.Source.Name}",
-                        group.Source.Path,
+                        $"实例来源 · {root.Name}",
+                        root.Path,
                         null,
-                        group.Instances.Count,
+                        samples.Length,
                         StorageUsageStatus.Overlapping,
-                        "该来源与 ECL 数据目录或工作区重叠，已从总计中排除以避免重复计数。",
+                        "该来源位于 ECL 受管理工作区/数据范围内，已从总计中排除以避免重复计数。",
                         false,
                         null));
                     continue;
@@ -161,15 +190,31 @@ public sealed class StorageAnalysisService(
                     continue;
                 }
 
-                var measured = await MeasureAsync(group.Source.Path, cancellationToken).ConfigureAwait(false);
+                if (root.Status is WorkspaceStatus.Missing or WorkspaceStatus.NotAccessible or WorkspaceStatus.Unavailable ||
+                    !Directory.Exists(root.Path))
+                {
+                    usages.Add(new StorageUsage(
+                        id,
+                        $"实例来源 · {root.Name}",
+                        root.Path,
+                        null,
+                        samples.Length,
+                        StorageUsageStatus.NotScanned,
+                        $"来源当前不可访问（{root.Status}），无法统计占用；保留条目 {samples.Length} 个。",
+                        false,
+                        root.LastScanError));
+                    continue;
+                }
+
+                var measured = await MeasureAsync(root.Path, cancellationToken).ConfigureAwait(false);
                 usages.Add(new StorageUsage(
                     id,
-                    $"实例来源 · {group.Source.Name}",
-                    group.Source.Path,
+                    $"实例来源 · {root.Name}",
+                    root.Path,
                     measured.Bytes,
                     measured.Files,
                     measured.Status,
-                    $"{group.Instances.Count} 个实例（{group.Structure}）",
+                    string.Join(" · ", detail),
                     false,
                     measured.Error));
             }
@@ -188,6 +233,52 @@ public sealed class StorageAnalysisService(
             DateTimeOffset.UtcNow,
             allWarnings);
     }
+
+    /// <summary>
+    /// 刷新并读取发现目录；扫描失败保留旧目录并报告原因，不把失败显示为 0 个实例。
+    /// </summary>
+    private async Task<DiscoveryCatalog> LoadDiscoveryCatalogAsync(
+        bool refresh,
+        List<string> warnings,
+        CancellationToken cancellationToken)
+    {
+        if (refresh)
+        {
+            var scan = await discovery.ScanAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (!scan.IsSuccess)
+            {
+                warnings.Add($"来源刷新失败：{scan.Error!.Message}");
+            }
+            else
+            {
+                if (!scan.Value!.IsComplete)
+                {
+                    warnings.Add("来源扫描不完整；实例来源占用可能不准确。");
+                }
+
+                foreach (var root in scan.Value.Roots.Where(report => !report.IsComplete))
+                {
+                    warnings.Add($"{root.RootId}：扫描不完整（超时={root.TimedOut} 取消={root.Cancelled} 错误={root.ErrorCount}）。");
+                }
+            }
+        }
+
+        var catalog = await discovery.GetCatalogAsync(includeInactive: true, cancellationToken).ConfigureAwait(false);
+        if (!catalog.IsSuccess)
+        {
+            warnings.Add($"读取发现目录失败：{catalog.Error!.Message}");
+            return DiscoveryCatalog.Empty;
+        }
+
+        return catalog.Value!;
+    }
+
+    private static bool IsRepresentativeEntry(DiscoveryEntry entry) =>
+        entry.Status is DiscoveryEntryStatus.Active or
+            DiscoveryEntryStatus.AdoptionRequired or
+            DiscoveryEntryStatus.Invalid or
+            DiscoveryEntryStatus.IdentityConflict &&
+        (entry.DuplicateOfDiscoveryId is null || string.Equals(entry.DuplicateResolution, "keep-separate", StringComparison.Ordinal));
 
     /// <summary>
     /// 测量单个实例游戏目录的占用，供实例基本信息页的存储卡使用。

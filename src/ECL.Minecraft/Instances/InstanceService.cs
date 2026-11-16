@@ -788,6 +788,11 @@ public sealed partial class InstanceService : IInstanceService
     public async Task<Result> DeleteAsync(string instanceId, CancellationToken cancellationToken = default) =>
         await DeleteAsync(instanceId, InstanceDeleteOptions.DeleteManagedData, cancellationToken).ConfigureAwait(false);
 
+    public Task<Result> RollbackCreatedInstanceAsync(
+        string instanceId,
+        CancellationToken cancellationToken = default) =>
+        DeleteAsync(instanceId, cancellationToken);
+
     public async Task<Result<InstanceDeletionPlan>> GetDeletionPlanAsync(
         string instanceId,
         CancellationToken cancellationToken = default)

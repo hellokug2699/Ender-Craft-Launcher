@@ -37,6 +37,10 @@ public interface IInstanceService
         GameInstance restorePoint,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// 旧入口：直接移除记录（不写生命周期 journal/隔离区）。仅限同一次创建/导入操作失败时的
+    /// 受控回滚与测试；用户删除必须使用 <c>IInstanceDeletionService</c>。
+    /// </summary>
     Task<Result> DeleteAsync(string instanceId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -71,6 +75,10 @@ public interface IInstanceService
     /// 把实例重新关联到新目录，保留 InstanceId。目标目录必须存在，且其中的身份标记（若有）必须属于同一实例；
     /// 不会移动文件或静默接受身份冲突。
     /// </summary>
+    /// <summary>受控回滚：删除本次创建/导入失败后留下的实例，不产生用户删除痕迹。</summary>
+    Task<Result> RollbackCreatedInstanceAsync(string instanceId, CancellationToken cancellationToken = default) =>
+        DeleteAsync(instanceId, cancellationToken);
+
     Task<Result<GameInstance>> RelocateAsync(
         string instanceId,
         string newGameDirectory,
