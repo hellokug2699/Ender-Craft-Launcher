@@ -61,6 +61,8 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<InstanceSnapshotService>();
         services.AddSingleton<IInstanceSnapshotService>(provider =>
             provider.GetRequiredService<InstanceSnapshotService>());
+        services.AddSingleton<ISnapshotMaintenanceService>(provider =>
+            provider.GetRequiredService<InstanceSnapshotService>());
         services.AddSingleton<IInstanceService, InstanceService>();
         services.AddSingleton<IVersionResolver, VersionResolver>();
         services.AddSingleton<IVersionCatalog, MojangVersionCatalog>();

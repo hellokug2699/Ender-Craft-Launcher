@@ -213,6 +213,70 @@ public sealed class InstanceSnapshotConsistencyTests
         Assert.Equal("snapshot.external_target_requires_confirmation", blocked.Error?.Code);
     }
 
+    [Fact]
+    public async Task SnapshotGroupsReportOrphansAndPruneRespectsReferences()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+        var snapshots = provider.GetRequiredService<InstanceSnapshotService>();
+        var maintenance = provider.GetRequiredService<ISnapshotMaintenanceService>();
+        var created = (await instances.CreateAsync("Groups", "1.21.1")).Value!;
+        var game = environment.Paths.GetInstanceGameDirectory(created.Id);
+        await File.WriteAllTextAsync(Path.Combine(game, "options.txt"), "fov:70\n");
+
+        var first = (await snapshots.CreateAsync(created.Id, new SnapshotCreateOptions(SnapshotScope.Full))).Value!;
+        var second = (await snapshots.CreateAsync(created.Id, new SnapshotCreateOptions(SnapshotScope.Full))).Value!;
+        var groups = await maintenance.ListGroupsAsync();
+        Assert.True(groups.IsSuccess, groups.Error?.ToString());
+        var group = Assert.Single(groups.Value!);
+        Assert.Equal(2, group.SnapshotCount);
+        Assert.False(group.Orphaned);
+
+        var dryRun = await maintenance.PruneOrphansAsync(
+            new SnapshotPruneOptions(GracePeriod: TimeSpan.Zero, DryRun: true));
+        Assert.True(dryRun.IsSuccess, dryRun.Error?.ToString());
+        Assert.Equal(0, dryRun.Value!.DeletedObjects);
+
+        await snapshots.DeleteAsync(created.Id, first.SnapshotId);
+        var afterDelete = await maintenance.ListGroupsAsync();
+        Assert.Single(afterDelete.Value!);
+        Assert.Equal(1, afterDelete.Value![0].SnapshotCount);
+        Assert.True(File.Exists(snapshots.Objects.GetObjectPath(
+            second.Files.First(file => file.RelativePath == "options.txt").Sha256)));
+
+        var summary = await maintenance.GetStorageSummaryAsync();
+        Assert.True(summary.IsSuccess, summary.Error?.ToString());
+        Assert.Equal(1, summary.Value!.Groups);
+        Assert.Equal(1, summary.Value.SnapshotCount);
+    }
+
+    [Fact]
+    public async Task DeletedInstanceSnapshotsBecomeOrphanedAndCanBeExplicitlyRemoved()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+        var instances = provider.GetRequiredService<IInstanceService>();
+        var snapshots = provider.GetRequiredService<IInstanceSnapshotService>();
+        var maintenance = provider.GetRequiredService<ISnapshotMaintenanceService>();
+        var created = (await instances.CreateAsync("OrphanGroup", "1.21.1")).Value!;
+        await File.WriteAllTextAsync(
+            Path.Combine(environment.Paths.GetInstanceGameDirectory(created.Id), "options.txt"),
+            "fov:70\n");
+        var snapshot = (await snapshots.CreateAsync(created.Id, new SnapshotCreateOptions(SnapshotScope.Full))).Value!;
+
+        await instances.DeleteAsync(created.Id);
+        var groups = await maintenance.ListGroupsAsync();
+        var group = Assert.Single(groups.Value!);
+        Assert.True(group.Orphaned);
+        Assert.Equal(created.Id, group.InstanceId);
+
+        var removed = await maintenance.DeleteInstanceSnapshotsAsync(created.Id);
+        Assert.True(removed.IsSuccess, removed.Error?.ToString());
+        Assert.Empty((await maintenance.ListGroupsAsync()).Value!);
+        _ = snapshot;
+    }
+
     private static async Task WriteImportedMetadataAsync(
         TestEnvironment environment,
         string instanceId,

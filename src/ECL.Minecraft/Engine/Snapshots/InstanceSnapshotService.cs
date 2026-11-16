@@ -19,7 +19,7 @@ namespace Ecl.Minecraft.Engine.Snapshots;
 /// 用户快照与恢复（ADR 0048）。快照与事务恢复材料使用不同目录和生命周期：
 /// 本服务只管理用户快照；事务备份由 <see cref="InstanceTransactionCoordinator"/> 管理。
 /// </summary>
-public sealed class InstanceSnapshotService : IInstanceSnapshotService
+public sealed class InstanceSnapshotService : IInstanceSnapshotService, ISnapshotMaintenanceService
 {
     private const int MaxFiles = 200_000;
     private const int MaxSnapshotIdLength = 80;
@@ -782,58 +782,253 @@ public sealed class InstanceSnapshotService : IInstanceSnapshotService
         }
     }
 
-    public async Task<Result<long>> PruneOrphansAsync(CancellationToken cancellationToken = default)
+    public async Task<Result<IReadOnlyList<SnapshotGroupSummary>>> ListGroupsAsync(
+        CancellationToken cancellationToken = default)
     {
-        var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (Directory.Exists(SnapshotsRoot))
+        var groups = new List<SnapshotGroupSummary>();
+        if (!Directory.Exists(SnapshotsRoot))
         {
-            foreach (var path in Directory.EnumerateFiles(SnapshotsRoot, "manifest.json", SearchOption.AllDirectories))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var manifest = await TryReadManifestAsync(path, cancellationToken).ConfigureAwait(false);
-                if (manifest is null)
-                {
-                    continue;
-                }
-
-                foreach (var file in manifest.Files)
-                {
-                    referenced.Add(file.Sha256);
-                }
-            }
+            return Result<IReadOnlyList<SnapshotGroupSummary>>.Ok(groups);
         }
 
-        long freed = 0;
-        var cutoff = _time.GetUtcNow().AddHours(-1);
-        foreach (var hash in Objects.EnumerateObjectHashes().ToArray())
+        foreach (var directory in Directory.EnumerateDirectories(SnapshotsRoot))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (referenced.Contains(hash))
+            var instanceId = Path.GetFileName(directory);
+            if (string.Equals(instanceId, "objects", StringComparison.OrdinalIgnoreCase) ||
+                !AppPaths.IsValidInstanceId(instanceId))
             {
                 continue;
             }
 
-            var path = Objects.GetObjectPath(hash);
-            var info = new FileInfo(path);
-            if (info.LastWriteTimeUtc > cutoff.UtcDateTime)
+            var manifests = new List<SnapshotManifest>();
+            foreach (var path in Directory.EnumerateFiles(directory, "manifest.json", SearchOption.AllDirectories))
             {
-                // 正在创建中的快照可能尚未写入清单，保留近期对象。
+                var manifest = await TryReadManifestAsync(path, cancellationToken).ConfigureAwait(false);
+                if (manifest is not null)
+                {
+                    manifests.Add(manifest);
+                }
+            }
+
+            var instance = await _instances.GetAsync(instanceId, cancellationToken).ConfigureAwait(false);
+            groups.Add(new SnapshotGroupSummary(
+                instanceId,
+                instance?.Name,
+                manifests.Count,
+                manifests.Sum(item => item.TotalBytes),
+                manifests.Count == 0 ? null : manifests.Min(item => item.CreatedAt),
+                manifests.Count == 0 ? null : manifests.Max(item => item.CreatedAt),
+                manifests.Count(item => item.Status == SnapshotStatus.Incomplete),
+                manifests.Count(item => item.Status == SnapshotStatus.Corrupt),
+                instance is null,
+                manifests.Select(item => item.SnapshotId).OrderByDescending(item => item).ToArray()));
+        }
+
+        return Result<IReadOnlyList<SnapshotGroupSummary>>.Ok(
+            groups.OrderBy(item => item.Orphaned).ThenBy(item => item.InstanceId).ToArray());
+    }
+
+    public async Task<Result<SnapshotGroupSummary>> DeleteInstanceSnapshotsAsync(
+        string instanceId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!AppPaths.IsValidInstanceId(instanceId))
+        {
+            return Result<SnapshotGroupSummary>.Fail("snapshot.invalid_instance", "实例 ID 不合法。");
+        }
+
+        var groups = await ListGroupsAsync(cancellationToken).ConfigureAwait(false);
+        if (!groups.IsSuccess)
+        {
+            return Result<SnapshotGroupSummary>.Fail(groups.Error!);
+        }
+
+        var group = groups.Value!.FirstOrDefault(item =>
+            string.Equals(item.InstanceId, instanceId, StringComparison.Ordinal));
+        if (group is null)
+        {
+            return Result<SnapshotGroupSummary>.Fail("snapshot.not_found", "该实例没有快照。");
+        }
+
+        try
+        {
+            var directory = Path.Combine(SnapshotsRoot, instanceId);
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+
+            return Result<SnapshotGroupSummary>.Ok(group);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return Result<SnapshotGroupSummary>.Fail(
+                "snapshot.delete_failed",
+                "删除实例快照清单失败。",
+                exception.Message);
+        }
+    }
+
+    public async Task<Result<SnapshotPruneResult>> PruneOrphansAsync(
+        SnapshotPruneOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        options ??= new SnapshotPruneOptions();
+        var referenced = await CollectReferencedHashesAsync(cancellationToken).ConfigureAwait(false);
+        var grace = options.GracePeriod ?? TimeSpan.FromHours(1);
+        var cutoff = _time.GetUtcNow() - grace;
+        long freed = 0;
+        var deleted = 0;
+        var retained = 0;
+        var notes = new List<string>();
+        var objects = Objects;
+        foreach (var hash in objects.EnumerateObjectHashes().ToArray())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (referenced.Contains(hash))
+            {
+                retained++;
+                continue;
+            }
+
+            var path = objects.GetObjectPath(hash);
+            long length;
+            DateTime lastWrite;
+            try
+            {
+                var info = new FileInfo(path);
+                length = info.Length;
+                lastWrite = info.LastWriteTimeUtc;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                notes.Add($"对象不可读：{hash}");
+                retained++;
+                continue;
+            }
+
+            if (lastWrite > cutoff.UtcDateTime)
+            {
+                retained++;
+                continue;
+            }
+
+            if (options.DryRun)
+            {
+                freed += length;
+                notes.Add($"可回收：{hash}（{length} 字节）");
+                deleted++;
                 continue;
             }
 
             try
             {
-                freed += info.Length;
-                Objects.DeleteObject(hash);
+                objects.DeleteObject(hash);
+                freed += length;
+                deleted++;
+                if (options.MaxBytes is { } max && freed >= max)
+                {
+                    notes.Add("已达到本次回收上限。");
+                    break;
+                }
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                _logger.LogWarning(exception, "删除孤立快照对象失败：{Path}", path);
+                notes.Add($"删除对象失败：{hash}（{exception.Message}）");
+                retained++;
             }
         }
 
-        return Result<long>.Ok(freed);
+        return Result<SnapshotPruneResult>.Ok(new SnapshotPruneResult(freed, deleted, retained, notes.Take(100).ToArray()));
     }
+
+    public async Task<Result<SnapshotStorageSummary>> GetStorageSummaryAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var groups = await ListGroupsAsync(cancellationToken).ConfigureAwait(false);
+        if (!groups.IsSuccess)
+        {
+            return Result<SnapshotStorageSummary>.Fail(groups.Error!);
+        }
+
+        long manifestBytes = 0;
+        if (Directory.Exists(SnapshotsRoot))
+        {
+            foreach (var path in Directory.EnumerateFiles(SnapshotsRoot, "manifest.json", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    manifestBytes += new FileInfo(path).Length;
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    // 不可读清单不计入。
+                }
+            }
+        }
+
+        var referenced = await CollectReferencedHashesAsync(cancellationToken).ConfigureAwait(false);
+        long objectBytes = 0;
+        var orphanObjects = 0;
+        foreach (var hash in Objects.EnumerateObjectHashes().ToArray())
+        {
+            long length;
+            try
+            {
+                length = Objects.GetObjectSize(hash);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            objectBytes += length;
+            if (!referenced.Contains(hash))
+            {
+                orphanObjects++;
+            }
+        }
+
+        return Result<SnapshotStorageSummary>.Ok(new SnapshotStorageSummary(
+            groups.Value!.Count,
+            groups.Value.Sum(item => item.SnapshotCount),
+            objectBytes,
+            manifestBytes,
+            groups.Value.Count(item => item.Orphaned),
+            orphanObjects));
+    }
+
+    private async Task<HashSet<string>> CollectReferencedHashesAsync(CancellationToken cancellationToken)
+    {
+        var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!Directory.Exists(SnapshotsRoot))
+        {
+            return referenced;
+        }
+
+        foreach (var path in Directory.EnumerateFiles(SnapshotsRoot, "manifest.json", SearchOption.AllDirectories))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var manifest = await TryReadManifestAsync(path, cancellationToken).ConfigureAwait(false);
+            if (manifest is null)
+            {
+                continue;
+            }
+
+            foreach (var file in manifest.Files)
+            {
+                referenced.Add(file.Sha256);
+            }
+        }
+
+        return referenced;
+    }
+
+    public async Task<Result<long>> PruneOrphansAsync(CancellationToken cancellationToken = default) =>
+        (await PruneOrphansAsync(new SnapshotPruneOptions(), cancellationToken).ConfigureAwait(false)) is { IsSuccess: true } result
+            ? Result<long>.Ok(result.Value!.FreedBytes)
+            : Result<long>.Fail("snapshot.prune_failed", "清理孤立快照对象失败。");
 
     private async Task<(string Ownership, IReadOnlyList<string> SharedWith)> DescribeOwnershipAsync(
         GameInstance instance,
