@@ -11,6 +11,7 @@ using Ecl.App.Dialogs;
 using Ecl.App.Dialogs.ViewModels;
 using Ecl.App.Services;
 using Ecl.App.Shell.Inspector;
+using Ecl.App.Shell.Notifications;
 using Ecl.App.Shell.Output;
 using Ecl.App.ViewModels;
 using Ecl.App.ViewModels.Settings;
@@ -82,6 +83,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         InspectorViewModel inspector,
         OutputPanelViewModel output,
         DialogLayerViewModel dialogLayer,
+        NotificationHostViewModel notifications,
         IMemoryPressureMonitor memoryPressure,
         IWorkspaceHost workspaces,
         IWorkspaceService workspaceService,
@@ -117,6 +119,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Inspector = inspector;
         Output = output;
         Dialogs = dialogLayer;
+        Notifications = notifications;
+        // 通知点击复用 Shell 的统一目的地解析；通知层不自行构造导航。
+        notifications.Navigate = ActivateDestination;
 
         var primaryGroup = localizer.Get("nav.group.primary");
         var toolGroup = localizer.Get("nav.group.tools");
@@ -211,6 +216,9 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     /// <summary>弹窗层状态；主窗口用它控制遮罩与背景输入锁。</summary>
     public DialogLayerViewModel Dialogs { get; }
+
+    /// <summary>应用内通知宿主；由主窗口右下角呈现，点击只做导航。</summary>
+    public NotificationHostViewModel Notifications { get; }
 
     [ObservableProperty]
     private ShellNavigationItem? _selectedNavigationItem;

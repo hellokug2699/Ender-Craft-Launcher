@@ -11,6 +11,7 @@ using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Dialogs;
 using Ecl.App.Dialogs.ViewModels;
 using Ecl.App.Services;
+using Ecl.App.Services.Confirmation;
 using Ecl.App.Views;
 using Ecl.App.Workspace.ViewModels;
 using Ecl.Auth;
@@ -29,6 +30,7 @@ using Ecl.Minecraft.Java;
 using Ecl.Minecraft.Launch;
 using Ecl.Minecraft.Loaders;
 using Ecl.Minecraft.Versions;
+using Microsoft.Extensions.Logging;
 
 namespace Ecl.App.ViewModels;
 
@@ -61,6 +63,8 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly Ecl.Operations.IOperationService _operations;
     private readonly Ecl.App.Services.IExternalLinkService _links;
     private readonly Ecl.Minecraft.Engine.Lifecycle.IInstanceDeletionService _deletions;
+    private readonly IResultDialogService? _resultDialogs;
+    private readonly Microsoft.Extensions.Logging.ILogger<InstancesViewModel>? _logger;
     private bool _initialized;
     private bool _suppressAccountSelection;
 
@@ -226,7 +230,9 @@ public sealed partial class InstancesViewModel : ObservableObject
         Ecl.Operations.IOperationService operations,
         Ecl.App.Services.IExternalLinkService links,
         Ecl.Minecraft.Engine.Lifecycle.IInstanceDeletionService deletions,
-        Ecl.Core.Storage.Discovery.IInstanceDiscoveryService? discovery = null)
+        Ecl.Core.Storage.Discovery.IInstanceDiscoveryService? discovery = null,
+        IResultDialogService? resultDialogs = null,
+        Microsoft.Extensions.Logging.ILogger<InstancesViewModel>? logger = null)
     {
         _instances = instances;
         _accounts = accounts;
@@ -255,6 +261,8 @@ public sealed partial class InstancesViewModel : ObservableObject
         _links = links;
         _deletions = deletions;
         _discovery = discovery;
+        _resultDialogs = resultDialogs;
+        _logger = logger;
 
         DownloadPauseButtonText = _localizer.Get("instances.download.pause");
     }
@@ -794,12 +802,45 @@ public sealed partial class InstancesViewModel : ObservableObject
 
         if (!_dialogs.Confirm(
                 _localizer.Get("instances.repairTitle"),
-                _localizer.Get("instances.repairConfirm", item.Name)))
+                _localizer.Get("instances.repairConfirm", item.Name),
+                acknowledgementToken: null,
+                kind: ConfirmationKind.Ordinary))
         {
             return;
         }
 
-        await InstallForAsync(item, state).ConfigureAwait(true);
+        if (!await InstallForAsync(item, state).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        await ShowRepairResultAsync(item).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 修复成功的非关键结果弹窗：受 <c>launcher.autoCloseSuccessDialogs</c> 影响，
+    /// 且以 <see cref="DialogOutcome.Closed"/> 结束自动关闭（不伪造用户确认）。
+    /// 弹窗失败只记录日志，页面状态已经写入任务状态。
+    /// </summary>
+    private async Task ShowRepairResultAsync(InstanceItemViewModel item)
+    {
+        if (_resultDialogs is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _resultDialogs.ShowResultAsync(new ResultDialogRequest(
+                    _localizer.Get("instances.repair.done.title"),
+                    _localizer.Get("instances.repair.done.message", item.Name),
+                    IsCritical: false))
+                .ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            _logger?.LogWarning(exception, "展示实例修复结果失败。");
+        }
     }
 
     /// <summary>对指定实例做启动前健康检查（试运行 + 账户 + 模组摘要）。</summary>
@@ -860,18 +901,18 @@ public sealed partial class InstancesViewModel : ObservableObject
     /// 入口是实例工作区的「补全/修复」（<see cref="RepairForAsync"/>）：既有实例的安装不经过
     /// 下载中心的新建实例流程，两者只共用领域安装服务。
     /// </summary>
-    internal async Task InstallForAsync(InstanceItemViewModel? item, InstanceOperationState state)
+    internal async Task<bool> InstallForAsync(InstanceItemViewModel? item, InstanceOperationState state)
     {
         ArgumentNullException.ThrowIfNull(state);
         if (item is null)
         {
             StatusMessage = _localizer.Get("instances.selectFirst");
-            return;
+            return false;
         }
 
         if (IsBusy)
         {
-            return;
+            return false;
         }
 
         IsBusy = true;
@@ -904,7 +945,7 @@ public sealed partial class InstancesViewModel : ObservableObject
             {
                 state.InstallStatus = result.Error?.Message ?? _localizer.Get("instances.installFailed");
                 StatusMessage = state.InstallStatus;
-                return;
+                return false;
             }
 
             InstallIndeterminate = false;
@@ -912,11 +953,13 @@ public sealed partial class InstancesViewModel : ObservableObject
             state.InstallStatus = _localizer.Get("instances.installSucceeded");
             StatusMessage = state.InstallStatus;
             await UpdateJavaStatusAsync().ConfigureAwait(true);
+            return true;
         }
         catch (Exception exception)
         {
             state.InstallStatus = _localizer.Get("instances.installFailed");
             StatusMessage = _localizer.Get("install.failed", exception.Message);
+            return false;
         }
         finally
         {
@@ -1466,7 +1509,9 @@ public sealed partial class InstancesViewModel : ObservableObject
         {
             var shouldDownload = _dialogs.Confirm(
                 _localizer.Get("instances.java.downloadTitle"),
-                _localizer.Get("instances.java.downloadPrompt"));
+                _localizer.Get("instances.java.downloadPrompt"),
+                acknowledgementToken: null,
+                kind: ConfirmationKind.Ordinary);
 
             if (shouldDownload)
             {

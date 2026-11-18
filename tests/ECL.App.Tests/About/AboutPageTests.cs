@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using Ecl.Additions;
 using Ecl.App.Services;
+using Ecl.App.Services.Updates;
 using Ecl.App.Tests.Support;
 using Ecl.App.ViewModels;
 using Ecl.Configuration.Settings;
@@ -287,7 +288,7 @@ public sealed class AboutPageTests
         {
             Settings = new FakeSettingsService();
             Service = new FakeAdditionsService();
-            Updates = new FakeUpdateCheckService();
+            Updates = new FakeUpdateCheckScheduler();
             Links = new FakeExternalLinkService();
             Page = new AboutViewModel(
                 Updates,
@@ -301,34 +302,11 @@ public sealed class AboutPageTests
 
         public FakeAdditionsService Service { get; }
 
-        public FakeUpdateCheckService Updates { get; }
+        public FakeUpdateCheckScheduler Updates { get; }
 
         public FakeExternalLinkService Links { get; }
 
         public AboutViewModel Page { get; }
-    }
-
-    private sealed class FakeUpdateCheckService : IUpdateCheckService
-    {
-        public Queue<UpdateCheckReport> Reports { get; } = new();
-
-        public int Calls { get; private set; }
-
-        public Task<UpdateCheckReport> CheckAsync(CancellationToken cancellationToken = default)
-        {
-            Calls++;
-            return Task.FromResult(Reports.Count > 0
-                ? Reports.Dequeue()
-                : new UpdateCheckReport(
-                    UpdateCheckOutcome.UpToDate,
-                    "main",
-                    "0.8.0",
-                    "0.8.0",
-                    null,
-                    null,
-                    null,
-                    null));
-        }
     }
 
     private sealed class FakeExternalLinkService : IExternalLinkService

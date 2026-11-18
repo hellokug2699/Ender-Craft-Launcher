@@ -122,13 +122,30 @@ public sealed class SettingsPageTests
     }
 
     [Fact]
-    public void GeneralPageOnlyRendersGlobalMetadataOptionsAndNeverInstanceScope()
+    public void GeneralPageRendersEveryDesktopLifecycleOptionAndNeverInstanceScope()
     {
         using var host = new SettingsHost();
-        var general = OptionsPage(host, SettingsPageKeys.General);
+        var general = GeneralPage(host);
 
         Assert.Equal(
-            ["launcher.checkUpdates", "launcher.updateChannel", "launcher.confirmBeforeDelete"],
+            [
+                "launcher.startWithWindows",
+                "launcher.startMinimizedToTray",
+                "launcher.showHomeOnStartup",
+                "launcher.closeButtonAction",
+                "launcher.minimizeAction",
+                "launcher.confirmOnClose",
+                "launcher.checkUpdates",
+                "launcher.updateChannel",
+                "launcher.updateCheckInterval",
+                "launcher.notifyTaskCompleted",
+                "launcher.notifyTaskFailed",
+                "launcher.notifyBackgroundTasks",
+                "launcher.showOperationHints",
+                "launcher.confirmOrdinaryActions",
+                "launcher.confirmBeforeDelete",
+                "launcher.autoCloseSuccessDialogs",
+            ],
             general.Options.Select(option => option.Key));
         Assert.All(general.Options, option => Assert.Equal(OptionScope.Global, option.Definition.Scope));
         Assert.DoesNotContain(
@@ -154,7 +171,7 @@ public sealed class SettingsPageTests
     public void UpdateChannelShowsSpecNamesWhilePersistingExistingValues()
     {
         using var host = new SettingsHost();
-        var general = OptionsPage(host, SettingsPageKeys.General);
+        var general = GeneralPage(host);
         var channel = general.Options.Single(option => option.Key == "launcher.updateChannel");
 
         Assert.Equal(["main", "dev", "nightly"], channel.Choices.Select(choice => choice.Value));
@@ -171,7 +188,7 @@ public sealed class SettingsPageTests
     public void OptionChoicesExposeLocalizedNamesToAutomation()
     {
         using var host = new SettingsHost();
-        var channel = OptionsPage(host, SettingsPageKeys.General)
+        var channel = GeneralPage(host)
             .Options.Single(option => option.Key == "launcher.updateChannel");
 
         // 下拉条目只暴露本地化显示名；UIA/读屏不应看到 record 的默认 ToString。
@@ -185,7 +202,7 @@ public sealed class SettingsPageTests
             seedSettingsFile: file => File.WriteAllText(
                 file,
                 "{\"schemaVersion\":1,\"values\":{\"launcher.updateChannel\":\"stable\"}}"));
-        var channel = OptionsPage(host, SettingsPageKeys.General)
+        var channel = GeneralPage(host)
             .Options.Single(option => option.Key == "launcher.updateChannel");
 
         // D-01：旧值 stable 是 main 的别名；界面按规范项显示且不算未保存修改。
@@ -204,7 +221,7 @@ public sealed class SettingsPageTests
     public void BooleanOptionsSaveImmediatelyAndInvalidManualInputIsRejected()
     {
         using var host = new SettingsHost();
-        var general = OptionsPage(host, SettingsPageKeys.General);
+        var general = GeneralPage(host);
         var checkUpdates = general.Options.Single(option => option.Key == "launcher.checkUpdates");
 
         Assert.True(checkUpdates.BoolValue);
@@ -236,7 +253,7 @@ public sealed class SettingsPageTests
     public void DependentOptionVisibilityFollowsTheSavedValue()
     {
         using var host = new SettingsHost();
-        var general = OptionsPage(host, SettingsPageKeys.General);
+        var general = GeneralPage(host);
         var checkUpdates = general.Options.Single(option => option.Key == "launcher.checkUpdates");
         var channel = general.Options.Single(option => option.Key == "launcher.updateChannel");
 
@@ -258,7 +275,7 @@ public sealed class SettingsPageTests
         host.Settings.TrySetRaw("launcher.checkUpdates", "false", null, out _);
         host.Settings.TrySetRaw("launcher.confirmBeforeDelete", "false", null, out _);
         host.Settings.TrySetRaw("launcher.language", "en-US", null, out _);
-        var general = OptionsPage(host, SettingsPageKeys.General);
+        var general = GeneralPage(host);
 
         // 取消确认时不改变任何值。
         host.Dialogs.ConfirmResult = false;
@@ -334,23 +351,19 @@ public sealed class SettingsPageTests
     {
         using var host = new SettingsHost();
 
-        foreach (var key in new[]
-                 {
-                     SettingsPageKeys.General,
-                     SettingsPageKeys.Downloads,
-                 })
-        {
-            var page = OptionsPage(host, key);
-            var gaps = page.Sections.OfType<SettingsUnavailableSectionViewModel>().ToArray();
-            Assert.NotEmpty(gaps);
-            Assert.All(
-                gaps.SelectMany(gap => gap.Items),
-                item =>
-                {
-                    Assert.False(string.IsNullOrWhiteSpace(item.Title));
-                    Assert.False(string.IsNullOrWhiteSpace(item.Reason));
-                });
-        }
+        // 常规页的 5 条“尚未接入”缺口已由 F-12 的真实接线消除：这里必须没有缺口分组。
+        Assert.Empty(GeneralPage(host).Sections.OfType<SettingsUnavailableSectionViewModel>());
+
+        var downloads = OptionsPage(host, SettingsPageKeys.Downloads);
+        var gaps = downloads.Sections.OfType<SettingsUnavailableSectionViewModel>().ToArray();
+        Assert.NotEmpty(gaps);
+        Assert.All(
+            gaps.SelectMany(gap => gap.Items),
+            item =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(item.Title));
+                Assert.False(string.IsNullOrWhiteSpace(item.Reason));
+            });
 
         // 游戏与启动是专用页面：内存策略/窗口联合校验已真实接入，
         // 规格明确不提供的启动能力以「固定边界」分组说明。
@@ -424,7 +437,7 @@ public sealed class SettingsPageTests
     {
         using var host = new SettingsHost();
 
-        Assert.Single(OptionsPage(host, SettingsPageKeys.General).Sections.OfType<CodeSigningSectionViewModel>());
+        Assert.Single(GeneralPage(host).Sections.OfType<CodeSigningSectionViewModel>());
         // 界面偏好是专用页面，不承载代码签名卡（它只属于常规页）。
         Assert.IsType<SettingsInterfacePageViewModel>(
             host.ViewModel.Navigation.Find(SettingsPageKeys.Interface)!.Page);
@@ -432,6 +445,10 @@ public sealed class SettingsPageTests
 
     private static SettingsOptionsPageViewModel OptionsPage(SettingsHost host, string key) =>
         Assert.IsAssignableFrom<SettingsOptionsPageViewModel>(host.ViewModel.Navigation.Find(key)!.Page);
+
+    /// <summary>常规页是专用页面（真实注册表/托盘/调度状态），不再是通用元数据页。</summary>
+    private static SettingsGeneralPageViewModel GeneralPage(SettingsHost host) =>
+        Assert.IsType<SettingsGeneralPageViewModel>(host.ViewModel.Navigation.Find(SettingsPageKeys.General)!.Page);
 
     private static SettingsGameLaunchPageViewModel GamePage(SettingsHost host) =>
         Assert.IsType<SettingsGameLaunchPageViewModel>(
@@ -473,12 +490,14 @@ public sealed class SettingsPageTests
                 paths,
                 localizer,
                 NullLogger<SettingsJavaPageViewModel>.Instance);
+            var codeSigning = new CodeSigningTrustService(Path.Combine(_root, "signing"));
             ViewModel = new SettingsViewModel(
                 Settings,
                 localizer,
-                new CodeSigningTrustService(Path.Combine(_root, "signing")),
+                codeSigning,
                 Dialogs,
                 JavaPage,
+                SettingsGeneralPageFactory.Create(Settings, localizer, Dialogs, codeSigning),
                 new Ecl.Minecraft.Launch.MemoryAllocationService(
                     Settings,
                     new FakeSystemMemoryProbe(totalMegabytes: 32 * 1024, availableMegabytes: 16 * 1024)),

@@ -34,14 +34,14 @@ public static class SettingsPageCatalog
         string TitleKey,
         string SubtitleKey,
         GroupSpec[] Groups,
-        GapSpec[] Gaps,
-        bool IncludesCodeSigning = false);
+        GapSpec[] Gaps);
 
     /// <summary>
     /// D-01：Stable/Beta 是现有 main/dev 频道的展示名与别名。旧值（例如 "stable"）
     /// 在这里映射到规范选项，避免下拉框显示为空；用户重新选择后才写入规范值。
+    /// 常规页复用同一份别名，保证两处显示一致。
     /// </summary>
-    private static readonly IReadOnlyDictionary<string, string> UpdateChannelAliases =
+    internal static readonly IReadOnlyDictionary<string, string> UpdateChannelAliases =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["stable"] = "main",
@@ -50,22 +50,6 @@ public static class SettingsPageCatalog
 
     private static readonly PageSpec[] Specs =
     [
-        new(
-            SettingsPageKeys.General,
-            "settings.nav.general",
-            "settings.page.general.subtitle",
-            [
-                new("settings.page.general.group.update", ["launcher.checkUpdates", "launcher.updateChannel"]),
-                new("settings.page.general.group.actions", ["launcher.confirmBeforeDelete"]),
-            ],
-            [
-                new("settings.page.general.gap.startup.title", "settings.page.general.gap.startup.reason"),
-                new("settings.page.general.gap.window.title", "settings.page.general.gap.window.reason"),
-                new("settings.page.general.gap.update.title", "settings.page.general.gap.update.reason"),
-                new("settings.page.general.gap.notifications.title", "settings.page.general.gap.notifications.reason"),
-                new("settings.page.general.gap.confirmations.title", "settings.page.general.gap.confirmations.reason"),
-            ],
-            IncludesCodeSigning: true),
         new(
             SettingsPageKeys.Downloads,
             "settings.nav.downloads",
@@ -93,6 +77,7 @@ public static class SettingsPageCatalog
         IDialogService dialogs,
         CodeSigningTrustService codeSigning,
         SettingsJavaPageViewModel javaPage,
+        SettingsGeneralPageViewModel generalPage,
         IMemoryAllocationService memoryAllocation,
         IProxyCredentialStore? proxyCredentials = null,
         IProxyConnectionTester? proxyTester = null,
@@ -107,10 +92,13 @@ public static class SettingsPageCatalog
         ArgumentNullException.ThrowIfNull(dialogs);
         ArgumentNullException.ThrowIfNull(codeSigning);
         ArgumentNullException.ThrowIfNull(javaPage);
+        ArgumentNullException.ThrowIfNull(generalPage);
         ArgumentNullException.ThrowIfNull(memoryAllocation);
 
         var pages = new Dictionary<string, ISettingsPage>(StringComparer.Ordinal)
         {
+            // 常规页需要真实注册表/托盘/更新调度状态与代码签名卡，是专用页面对象。
+            [SettingsPageKeys.General] = generalPage,
             // Java 管理是独立页面对象（真实运行时清单），不是元数据分组页。
             [SettingsPageKeys.Java] = javaPage,
             // 界面偏好有字号档位与界面缩放的专用控件，同样不是通用元数据页。
@@ -148,7 +136,7 @@ public static class SettingsPageCatalog
 
         foreach (var spec in Specs)
         {
-            pages[spec.Key] = CreatePage(spec, settings, localizer, dialogs, codeSigning);
+            pages[spec.Key] = CreatePage(spec, settings, localizer, dialogs);
         }
 
         var items = new List<SettingsNavigationItemViewModel>
@@ -182,8 +170,7 @@ public static class SettingsPageCatalog
         PageSpec spec,
         ISettingsService settings,
         ILocalizer localizer,
-        IDialogService dialogs,
-        CodeSigningTrustService codeSigning)
+        IDialogService dialogs)
     {
         var options = new List<OptionEditorViewModel>();
         var sections = new List<object>();
@@ -199,11 +186,6 @@ public static class SettingsPageCatalog
                 .ToArray();
             options.AddRange(groupOptions);
             sections.Add(new SettingsOptionGroupViewModel(localizer.Get(group.TitleKey), groupOptions));
-        }
-
-        if (spec.IncludesCodeSigning)
-        {
-            sections.Add(new CodeSigningSectionViewModel(codeSigning, localizer, dialogs));
         }
 
         if (spec.Gaps.Length > 0)

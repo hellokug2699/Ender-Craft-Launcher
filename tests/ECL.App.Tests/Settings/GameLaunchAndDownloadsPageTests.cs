@@ -319,12 +319,14 @@ public sealed class GameLaunchAndDownloadsPageTests
                 localizer,
                 NullLogger<SettingsJavaPageViewModel>.Instance);
 
+            var codeSigning = new CodeSigningTrustService(Path.Combine(_root, "signing"));
             ViewModel = new SettingsViewModel(
                 Settings,
                 localizer,
-                new CodeSigningTrustService(Path.Combine(_root, "signing")),
+                codeSigning,
                 Dialogs,
                 javaPage,
+                SettingsGeneralPageFactory.Create(Settings, localizer, Dialogs, codeSigning),
                 new MemoryAllocationService(
                     Settings,
                     probe == true

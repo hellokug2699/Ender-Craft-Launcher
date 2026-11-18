@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Threading;
 using Ecl.App.Dialogs;
 using Ecl.App.Localization;
 using Ecl.App.Services;
+using Ecl.App.Services.Confirmation;
+using Ecl.App.Services.Lifecycle;
+using Ecl.App.Services.Notifications;
+using Ecl.App.Services.Updates;
 using Ecl.App.Shell;
 using Ecl.App.Shell.Inspector;
+using Ecl.App.Shell.Lifecycle;
+using Ecl.App.Shell.Notifications;
 using Ecl.App.Shell.Output;
 using Ecl.App.ViewModels;
+using Ecl.App.ViewModels.Settings;
 using Ecl.App.Views;
 using Ecl.App.Workspace.ViewModels;
 using Ecl.Auth;
@@ -23,10 +29,14 @@ using Ecl.Core.Logging;
 using Ecl.Core.Runtime;
 using Ecl.Core.Storage;
 using Ecl.Core.Workspace;
+using Ecl.Core.Workspace.Session;
+using Ecl.Deployment;
+using Ecl.Deployment.Startup;
 using Ecl.Download;
 using Ecl.Java;
 using Ecl.Minecraft;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace Ecl.App;
@@ -35,7 +45,7 @@ public partial class App : Application
 {
     private ServiceProvider? _services;
     private ILogger<App>? _logger;
-    private bool _shutdownStarted;
+    private MainWindowLifecycle? _mainWindowLifecycle;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -82,6 +92,44 @@ public partial class App : Application
             // 关于页的外部链接与只读更新检查：只读取并校验，不下载或替换程序文件。
             services.AddSingleton<IExternalLinkService, ExternalLinkService>();
             services.AddSingleton<IUpdateCheckService, UpdateCheckService>();
+            // F-12：登录启动注册、通知中心、更新调度、确认策略、关闭协调与会话恢复的唯一组合根。
+            services.AddEclDeploymentStartup();
+            // 领域服务允许缺省系统时钟；组合根显式登记一次，使所有时间相关服务共享同一来源。
+            services.TryAddSingleton(TimeProvider.System);
+            services.AddSingleton<INotificationPreferences, NotificationPreferences>();
+            services.AddSingleton<INotificationService, NotificationService>();
+            services.AddSingleton<OperationNotificationBridge>();
+            services.AddSingleton<IUpdateCheckScheduler>(provider => new UpdateCheckScheduler(
+                provider.GetRequiredService<ISettingsService>(),
+                provider.GetRequiredService<IUpdateCheckService>(),
+                provider.GetRequiredService<INotificationService>(),
+                provider.GetRequiredService<TimeProvider>(),
+                provider.GetRequiredService<ILogger<UpdateCheckScheduler>>(),
+                provider.GetService<ILocalizer>()));
+            services.AddSingleton<IConfirmationPolicy, ConfirmationPolicy>();
+            // 结果弹窗复用统一弹窗引擎；宿主不可用时回退到兼容对话框，不吞掉结论。
+            services.AddSingleton<IResultDialogService>(provider => new ResultDialogService(
+                provider.GetRequiredService<ISettingsService>(),
+                provider.GetRequiredService<IDialogEngine>(),
+                provider.GetRequiredService<ILocalizer>(),
+                provider.GetService<IDialogService>()));
+            services.AddSingleton<ICloseReadinessProbe, CloseReadinessProbe>();
+            // 构造即登记 "operations" 停止步骤；必须在关闭开始前解析（见 OnStartup）。
+            services.AddSingleton<IAppShutdownCoordinator, AppShutdownCoordinator>();
+            services.AddSingleton<IWorkspaceSessionStore, JsonWorkspaceSessionStore>();
+            services.AddSingleton<IWorkspaceRestoreTarget, ShellWorkspaceRestoreTarget>();
+            services.AddSingleton(provider => new WorkspaceRestoreService(
+                provider.GetRequiredService<IWorkspaceSessionStore>(),
+                provider.GetRequiredService<Ecl.Minecraft.Instances.IInstanceService>(),
+                provider.GetRequiredService<IWorkspaceRestoreTarget>(),
+                provider.GetRequiredService<ILogger<WorkspaceRestoreService>>()));
+            services.AddSingleton<StartupRestorePrompt>();
+            // F-12 托盘与窗口状态机：WinForms 类型只出现在实现文件，接口不泄漏。
+            services.AddSingleton<ITrayHost, WinFormsNotifyIconTrayHost>();
+            services.AddSingleton<IClosePrompt, ClosePromptService>();
+            services.AddSingleton<NotificationHostViewModel>();
+            services.AddSingleton<AutoStartSectionViewModel>();
+            services.AddSingleton<SettingsGeneralPageViewModel>();
             services.AddSingleton<IShaderHintStore, ShaderHintStore>();
             // 主页中央实例切换栏的排列是主页布局偏好，保存在启动器数据目录，不写实例记录。
             services.AddSingleton<IHomeLayoutStore, HomeLayoutStore>();
@@ -137,6 +185,34 @@ public partial class App : Application
             services.AddSingleton<OutputPanelViewModel>();
             services.AddSingleton<ShellViewModel>();
             services.AddSingleton<MainWindow>();
+            // F-12：会话快照跟踪 Shell 的导航/工作区变化；退出前由宿主再显式保存一次。
+            services.AddSingleton<WorkspaceSessionTracker>();
+            // 窗口关闭/托盘状态机：退出时先走关闭协调器（生命周期 + 容器释放），再由宿主 Shutdown()。
+            services.AddSingleton(provider =>
+            {
+                var tracker = provider.GetRequiredService<WorkspaceSessionTracker>();
+                return new MainWindowLifecycle(
+                    provider.GetRequiredService<MainWindow>(),
+                    provider.GetRequiredService<ITrayHost>(),
+                    provider.GetRequiredService<ISettingsService>(),
+                    provider.GetRequiredService<IClosePrompt>(),
+                    provider.GetRequiredService<ICloseReadinessProbe>(),
+                    provider.GetRequiredService<IAppShutdownCoordinator>(),
+                    provider.GetRequiredService<ILogger<MainWindowLifecycle>>(),
+                    provider.GetService<ILocalizer>(),
+                    provider.GetRequiredService<INotificationService>(),
+                    prepareExit: () =>
+                    {
+                        tracker.Save();
+                        return Task.CompletedTask;
+                    },
+                    exitHost: () =>
+                    {
+                        // 协调器已经释放容器，这里不再解析任何服务：只显式结束应用。
+                        ExitHost();
+                        return Task.CompletedTask;
+                    });
+            });
 
             _services = services.BuildServiceProvider();
             _logger = _services.GetRequiredService<ILogger<App>>();
@@ -169,7 +245,12 @@ public partial class App : Application
 
             var window = _services.GetRequiredService<MainWindow>();
             MainWindow = window;
-            window.Closing += OnMainWindowClosing;
+
+            // F-12：主窗口的 Closing 由窗口状态机接管（询问/托盘/退出单飞）。
+            // 关闭协调器在这里构造，确保在关闭开始前已登记 "operations" 停止步骤。
+            var mainWindowLifecycle = _services.GetRequiredService<MainWindowLifecycle>();
+            _mainWindowLifecycle = mainWindowLifecycle;
+            _services.GetRequiredService<IAppShutdownCoordinator>();
 
             // ADR 0002 + settings-interface-preferences.md §7：偏好保存在配置服务里，
             // 启动时在显示窗口前应用一次；之后由设置变更事件自动重新应用。
@@ -177,6 +258,16 @@ public partial class App : Application
 
             window.Show();
             splash.Close();
+
+            // 登录启动项（--autostart）只决定“这次可以最小化”，是否真的隐藏仍由设置决定；
+            // 手动启动时即使开着该设置也保持窗口可见，避免双击图标后找不到窗口。
+            var launchedByAutoStart = e.Args.Any(argument =>
+                string.Equals(argument, AutoStartRegistration.AutoStartArgument, StringComparison.OrdinalIgnoreCase));
+            if (launchedByAutoStart &&
+                _services.GetRequiredService<ISettingsService>().Get<bool>(LauncherKeys.StartMinimizedToTray))
+            {
+                mainWindowLifecycle.StartMinimizedToTray();
+            }
 
             var memoryPressure = _services.GetRequiredService<IMemoryPressureMonitor>();
             memoryPressure.Start();
@@ -194,6 +285,16 @@ public partial class App : Application
 
             lifecycle.MarkRunning();
             var provider = _services;
+
+            // F-12：登录启动项与设置对齐；失败只提示与记日志，不阻断启动。
+            ReconcileAutoStart(provider);
+            // 通知桥在 MarkRunning 之后订阅：窗口已经显示，提示条有宿主可承载。
+            _ = provider.GetRequiredService<OperationNotificationBridge>();
+            var updateScheduler = provider.GetRequiredService<IUpdateCheckScheduler>();
+            lifecycle.TrackWork(
+                new BackgroundWorkDescriptor("update-check-scheduler", "App", BackgroundWorkKind.Periodic),
+                token => updateScheduler.StartAsync(token));
+
             lifecycle.TrackWork(
                 new BackgroundWorkDescriptor("lifecycle-recovery-check", "App", BackgroundWorkKind.Io),
                 token => provider.GetRequiredService<LifecycleStartupCheck>().RunAsync(token));
@@ -201,7 +302,13 @@ public partial class App : Application
             lifecycle.TrackWork(
                 new BackgroundWorkDescriptor("session-recovery", "App", BackgroundWorkKind.Io),
                 token => RecoverSessionsAsync(provider, token));
-            await _services.GetRequiredService<ShellViewModel>().InitializeAsync();
+
+            var shell = provider.GetRequiredService<ShellViewModel>();
+            await shell.InitializeAsync();
+            // F-12：启动恢复询问必须在 Shell 就绪后执行（恢复目标要能真正导航）。
+            await RunStartupRestoreAsync(provider, shell);
+            // 询问结束后才开始记录新快照，避免覆盖“上次退出”的会话。
+            provider.GetRequiredService<WorkspaceSessionTracker>().EnableCapture();
         }
         catch (Exception exception)
         {
@@ -210,6 +317,16 @@ public partial class App : Application
 
             if (_services is not null)
             {
+                // 启动失败时窗口可能已显示；先解除关闭守卫，否则 Shutdown(-1) 会被 Closing 取消。
+                try
+                {
+                    _mainWindowLifecycle?.Dispose();
+                }
+                catch (Exception disposeGuardException)
+                {
+                    _logger?.LogDebug(disposeGuardException, "启动失败时解除窗口关闭守卫失败。");
+                }
+
                 try
                 {
                     var lifecycle = _services.GetRequiredService<IApplicationLifecycle>();
@@ -316,50 +433,156 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// WPF 的 Closing 事件本身不能被异步等待（ADR 0039 §7）：先取消本次关闭，等到关闭流程
-    /// 完成后再调用 Shutdown()。重复触发由 <see cref="_shutdownStarted"/> 拦截。
+    /// F-12：启动时让 HKCU Run 与 <c>launcher.startWithWindows</c> 对齐。
+    /// 失败只记录并通过通知告知（设置 → 常规 可重新应用），绝不阻断启动。
     /// </summary>
-    private async void OnMainWindowClosing(object? sender, CancelEventArgs e)
+    private static void ReconcileAutoStart(IServiceProvider services)
     {
-        if (_shutdownStarted)
-        {
-            return;
-        }
-
-        _shutdownStarted = true;
-        e.Cancel = true;
-
+        var logger = services.GetRequiredService<ILogger<App>>();
         try
         {
-            if (_services is not null)
+            var result = services.GetRequiredService<AutoStartReconciler>().Reconcile();
+            if (result.IsSuccess)
             {
-                var lifecycle = _services.GetRequiredService<IApplicationLifecycle>();
-                var report = await lifecycle.ShutdownAsync();
-                if (!report.IsClean)
-                {
-                    _logger?.LogWarning(
-                        "应用关闭完成但存在问题（{Count} 项）：{Issues}",
-                        report.Issues.Count,
-                        string.Join("；", report.Issues));
-                }
+                return;
+            }
 
-                await _services.DisposeAsync();
-                _services = null;
+            logger.LogWarning(
+                "登录启动项对齐失败：{Code} {Message}",
+                result.Error?.Code,
+                result.Error?.Message);
+
+            try
+            {
+                var localizer = services.GetRequiredService<ILocalizer>();
+                services.GetRequiredService<INotificationService>().Publish(new AppNotification(
+                    $"autostart:reconcile:{result.Error?.Code ?? "failed"}",
+                    AppNotificationCategory.TaskFailed,
+                    AppNotificationSeverity.Warning,
+                    localizer.Get("notification.autostart.failed.title"),
+                    localizer.Get(
+                        "notification.autostart.failed.message",
+                        result.Error?.Message ?? string.Empty),
+                    DateTimeOffset.UtcNow,
+                    NavigationDestination: NotificationDestinations.Settings));
+            }
+            catch (Exception notificationException)
+            {
+                // 通知失败不能改变启动路径；日志已经记录了真实原因。
+                logger.LogDebug(notificationException, "发布登录启动项失败提示失败。");
             }
         }
         catch (Exception exception)
         {
-            _logger?.LogError(exception, "关闭流程失败，仍将退出。");
+            logger.LogWarning(exception, "登录启动项对齐异常；不影响启动。");
         }
-        finally
+    }
+
+    /// <summary>
+    /// F-12 启动恢复询问：只在有效快照存在时询问；用户拒绝或没有快照时按
+    /// <c>launcher.showHomeOnStartup</c> 决定落点。恢复目标由 Shell 导航实现。
+    /// </summary>
+    private static async Task RunStartupRestoreAsync(IServiceProvider services, ShellViewModel shell)
+    {
+        var logger = services.GetRequiredService<ILogger<App>>();
+
+        // 恢复实例工作区前必须加载实例列表；InitializeAsync 是幂等的，重复进入页面不会二次扫描。
+        try
         {
-            Shutdown();
+            await services.GetRequiredService<InstancesViewModel>().InitializeAsync().ConfigureAwait(true);
         }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "加载实例列表失败；启动恢复可能无法打开实例工作区。");
+        }
+
+        WorkspaceRestoreResult? restored = null;
+        try
+        {
+            restored = await services.GetRequiredService<StartupRestorePrompt>().RunAsync().ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "启动工作区恢复询问失败；按默认落点继续。");
+        }
+
+        if (restored is { Restored: > 0 })
+        {
+            // 已有恢复的工作区成为当前落点，不再把用户带回主页。
+            return;
+        }
+
+        ApplyStartupLanding(services, shell);
+    }
+
+    /// <summary>
+    /// 不恢复/无快照时的启动落点：
+    /// - <c>ECL_START_PAGE</c> 是显式覆盖，优先于一切；
+    /// - <c>showHomeOnStartup=true</c>（默认）回到主页；
+    /// - 为 false 时回退到快照记录的导航目的地，其次才是上次打开的实例/固定目的地；
+    /// - 都不可用时仍回到主页：不猜测用户想去哪个页面。
+    /// </summary>
+    private static void ApplyStartupLanding(IServiceProvider services, ShellViewModel shell)
+    {
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ECL_START_PAGE")))
+        {
+            return;
+        }
+
+        if (services.GetRequiredService<ISettingsService>().Get<bool>(LauncherKeys.ShowHomeOnStartup))
+        {
+            shell.ActivateDestination("home");
+            return;
+        }
+
+        var snapshot = services.GetRequiredService<IWorkspaceSessionStore>().Load();
+        if (snapshot is null)
+        {
+            shell.ActivateDestination("home");
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(snapshot.NavigationDestination) &&
+            shell.ActivateDestination(snapshot.NavigationDestination))
+        {
+            return;
+        }
+
+        foreach (var entry in snapshot.Open)
+        {
+            if (!string.IsNullOrWhiteSpace(entry.InstanceId) &&
+                shell.OpenInstanceWorkspace(entry.InstanceId))
+            {
+                return;
+            }
+
+            var key = string.IsNullOrWhiteSpace(entry.Destination) ? entry.ToolId : entry.Destination;
+            if (!string.IsNullOrWhiteSpace(key) && shell.ActivateDestination(key))
+            {
+                return;
+            }
+        }
+
+        shell.ActivateDestination("home");
+    }
+
+    /// <summary>
+    /// 宿主退出：关闭协调器已经完成生命周期停止与容器释放，这里只把服务引用置空并显式结束应用。
+    /// 置空是必要的：OnExit 的兜底释放不应再次触碰已经释放的容器。
+    /// </summary>
+    private void ExitHost()
+    {
+        _services = null;
+        Shutdown();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        // 兜底：正常 UI 关闭已在 OnMainWindowClosing 中完成可等待关闭。
+        // 兜底：正常退出已在 MainWindowLifecycle → 关闭协调器中完成可等待关闭。
         if (_services is not null)
         {
             try

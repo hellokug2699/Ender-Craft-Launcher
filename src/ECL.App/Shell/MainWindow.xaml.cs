@@ -11,6 +11,8 @@ namespace Ecl.App.Shell;
 
 public partial class MainWindow : Window
 {
+    private bool _dialogHostAttached;
+
     public MainWindow(ShellViewModel viewModel)
     {
         InitializeComponent();
@@ -22,8 +24,20 @@ public partial class MainWindow : Window
 
     private ShellViewModel ViewModel => (ShellViewModel)DataContext;
 
-    /// <summary>弹窗宿主附加到主窗口后，统一弹窗才可用；在此之前调用方使用兼容路径。</summary>
-    private void OnLoaded(object sender, RoutedEventArgs e) => ViewModel.Dialogs.AttachHost();
+    /// <summary>
+    /// 弹窗宿主附加到主窗口后，统一弹窗才可用；在此之前调用方使用兼容路径。
+    /// 隐藏到托盘再恢复会再次触发 Loaded，因此附加必须幂等（重复附加会让宿主计数失衡）。
+    /// </summary>
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (_dialogHostAttached)
+        {
+            return;
+        }
+
+        _dialogHostAttached = true;
+        ViewModel.Dialogs.AttachHost();
+    }
 
     /// <summary>
     /// 窗口关闭时先关停弹窗层：打开的弹窗按 Closed 完成，等待中的嵌套消息循环退出，
@@ -32,7 +46,11 @@ public partial class MainWindow : Window
     private void OnClosed(object? sender, EventArgs e)
     {
         ViewModel.Dialogs.Shutdown();
-        ViewModel.Dialogs.DetachHost();
+        if (_dialogHostAttached)
+        {
+            _dialogHostAttached = false;
+            ViewModel.Dialogs.DetachHost();
+        }
     }
 
     private void OnPageTargetUpdated(object? sender, DataTransferEventArgs e)

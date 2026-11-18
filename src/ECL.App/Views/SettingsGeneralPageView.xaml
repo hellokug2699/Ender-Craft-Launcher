@@ -1,0 +1,142 @@
+<UserControl x:Class="Ecl.App.Views.SettingsGeneralPageView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Ecl.App.Localization"
+             xmlns:behaviors="clr-namespace:Ecl.App.Behaviors">
+    <!--
+        设置中心「常规」页（F-12）：
+        启动（含真实 Windows 登录启动状态）、窗口与关闭、更新、通知、确认与结果，以及代码签名信任卡。
+        页面只读写配置服务与领域状态，不直接操作注册表、托盘或更新网络。
+    -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="{Binding StatusMessage}"
+                   Foreground="{DynamicResource TextSecondaryBrush}"
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,10"
+                   Visibility="{Binding StatusMessage, Converter={StaticResource StringToVisibility}}" />
+
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      behaviors:WheelScroll.IsEnabled="True">
+            <StackPanel>
+                <!-- 启动：登录启动（含真实注册表状态）、启动时最小化、启动落点。 -->
+                <ContentControl Content="{Binding StartGroup}" Margin="0,0,0,14" />
+
+                <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                    <StackPanel>
+                        <TextBlock Text="{Binding AutoStart.Title}" Style="{StaticResource SectionText}" />
+                        <TextBlock Text="{Binding AutoStart.Description}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,5,0,8" />
+
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="140" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{loc:Loc Key=settings.page.general.autostart.statusLabel}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="10" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding AutoStart.StatusText}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap" />
+                        </Grid>
+
+                        <Grid Margin="0,0,0,6"
+                              Visibility="{Binding AutoStart.HasCommand, Converter={StaticResource BoolToVisibility}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="140" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{loc:Loc Key=settings.page.general.autostart.commandLabel}"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       FontSize="10" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding AutoStart.CommandText}"
+                                       FontFamily="Consolas"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       FontSize="10"
+                                       TextWrapping="Wrap" />
+                        </Grid>
+
+                        <TextBlock Text="{Binding AutoStart.RegistryPathText}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="9"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,8" />
+
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="{Binding AutoStart.ReapplyText}"
+                                    Command="{Binding AutoStart.ReapplyCommand}"
+                                    IsEnabled="{Binding AutoStart.CanReapply}"
+                                    Style="{StaticResource GhostButton}" />
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding AutoStart.ErrorText}"
+                                   Foreground="{DynamicResource DangerBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,8,0,0"
+                                   Visibility="{Binding AutoStart.HasError, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 窗口与关闭：关闭按钮语义与托盘可用性必须一起展示，否则用户会以为开关无效。 -->
+                <ContentControl Content="{Binding WindowGroup}" Margin="0,0,0,10" />
+                <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                    <StackPanel>
+                        <TextBlock Text="{Binding TrayStatusTitle}" Style="{StaticResource SectionText}" />
+                        <TextBlock Text="{Binding TrayStatusText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,5,0,0" />
+                        <TextBlock Text="{Binding TrayReasonText}"
+                                   Foreground="{DynamicResource WarningBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0"
+                                   Visibility="{Binding ShowTrayUnavailable, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 更新：真实调度状态；检查本身仍由调度器执行，页面不触网。 -->
+                <ContentControl Content="{Binding UpdateGroup}" Margin="0,0,0,10" />
+                <Border Style="{StaticResource Card}" Margin="0,0,0,14">
+                    <StackPanel>
+                        <TextBlock Text="{Binding LastCheckedText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding LastResultText}"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 通知：四类真实偏好；没有总开关，失败与安全提示不受类别开关静默关闭。 -->
+                <ContentControl Content="{Binding NotificationGroup}" Margin="0,0,0,14" />
+
+                <!-- 确认与结果：普通确认可关闭，强制确认与关键结果不受影响。 -->
+                <ContentControl Content="{Binding ConfirmationGroup}" Margin="0,0,0,14" />
+
+                <!-- 代码签名信任卡：从原通用页迁移，仍是本页唯一的安全相关卡片。 -->
+                <ContentControl Content="{Binding CodeSigning}" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

@@ -280,12 +280,14 @@ public sealed class InterfacePreferencesPageTests
                 paths,
                 Localizer,
                 NullLogger<SettingsJavaPageViewModel>.Instance);
+            var codeSigning = new CodeSigningTrustService(Path.Combine(_root, "signing"));
             ViewModel = new SettingsViewModel(
                 Settings,
                 Localizer,
-                new CodeSigningTrustService(Path.Combine(_root, "signing")),
+                codeSigning,
                 Dialogs,
-                javaPage);
+                javaPage,
+                SettingsGeneralPageFactory.Create(Settings, Localizer, Dialogs, codeSigning));
 
             // 生产环境里设置中心只有一个界面偏好页对象；测试必须用同一个实例，
             // 否则定位/高亮断言会指向另一个副本。

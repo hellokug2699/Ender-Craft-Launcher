@@ -8,8 +8,9 @@
              xmlns:secvm="clr-namespace:Ecl.App.ViewModels.Security"
              xmlns:dialogs="clr-namespace:Ecl.App.Dialogs.ViewModels"
              xmlns:dviews="clr-namespace:Ecl.App.Dialogs.Views"
+             xmlns:lvm="clr-namespace:Ecl.App.Shell.Lifecycle"
              xmlns:conv="clr-namespace:Ecl.App.Converters"
-             ShutdownMode="OnMainWindowClose">
+             ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -91,6 +92,10 @@
             <DataTemplate DataType="{x:Type svm:SettingsOptionsPageViewModel}">
                 <views:SettingsOptionsPageView />
             </DataTemplate>
+            <!-- F-12：常规页需要展示真实注册表/托盘/调度状态，因此是专用页面。 -->
+            <DataTemplate DataType="{x:Type svm:SettingsGeneralPageViewModel}">
+                <views:SettingsGeneralPageView />
+            </DataTemplate>
             <DataTemplate DataType="{x:Type svm:SettingsJavaPageViewModel}">
                 <views:SettingsJavaPageView />
             </DataTemplate>
@@ -135,6 +140,10 @@
             <!-- 统一弹窗内容：新增弹窗只需提供内容 ViewModel，不创建窗口。 -->
             <DataTemplate DataType="{x:Type dialogs:MessageDialogViewModel}">
                 <dviews:MessageDialogView />
+            </DataTemplate>
+            <!-- F-12 关闭询问：三按钮 + “记住我的选择”，内容语义由 ViewModel 决定。 -->
+            <DataTemplate DataType="{x:Type lvm:ClosePromptViewModel}">
+                <views:ClosePromptDialogView />
             </DataTemplate>
             <DataTemplate DataType="{x:Type dialogs:InstanceDirectoryDialogViewModel}">
                 <dviews:InstanceDirectoryDialogView />

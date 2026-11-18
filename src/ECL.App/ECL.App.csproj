@@ -4,11 +4,28 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- F-12：系统托盘需要 WinForms NotifyIcon；WinForms 类型只在托盘实现文件内使用。 -->
+    <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>Ecl.App</RootNamespace>
     <AssemblyName>ECL</AssemblyName>
     <ApplicationIcon>ECL.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!--
+      WFO0003 建议用 ApplicationHighDpiMode 配置 DPI，但本项目是 WPF 优先：
+      app.manifest 的 PerMonitorV2 是 WPF 窗口正确缩放所依赖的既有配置，不应为了 WinForms 分析器移除。
+    -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      UseWindowsForms 会给整个项目注入 System.Drawing / System.Windows.Forms 的隐式 using，
+      与 WPF 的 Brush/Color/Size/Application 等类型大面积冲突。托盘只需要一个文件使用 WinForms，
+      因此移除这两个隐式 using，由托盘实现文件显式引用（并保留 WPF 的命名空间优先级）。
+    -->
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ECL.Core\ECL.Core.csproj" />

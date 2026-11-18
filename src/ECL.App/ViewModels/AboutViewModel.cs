@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Ecl.Additions;
 using Ecl.App.Services;
+using Ecl.App.Services.Updates;
 using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Localization;
@@ -20,8 +21,8 @@ namespace Ecl.App.ViewModels;
 /// 关于页面（<c>hints/ui/pages/about.md</c>，ADR 0013 / 0049 / 0050 / 0051）。
 ///
 /// - 版本、频道、构建时间与架构只来自真实运行时/构建元数据；不可核实的字段省略，不显示占位值。
-/// - 「检查更新」调用 <see cref="IUpdateCheckService"/> 的真实只读检查（ADR 0051 / E3-1），
-///   不下载或替换程序文件；频道只读展示，切换仍在设置 → 常规。
+/// - 「检查更新」调用 <see cref="IUpdateCheckScheduler"/> 的只读检查（ADR 0051 / E3-1），
+///   与启动时的周期检查共用单飞与状态键；不下载或替换程序文件。
 /// - 「项目协作」保持 ADR 0049 的原生项目中心语义：显示所需扩展与真实安装状态，
 ///   未安装时提供扩展管理入口，不跳转 GitHub 网页替代。
 /// - 第三方清单只列出实际随包分发且许可证文本可核对的组件；Contributors 只用集体署名，
@@ -40,7 +41,7 @@ public sealed partial class AboutViewModel : ObservableObject
     private const string ChannelKey = "launcher.updateChannel";
     private const string FontLicenseFileName = "HarmonyOS_Sans_LICENSE.txt";
 
-    private readonly IUpdateCheckService _updates;
+    private readonly IUpdateCheckScheduler _scheduler;
     private readonly ISettingsService _settings;
     private readonly IAdditionsService _additions;
     private readonly IExternalLinkService _links;
@@ -48,20 +49,20 @@ public sealed partial class AboutViewModel : ObservableObject
     private readonly ILogger<AboutViewModel> _logger;
 
     public AboutViewModel(
-        IUpdateCheckService updates,
+        IUpdateCheckScheduler scheduler,
         ISettingsService settings,
         IAdditionsService additions,
         IExternalLinkService links,
         ILocalizer localizer,
         ILogger<AboutViewModel>? logger = null)
     {
-        ArgumentNullException.ThrowIfNull(updates);
+        ArgumentNullException.ThrowIfNull(scheduler);
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(additions);
         ArgumentNullException.ThrowIfNull(links);
         ArgumentNullException.ThrowIfNull(localizer);
 
-        _updates = updates;
+        _scheduler = scheduler;
         _settings = settings;
         _additions = additions;
         _links = links;
@@ -170,6 +171,13 @@ public sealed partial class AboutViewModel : ObservableObject
     /// </summary>
     public void Activate()
     {
+        // 先回放调度器最近一次结论（可能来自启动周期检查），再读取离线可见的开关/频道状态；
+        // 这样进入页面不会重复触网，但也不会丢掉后台已经检查到的结果。
+        if (_scheduler.LastReport is { } lastReport)
+        {
+            ApplyReport(lastReport);
+        }
+
         RefreshChannel();
         RefreshProjectCenterState();
     }
@@ -189,7 +197,18 @@ public sealed partial class AboutViewModel : ObservableObject
 
         try
         {
-            var report = await _updates.CheckAsync().ConfigureAwait(true);
+            // 用户手动触发：忽略周期，但关闭检查时调度器仍会返回 Disabled 而不触网。
+            var report = await _scheduler.CheckNowAsync(userInitiated: true).ConfigureAwait(true);
+            if (report is null)
+            {
+                // 调度器把异常转成了日志；页面必须给出可重试的失败结论而不是停在“检查中”。
+                UpdateStatusText = _localizer.Get("about.update.failedNoReport");
+                UpdateDetailText = string.Empty;
+                CanCheckForUpdates = true;
+                OnPropertyChanged(nameof(HasUpdateDetail));
+                return;
+            }
+
             ApplyReport(report);
         }
         catch (Exception exception)

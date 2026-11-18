@@ -4,6 +4,7 @@
         xmlns:loc="clr-namespace:Ecl.App.Localization"
         xmlns:inspector="clr-namespace:Ecl.App.Shell.Inspector"
         xmlns:output="clr-namespace:Ecl.App.Shell.Output"
+        xmlns:notifications="clr-namespace:Ecl.App.Shell.Notifications"
         xmlns:dialogs="clr-namespace:Ecl.App.Dialogs.Views"
         Title="{loc:Loc Key=app.name}"
         Icon="/ECL.ico"
@@ -329,6 +330,9 @@
                 </Border>
             </Grid>
         </Grid>
+
+        <!-- 应用内通知层：位于内容之上、弹窗层（ZIndex=10）之下；提示不阻塞操作。 -->
+        <notifications:NotificationHostView DataContext="{Binding Notifications}" Panel.ZIndex="9" />
 
         <!-- 统一弹窗层：覆盖整个窗口客户区；没有弹窗时不参与命中测试 -->
         <dialogs:DialogHostView DataContext="{Binding Dialogs}" Panel.ZIndex="10" />
