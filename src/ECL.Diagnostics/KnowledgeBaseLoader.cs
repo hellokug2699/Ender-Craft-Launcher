@@ -253,6 +253,11 @@ public static class KnowledgeBaseLoader
                 }
             }
 
+            // requiresFacts/hypotheses 是 schema 1 的可选增量字段：旧知识库缺少它们时保持空集合，
+            // 新知识库可要求会话事实存在后才命中规则。
+            var requiresFacts = NormalizeStrings(rule.RequiresFacts);
+            var hypotheses = NormalizeStrings(rule.Hypotheses);
+
             var minOccurrences = rule.MinOccurrences ?? 1;
             if (minOccurrences <= 0)
             {
@@ -297,6 +302,8 @@ public static class KnowledgeBaseLoader
                 Pattern = pattern,
                 RequiredAny = requiredAny,
                 RequiredAll = requiredAll,
+                RequiresFacts = requiresFacts,
+                Hypotheses = hypotheses,
                 MinOccurrences = minOccurrences,
                 Confidence = rule.Confidence ?? DiagnosticConfidence.Undetermined,
                 SuggestedActions = NormalizeStrings(rule.SuggestedActions),
@@ -426,6 +433,10 @@ public static class KnowledgeBaseLoader
         public List<string>? RequiredAny { get; set; }
 
         public List<string>? RequiredAll { get; set; }
+
+        public List<string>? RequiresFacts { get; set; }
+
+        public List<string>? Hypotheses { get; set; }
 
         public int? MinOccurrences { get; set; }
 

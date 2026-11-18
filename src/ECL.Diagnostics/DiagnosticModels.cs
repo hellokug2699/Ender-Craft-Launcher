@@ -9,6 +9,9 @@ public enum DiagnosticSourceKind
 {
     GameLog,
     CrashReport,
+
+    /// <summary>JVM 致命错误（hs_err）。单独保留来源类型，避免把致命错误伪装成普通游戏日志。</summary>
+    JvmFatalError,
 }
 
 /// <summary>诊断结论严重度。数值越大越严重，便于排序；JSON 中仍以 camelCase 字符串保存。</summary>

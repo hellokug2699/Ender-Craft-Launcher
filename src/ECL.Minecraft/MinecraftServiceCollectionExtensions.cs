@@ -3,6 +3,7 @@
 using Ecl.Configuration;
 using Ecl.Core;
 using Ecl.Core.Storage;
+using Ecl.Diagnostics;
 using Ecl.Java;
 using Ecl.Minecraft.Content;
 using Ecl.Minecraft.CurseForge;
@@ -38,6 +39,7 @@ using Ecl.World.Diagnostics;
 using Ecl.World.Recent;
 using Ecl.World.Servers;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Ecl.Minecraft;
 
@@ -145,6 +147,14 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton(provider => new DiagnosticReportStore(
             Path.Combine(provider.GetRequiredService<IAppPaths>().ConfigDirectory, "diagnostics")));
         services.AddSingleton<WorldWorkbenchService>();
+
+        // F-10 本地诊断：引擎与历史存储只读本地会话证据；用 TryAdd 避免与宿主重复注册冲突。
+        services.TryAddSingleton<DiagnosticEngine>();
+        services.TryAddSingleton(_ => new DiagnosticInputLoader());
+        services.TryAddSingleton(provider => new DiagnosticHistoryStore(
+            Path.Combine(provider.GetRequiredService<IAppPaths>().ConfigDirectory, "diagnostics")));
+        services.TryAddSingleton<IDiagnosticFactSource, SessionFactSource>();
+        services.TryAddSingleton<IDiagnosticAnalysisService, DiagnosticAnalysisService>();
 
         services.AddSingleton<ILaunchStep, ValidateInstanceStep>();
         services.AddSingleton<ILaunchStep, ResolveJavaStep>();

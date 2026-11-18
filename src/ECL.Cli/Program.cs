@@ -185,6 +185,9 @@ internal static class Program
           session prune --older-than-days <N> [--apply] [--json]
                                           显式清理超过保留期的已完成/已中断会话
           crash <实例ID> [--json]         分析最近一次崩溃与可疑 Mod
+          diagnose <实例ID> [--session <会话ID>] [--knowledge <知识库路径>]
+                   [--no-save] [--history] [--json]
+                                          本地会话证据诊断；缺知识库时只做结构化解析
           diagnostics export <实例ID> [--output <路径>] [--json]
                                           导出脱敏诊断包
           engine inventory <实例ID> [--no-deep] [--no-icons] [--json]

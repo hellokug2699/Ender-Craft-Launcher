@@ -12,6 +12,7 @@ using Ecl.Core.Localization;
 using Ecl.Core.Storage;
 using Ecl.Core.Storage.Discovery;
 using Ecl.Deployment;
+using Ecl.Diagnostics;
 using Ecl.Download;
 using Ecl.Java;
 using Ecl.Minecraft.Content;
@@ -72,6 +73,7 @@ internal sealed class CliApplication
             "curseforge" => await CurseForgeCommandAsync(rest).ConfigureAwait(false),
             "pack" => await PackCommandAsync(rest).ConfigureAwait(false),
             "crash" => await CrashCommandAsync(rest).ConfigureAwait(false),
+            "diagnose" => await DiagnoseCommandAsync(rest).ConfigureAwait(false),
             "diagnostics" => await DiagnosticsCommandAsync(rest).ConfigureAwait(false),
             "engine" => await EngineCommandAsync(rest).ConfigureAwait(false),
             "security" => await SecurityCommandAsync(rest).ConfigureAwait(false),
@@ -3864,16 +3866,22 @@ internal sealed class CliApplication
             return 0;
         }
 
+        var localizer = _provider.GetRequiredService<ILocalizer>();
         Console.WriteLine(analysis.Summary);
         if (!string.IsNullOrWhiteSpace(analysis.SourcePath))
         {
             Console.WriteLine($"Source: {analysis.SourcePath}");
         }
 
+        if (analysis.Suspects.Count > 0)
+        {
+            // 启发式嫌疑排序不是结论：不打印数值分数，避免用户把 score 当成置信度。
+            Console.WriteLine(localizer.Get("diagnostics.cli.suspectRanking"));
+        }
+
         foreach (var suspect in analysis.Suspects)
         {
-            Console.WriteLine(
-                $"  ? {suspect.Name ?? suspect.ModId} ({suspect.ModId}) score={suspect.Score}");
+            Console.WriteLine($"  ? {suspect.Name ?? suspect.ModId} ({suspect.ModId})");
             foreach (var evidence in suspect.Evidence)
             {
                 Console.WriteLine($"    {evidence}");
@@ -3882,6 +3890,202 @@ internal sealed class CliApplication
 
         return 0;
     }
+
+    private async Task<int> DiagnoseCommandAsync(string[] args)
+    {
+        var localizer = _provider.GetRequiredService<ILocalizer>();
+        var instanceId = args.ElementAtOrDefault(0);
+        if (string.IsNullOrWhiteSpace(instanceId))
+        {
+            return UsageError(localizer.Get("diagnostics.cli.usage"));
+        }
+
+        var service = _provider.GetRequiredService<IDiagnosticAnalysisService>();
+        if (_commandLine.HasFlag("history"))
+        {
+            var history = await service.LoadHistoryAsync(instanceId).ConfigureAwait(false);
+            if (!history.IsSuccess)
+            {
+                return WriteError(history.Error);
+            }
+
+            if (_commandLine.HasFlag("json"))
+            {
+                Console.WriteLine(JsonSerializer.Serialize(history.Value, EclJson.Indented));
+                return 0;
+            }
+
+            return PrintDiagnosticHistory(history.Value!, localizer);
+        }
+
+        var options = new DiagnosticAnalysisOptions
+        {
+            SessionId = _commandLine.GetValue("session"),
+            KnowledgeBasePath = _commandLine.GetValue("knowledge"),
+            SaveHistory = !_commandLine.HasFlag("no-save"),
+        };
+
+        var result = await service.AnalyzeAsync(instanceId, options).ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return WriteError(result.Error);
+        }
+
+        var report = result.Value!;
+        if (_commandLine.HasFlag("json"))
+        {
+            Console.WriteLine(JsonSerializer.Serialize(report, EclJson.Indented));
+            return 0;
+        }
+
+        PrintDiagnosticReport(report, localizer);
+        return 0;
+    }
+
+    private static int PrintDiagnosticHistory(
+        IReadOnlyList<DiagnosticReport> reports,
+        ILocalizer localizer)
+    {
+        if (reports.Count == 0)
+        {
+            Console.WriteLine(localizer.Get("diagnostics.cli.historyEmpty"));
+            return 0;
+        }
+
+        Console.WriteLine(localizer.Get("diagnostics.cli.historyTitle", reports.Count));
+        foreach (var report in reports)
+        {
+            var knowledge = report.KnowledgeVersion ?? localizer.Get("diagnostics.cli.noKnowledgeShort");
+            Console.WriteLine(localizer.Get(
+                "diagnostics.cli.historyEntry",
+                report.GeneratedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", localizer.Culture),
+                report.Findings.Count,
+                ConfidenceText(report.OverallConfidence, localizer),
+                knowledge));
+        }
+
+        return 0;
+    }
+
+    private static void PrintDiagnosticReport(DiagnosticReport report, ILocalizer localizer)
+    {
+        Console.WriteLine(localizer.Get(
+            "diagnostics.cli.report",
+            report.ReportId,
+            report.GeneratedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", localizer.Culture)));
+
+        if (report.Environment is not null)
+        {
+            Console.WriteLine(localizer.Get("diagnostics.cli.environment", report.Environment.Summary));
+        }
+
+        Console.WriteLine(localizer.Get(
+            "diagnostics.cli.session",
+            report.SessionId ?? localizer.Get("diagnostics.noSession")));
+        Console.WriteLine(report.KnowledgeBase is null
+            ? localizer.Get("diagnostics.cli.noKnowledge")
+            : localizer.Get("diagnostics.cli.knowledge", report.KnowledgeVersion ?? "?"));
+
+        Console.WriteLine(localizer.Get(
+            "diagnostics.cli.findings",
+            report.Findings.Count,
+            ConfidenceText(report.OverallConfidence, localizer)));
+
+        if (report.Findings.Count == 0)
+        {
+            Console.WriteLine(localizer.Get("diagnostics.findings.empty"));
+        }
+
+        foreach (var finding in report.Findings)
+        {
+            Console.WriteLine($"- {finding.Title}");
+            Console.WriteLine(localizer.Get(
+                "diagnostics.cli.findingMeta",
+                SeverityText(finding.Severity, localizer),
+                ConfidenceText(finding.Confidence, localizer),
+                finding.Category,
+                finding.Evidence.Count));
+
+            foreach (var evidence in finding.Evidence)
+            {
+                Console.WriteLine("  " + localizer.Get(
+                    "diagnostics.evidence.line",
+                    evidence.File,
+                    evidence.Line,
+                    evidence.Excerpt));
+            }
+
+            if (!string.IsNullOrWhiteSpace(finding.Explanation))
+            {
+                Console.WriteLine("  " + localizer.Get("diagnostics.cli.explanation", finding.Explanation));
+            }
+
+            if (finding.SuggestedActions.Count > 0)
+            {
+                Console.WriteLine("  " + localizer.Get("diagnostics.cli.actions"));
+                foreach (var action in finding.SuggestedActions)
+                {
+                    Console.WriteLine($"    · {action}");
+                }
+            }
+
+            if (finding.Hypotheses.Count > 0)
+            {
+                Console.WriteLine("  " + localizer.Get("diagnostics.cli.hypotheses"));
+                foreach (var hypothesis in finding.Hypotheses)
+                {
+                    Console.WriteLine(
+                        $"    · {hypothesis.Statement}（{ConfidenceText(hypothesis.Confidence, localizer)}）");
+                }
+            }
+
+            var missingEvidence = finding.Hypotheses
+                .SelectMany(hypothesis => hypothesis.MissingEvidence)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (missingEvidence.Length > 0)
+            {
+                Console.WriteLine("  " + localizer.Get("diagnostics.cli.missingEvidence"));
+                foreach (var missing in missingEvidence)
+                {
+                    Console.WriteLine($"    · {missing}");
+                }
+            }
+        }
+
+        if (report.Warnings.Count > 0)
+        {
+            Console.WriteLine(localizer.Get("diagnostics.cli.warnings"));
+            foreach (var warning in report.Warnings)
+            {
+                Console.WriteLine($"  · {warning}");
+            }
+        }
+
+        if (report.InputIssues.Count > 0)
+        {
+            Console.WriteLine(localizer.Get("diagnostics.cli.inputIssues"));
+            foreach (var issue in report.InputIssues)
+            {
+                Console.WriteLine($"  [{issue.Code}] {issue.File}: {issue.Message}");
+            }
+        }
+    }
+
+    private static string ConfidenceText(DiagnosticConfidence confidence, ILocalizer localizer) => confidence switch
+    {
+        DiagnosticConfidence.DirectEvidence => localizer.Get("diagnostics.confidence.directEvidence"),
+        DiagnosticConfidence.HighlyLikely => localizer.Get("diagnostics.confidence.highlyLikely"),
+        _ => localizer.Get("diagnostics.confidence.undetermined"),
+    };
+
+    private static string SeverityText(DiagnosticSeverity severity, ILocalizer localizer) => severity switch
+    {
+        DiagnosticSeverity.Critical => localizer.Get("diagnostics.severity.critical"),
+        DiagnosticSeverity.Error => localizer.Get("diagnostics.severity.error"),
+        DiagnosticSeverity.Warning => localizer.Get("diagnostics.severity.warning"),
+        _ => localizer.Get("diagnostics.severity.info"),
+    };
 
     private async Task<int> DiagnosticsCommandAsync(string[] args)
     {

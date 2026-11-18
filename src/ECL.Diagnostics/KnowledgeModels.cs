@@ -45,6 +45,15 @@ public sealed record KnowledgeRule
     /// <summary>可选：同一事件中每个正则都至少匹配一行，规则才生效。</summary>
     public IReadOnlyList<string> RequiredAll { get; init; } = [];
 
+    /// <summary>
+    /// 可选：规则命中前必须存在这些 <see cref="DiagnosticFact.Kind"/> 的事实。
+    /// 事实缺失时规则完全不参与匹配，避免只凭一行日志就得出需要会话/采集上下文的结论。
+    /// </summary>
+    public IReadOnlyList<string> RequiresFacts { get; init; } = [];
+
+    /// <summary>可选：规则可以声明的候选原因；引擎会把它们转换成带置信度的 <see cref="DiagnosticHypothesis"/>。</summary>
+    public IReadOnlyList<string> Hypotheses { get; init; } = [];
+
     /// <summary>至少命中多少个事件才输出结论；默认 1。</summary>
     public int MinOccurrences { get; init; } = 1;
 

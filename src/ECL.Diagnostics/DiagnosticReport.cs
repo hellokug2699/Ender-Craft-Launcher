@@ -48,6 +48,12 @@ public sealed record DiagnosticFinding
     public string Explanation { get; init; } = "";
 
     public IReadOnlyList<string> SourceIds { get; init; } = [];
+
+    /// <summary>
+    /// 规则声明的候选原因（推断）。与证据链分开保存，UI/CLI 必须同时展示置信度与缺失证据，
+    /// 不能把候选原因渲染成已确认结论。
+    /// </summary>
+    public IReadOnlyList<DiagnosticHypothesis> Hypotheses { get; init; } = [];
 }
 
 /// <summary>诊断报告引用的知识库元数据，用于解释与历史比较。</summary>
@@ -70,7 +76,11 @@ public sealed record KnowledgeBaseReference
 /// </summary>
 public sealed record DiagnosticReport
 {
-    public const int CurrentSchemaVersion = 1;
+    /// <summary>当前写入版本。schema 2 增加实例/会话归属、事实与候选原因；schema 1 历史仍可读取。</summary>
+    public const int CurrentSchemaVersion = 2;
+
+    /// <summary>仍可读取的最旧 schema。读取方不得把旧报告静默改写为新版本。</summary>
+    public const int MinSupportedSchemaVersion = 1;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
 
@@ -78,9 +88,18 @@ public sealed record DiagnosticReport
 
     public DateTimeOffset GeneratedAtUtc { get; init; }
 
+    /// <summary>报告归属的实例；旧 schema 1 报告为 <c>null</c>，表示保存在历史根目录。</summary>
+    public string? InstanceId { get; init; }
+
+    /// <summary>报告归属的游戏会话；无会话时仍可生成报告。</summary>
+    public string? SessionId { get; init; }
+
     public KnowledgeBaseReference? KnowledgeBase { get; init; }
 
     public DiagnosticEnvironment? Environment { get; init; }
+
+    /// <summary>本次分析使用的结构化事实；规则通过这些事实约束命中条件。</summary>
+    public IReadOnlyList<DiagnosticFact> Facts { get; init; } = [];
 
     public IReadOnlyList<DiagnosticFinding> Findings { get; init; } = [];
 
@@ -111,6 +130,21 @@ public sealed record DiagnosticAnalysisRequest
     public DiagnosticEnvironment? Environment { get; init; }
 
     public IReadOnlyList<DiagnosticInputIssue> InputIssues { get; init; } = [];
+
+    /// <summary>编排层已经确认的警告（例如共享日志归属、缺知识库）；引擎会原样保留并追加自身警告。</summary>
+    public IReadOnlyList<string> Warnings { get; init; } = [];
+
+    /// <summary>实例归属；仅用于报告与实例级历史，不参与规则匹配。</summary>
+    public string? InstanceId { get; init; }
+
+    /// <summary>会话归属；仅用于引用会话 manifest 事实与报告来源。</summary>
+    public string? SessionId { get; init; }
+
+    /// <summary>会话 manifest/采集计量等结构化事实；规则可要求某些事实存在才命中。</summary>
+    public IReadOnlyList<DiagnosticFact> Facts { get; init; } = [];
+
+    /// <summary>已解析的 JVM 致命错误（hs_err）；引擎会转换成事件供规则匹配。</summary>
+    public IReadOnlyList<JvmFatalErrorReport> JvmFatalErrors { get; init; } = [];
 
     /// <summary>仅用于测试/可重现分析；为空时使用当前 UTC 时间。</summary>
     public DateTimeOffset? AnalyzedAtUtc { get; init; }

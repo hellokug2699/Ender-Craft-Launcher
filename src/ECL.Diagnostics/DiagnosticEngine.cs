@@ -56,6 +56,14 @@ public sealed class DiagnosticEngine
 
         var generatedAt = request.AnalyzedAtUtc ?? DateTimeOffset.UtcNow;
         var warnings = new List<string>();
+
+        // 编排层（会话/知识库/证据读取）已经确认的警告必须保留在报告中，
+        // 不能因为进入规则引擎而被丢弃。
+        if (request.Warnings is { Count: > 0 })
+        {
+            warnings.AddRange(request.Warnings);
+        }
+
         var events = new List<ParsedLogEvent>();
 
         if (request.Events is { Count: > 0 })
@@ -76,6 +84,37 @@ public sealed class DiagnosticEngine
                 events.AddRange(CrashReportParser.ToEvents(crashReport));
             }
         }
+
+        // hs_err 是独立证据来源：只有识别到文件头时才转换，未识别时只记警告，不伪造事件。
+        if (request.JvmFatalErrors is { Count: > 0 })
+        {
+            foreach (var fatalError in request.JvmFatalErrors)
+            {
+                if (fatalError is null)
+                {
+                    warnings.Add("跳过一个为 null 的 JVM 致命错误输入。");
+                    continue;
+                }
+
+                if (!fatalError.HasHeader)
+                {
+                    warnings.Add($"JVM 致命错误文件 {fatalError.File} 未包含可识别的文件头，已跳过。");
+                    continue;
+                }
+
+                events.AddRange(JvmFatalErrorParser.ToEvents(fatalError));
+            }
+        }
+
+        // 事实直接进入报告；来自性能/启发式来源的事实即使被构造成 DirectEvidence，
+        // 也在这里统一压到 HighlyLikely，避免下游把观测当成根因。
+        var facts = (request.Facts ?? [])
+            .Where(fact => fact is not null && !string.IsNullOrWhiteSpace(fact.Kind))
+            .Select(fact => fact with
+            {
+                Confidence = DiagnosticFactConfidence.Cap(fact.SourceId, fact.Confidence),
+            })
+            .ToArray();
 
         if (events.Count == 0)
         {
@@ -124,8 +163,15 @@ public sealed class DiagnosticEngine
 
                 var requiredAny = CompileAll(rule.RequiredAny, rule.Id, "requiredAny", warnings);
                 var requiredAll = CompileAll(rule.RequiredAll, rule.Id, "requiredAll", warnings);
+                var requiredFacts = ResolveRequiredFacts(rule, facts);
+                if (requiredFacts is null)
+                {
+                    // 事实约束不满足时规则完全不命中：不能只凭一行日志得出需要会话上下文的结论。
+                    continue;
+                }
+
                 var compiled = new CompiledRule(rule, pattern!, requiredAny, requiredAll);
-                var finding = AnalyzeRule(compiled, events, knowledgeBase.KnowledgeVersion, warnings);
+                var finding = AnalyzeRule(compiled, events, knowledgeBase.KnowledgeVersion, requiredFacts, warnings);
                 if (finding is not null)
                 {
                     findings.Add(finding);
@@ -160,6 +206,9 @@ public sealed class DiagnosticEngine
                     EnabledRuleCount = knowledgeBase.EnabledRuleCount,
                 },
             Environment = request.Environment,
+            InstanceId = string.IsNullOrWhiteSpace(request.InstanceId) ? null : request.InstanceId,
+            SessionId = string.IsNullOrWhiteSpace(request.SessionId) ? null : request.SessionId,
+            Facts = facts,
             Findings = ordered,
             OverallConfidence = overallConfidence,
             UncertaintyNote = BuildUncertaintyNote(ordered, overallConfidence),
@@ -172,6 +221,7 @@ public sealed class DiagnosticEngine
         CompiledRule compiled,
         IReadOnlyList<ParsedLogEvent> events,
         string knowledgeVersion,
+        IReadOnlyList<DiagnosticFact> requiredFacts,
         List<string> warnings)
     {
         var rule = compiled.Rule;
@@ -229,6 +279,22 @@ public sealed class DiagnosticEngine
             ? DiagnosticConfidence.Undetermined
             : rule.Confidence;
 
+        // 规则声明的候选原因继承本次结论的有效置信度；证据链复用已收集的命中行，
+        // 不在这里补造“支持证据”，也不把候选原因写成结论。
+        var hypotheses = rule.Hypotheses
+            .Select(statement => new DiagnosticHypothesis(
+                statement,
+                confidence,
+                evidence.ToArray(),
+                []))
+            .ToArray();
+
+        var sourceIds = rule.SourceIds
+            .Concat(requiredFacts.Select(fact => fact.SourceId))
+            .Where(sourceId => !string.IsNullOrWhiteSpace(sourceId))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
         return new DiagnosticFinding
         {
             RuleId = rule.Id,
@@ -242,8 +308,38 @@ public sealed class DiagnosticEngine
             Evidence = evidence,
             SuggestedActions = rule.SuggestedActions,
             Explanation = rule.Explanation,
-            SourceIds = rule.SourceIds,
+            SourceIds = sourceIds,
+            Hypotheses = hypotheses,
         };
+    }
+
+    /// <summary>
+    /// 解析规则依赖的事实。返回 <c>null</c> 表示约束未满足，规则不得命中；
+    /// 返回空集合表示规则不依赖事实。
+    /// </summary>
+    private static IReadOnlyList<DiagnosticFact>? ResolveRequiredFacts(
+        KnowledgeRule rule,
+        IReadOnlyList<DiagnosticFact> facts)
+    {
+        if (rule.RequiresFacts.Count == 0)
+        {
+            return [];
+        }
+
+        var resolved = new List<DiagnosticFact>(rule.RequiresFacts.Count);
+        foreach (var kind in rule.RequiresFacts)
+        {
+            var matched = facts.FirstOrDefault(fact =>
+                string.Equals(fact.Kind, kind, StringComparison.Ordinal));
+            if (matched is null)
+            {
+                return null;
+            }
+
+            resolved.Add(matched);
+        }
+
+        return resolved;
     }
 
     private static IReadOnlyList<SourceLine>? Match(

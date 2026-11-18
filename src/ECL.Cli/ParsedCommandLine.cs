@@ -27,6 +27,8 @@ public sealed class ParsedCommandLine
         "deep",
         "apply",
         "resolved",
+        "history",
+        "no-save",
     };
 
     private readonly Dictionary<string, string?> _options = new(StringComparer.Ordinal);
