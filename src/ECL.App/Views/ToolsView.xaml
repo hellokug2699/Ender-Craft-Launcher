@@ -304,6 +304,25 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
+                        <TextBlock Text="{loc:Loc Key=diagnostics.worldTargets.title}"
+                                   Style="{StaticResource SectionText}" Margin="0,14,0,0" />
+                        <TextBlock Text="{loc:Loc Key=diagnostics.worldTargets.empty}"
+                                   FontSize="11" Margin="0,6,0,0"
+                                   Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap"
+                                   Visibility="{Binding HasWorldTargets, Converter={StaticResource InverseBoolToVisibility}}" />
+                        <ItemsControl ItemsSource="{Binding WorldTargets}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock FontSize="10" Margin="0,3,0,0" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextSecondaryBrush}">
+                                        <Run Text="{Binding Summary, Mode=OneWay}" />
+                                        <Run Text=" · " />
+                                        <Run Text="{Binding MapNote, Mode=OneWay}" />
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
                         <TextBlock Text="{loc:Loc Key=diagnostics.history.title}"
                                    Style="{StaticResource SectionText}" Margin="0,14,0,0" />
                         <TextBlock Text="{loc:Loc Key=diagnostics.history.empty}"

@@ -71,6 +71,47 @@ public sealed class DiagnosticsPageTests
     }
 
     [Fact]
+    public async Task WorldTargetsRenderWithMapConstraintAndAnalysisRequestsWorldEvidence()
+    {
+        var report = NewReport(withKnowledgeBase: true) with
+        {
+            WorldTargets =
+            [
+                new DiagnosticWorldTarget
+                {
+                    DimensionId = "minecraft:overworld",
+                    Granularity = DiagnosticWorldGranularity.Chunk,
+                    ChunkX = 12,
+                    ChunkZ = -4,
+                    Confidence = DiagnosticConfidence.DirectEvidence,
+                },
+                new DiagnosticWorldTarget
+                {
+                    DimensionId = "minecraft:the_nether",
+                    DimensionInferred = true,
+                    Granularity = DiagnosticWorldGranularity.Chunk,
+                    ChunkX = 1,
+                    ChunkZ = 2,
+                    Confidence = DiagnosticConfidence.HighlyLikely,
+                },
+            ],
+        };
+        var host = new Host(report);
+
+        await host.Page.ActivateAsync();
+        await host.Page.AnalyzeCommand.ExecuteAsync(null);
+
+        // 诊断页必须显式请求世界证据，否则世界定位永远为空。
+        Assert.True(host.Analysis.LastOptions!.IncludeWorldEvents);
+        Assert.True(host.Page.HasWorldTargets);
+        Assert.Equal(2, host.Page.WorldTargets.Count);
+        Assert.Contains("Chunk (12, -4)", host.Page.WorldTargets[0].Summary, StringComparison.Ordinal);
+        Assert.Contains("可标记到地图", host.Page.WorldTargets[0].MapNote, StringComparison.Ordinal);
+        Assert.Contains("不标记到地图", host.Page.WorldTargets[1].MapNote, StringComparison.Ordinal);
+        Assert.False(host.Page.WorldTargets[1].CanMap);
+    }
+
+    [Fact]
     public void TheToolsViewKeepsTheDiagnosticsCardAndAddsFindingsAndHistoryLists()
     {
         var xaml = ReadSource("src/ECL.App/Views/ToolsView.xaml");
@@ -78,7 +119,9 @@ public sealed class DiagnosticsPageTests
         Assert.Contains("本地诊断中心", xaml, StringComparison.Ordinal);
         Assert.Contains("{Binding Findings}", xaml, StringComparison.Ordinal);
         Assert.Contains("{Binding History}", xaml, StringComparison.Ordinal);
+        Assert.Contains("{Binding WorldTargets}", xaml, StringComparison.Ordinal);
         Assert.Contains("diagnostics.findings.title", xaml, StringComparison.Ordinal);
+        Assert.Contains("diagnostics.worldTargets.title", xaml, StringComparison.Ordinal);
         Assert.Contains("diagnostics.history.title", xaml, StringComparison.Ordinal);
         Assert.Contains("{Binding KnowledgeNote}", xaml, StringComparison.Ordinal);
         Assert.Contains("RefreshHistoryCommand", xaml, StringComparison.Ordinal);
@@ -171,6 +214,8 @@ public sealed class DiagnosticsPageTests
 
         public string? LastInstanceId { get; private set; }
 
+        public DiagnosticAnalysisOptions? LastOptions { get; private set; }
+
         public Task<Result<DiagnosticReport>> AnalyzeAsync(
             string instanceId,
             DiagnosticAnalysisOptions? options = null,
@@ -178,6 +223,7 @@ public sealed class DiagnosticsPageTests
         {
             AnalyzeCalls++;
             LastInstanceId = instanceId;
+            LastOptions = options;
             return Task.FromResult(Result<DiagnosticReport>.Ok(Report!));
         }
 

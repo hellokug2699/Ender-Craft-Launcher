@@ -101,6 +101,12 @@ public sealed record DiagnosticReport
     /// <summary>本次分析使用的结构化事实；规则通过这些事实约束命中条件。</summary>
     public IReadOnlyList<DiagnosticFact> Facts { get; init; } = [];
 
+    /// <summary>
+    /// 世界诊断定位目标（F-10 S6）。只有 <see cref="DiagnosticWorldTarget.SupportsMapHighlight"/>
+    /// 为真的目标才允许在世界地图上标记；其余目标保持“未定位/推断”表达。
+    /// </summary>
+    public IReadOnlyList<DiagnosticWorldTarget> WorldTargets { get; init; } = [];
+
     public IReadOnlyList<DiagnosticFinding> Findings { get; init; } = [];
 
     /// <summary>所有结论中的最高置信度；没有结论时必须是“无法确定”。</summary>
@@ -142,6 +148,9 @@ public sealed record DiagnosticAnalysisRequest
 
     /// <summary>会话 manifest/采集计量等结构化事实；规则可要求某些事实存在才命中。</summary>
     public IReadOnlyList<DiagnosticFact> Facts { get; init; } = [];
+
+    /// <summary>已解析的世界诊断定位目标；只描述证据中出现过的定位，不推断未出现的区块。</summary>
+    public IReadOnlyList<DiagnosticWorldTarget> WorldTargets { get; init; } = [];
 
     /// <summary>已解析的 JVM 致命错误（hs_err）；引擎会转换成事件供规则匹配。</summary>
     public IReadOnlyList<JvmFatalErrorReport> JvmFatalErrors { get; init; } = [];

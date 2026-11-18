@@ -50,6 +50,8 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
 
     public ObservableCollection<DiagnosticFindingRow> Findings { get; } = [];
 
+    public ObservableCollection<DiagnosticWorldTargetRow> WorldTargets { get; } = [];
+
     public ObservableCollection<DiagnosticHistoryRow> History { get; } = [];
 
     [ObservableProperty]
@@ -74,6 +76,8 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
     private bool _isBusy;
 
     public bool HasFindings => Findings.Count > 0;
+
+    public bool HasWorldTargets => WorldTargets.Count > 0;
 
     public bool HasHistory => History.Count > 0;
 
@@ -123,7 +127,14 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         try
         {
             var result = await _analysis
-                .AnalyzeAsync(SelectedInstance.Id, new DiagnosticAnalysisOptions { SaveHistory = true })
+                .AnalyzeAsync(
+                    SelectedInstance.Id,
+                    new DiagnosticAnalysisOptions
+                    {
+                        SaveHistory = true,
+                        // 世界定位只读会话证据；地图标记是否允许由领域 SupportsMapHighlight 判定。
+                        IncludeWorldEvents = true,
+                    })
                 .ConfigureAwait(true);
             if (!result.IsSuccess)
             {
@@ -156,11 +167,13 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
     {
         // 切换实例必须先清空上一实例的结论，避免把旧结果误认为当前实例的诊断。
         Findings.Clear();
+        WorldTargets.Clear();
         History.Clear();
         Summary = string.Empty;
         Uncertainty = string.Empty;
         SessionText = _localizer.Get("diagnostics.session", _localizer.Get("diagnostics.noSession"));
         OnPropertyChanged(nameof(HasFindings));
+        OnPropertyChanged(nameof(HasWorldTargets));
         OnPropertyChanged(nameof(HasHistory));
     }
 
@@ -170,6 +183,17 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
         foreach (var finding in report.Findings)
         {
             Findings.Add(ToRow(finding));
+        }
+
+        WorldTargets.Clear();
+        foreach (var target in report.WorldTargets)
+        {
+            WorldTargets.Add(new DiagnosticWorldTargetRow(
+                target.Describe(),
+                target.SupportsMapHighlight
+                    ? _localizer.Get("diagnostics.worldTarget.mapAllowed")
+                    : _localizer.Get("diagnostics.worldTarget.mapBlocked"),
+                target.SupportsMapHighlight));
         }
 
         Summary = _localizer.Get(
@@ -187,6 +211,7 @@ public sealed partial class DiagnosticsViewModel : ObservableObject
             ? _localizer.Get("diagnostics.status.noFindings")
             : _localizer.Get("diagnostics.status.completed");
         OnPropertyChanged(nameof(HasFindings));
+        OnPropertyChanged(nameof(HasWorldTargets));
     }
 
     private async Task LoadHistoryAsync()
@@ -285,6 +310,9 @@ public sealed record DiagnosticFindingRow(
 
     public bool HasExplanation => !string.IsNullOrWhiteSpace(Explanation);
 }
+
+/// <summary>一条世界定位：定位摘要与“是否允许地图标记”的事实说明（不把推断维度画成确定区块）。</summary>
+public sealed record DiagnosticWorldTargetRow(string Summary, string MapNote, bool CanMap);
 
 /// <summary>一条实例诊断历史：生成时间、结论数、总体置信度与知识库版本。</summary>
 public sealed record DiagnosticHistoryRow(

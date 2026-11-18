@@ -209,6 +209,7 @@ public sealed class DiagnosticEngine
             InstanceId = string.IsNullOrWhiteSpace(request.InstanceId) ? null : request.InstanceId,
             SessionId = string.IsNullOrWhiteSpace(request.SessionId) ? null : request.SessionId,
             Facts = facts,
+            WorldTargets = request.WorldTargets ?? [],
             Findings = ordered,
             OverallConfidence = overallConfidence,
             UncertaintyNote = BuildUncertaintyNote(ordered, overallConfidence),

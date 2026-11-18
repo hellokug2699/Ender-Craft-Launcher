@@ -15,8 +15,8 @@ public sealed record DiagnosticAnalysisOptions
     public string? SessionId { get; init; }
 
     /// <summary>
-    /// 世界诊断事件接入选项（F-10 后续切片）。本轮不实现 World 事件接入：
-    /// 即使为 <c>true</c> 也不会读取世界文件或伪造世界结论。
+    /// 是否接入世界诊断事件（F-10 S6）。开启后只读取本会话登记的日志/崩溃报告证据，
+    /// 产出世界事实与定位目标；不读取世界存档、不枚举实例目录。
     /// </summary>
     public bool IncludeWorldEvents { get; init; }
 
@@ -190,6 +190,7 @@ public sealed class DiagnosticAnalysisService : IDiagnosticAnalysisService
     private readonly ISessionLogReader _logReader;
     private readonly DiagnosticEngine _engine;
     private readonly IReadOnlyList<IDiagnosticFactSource> _factSources;
+    private readonly IDiagnosticWorldFactSource _worldFactSource;
     private readonly DiagnosticHistoryStore _history;
     private readonly ILogger<DiagnosticAnalysisService> _logger;
 
@@ -199,6 +200,7 @@ public sealed class DiagnosticAnalysisService : IDiagnosticAnalysisService
         ISessionLogReader logReader,
         DiagnosticEngine engine,
         IEnumerable<IDiagnosticFactSource> factSources,
+        IDiagnosticWorldFactSource worldFactSource,
         DiagnosticHistoryStore history,
         ILogger<DiagnosticAnalysisService> logger)
     {
@@ -207,6 +209,7 @@ public sealed class DiagnosticAnalysisService : IDiagnosticAnalysisService
         ArgumentNullException.ThrowIfNull(logReader);
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(factSources);
+        ArgumentNullException.ThrowIfNull(worldFactSource);
         ArgumentNullException.ThrowIfNull(history);
         ArgumentNullException.ThrowIfNull(logger);
 
@@ -215,6 +218,7 @@ public sealed class DiagnosticAnalysisService : IDiagnosticAnalysisService
         _logReader = logReader;
         _engine = engine;
         _factSources = factSources.ToArray();
+        _worldFactSource = worldFactSource;
         _history = history;
         _logger = logger;
     }
@@ -280,14 +284,29 @@ public sealed class DiagnosticAnalysisService : IDiagnosticAnalysisService
             }
         }
 
+        var facts = (await CollectFactsAsync(instance, session, evidence, warnings, cancellationToken)
+                .ConfigureAwait(false))
+            .ToList();
+        IReadOnlyList<DiagnosticWorldTarget> worldTargets = [];
         if (options.IncludeWorldEvents)
         {
-            // F-10 的 World 事件接入属于后续切片；本轮明确不读取世界文件，避免伪造世界结论。
-            warnings.Add("世界诊断事件接入尚未实现：本次分析未读取世界文件。");
+            if (session is null)
+            {
+                warnings.Add("没有可用于世界诊断的会话证据：本次分析未读取世界文件，也不推断世界问题。");
+            }
+            else
+            {
+                worldTargets = await CollectWorldEvidenceAsync(
+                        instance,
+                        session,
+                        evidence,
+                        facts,
+                        warnings,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
 
-        var facts = await CollectFactsAsync(instance, session, evidence, warnings, cancellationToken)
-            .ConfigureAwait(false);
         var knowledgeBase = LoadKnowledgeBase(options.KnowledgeBasePath, warnings);
         var environment = BuildEnvironment(instance, session);
 
@@ -303,6 +322,7 @@ public sealed class DiagnosticAnalysisService : IDiagnosticAnalysisService
             InstanceId = instanceId,
             SessionId = session?.SessionId,
             Facts = facts,
+            WorldTargets = worldTargets,
         });
 
         if (options.SaveHistory)
@@ -640,6 +660,52 @@ public sealed class DiagnosticAnalysisService : IDiagnosticAnalysisService
         }
 
         return facts;
+    }
+
+    private async Task<IReadOnlyList<DiagnosticWorldTarget>> CollectWorldEvidenceAsync(
+        GameInstance instance,
+        GameLogSession session,
+        IReadOnlyList<SessionEvidenceItem> evidence,
+        List<DiagnosticFact> facts,
+        List<string> warnings,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var collected = await _worldFactSource
+                .CollectAsync(
+                    new DiagnosticFactContext(instance.Id, instance, session, evidence),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var warning in collected.Warnings)
+            {
+                warnings.Add(warning);
+            }
+
+            foreach (var fact in collected.Facts)
+            {
+                if (fact is not null && !string.IsNullOrWhiteSpace(fact.Kind))
+                {
+                    facts.Add(fact with
+                    {
+                        Confidence = DiagnosticFactConfidence.Cap(fact.SourceId, fact.Confidence),
+                    });
+                }
+            }
+
+            return collected.Targets;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // 世界事实源失败只降级为警告：不把“没收集到”伪装成“没有世界问题”。
+            warnings.Add($"世界诊断事实源执行失败，已降级：{exception.Message}");
+            return [];
+        }
     }
 
     private static KnowledgeBase? LoadKnowledgeBase(string? path, List<string> warnings)

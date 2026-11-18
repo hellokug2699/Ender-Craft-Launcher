@@ -47,6 +47,10 @@ public sealed class DiagnosticHistoryV2Tests : IDisposable
         var hypothesis = Assert.Single(Assert.Single(alphaReport.Findings).Hypotheses);
         Assert.Equal("候选原因", hypothesis.Statement);
         Assert.Equal(["更多日志"], hypothesis.MissingEvidence);
+        var worldTarget = Assert.Single(alphaReport.WorldTargets);
+        Assert.Equal("minecraft:overworld", worldTarget.DimensionId);
+        Assert.Equal(12, worldTarget.ChunkX);
+        Assert.True(worldTarget.SupportsMapHighlight);
 
         var loadedBeta = _store.LoadAll("beta");
         Assert.True(loadedBeta.IsSuccess, loadedBeta.Error?.ToString());
@@ -195,6 +199,17 @@ public sealed class DiagnosticHistoryV2Tests : IDisposable
                 {
                     ["javaPath"] = @"C:\Java\bin\java.exe",
                 }),
+        ],
+        WorldTargets =
+        [
+            new DiagnosticWorldTarget
+            {
+                DimensionId = "minecraft:overworld",
+                Granularity = DiagnosticWorldGranularity.Chunk,
+                ChunkX = 12,
+                ChunkZ = -4,
+                Confidence = DiagnosticConfidence.DirectEvidence,
+            },
         ],
         Findings =
         [

@@ -336,6 +336,7 @@ public sealed class DiagnosticAnalysisServiceTests : IDisposable
             _reader,
             new DiagnosticEngine(),
             factSources ?? [new SessionFactSource()],
+            new StubWorldFactSource(),
             history ?? new DiagnosticHistoryStore(Path.Combine(_root, "history")),
             NullLogger<DiagnosticAnalysisService>.Instance);
 
@@ -347,6 +348,20 @@ public sealed class DiagnosticAnalysisServiceTests : IDisposable
             DiagnosticFactContext context,
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException("fact source failure");
+    }
+
+    /// <summary>默认世界事实源不参与断言：未显式开启 IncludeWorldEvents 时编排层不应调用它。</summary>
+    private sealed class StubWorldFactSource : IDiagnosticWorldFactSource
+    {
+        public int Calls { get; private set; }
+
+        public Task<DiagnosticWorldFactResult> CollectAsync(
+            DiagnosticFactContext context,
+            CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(new DiagnosticWorldFactResult([], [], []));
+        }
     }
 
     private sealed class CountingLogReader : ISessionLogReader

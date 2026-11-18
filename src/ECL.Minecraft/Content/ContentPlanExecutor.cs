@@ -17,7 +17,15 @@ public sealed record ContentPlanExecutionResult(
     string InstanceId,
     ContentKind Kind,
     IReadOnlyList<string> InstalledFiles,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<string>? RemovedFiles = null);
+
+/// <summary>
+/// 更新替换上下文（F-06 S5）：更新已安装内容时，旧文件名与新文件名通常不同，
+/// 必须在同一次实例事务中“写入新文件 → 删除旧文件”，否则会留下两个同项目版本。
+/// 删除操作仍由实例事务记录前态，可回滚。
+/// </summary>
+public sealed record ContentUpdateReplacement(IReadOnlyList<string> ReplaceFileNames);
 
 /// <summary>
 /// 计划执行入口（F-06 S4）：唯一把 <see cref="ContentInstallPlan.Files"/> 落进实例的路径。
@@ -28,6 +36,16 @@ public interface IContentPlanExecutor
 {
     Task<Result<ContentPlanExecutionResult>> ExecuteAsync(
         ContentInstallPlan plan,
+        IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 执行计划并在同一事务内删除被替换的旧文件（更新路径）。
+    /// 任一前置校验失败时不下载、不写入；旧文件缺失只记录警告，不伪造替换成功。
+    /// </summary>
+    Task<Result<ContentPlanExecutionResult>> ExecuteAsync(
+        ContentInstallPlan plan,
+        ContentUpdateReplacement replacement,
         IProgress<ContentProgress>? progress = null,
         CancellationToken cancellationToken = default);
 }
@@ -69,10 +87,27 @@ public sealed class ContentPlanExecutor : IContentPlanExecutor
         _time = time ?? TimeProvider.System;
     }
 
-    public async Task<Result<ContentPlanExecutionResult>> ExecuteAsync(
+    public Task<Result<ContentPlanExecutionResult>> ExecuteAsync(
         ContentInstallPlan plan,
         IProgress<ContentProgress>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        ExecuteCoreAsync(plan, replacement: null, progress, cancellationToken);
+
+    public Task<Result<ContentPlanExecutionResult>> ExecuteAsync(
+        ContentInstallPlan plan,
+        ContentUpdateReplacement replacement,
+        IProgress<ContentProgress>? progress = null,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(replacement);
+        return ExecuteCoreAsync(plan, replacement, progress, cancellationToken);
+    }
+
+    private async Task<Result<ContentPlanExecutionResult>> ExecuteCoreAsync(
+        ContentInstallPlan plan,
+        ContentUpdateReplacement? replacement,
+        IProgress<ContentProgress>? progress,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(plan);
 
@@ -174,22 +209,30 @@ public sealed class ContentPlanExecutor : IContentPlanExecutor
             var gameDirectory = InstancePaths.GetGameDirectory(_paths, instance);
             var targetDirectory = Path.Combine(gameDirectory, ContentKinds.FolderName(plan.Kind));
             Directory.CreateDirectory(targetDirectory);
-            var operations = requests
-                .Select(request =>
-                {
-                    var destination = Path.Combine(targetDirectory, Path.GetFileName(request.DestinationPath));
-                    var relative = Path.GetRelativePath(gameDirectory, destination)
-                        .Replace(Path.DirectorySeparatorChar, '/');
-                    return InstanceChangeOperation.CopyFrom(relative, request.DestinationPath);
-                })
-                .ToArray();
-
             var installedFiles = requests
                 .Select(request => Path.GetFileName(request.DestinationPath))
                 .ToArray();
+            var operations = new List<InstanceChangeOperation>(requests.Count + 4);
+            foreach (var request in requests)
+            {
+                var destination = Path.Combine(targetDirectory, Path.GetFileName(request.DestinationPath));
+                var relative = Path.GetRelativePath(gameDirectory, destination)
+                    .Replace(Path.DirectorySeparatorChar, '/');
+                operations.Add(InstanceChangeOperation.CopyFrom(relative, request.DestinationPath));
+            }
+
+            // 更新替换：新文件写入后删除旧文件；同事务内提交，旧文件由事务前态备份保留可回滚。
+            var removedFiles = AddReplacementDeletes(
+                replacement,
+                targetDirectory,
+                gameDirectory,
+                installedFiles,
+                operations,
+                warnings);
+
             var written = await _transactions.ExecuteAsync(
                 instance.Id,
-                new InstanceChangePlan(operations, "安装内容文件"),
+                new InstanceChangePlan(operations.ToArray(), replacement is null ? "安装内容文件" : "更新内容文件"),
                 cancellationToken).ConfigureAwait(false);
             if (!written.IsSuccess)
             {
@@ -197,18 +240,20 @@ public sealed class ContentPlanExecutor : IContentPlanExecutor
             }
 
             _logger.LogInformation(
-                "计划 {PlanId} 已应用到实例 {InstanceId}：{Source}/{Kind}，文件 {Files}。",
+                "计划 {PlanId} 已应用到实例 {InstanceId}：{Source}/{Kind}，文件 {Files}，替换删除 {Removed}。",
                 plan.PlanId,
                 plan.InstanceId,
                 plan.Source,
                 plan.Kind,
-                string.Join(", ", installedFiles));
+                string.Join(", ", installedFiles),
+                string.Join(", ", removedFiles));
             return Result<ContentPlanExecutionResult>.Ok(new ContentPlanExecutionResult(
                 plan.PlanId,
                 plan.InstanceId,
                 plan.Kind,
                 installedFiles,
-                warnings));
+                warnings,
+                removedFiles));
         }
         finally
         {
@@ -242,6 +287,63 @@ public sealed class ContentPlanExecutor : IContentPlanExecutor
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// 为更新替换追加删除操作。只接受同一个内容目录内的裸文件名（拒绝路径/ADS/越界），
+    /// 旧文件名与新文件名相同时不删除（否则会把刚写入的新文件删掉）；缺失的旧文件只记警告。
+    /// </summary>
+    private static IReadOnlyList<string> AddReplacementDeletes(
+        ContentUpdateReplacement? replacement,
+        string targetDirectory,
+        string gameDirectory,
+        IReadOnlyList<string> installedFiles,
+        List<InstanceChangeOperation> operations,
+        List<string> warnings)
+    {
+        if (replacement is null || replacement.ReplaceFileNames.Count == 0)
+        {
+            return [];
+        }
+
+        var newNames = new HashSet<string>(installedFiles, StringComparer.OrdinalIgnoreCase);
+        var removed = new List<string>();
+        foreach (var oldFile in replacement.ReplaceFileNames)
+        {
+            if (string.IsNullOrWhiteSpace(oldFile))
+            {
+                continue;
+            }
+
+            var name = Path.GetFileName(oldFile);
+            if (!string.Equals(name, oldFile, StringComparison.Ordinal) ||
+                name is "." or ".." ||
+                name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            {
+                warnings.Add($"旧文件名 {oldFile} 不是实例内容目录内的安全文件名，已跳过替换清理。");
+                continue;
+            }
+
+            if (newNames.Contains(name))
+            {
+                // 同名覆盖：写入本身就是替换，不能再删除。
+                continue;
+            }
+
+            var fullPath = Path.Combine(targetDirectory, name);
+            if (!File.Exists(fullPath))
+            {
+                warnings.Add($"旧文件 {name} 已不在实例内容目录中，跳过替换清理（安装记录可能过期）。");
+                continue;
+            }
+
+            var relative = Path.GetRelativePath(gameDirectory, fullPath)
+                .Replace(Path.DirectorySeparatorChar, '/');
+            operations.Add(InstanceChangeOperation.Delete(relative));
+            removed.Add(name);
+        }
+
+        return removed;
     }
 
     private string StagingDirectory() => Path.Combine(

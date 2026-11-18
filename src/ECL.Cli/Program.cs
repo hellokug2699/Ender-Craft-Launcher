@@ -126,6 +126,8 @@ internal static class Program
                                           生成依赖图安装计划（只读，不下载）
           content updates <实例ID> [--json]
                                           按实例更新策略检查可证明来源的更新
+          content update <实例ID> [--project <项目ID[,项目ID]>] [--apply] [--json]
+                                          批量更新：默认只生成逐项计划；--apply 才下载并事务替换
           content policy <实例ID> [allow|notify|block]
                                           读取或设置实例内容更新策略
           instance scan [--json]          扫描 versions 目录中已有的版本
@@ -186,8 +188,8 @@ internal static class Program
                                           显式清理超过保留期的已完成/已中断会话
           crash <实例ID> [--json]         分析最近一次崩溃与可疑 Mod
           diagnose <实例ID> [--session <会话ID>] [--knowledge <知识库路径>]
-                   [--no-save] [--history] [--json]
-                                          本地会话证据诊断；缺知识库时只做结构化解析
+                   [--world] [--no-save] [--history] [--json]
+                                          本地会话证据诊断；--world 接入世界定位；缺知识库时只做结构化解析
           diagnostics export <实例ID> [--output <路径>] [--json]
                                           导出脱敏诊断包
           engine inventory <实例ID> [--no-deep] [--no-icons] [--json]

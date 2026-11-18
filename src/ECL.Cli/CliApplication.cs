@@ -904,8 +904,60 @@ internal sealed class CliApplication
                 return 0;
             }
 
+            case "update":
+            {
+                var instanceId = args.ElementAtOrDefault(1);
+                if (string.IsNullOrWhiteSpace(instanceId))
+                {
+                    return UsageError("content update <实例ID> [--project <项目ID[,项目ID]>] [--apply] [--json]");
+                }
+
+                var selection = ParseContentUpdateSelection(_commandLine.GetValue("project"));
+                if (!selection.IsSuccess)
+                {
+                    return UsageError(selection.Error!.Message);
+                }
+
+                var batch = _provider.GetRequiredService<IContentBatchUpdateService>();
+                var planned = await batch.PlanAsync(instanceId, selection.Value).ConfigureAwait(false);
+                if (!planned.IsSuccess)
+                {
+                    return WriteError(planned.Error);
+                }
+
+                var batchPlan = planned.Value!;
+                if (!_commandLine.HasFlag("apply"))
+                {
+                    if (_commandLine.HasFlag("json"))
+                    {
+                        Console.WriteLine(JsonSerializer.Serialize(batchPlan, EclJson.Indented));
+                        return 0;
+                    }
+
+                    PrintContentBatchPlan(batchPlan);
+                    Console.WriteLine("这是只读计划：未下载、未写入。使用 --apply 执行。");
+                    return 0;
+                }
+
+                var appliedResult = await batch.ApplyAsync(batchPlan).ConfigureAwait(false);
+                if (!appliedResult.IsSuccess)
+                {
+                    return WriteError(appliedResult.Error);
+                }
+
+                var applied = appliedResult.Value!;
+                if (_commandLine.HasFlag("json"))
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(applied, EclJson.Indented));
+                    return applied.AllSucceeded ? 0 : 1;
+                }
+
+                PrintContentBatchResult(applied);
+                return applied.AllSucceeded ? 0 : 1;
+            }
+
             default:
-                return UsageError("content 支持 plan|install <实例ID> --project <项目ID> [--source modrinth|curseforge] [--version <版本ID>]、updates <实例ID>、policy <实例ID> [allow|notify|block]。");
+                return UsageError("content 支持 plan|install <实例ID> --project <项目ID> [--source modrinth|curseforge] [--version <版本ID>]、updates <实例ID>、update <实例ID> [--project <项目ID[,项目ID]>] [--apply]、policy <实例ID> [allow|notify|block]。");
         }
     }
 
@@ -946,6 +998,96 @@ internal sealed class CliApplication
             default:
                 kind = ContentKind.Mod;
                 return false;
+        }
+    }
+
+    /// <summary>F-06 S5：批量选择只接受稳定项目 ID（逗号/分号/空格分隔），不接受文件名。</summary>
+    private static Result<ContentBatchUpdateSelection> ParseContentUpdateSelection(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return Result<ContentBatchUpdateSelection>.Ok(new ContentBatchUpdateSelection());
+        }
+
+        var ids = value
+            .Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (ids.Length == 0)
+        {
+            return Result<ContentBatchUpdateSelection>.Ok(new ContentBatchUpdateSelection());
+        }
+
+        var invalid = ids.FirstOrDefault(id => !id.All(char.IsAsciiDigit));
+        return invalid is null
+            ? Result<ContentBatchUpdateSelection>.Ok(new ContentBatchUpdateSelection(ids))
+            : Result<ContentBatchUpdateSelection>.Fail(
+                "content.batch.invalid_project",
+                $"--project 只接受数字项目 ID：{invalid}");
+    }
+
+    private static void PrintContentBatchPlan(ContentBatchUpdatePlan plan)
+    {
+        Console.WriteLine(
+            $"批量更新计划 · 实例 {plan.InstanceId} · 策略 {plan.Policy} · 候选 {plan.Items.Count} · 可执行 {plan.ReadyCount}");
+        foreach (var item in plan.Items)
+        {
+            Console.WriteLine(
+                $"  [{item.Status}] {item.FileName} → {item.LatestFileName ?? item.LatestVersionId ?? "-"}（{item.Reason ?? "-"}）");
+            if (!string.IsNullOrWhiteSpace(item.ErrorCode))
+            {
+                Console.WriteLine($"      ! {item.ErrorCode}: {item.ErrorMessage}");
+            }
+
+            foreach (var warning in item.Warnings)
+            {
+                Console.WriteLine($"      ? {warning}");
+            }
+        }
+
+        foreach (var skipped in plan.Skipped)
+        {
+            Console.WriteLine($"  ? {skipped}");
+        }
+
+        foreach (var warning in plan.Warnings)
+        {
+            Console.WriteLine($"  ? {warning}");
+        }
+
+        if (!plan.PolicyAllowsUpdate)
+        {
+            Console.WriteLine($"实例策略为 {plan.Policy}：批量更新不可执行。");
+        }
+    }
+
+    private static void PrintContentBatchResult(ContentBatchUpdateResult result)
+    {
+        Console.WriteLine(
+            $"批量更新完成 · 策略 {result.Policy} · 更新 {result.UpdatedCount} · 失败 {result.FailedCount} · 阻断 {result.BlockedCount} · 未尝试 {result.NotAttemptedCount}{(result.Canceled ? " · 已取消" : string.Empty)}");
+        foreach (var item in result.Items)
+        {
+            var files = item.InstalledFiles.Count == 0
+                ? string.Empty
+                : $" · 写入 {string.Join(", ", item.InstalledFiles)}";
+            var removed = item.RemovedFiles.Count == 0
+                ? string.Empty
+                : $" · 删除 {string.Join(", ", item.RemovedFiles)}";
+            Console.WriteLine($"  [{item.Status}] {item.FileName}（{item.Reason ?? "-"}）{files}{removed}");
+            if (!string.IsNullOrWhiteSpace(item.ErrorCode))
+            {
+                Console.WriteLine($"      ! {item.ErrorCode}: {item.ErrorMessage}");
+            }
+
+            foreach (var warning in item.Warnings)
+            {
+                Console.WriteLine($"      ? {warning}");
+            }
+        }
+
+        foreach (var warning in result.Warnings)
+        {
+            Console.WriteLine($"  ? {warning}");
         }
     }
 
@@ -3923,6 +4065,7 @@ internal sealed class CliApplication
             SessionId = _commandLine.GetValue("session"),
             KnowledgeBasePath = _commandLine.GetValue("knowledge"),
             SaveHistory = !_commandLine.HasFlag("no-save"),
+            IncludeWorldEvents = _commandLine.HasFlag("world"),
         };
 
         var result = await service.AnalyzeAsync(instanceId, options).ConfigureAwait(false);
@@ -4050,6 +4193,21 @@ internal sealed class CliApplication
                 {
                     Console.WriteLine($"    · {missing}");
                 }
+            }
+        }
+
+        if (report.WorldTargets.Count > 0)
+        {
+            Console.WriteLine(localizer.Get("diagnostics.cli.worldTargets", report.WorldTargets.Count));
+            foreach (var target in report.WorldTargets)
+            {
+                var note = target.SupportsMapHighlight
+                    ? localizer.Get("diagnostics.worldTarget.mapAllowed")
+                    : localizer.Get("diagnostics.worldTarget.mapBlocked");
+                Console.WriteLine(localizer.Get(
+                    "diagnostics.cli.worldTargetLine",
+                    target.Describe(),
+                    note));
             }
         }
 

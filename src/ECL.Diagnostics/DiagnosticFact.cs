@@ -71,6 +71,33 @@ public static class DiagnosticFactKinds
     public const string CaptureDropped = "session.capture_dropped";
 
     public const string ConsoleCaptureGap = "session.console_capture_gap";
+
+    /// <summary>世界证据事实（F-10 S6）：来自会话证据中的区块/区域/实体/NBT 异常行。</summary>
+    public const string WorldChunkAnomaly = "world.chunk_anomaly";
+
+    public const string WorldNbtAnomaly = "world.nbt_anomaly";
+
+    public const string WorldEntityAnomaly = "world.entity_anomaly";
+
+    public const string WorldRegionAnomaly = "world.region_anomaly";
+
+    public const string WorldUnknownAnomaly = "world.unknown_anomaly";
+
+    /// <summary>已安装 Mod 的本地元数据事实（F-10 S9）。</summary>
+    public const string ModInstalled = "content.mod";
+
+    /// <summary>本地元数据声明的必需依赖缺失；运行时仍可能由其它模组/嵌套模块满足。</summary>
+    public const string ModMissingDependency = "content.mod.missing_dependency";
+
+    public const string ModDisabledDependency = "content.mod.disabled_dependency";
+
+    public const string ModDuplicate = "content.mod.duplicate";
+
+    public const string ModConflict = "content.mod.conflict";
+
+    public const string ModLoaderMismatch = "content.mod.loader_mismatch";
+
+    public const string ModInvalidMetadata = "content.mod.invalid_metadata";
 }
 
 /// <summary>事实来源 ID 与置信度上限规则。</summary>
@@ -84,6 +111,12 @@ public static class DiagnosticFactConfidence
 
     /// <summary>崩溃嫌疑排序是启发式，不是结论。</summary>
     public const string CrashHeuristic = "heuristic.crash-suspects";
+
+    /// <summary>世界证据来自会话登记日志的解析结果，属于直接证据来源。</summary>
+    public const string WorldDiagnostics = "world.diagnostics";
+
+    /// <summary>已安装 Mod 的本地静态元数据与本地依赖检查结果，属于直接证据来源。</summary>
+    public const string ModInventory = "instance.mod_inventory";
 
     /// <summary>
     /// 性能与启发式来源的事实置信度不得高于 <see cref="DiagnosticConfidence.HighlyLikely"/>。

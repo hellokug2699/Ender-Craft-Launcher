@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-using System.Text.Json;
 using Ecl.Configuration;
 using Ecl.Configuration.Settings;
 using Ecl.Core;
-using Ecl.Core.Json;
 using Ecl.Minecraft.Instances;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -42,21 +40,24 @@ public interface IInstanceContentUpdatePolicyService
 /// <summary>
 /// 更新策略持久化在实例设置（<c>instances/&lt;id&gt;/settings.json</c>）的同一配置键，
 /// 与设置页/CLI 共享；读取时非法值回退 <see cref="InstanceContentUpdatePolicy.Allow"/> 并记录警告，
-/// 不把损坏值解释成允许更新。
+/// 不把损坏值解释成允许更新。写入必须经过实例写门，避免与安装/更新事务并发覆盖。
 /// </summary>
 public sealed class InstanceContentUpdatePolicyService : IInstanceContentUpdatePolicyService
 {
     private readonly IInstanceService _instances;
     private readonly ISettingsService _settings;
+    private readonly Ecl.Minecraft.Engine.Transactions.IInstanceWriteGate _writeGate;
     private readonly ILogger<InstanceContentUpdatePolicyService> _logger;
 
     public InstanceContentUpdatePolicyService(
         IInstanceService instances,
         ISettingsService settings,
+        Ecl.Minecraft.Engine.Transactions.IInstanceWriteGate writeGate,
         ILogger<InstanceContentUpdatePolicyService>? logger = null)
     {
         _instances = instances;
         _settings = settings;
+        _writeGate = writeGate;
         _logger = logger ?? NullLogger<InstanceContentUpdatePolicyService>.Instance;
     }
 
@@ -98,6 +99,18 @@ public sealed class InstanceContentUpdatePolicyService : IInstanceContentUpdateP
         }
 
         var value = ToRaw(policy);
+        // F-06 §6：策略文件属于实例记录，写入必须经实例写门（与安装/更新事务互斥）。
+        var leaseResult = await _writeGate.AcquireAsync(instanceId, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        if (!leaseResult.IsSuccess)
+        {
+            return Result.Fail(
+                "content.policy.write_busy",
+                "实例正在被其他操作写入，更新策略未保存。",
+                leaseResult.Error?.Code);
+        }
+
+        await using var lease = leaseResult.Value!;
         return _settings.TrySetRaw(InstanceContentUpdatePolicyKeys.Key, value, instanceId, out var error)
             ? Result.Ok()
             : Result.Fail("content.policy.write_failed", "更新策略未写入。", error);
@@ -181,12 +194,10 @@ public interface IContentUpdateService
 /// </summary>
 public sealed class ContentUpdateService : IContentUpdateService
 {
-    private const string CurseForgeStateFile = ".ecl-curseforge.json";
-
     private readonly IInstanceService _instances;
     private readonly IInstanceContentUpdatePolicyService _policy;
     private readonly Ecl.Minecraft.CurseForge.ICurseForgeClient _curseForge;
-    private readonly IAppPaths _paths;
+    private readonly Ecl.Minecraft.CurseForge.ICurseForgeInstallRecordStore _records;
     private readonly ILogger<ContentUpdateService> _logger;
     private readonly TimeProvider _time;
 
@@ -194,14 +205,14 @@ public sealed class ContentUpdateService : IContentUpdateService
         IInstanceService instances,
         IInstanceContentUpdatePolicyService policy,
         Ecl.Minecraft.CurseForge.ICurseForgeClient curseForge,
-        IAppPaths paths,
+        Ecl.Minecraft.CurseForge.ICurseForgeInstallRecordStore records,
         ILogger<ContentUpdateService>? logger = null,
         TimeProvider? time = null)
     {
         _instances = instances;
         _policy = policy;
         _curseForge = curseForge;
-        _paths = paths;
+        _records = records;
         _logger = logger ?? NullLogger<ContentUpdateService>.Instance;
         _time = time ?? TimeProvider.System;
     }
@@ -227,8 +238,24 @@ public sealed class ContentUpdateService : IContentUpdateService
         var skipped = new List<string>();
         var candidates = new List<ContentUpdateCandidate>();
 
-        var gameDirectory = InstancePaths.GetGameDirectory(_paths, instance);
-        var installed = LoadInstalled(gameDirectory, warnings);
+        var loaded = _records.LoadWithStatus(instance);
+        if (!loaded.IsSuccess)
+        {
+            warnings.Add("CurseForge 安装记录无法读取；更新检查结果不完整，不能据此宣称“已是最新”。");
+            _logger.LogWarning(
+                "读取 CurseForge 安装记录失败：{Code} {Message}",
+                loaded.Error!.Code,
+                loaded.Error.Message);
+        }
+
+        var installed = (loaded.Value ?? [])
+            .Select(record => new InstalledContentRecord(
+                ContentSourceKind.CurseForge,
+                record.ProjectId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                record.FileId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                record.FileName,
+                record.InstalledAt))
+            .ToArray();
         if (policy == InstanceContentUpdatePolicy.Block)
         {
             // Block 仍报告“发现到新版本”为不可执行，避免 UI 用其它入口绕过。
@@ -329,92 +356,6 @@ public sealed class ContentUpdateService : IContentUpdateService
             "quilt" => Ecl.Minecraft.CurseForge.CurseForgeModLoader.Quilt,
             _ => null,
         };
-
-    private static List<InstalledContentRecord> LoadInstalled(string gameDirectory, List<string> warnings)
-    {
-        var path = Path.Combine(gameDirectory, CurseForgeStateFile);
-        if (!File.Exists(path))
-        {
-            return [];
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
-            if (!document.RootElement.TryGetProperty("mods", out var mods) ||
-                mods.ValueKind != JsonValueKind.Array)
-            {
-                // EclJson 落盘为 camelCase；同时兼容旧 PascalCase。
-                if (!document.RootElement.TryGetProperty("Mods", out mods) || mods.ValueKind != JsonValueKind.Array)
-                {
-                    return [];
-                }
-            }
-
-            var records = new List<InstalledContentRecord>();
-            foreach (var mod in mods.EnumerateArray())
-            {
-                if (!TryGetString(mod, "fileName", out var fileName) ||
-                    !TryGetNumber(mod, "projectId", out var projectId) ||
-                    !TryGetNumber(mod, "fileId", out var fileId))
-                {
-                    continue;
-                }
-
-                records.Add(new InstalledContentRecord(
-                    ContentSourceKind.CurseForge,
-                    projectId,
-                    fileId,
-                    fileName,
-                    null));
-            }
-
-            return records;
-        }
-        catch (Exception exception) when (exception is IOException or JsonException or UnauthorizedAccessException)
-        {
-            warnings.Add("CurseForge 安装记录无法读取；更新检查结果不完整。");
-            return [];
-        }
-    }
-
-    private static bool TryGetString(JsonElement element, string name, out string value)
-    {
-        foreach (var property in element.EnumerateObject())
-        {
-            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase) &&
-                property.Value.ValueKind == JsonValueKind.String)
-            {
-                value = property.Value.GetString() ?? string.Empty;
-                return value.Length > 0;
-            }
-        }
-
-        value = string.Empty;
-        return false;
-    }
-
-    private static bool TryGetNumber(JsonElement element, string name, out string value)
-    {
-        foreach (var property in element.EnumerateObject())
-        {
-            if (!string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            value = property.Value.ValueKind switch
-            {
-                JsonValueKind.Number when property.Value.TryGetInt64(out var number) => number.ToString(),
-                JsonValueKind.String => property.Value.GetString() ?? string.Empty,
-                _ => string.Empty,
-            };
-            return value.Length > 0;
-        }
-
-        value = string.Empty;
-        return false;
-    }
 
     private sealed record CurseForgeCandidate(string Id, string? DisplayName, string? FileName);
 }

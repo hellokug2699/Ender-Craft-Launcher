@@ -22,7 +22,9 @@ public sealed class DiagnosticAnalysisServiceRegistrationTests
         Assert.NotNull(provider.GetRequiredService<DiagnosticEngine>());
         Assert.NotNull(provider.GetRequiredService<DiagnosticInputLoader>());
         Assert.NotNull(provider.GetRequiredService<DiagnosticHistoryStore>());
-        Assert.Single(provider.GetServices<IDiagnosticFactSource>());
+        // F-10 S4/S9：会话 manifest 与 Mod 关系事实源各一，不因重复注册产生多个实例。
+        Assert.Equal(2, provider.GetServices<IDiagnosticFactSource>().Count());
+        Assert.NotNull(provider.GetRequiredService<IDiagnosticWorldFactSource>());
         Assert.NotNull(provider.GetRequiredService<IDiagnosticAnalysisService>());
     }
 }

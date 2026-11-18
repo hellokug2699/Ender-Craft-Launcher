@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.Core;
+using Ecl.Minecraft.Diagnostics;
 using Ecl.Minecraft.Instances;
 using Ecl.World.Diagnostics;
 using Ecl.World.Recent;
@@ -113,15 +114,19 @@ public sealed class WorldWorkbenchService(
             .ConfigureAwait(false);
         var events = await diagnostics.LoadAsync(instanceId, cancellationToken).ConfigureAwait(false);
 
-        // ADR 0031 §7：只有明确、非推断且与当前维度一致的诊断事件才能生成地图标记；
-        // 缺少维度身份的事件保持未定位，不默认归入当前维度或主世界。
+        // ADR 0030/0031 §7：只有“明确维度 + 明确区块坐标 + 非推断”的世界诊断事件才能生成地图标记；
+        // 该判定与诊断报告共用 WorldDiagnosticTargetMapping，避免两处各自解释可定位性。
         var highlights = events
-            .Where(item =>
-                item.Location.HasChunk &&
-                !item.Location.DimensionInferred &&
-                item.Location.DimensionId is not null &&
-                string.Equals(item.Location.DimensionId, dimension.Id, StringComparison.OrdinalIgnoreCase))
-            .Select(item => new MapHighlight(item.Location.ChunkX!.Value, item.Location.ChunkZ!.Value, MapHighlightKind.Diagnostic))
+            .Select(item => (Event: item, Target: WorldDiagnosticTargetMapping.TryCreate(item)))
+            .Where(pair => pair.Target is { SupportsMapHighlight: true } &&
+                           string.Equals(
+                               pair.Target.DimensionId,
+                               dimension.Id,
+                               StringComparison.OrdinalIgnoreCase))
+            .Select(pair => new MapHighlight(
+                pair.Target!.ChunkX!.Value,
+                pair.Target.ChunkZ!.Value,
+                MapHighlightKind.Diagnostic))
             .Take(128)
             .ToArray();
         var image = MapRenderer.Render(chunks, layer, pixelsPerBlock: 2, highlights);

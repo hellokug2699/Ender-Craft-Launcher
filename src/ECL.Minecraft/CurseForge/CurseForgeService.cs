@@ -35,16 +35,14 @@ public interface ICurseForgeService
 /// </summary>
 public sealed class CurseForgeService(
     IInstanceService instances,
-    IAppPaths paths,
     ICurseForgeClient client,
     ILocalizer localizer,
     ILogger<CurseForgeService> logger,
     IContentInstallPlanner planner,
     IContentPlanExecutor planExecutor,
+    ICurseForgeInstallRecordStore records,
     IOperationService? operations = null) : ICurseForgeService
 {
-    private const string InstallStateFileName = ".ecl-curseforge.json";
-
     public CurseForgeStatus Status => client.Status;
 
     public Task<Result<CurseForgeSearchResult>> SearchAsync(
@@ -242,43 +240,35 @@ public sealed class CurseForgeService(
     /// </summary>
     private void WriteInstalledRecords(
         GameInstance instance,
-        IReadOnlyList<ContentDependencyNode> records,
+        IReadOnlyList<ContentDependencyNode> installedNodes,
         List<string> warnings)
     {
-        if (records.Count == 0)
+        if (installedNodes.Count == 0)
         {
             return;
         }
 
-        var gameDirectory = InstancePaths.GetGameDirectory(paths, instance);
-        var installed = LoadInstalled(gameDirectory);
-        var installedAt = DateTimeOffset.UtcNow.ToString("O");
-        foreach (var node in records)
+        var updated = new List<CurseForgeInstallRecord>();
+        foreach (var node in installedNodes)
         {
             if (!int.TryParse(node.ProjectId, out var projectId) ||
-                !int.TryParse(node.VersionId, out var fileId))
+                !int.TryParse(node.VersionId, out var fileId) ||
+                string.IsNullOrWhiteSpace(node.FileName))
             {
                 continue;
             }
 
-            installed.RemoveAll(record => record.ProjectId == projectId);
-            installed.Add(new InstalledModRecord
-            {
-                ProjectId = projectId,
-                FileId = fileId,
-                FileName = node.FileName!,
-                InstalledAt = installedAt,
-            });
+            updated.Add(new CurseForgeInstallRecord(projectId, fileId, node.FileName!));
         }
 
-        try
+        var applied = records.Apply(instance, updated);
+        if (!applied.IsSuccess)
         {
-            SaveInstalled(gameDirectory, installed);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            warnings.Add($"无法写入安装记录：{exception.Message}");
-            logger.LogWarning(exception, "写入 CurseForge 安装记录失败：{Directory}", gameDirectory);
+            warnings.Add(applied.Error!.Message);
+            logger.LogWarning(
+                "写入 CurseForge 安装记录失败：{Code} {Message}",
+                applied.Error.Code,
+                applied.Error.Message);
         }
     }
 
@@ -346,53 +336,6 @@ public sealed class CurseForgeService(
         }
 
         return segments.Length == 0 ? reference : segments[^1];
-    }
-
-    private static List<InstalledModRecord> LoadInstalled(string gameDirectory)
-    {
-        var path = Path.Combine(gameDirectory, InstallStateFileName);
-        try
-        {
-            if (!File.Exists(path))
-            {
-                return [];
-            }
-
-            var state = JsonSerializer.Deserialize<InstallStateDocument>(File.ReadAllText(path), EclJson.Default);
-            return state?.Mods?
-                .Where(record => record.ProjectId > 0 && record.FileId > 0 && !string.IsNullOrWhiteSpace(record.FileName))
-                .ToList() ?? [];
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
-        {
-            return [];
-        }
-    }
-
-    private static void SaveInstalled(string gameDirectory, IReadOnlyList<InstalledModRecord> records)
-    {
-        Directory.CreateDirectory(gameDirectory);
-        var path = Path.Combine(gameDirectory, InstallStateFileName);
-        var state = new InstallStateDocument { Mods = records.ToList() };
-        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(state, EclJson.Indented));
-        File.Move(temporary, path, overwrite: true);
-    }
-
-    private sealed class InstallStateDocument
-    {
-        public List<InstalledModRecord> Mods { get; set; } = [];
-    }
-
-    private sealed class InstalledModRecord
-    {
-        public int ProjectId { get; set; }
-
-        public int FileId { get; set; }
-
-        public string FileName { get; set; } = string.Empty;
-
-        public string InstalledAt { get; set; } = string.Empty;
     }
 
     /// <summary>

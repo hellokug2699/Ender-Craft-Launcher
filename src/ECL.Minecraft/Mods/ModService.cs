@@ -40,13 +40,14 @@ public sealed class ModService(
         }
 
         var modsDirectory = GetModsDirectory(instance);
-        Directory.CreateDirectory(modsDirectory);
 
         var entries = new List<ModEntry>();
-        foreach (var file in Directory
-                     .EnumerateFiles(modsDirectory, "*", SearchOption.TopDirectoryOnly)
-                     .Where(IsModFile)
-                     .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase))
+        // 扫描是只读操作：目录不存在时按“没有模组”处理，不为读取诊断/页面而创建实例目录。
+        foreach (var file in (Directory.Exists(modsDirectory)
+                     ? Directory.EnumerateFiles(modsDirectory, "*", SearchOption.TopDirectoryOnly)
+                     : Array.Empty<string>())
+                 .Where(IsModFile)
+                 .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var fileName = Path.GetFileName(file);

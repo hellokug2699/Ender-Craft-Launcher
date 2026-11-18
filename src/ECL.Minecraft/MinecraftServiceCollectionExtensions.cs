@@ -107,6 +107,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IModDependencyInstaller, ModDependencyInstaller>();
         services.AddSingleton<IModpackService, ModpackService>();
         services.AddSingleton<ICurseForgeClient, CurseForgeClient>();
+        services.AddSingleton<ICurseForgeInstallRecordStore, CurseForgeInstallRecordStore>();
         services.AddSingleton<ICurseForgeService, CurseForgeService>();
         services.AddSingleton<IModrinthClient, ModrinthClient>();
         services.AddSingleton<IContentSearchService, ContentSearchService>();
@@ -116,6 +117,7 @@ public static class MinecraftServiceCollectionExtensions
         services.AddSingleton<IContentPlanExecutor, ContentPlanExecutor>();
         services.AddSingleton<IInstanceContentUpdatePolicyService, InstanceContentUpdatePolicyService>();
         services.AddSingleton<IContentUpdateService, ContentUpdateService>();
+        services.AddSingleton<IContentBatchUpdateService, ContentBatchUpdateService>();
         services.AddSingleton<IContentInstallService, ContentInstallService>();
         services.AddSingleton<IContentPackService, ContentPackService>();
         services.AddSingleton<IDatapackService, DatapackService>();
@@ -153,7 +155,10 @@ public static class MinecraftServiceCollectionExtensions
         services.TryAddSingleton(_ => new DiagnosticInputLoader());
         services.TryAddSingleton(provider => new DiagnosticHistoryStore(
             Path.Combine(provider.GetRequiredService<IAppPaths>().ConfigDirectory, "diagnostics")));
-        services.TryAddSingleton<IDiagnosticFactSource, SessionFactSource>();
+        // F-10 S4/S9：会话 manifest 与 Mod 关系事实源各注册一次；TryAddEnumerable 按实现类型去重。
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IDiagnosticFactSource, SessionFactSource>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IDiagnosticFactSource, ModRelationshipFactSource>());
+        services.TryAddSingleton<IDiagnosticWorldFactSource, WorldEventFactSource>();
         services.TryAddSingleton<IDiagnosticAnalysisService, DiagnosticAnalysisService>();
 
         services.AddSingleton<ILaunchStep, ValidateInstanceStep>();

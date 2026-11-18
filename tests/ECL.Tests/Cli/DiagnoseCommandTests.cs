@@ -18,8 +18,6 @@ namespace Ecl.Tests.Cli;
 /// </summary>
 public sealed class DiagnoseCommandTests
 {
-    private static readonly SemaphoreSlim ConsoleGate = new(1, 1);
-
     [Fact]
     public async Task DiagnoseJsonContainsSchemaVersionTwoAndFindings()
     {
@@ -89,6 +87,55 @@ public sealed class DiagnoseCommandTests
         Assert.Equal(2, document.RootElement[0].GetProperty("schemaVersion").GetInt32());
     }
 
+    [Fact]
+    public async Task WorldFlagRequestsWorldEvidenceFromAnalysisService()
+    {
+        var fake = new FakeAnalysisService { Report = NewReport() };
+
+        var (exitCode, _, _) = await RunAsync(["diagnose", "demo", "--world", "--no-save", "--json"], fake);
+
+        Assert.Equal(0, exitCode);
+        Assert.NotNull(fake.LastOptions);
+        Assert.True(fake.LastOptions!.IncludeWorldEvents);
+    }
+
+    [Fact]
+    public async Task ReportPrintsWorldTargetsWithMapConstraint()
+    {
+        var report = NewReport() with
+        {
+            WorldTargets =
+            [
+                new DiagnosticWorldTarget
+                {
+                    DimensionId = "minecraft:overworld",
+                    Granularity = DiagnosticWorldGranularity.Chunk,
+                    ChunkX = 12,
+                    ChunkZ = -4,
+                    Confidence = DiagnosticConfidence.DirectEvidence,
+                },
+                new DiagnosticWorldTarget
+                {
+                    DimensionId = "minecraft:the_nether",
+                    DimensionInferred = true,
+                    Granularity = DiagnosticWorldGranularity.Chunk,
+                    ChunkX = 1,
+                    ChunkZ = 2,
+                    Confidence = DiagnosticConfidence.HighlyLikely,
+                },
+            ],
+        };
+        var fake = new FakeAnalysisService { Report = report };
+
+        var (exitCode, output, _) = await RunAsync(["diagnose", "demo", "--world"], fake);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("世界定位", output, StringComparison.Ordinal);
+        Assert.Contains("Chunk (12, -4)", output, StringComparison.Ordinal);
+        Assert.Contains("可标记到地图", output, StringComparison.Ordinal);
+        Assert.Contains("不标记到地图", output, StringComparison.Ordinal);
+    }
+
     private static async Task<(int ExitCode, string Output, string Error)> RunAsync(
         string[] arguments,
         FakeAnalysisService service)
@@ -99,7 +146,7 @@ public sealed class DiagnoseCommandTests
         await using var provider = services.BuildServiceProvider();
         var application = new CliApplication(provider, ParsedCommandLine.Parse(arguments));
 
-        await ConsoleGate.WaitAsync();
+        await ConsoleTestGate.Gate.WaitAsync();
         var originalOut = Console.Out;
         var originalError = Console.Error;
         using var output = new StringWriter();
@@ -115,7 +162,7 @@ public sealed class DiagnoseCommandTests
         {
             Console.SetOut(originalOut);
             Console.SetError(originalError);
-            ConsoleGate.Release();
+            ConsoleTestGate.Gate.Release();
         }
     }
 
