@@ -459,7 +459,11 @@ public sealed class JavaManagementPageTests
 
         public string LastError { get; private set; } = string.Empty;
 
-        public bool Confirm(string title, string message, string? acknowledgementToken = null) => ConfirmResult;
+        public bool Confirm(
+            string title,
+            string message,
+            string? acknowledgementToken = null,
+            ConfirmationKind kind = ConfirmationKind.Mandatory) => ConfirmResult;
 
         public InstanceDeletionChoice ChooseInstanceDeletion(string title, string message, bool canDeleteManagedData) =>
             InstanceDeletionChoice.Cancel;

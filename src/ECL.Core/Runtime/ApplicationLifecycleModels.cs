@@ -160,6 +160,19 @@ public interface IApplicationLifecycle
 
     event EventHandler<ApplicationLifecycleState>? StateChanged;
 
+    /// <summary>
+    /// 仍在运行的受管后台工作数量（<see cref="TrackWork"/>）。关闭结束（含超时）后归零：
+    /// UI 用它判断“现在退出会不会打断下载/安装”，而不是自行统计。
+    /// </summary>
+    int ActiveBackgroundWork { get; }
+
+    /// <summary>
+    /// 仍在运行的已启动任务数量（<see cref="TrackTask"/>）。与
+    /// <see cref="ActiveBackgroundWork"/> 分开，是因为两者的取消语义不同：
+    /// TrackTask 只观察，不接管取消。
+    /// </summary>
+    int ActiveTasks { get; }
+
     /// <summary>进入 Starting：组合根正在建立服务并执行初始化。</summary>
     void BeginStart();
 

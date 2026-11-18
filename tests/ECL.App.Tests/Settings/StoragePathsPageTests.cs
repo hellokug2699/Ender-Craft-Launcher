@@ -575,7 +575,11 @@ public sealed class StoragePathsPageTests
 
         public List<string> ConfirmMessages { get; } = [];
 
-        public bool Confirm(string title, string message, string? acknowledgementToken = null)
+        public bool Confirm(
+            string title,
+            string message,
+            string? acknowledgementToken = null,
+            ConfirmationKind kind = ConfirmationKind.Mandatory)
         {
             ConfirmMessages.Add(message);
             return ConfirmResult;

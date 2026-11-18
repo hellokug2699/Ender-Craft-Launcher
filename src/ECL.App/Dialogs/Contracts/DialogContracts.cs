@@ -63,6 +63,12 @@ public sealed record DialogRequest
 
     public DialogSeverity Severity { get; init; } = DialogSeverity.Neutral;
 
+    /// <summary>
+    /// 自动关闭时限；null 表示必须由用户关闭。到点以 <see cref="DialogOutcome.Closed"/> 结束，
+    /// 不会伪造主操作结果，也不会在内容 Busy 时强行关闭（F-12）。
+    /// </summary>
+    public TimeSpan? AutoCloseAfter { get; init; }
+
     public double MinWidth { get; init; } = 360;
 
     public double MaxWidth { get; init; } = 560;

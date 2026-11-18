@@ -189,8 +189,9 @@ internal sealed class FakeInstanceService : IInstanceService
     public Task<IReadOnlyList<GameInstance>> GetInstancesAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<GameInstance>>(Instances.ToArray());
 
+    /// <summary>按 <see cref="Instances"/> 返回；列表默认为空，既有用例仍然读到 null。</summary>
     public Task<GameInstance?> GetAsync(string instanceId, CancellationToken cancellationToken = default) =>
-        Task.FromResult<GameInstance?>(null);
+        Task.FromResult(Instances.FirstOrDefault(instance => instance.Id == instanceId));
 
     public Task<Result<GameInstance>> CreateAsync(
         string name,

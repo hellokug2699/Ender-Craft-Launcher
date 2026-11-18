@@ -891,7 +891,11 @@ public sealed class ContentDiscoveryPageTests
     {
         public string? PickFolderResult { get; set; }
 
-        public bool Confirm(string title, string message, string? acknowledgementToken = null) => false;
+        public bool Confirm(
+            string title,
+            string message,
+            string? acknowledgementToken = null,
+            ConfirmationKind kind = ConfirmationKind.Mandatory) => false;
 
         public InstanceDeletionChoice ChooseInstanceDeletion(string title, string message, bool canDeleteManagedData) =>
             InstanceDeletionChoice.Cancel;

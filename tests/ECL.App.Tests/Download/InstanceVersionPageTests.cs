@@ -1403,7 +1403,11 @@ public sealed class InstanceVersionPageTests
     {
         public List<(string Title, string Message)> Errors { get; } = [];
 
-        public bool Confirm(string title, string message, string? acknowledgementToken = null) => false;
+        public bool Confirm(
+            string title,
+            string message,
+            string? acknowledgementToken = null,
+            ConfirmationKind kind = ConfirmationKind.Mandatory) => false;
 
         public InstanceDeletionChoice ChooseInstanceDeletion(
             string title,

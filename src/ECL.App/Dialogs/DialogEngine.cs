@@ -22,12 +22,18 @@ public sealed class DialogEngine : IDialogEngine, IDisposable
 {
     private readonly DialogLayerViewModel _layer;
     private readonly Dispatcher _dispatcher;
+    private readonly TimeProvider _timeProvider;
     private bool _disposed;
 
-    public DialogEngine(DialogLayerViewModel layer)
+    /// <summary>
+    /// <paramref name="timeProvider"/> 只用于驱动 <see cref="DialogRequest.AutoCloseAfter"/>；
+    /// 默认使用系统时钟，测试可注入假时钟验证自动关闭而不真正等待。
+    /// </summary>
+    public DialogEngine(DialogLayerViewModel layer, TimeProvider? timeProvider = null)
     {
         _layer = layer ?? throw new ArgumentNullException(nameof(layer));
         _dispatcher = layer.Dispatcher;
+        _timeProvider = timeProvider ?? TimeProvider.System;
         _dispatcher.ShutdownStarted += OnDispatcherShutdownStarted;
     }
 
@@ -181,7 +187,7 @@ public sealed class DialogEngine : IDialogEngine, IDisposable
 
     private DialogEntryViewModel Present(DialogRequest request)
     {
-        var entry = new DialogEntryViewModel(_layer, request);
+        var entry = new DialogEntryViewModel(_layer, request, _timeProvider);
         if (request.Content is IDialogSessionAware aware)
         {
             aware.Attach(entry);

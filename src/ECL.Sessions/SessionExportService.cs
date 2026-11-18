@@ -303,26 +303,11 @@ public sealed class SessionExportService : ISessionExportService
     private static string Sanitize(string text, SessionExportOptions options) =>
         options.Redact ? RedactLocalPaths(SecretRedaction.Text(text)) : text;
 
-    private static readonly System.Text.RegularExpressions.Regex WindowsAbsolutePath = new(
-        "(?<![A-Za-z0-9])[A-Za-z]:\\\\[^\\r\\n\"'<>|*?]*",
-        System.Text.RegularExpressions.RegexOptions.Compiled |
-        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
-
-    private static readonly System.Text.RegularExpressions.Regex UncAbsolutePath = new(
-        "\\\\\\\\[^\\s\"']+",
-        System.Text.RegularExpressions.RegexOptions.Compiled |
-        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
-
-    internal static string RedactLocalPaths(string text)
-    {
-        if (string.IsNullOrEmpty(text))
-        {
-            return text;
-        }
-
-        var redacted = WindowsAbsolutePath.Replace(text, "<local-path>");
-        return UncAbsolutePath.Replace(redacted, "<local-path>");
-    }
+    /// <summary>
+    /// 路径规则已提取到 <see cref="LocalPathRedaction"/>，与用户可见通知共用同一份实现，
+    /// 避免两处规则漂移导致同一路径在导出里脱敏、在通知里泄漏。
+    /// </summary>
+    internal static string RedactLocalPaths(string text) => LocalPathRedaction.Redact(text);
 
     private static bool IsTextEvidence(string path)
     {

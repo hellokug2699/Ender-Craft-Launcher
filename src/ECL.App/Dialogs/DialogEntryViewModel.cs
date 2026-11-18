@@ -2,6 +2,7 @@
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System.Windows.Threading;
 
 namespace Ecl.App.Dialogs;
 
@@ -12,6 +13,10 @@ namespace Ecl.App.Dialogs;
 /// 线程契约：本对象与 <see cref="DialogLayerViewModel"/> 一样只属于创建它的 UI Dispatcher。
 /// <see cref="TryClose"/> 会在错误的线程上抛出 <see cref="DialogThreadAffinityException"/>；
 /// 取消令牌回调由 <see cref="DialogEngine"/> 封送，内容代码不需要处理跨线程关闭。
+///
+/// F-12：请求可以带 <see cref="DialogRequest.AutoCloseAfter"/>。计时器回调用
+/// <see cref="TimeProvider"/> 驱动（测试可注入假时钟），到点后封送回 UI Dispatcher，
+/// 并且只在“仍打开、不 Busy、无结果”时以 <see cref="DialogOutcome.Closed"/> 关闭。
 /// </summary>
 public sealed partial class DialogEntryViewModel : ObservableObject, IDialogSession
 {
@@ -19,6 +24,8 @@ public sealed partial class DialogEntryViewModel : ObservableObject, IDialogSess
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private readonly DialogLayerViewModel _layer;
+    private readonly TimeProvider _timeProvider;
+    private readonly CancellationTokenSource? _autoCloseCancellation;
 
     [ObservableProperty]
     private bool _isBusy;
@@ -26,11 +33,21 @@ public sealed partial class DialogEntryViewModel : ObservableObject, IDialogSess
     [ObservableProperty]
     private bool _isOpen;
 
-    internal DialogEntryViewModel(DialogLayerViewModel layer, DialogRequest request)
+    internal DialogEntryViewModel(
+        DialogLayerViewModel layer,
+        DialogRequest request,
+        TimeProvider? timeProvider = null)
     {
         _layer = layer;
         Request = request;
+        _timeProvider = timeProvider ?? TimeProvider.System;
         _isOpen = true;
+
+        if (request.AutoCloseAfter is { } delay && delay > TimeSpan.Zero)
+        {
+            _autoCloseCancellation = new CancellationTokenSource();
+            _ = AutoCloseAsync(delay, _autoCloseCancellation.Token);
+        }
     }
 
     public DialogRequest Request { get; }
@@ -96,6 +113,10 @@ public sealed partial class DialogEntryViewModel : ObservableObject, IDialogSess
         IsOpen = false;
         Result = new DialogResult(outcome, value);
 
+        // 关闭后计时器不再有意义；取消并释放，避免残留回调在后续测试/关停中重入。
+        _autoCloseCancellation?.Cancel();
+        _autoCloseCancellation?.Dispose();
+
         // 先完成任务再触发事件：内容的事件处理器即使抛异常，调用方也不会永久等待。
         _completion.TrySetResult(Result);
         Closed?.Invoke(this, EventArgs.Empty);
@@ -107,4 +128,60 @@ public sealed partial class DialogEntryViewModel : ObservableObject, IDialogSess
 
     /// <summary>按请求配置执行“关闭”语义；允许关闭时返回 true。</summary>
     public bool RequestClose() => CanClose && TryClose(Request.CloseOutcome);
+
+    /// <summary>
+    /// 等待自动关闭时限。计时器可能在线程池线程完成，因此关闭动作必须封送回弹窗所属
+    /// Dispatcher；Dispatcher 已开始关停时直接放弃（弹窗层统一按 Closed 完成）。
+    /// </summary>
+    private async Task AutoCloseAsync(TimeSpan delay, CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(delay, _timeProvider, token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+
+        var dispatcher = _layer.Dispatcher;
+        if (dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
+
+        try
+        {
+            if (dispatcher.CheckAccess())
+            {
+                TryAutoClose();
+            }
+            else
+            {
+                _ = dispatcher.BeginInvoke(DispatcherPriority.Send, new Action(TryAutoClose));
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // Dispatcher 在检查之后开始关停：由 Shutdown 路径统一完成弹窗。
+        }
+    }
+
+    /// <summary>
+    /// 到点关闭：Busy 时内容正在执行异步操作，静默关闭会让用户以为操作被取消；
+    /// 已关闭或已有结果时不重复提交。自动关闭固定使用 Closed，不伪造 Primary。
+    /// </summary>
+    private void TryAutoClose()
+    {
+        if (!IsOpen || IsBusy || Result is not null)
+        {
+            return;
+        }
+
+        TryClose(DialogOutcome.Closed);
+    }
 }

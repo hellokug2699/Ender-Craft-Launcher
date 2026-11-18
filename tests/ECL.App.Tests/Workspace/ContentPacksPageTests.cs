@@ -484,7 +484,11 @@ public sealed class ContentPacksPageTests
     {
         public bool ConfirmResult { get; set; } = true;
 
-        public bool Confirm(string title, string message, string? acknowledgementToken = null) => ConfirmResult;
+        public bool Confirm(
+            string title,
+            string message,
+            string? acknowledgementToken = null,
+            ConfirmationKind kind = ConfirmationKind.Mandatory) => ConfirmResult;
 
         public InstanceDeletionChoice ChooseInstanceDeletion(string title, string message, bool canDeleteManagedData) =>
             InstanceDeletionChoice.Cancel;

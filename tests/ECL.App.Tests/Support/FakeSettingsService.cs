@@ -18,6 +18,23 @@ internal sealed class FakeSettingsService : ISettingsService
     {
         ["launcher.checkUpdates"] = "true",
         ["launcher.updateChannel"] = "main",
+        // F-12：桌面生命周期键的默认值必须与 LauncherOptionsProvider 一致，
+        // 否则测试会隐式依赖“未配置 = false”这种与真实设置不同的行为。
+        ["launcher.startWithWindows"] = "false",
+        ["launcher.startMinimizedToTray"] = "false",
+        ["launcher.showHomeOnStartup"] = "true",
+        ["launcher.closeButtonAction"] = "ask",
+        ["launcher.minimizeAction"] = "taskbar",
+        ["launcher.confirmOnClose"] = "true",
+        ["launcher.updateCheckInterval"] = "startup",
+        ["launcher.notifyTaskCompleted"] = "true",
+        ["launcher.notifyTaskFailed"] = "true",
+        ["launcher.notifyBackgroundTasks"] = "true",
+        ["launcher.showOperationHints"] = "true",
+        ["launcher.confirmOrdinaryActions"] = "true",
+        ["launcher.autoCloseSuccessDialogs"] = "false",
+        ["launcher.update.lastCheckedAt"] = string.Empty,
+        ["launcher.update.lastCheckedChannel"] = string.Empty,
     };
 
     public IReadOnlyList<OptionDefinition> GetDefinitions(OptionScope? scope = null) => [];

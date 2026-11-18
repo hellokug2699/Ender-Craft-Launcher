@@ -91,6 +91,16 @@ internal sealed class LauncherOptionsProvider : IOptionProvider
             Order = 60,
         };
 
+        // F-12：主程序设置与桌面生命周期。
+        //
+        // 这些键全部登记为 IsHidden：本切片只提供领域契约（自动启动注册、关闭/最小化行为、
+        // 更新检查周期、通知与确认策略），设置中心“常规”页的重排由后续 UI 切片完成。
+        // 隐藏只影响通用编辑器的自动渲染，不影响 GetDefinition / IsVisible / 真实消费。
+        foreach (var definition in DesktopLifecycleOptions())
+        {
+            yield return definition;
+        }
+
         // 界面偏好（settings-interface-preferences.md §3–§6）。ECL 品牌主题固定，
         // 这里只有字体族、字号档位、界面缩放与动效开关，不存在主题色或浅色模式键。
         //
@@ -548,6 +558,237 @@ internal sealed class LauncherOptionsProvider : IOptionProvider
         {
             yield return definition;
         }
+    }
+
+    /// <summary>
+    /// F-12 桌面生命周期偏好：启动、窗口关闭/最小化、更新检查周期、通知与确认策略。
+    ///
+    /// 默认值刻意保守：不在未经用户同意时写注册表（<c>startWithWindows=false</c>）、
+    /// 不自动关闭结果弹窗（<c>autoCloseSuccessDialogs=false</c>）、普通操作默认确认。
+    /// 只有“是否启用更新检查”是既有键，其余键第一次由本切片登记。
+    /// </summary>
+    private static IEnumerable<OptionDefinition> DesktopLifecycleOptions()
+    {
+        yield return new OptionDefinition<bool>
+        {
+            Key = LauncherKeys.StartWithWindows,
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.startWithWindows.name",
+            DescriptionKey = "option.launcher.startWithWindows.desc",
+            Default = false,
+            IsHidden = true,
+            Order = 62,
+        };
+
+        yield return new OptionDefinition<bool>
+        {
+            Key = LauncherKeys.StartMinimizedToTray,
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.startMinimizedToTray.name",
+            DescriptionKey = "option.launcher.startMinimizedToTray.desc",
+            Default = false,
+            IsHidden = true,
+            Order = 64,
+        };
+
+        yield return new OptionDefinition<bool>
+        {
+            Key = LauncherKeys.ShowHomeOnStartup,
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.showHomeOnStartup.name",
+            DescriptionKey = "option.launcher.showHomeOnStartup.desc",
+            Default = true,
+            IsHidden = true,
+            Order = 66,
+        };
+
+        // “询问”是默认值：未明确选择前不猜测用户意图，关闭主窗口必须经过确认。
+        yield return new OptionDefinition<string>
+        {
+            Key = LauncherKeys.CloseButtonAction,
+            Kind = OptionKind.Select,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.closeButtonAction.name",
+            DescriptionKey = "option.launcher.closeButtonAction.desc",
+            Default = LauncherKeys.CloseButtonActions.Ask,
+            IsHidden = true,
+            Order = 68,
+            Choices =
+            [
+                new OptionChoice(LauncherKeys.CloseButtonActions.Ask, "option.launcher.closeButtonAction.ask"),
+                new OptionChoice(
+                    LauncherKeys.CloseButtonActions.MinimizeToTray,
+                    "option.launcher.closeButtonAction.minimizeToTray"),
+                new OptionChoice(LauncherKeys.CloseButtonActions.Exit, "option.launcher.closeButtonAction.exit"),
+            ],
+        };
+
+        yield return new OptionDefinition<string>
+        {
+            Key = LauncherKeys.MinimizeAction,
+            Kind = OptionKind.Select,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.minimizeAction.name",
+            DescriptionKey = "option.launcher.minimizeAction.desc",
+            Default = LauncherKeys.MinimizeActions.Taskbar,
+            IsHidden = true,
+            Order = 70,
+            Choices =
+            [
+                new OptionChoice(LauncherKeys.MinimizeActions.Taskbar, "option.launcher.minimizeAction.taskbar"),
+                new OptionChoice(LauncherKeys.MinimizeActions.Tray, "option.launcher.minimizeAction.tray"),
+            ],
+        };
+
+        yield return new OptionDefinition<bool>
+        {
+            Key = LauncherKeys.ConfirmOnClose,
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.confirmOnClose.name",
+            DescriptionKey = "option.launcher.confirmOnClose.desc",
+            Default = true,
+            IsHidden = true,
+            Order = 72,
+        };
+
+        // 默认“启动时”：崩溃或长时间未运行后，用户仍然希望第一时间知道有新版本。
+        yield return new OptionDefinition<string>
+        {
+            Key = LauncherKeys.UpdateCheckInterval,
+            Kind = OptionKind.Select,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.updateCheckInterval.name",
+            DescriptionKey = "option.launcher.updateCheckInterval.desc",
+            Default = LauncherKeys.UpdateCheckIntervals.Startup,
+            IsHidden = true,
+            Order = 74,
+            Choices =
+            [
+                new OptionChoice(
+                    LauncherKeys.UpdateCheckIntervals.Startup,
+                    "option.launcher.updateCheckInterval.startup"),
+                new OptionChoice(LauncherKeys.UpdateCheckIntervals.Daily, "option.launcher.updateCheckInterval.daily"),
+                new OptionChoice(LauncherKeys.UpdateCheckIntervals.Weekly, "option.launcher.updateCheckInterval.weekly"),
+            ],
+        };
+
+        yield return new OptionDefinition<bool>
+        {
+            Key = LauncherKeys.NotifyTaskCompleted,
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.notifyTaskCompleted.name",
+            DescriptionKey = "option.launcher.notifyTaskCompleted.desc",
+            Default = true,
+            IsHidden = true,
+            Order = 76,
+        };
+
+        // 失败提示默认开启：关闭只影响呈现，不改变任务结果与日志记录。
+        yield return new OptionDefinition<bool>
+        {
+            Key = LauncherKeys.NotifyTaskFailed,
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.notifyTaskFailed.name",
+            DescriptionKey = "option.launcher.notifyTaskFailed.desc",
+            Default = true,
+            IsHidden = true,
+            Order = 78,
+        };
+
+        yield return new OptionDefinition<bool>
+        {
+            Key = LauncherKeys.NotifyBackgroundTasks,
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.notifyBackgroundTasks.name",
+            DescriptionKey = "option.launcher.notifyBackgroundTasks.desc",
+            Default = true,
+            IsHidden = true,
+            Order = 80,
+        };
+
+        yield return new OptionDefinition<bool>
+        {
+            Key = LauncherKeys.ShowOperationHints,
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.showOperationHints.name",
+            DescriptionKey = "option.launcher.showOperationHints.desc",
+            Default = true,
+            IsHidden = true,
+            Order = 82,
+        };
+
+        yield return new OptionDefinition<bool>
+        {
+            Key = LauncherKeys.ConfirmOrdinaryActions,
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.confirmOrdinaryActions.name",
+            DescriptionKey = "option.launcher.confirmOrdinaryActions.desc",
+            Default = true,
+            IsHidden = true,
+            Order = 84,
+        };
+
+        yield return new OptionDefinition<bool>
+        {
+            Key = LauncherKeys.AutoCloseSuccessDialogs,
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.autoCloseSuccessDialogs.name",
+            DescriptionKey = "option.launcher.autoCloseSuccessDialogs.desc",
+            Default = false,
+            IsHidden = true,
+            Order = 86,
+        };
+
+        // 调度状态：只由 UpdateCheckScheduler 写入；清空表示“从未成功检查”。
+        // 空字符串是合法值（EmptyIsNull 不开启），与“键未写入”语义一致。
+        yield return new OptionDefinition<string>
+        {
+            Key = LauncherKeys.UpdateLastCheckedAt,
+            Kind = OptionKind.Text,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.updateLastCheckedAt.name",
+            DescriptionKey = "option.launcher.updateLastCheckedAt.desc",
+            Default = string.Empty,
+            IsHidden = true,
+            Order = 88,
+        };
+
+        yield return new OptionDefinition<string>
+        {
+            Key = LauncherKeys.UpdateLastCheckedChannel,
+            Kind = OptionKind.Text,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.launcher",
+            DisplayNameKey = "option.launcher.updateLastCheckedChannel.name",
+            DescriptionKey = "option.launcher.updateLastCheckedChannel.desc",
+            Default = string.Empty,
+            IsHidden = true,
+            Order = 90,
+        };
     }
 
     /// <summary>

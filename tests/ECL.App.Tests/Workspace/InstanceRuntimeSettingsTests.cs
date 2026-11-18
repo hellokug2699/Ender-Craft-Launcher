@@ -309,7 +309,11 @@ public sealed class InstanceRuntimeSettingsTests
 
     private sealed class FakeDialogService : IDialogService
     {
-        public bool Confirm(string title, string message, string? acknowledgementToken = null) => true;
+        public bool Confirm(
+            string title,
+            string message,
+            string? acknowledgementToken = null,
+            ConfirmationKind kind = ConfirmationKind.Mandatory) => true;
 
         public InstanceDeletionChoice ChooseInstanceDeletion(
             string title,

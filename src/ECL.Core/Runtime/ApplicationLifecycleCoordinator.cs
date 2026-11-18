@@ -24,6 +24,11 @@ public sealed class ApplicationLifecycleCoordinator : IApplicationLifecycle, IDi
     private Exception? _startupError;
     private ApplicationLifecycleState _state = ApplicationLifecycleState.Created;
 
+    // F-12：活动工作计数。计数在登记时（锁内）先加、在完成时（finally）减，
+    // 因此同步完成的工作不会出现“先减后加”得到负数；关闭结束时统一归零。
+    private int _activeBackgroundWork;
+    private int _activeTasks;
+
     public ApplicationLifecycleCoordinator(
         ApplicationLifecycleOptions? options = null,
         ILogger<ApplicationLifecycleCoordinator>? logger = null)
@@ -44,6 +49,28 @@ public sealed class ApplicationLifecycleCoordinator : IApplicationLifecycle, IDi
     }
 
     public event EventHandler<ApplicationLifecycleState>? StateChanged;
+
+    public int ActiveBackgroundWork
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _activeBackgroundWork;
+            }
+        }
+    }
+
+    public int ActiveTasks
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _activeTasks;
+            }
+        }
+    }
 
     public void BeginStart()
     {
@@ -102,6 +129,7 @@ public sealed class ApplicationLifecycleCoordinator : IApplicationLifecycle, IDi
             var linked = CancellationTokenSource.CreateLinkedTokenSource(_shutdownCts.Token);
             var tracked = new TrackedWork(descriptor, linked, Stopwatch.StartNew());
             _work.Add(tracked);
+            _activeBackgroundWork++;
             tracked.Completion = RunWorkAsync(tracked, work);
             return new BackgroundWorkHandle(descriptor.Id, tracked.Completion, linked.Token, rejected: false);
         }
@@ -122,6 +150,7 @@ public sealed class ApplicationLifecycleCoordinator : IApplicationLifecycle, IDi
 
             var tracked = new TrackedWork(descriptor, new CancellationTokenSource(), Stopwatch.StartNew());
             _work.Add(tracked);
+            _activeTasks++;
             tracked.Completion = ObserveTaskAsync(tracked, task);
             return new BackgroundWorkHandle(descriptor.Id, tracked.Completion, tracked.Cancellation.Token, rejected: false);
         }
@@ -349,6 +378,10 @@ public sealed class ApplicationLifecycleCoordinator : IApplicationLifecycle, IDi
         lock (_gate)
         {
             _state = ApplicationLifecycleState.Stopped;
+            // 关闭完成（含超时）后不再有“活动工作”：超时未结束的工作已经记入报告，
+            // 计数继续非零只会让界面以为还能继续优雅等待。
+            _activeBackgroundWork = 0;
+            _activeTasks = 0;
         }
 
         RaiseStateChanged(ApplicationLifecycleState.Stopped);
@@ -396,6 +429,11 @@ public sealed class ApplicationLifecycleCoordinator : IApplicationLifecycle, IDi
         finally
         {
             tracked.Duration = tracked.Stopwatch.Elapsed;
+            lock (_gate)
+            {
+                // 关闭已把计数归零时，迟到的完成回调不能把计数减成负数。
+                _activeBackgroundWork = Math.Max(0, _activeBackgroundWork - 1);
+            }
         }
     }
 
@@ -419,6 +457,10 @@ public sealed class ApplicationLifecycleCoordinator : IApplicationLifecycle, IDi
         finally
         {
             tracked.Duration = tracked.Stopwatch.Elapsed;
+            lock (_gate)
+            {
+                _activeTasks = Math.Max(0, _activeTasks - 1);
+            }
         }
     }
 

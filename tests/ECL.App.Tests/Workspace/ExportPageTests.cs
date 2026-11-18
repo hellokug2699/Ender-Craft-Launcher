@@ -327,7 +327,11 @@ public sealed class ExportPageTests
 
         public string? LastMessage { get; private set; }
 
-        public bool Confirm(string title, string message, string? acknowledgementToken = null)
+        public bool Confirm(
+            string title,
+            string message,
+            string? acknowledgementToken = null,
+            ConfirmationKind kind = ConfirmationKind.Mandatory)
         {
             LastMessage = message;
             return ConfirmResult;

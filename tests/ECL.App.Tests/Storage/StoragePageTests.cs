@@ -345,7 +345,11 @@ public sealed class StoragePageTests
 
     private sealed class UnavailableDialogService : IDialogService
     {
-        public bool Confirm(string title, string message, string? acknowledgementToken = null) => false;
+        public bool Confirm(
+            string title,
+            string message,
+            string? acknowledgementToken = null,
+            ConfirmationKind kind = ConfirmationKind.Mandatory) => false;
 
         public InstanceDeletionChoice ChooseInstanceDeletion(string title, string message, bool canDeleteManagedData) =>
             InstanceDeletionChoice.Cancel;

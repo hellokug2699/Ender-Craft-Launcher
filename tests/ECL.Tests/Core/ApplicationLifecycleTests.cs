@@ -216,4 +216,63 @@ public sealed class ApplicationLifecycleTests
         Assert.Empty(report.Resources);
         Assert.Equal(ApplicationLifecycleState.Stopped, lifecycle.State);
     }
+
+    [Fact]
+    public async Task ActiveCountersSeparateManagedWorkFromObservedTasks()
+    {
+        using var lifecycle = new ApplicationLifecycleCoordinator(FastOptions(defaultMs: 100, totalMs: 500));
+        lifecycle.BeginStart();
+        lifecycle.MarkRunning();
+
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lifecycle.TrackWork(
+            new BackgroundWorkDescriptor("watcher", "tests", BackgroundWorkKind.Monitor),
+            _ => release.Task);
+
+        var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handle = lifecycle.TrackTask(
+            new BackgroundWorkDescriptor("observed", "tests", BackgroundWorkKind.Io),
+            observed.Task);
+
+        // 两种登记的取消语义不同，因此计数必须分开：TrackTask 只观察，不接管取消。
+        Assert.Equal(1, lifecycle.ActiveBackgroundWork);
+        Assert.Equal(1, lifecycle.ActiveTasks);
+
+        observed.SetResult();
+        await handle.Completion;
+
+        Assert.Equal(1, lifecycle.ActiveBackgroundWork);
+        Assert.Equal(0, lifecycle.ActiveTasks);
+
+        // 关闭后归零：超时未结束的工作已记入报告，计数继续非零会让界面以为还能继续等待。
+        await lifecycle.ShutdownAsync();
+        Assert.Equal(0, lifecycle.ActiveBackgroundWork);
+        Assert.Equal(0, lifecycle.ActiveTasks);
+
+        release.TrySetResult();
+    }
+
+    [Fact]
+    public async Task LateCompletionAfterShutdownCannotMakeCountersNegative()
+    {
+        using var lifecycle = new ApplicationLifecycleCoordinator(FastOptions(defaultMs: 100, totalMs: 500));
+        lifecycle.BeginStart();
+        lifecycle.MarkRunning();
+
+        var stuck = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handle = lifecycle.TrackTask(
+            new BackgroundWorkDescriptor("stuck-task", "tests", BackgroundWorkKind.Io),
+            stuck.Task);
+
+        var report = await lifecycle.ShutdownAsync();
+        Assert.Equal(BackgroundWorkOutcomeState.TimedOut, Assert.Single(report.Work).State);
+        Assert.Equal(0, lifecycle.ActiveTasks);
+
+        // 关闭已经把计数归零；迟到的完成回调只能保持 0。
+        stuck.SetResult();
+        await handle.Completion;
+
+        Assert.Equal(0, lifecycle.ActiveTasks);
+        Assert.Equal(0, lifecycle.ActiveBackgroundWork);
+    }
 }

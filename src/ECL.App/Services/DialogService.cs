@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Windows;
 using Ecl.App.Dialogs;
 using Ecl.App.Dialogs.ViewModels;
+using Ecl.App.Services.Confirmation;
 using Ecl.Configuration.Settings;
 using Ecl.Core.Localization;
 using Ecl.Java;
@@ -21,7 +22,15 @@ public enum InstanceDeletionChoice
 
 public interface IDialogService
 {
-    bool Confirm(string title, string message, string? acknowledgementToken = null);
+    /// <summary>
+    /// 请求用户确认。默认 <see cref="ConfirmationKind.Mandatory"/>：既有调用点几乎都是
+    /// 不可逆操作，行为必须保持不变；只有调用方显式标为 Ordinary 时才受偏好影响。
+    /// </summary>
+    bool Confirm(
+        string title,
+        string message,
+        string? acknowledgementToken = null,
+        ConfirmationKind kind = ConfirmationKind.Mandatory);
 
     /// <summary>
     /// 展示删除计划并选择删除模式：
@@ -54,10 +63,24 @@ public interface IDialogService
 public sealed class DialogService(
     ISettingsService settings,
     IDialogEngine dialogs,
-    ILocalizer localizer) : IDialogService
+    ILocalizer localizer,
+    IConfirmationPolicy? confirmationPolicy = null) : IDialogService
 {
-    public bool Confirm(string title, string message, string? acknowledgementToken = null)
+    // 未显式注入时按同一份设置构造：组合根不需要为了既有的确认调用点多做注册。
+    private readonly IConfirmationPolicy _confirmationPolicy = confirmationPolicy ?? new ConfirmationPolicy(settings);
+
+    public bool Confirm(
+        string title,
+        string message,
+        string? acknowledgementToken = null,
+        ConfirmationKind kind = ConfirmationKind.Mandatory)
     {
+        // 普通确认可由偏好关闭；强制确认永远弹窗，开关不能替代确认。
+        if (kind == ConfirmationKind.Ordinary && !_confirmationPolicy.RequiresConfirmation(kind))
+        {
+            return true;
+        }
+
         // 使用稳定风险标识而不是显示文案；语言切换不应触发重复确认。
         // token 由 Core 计算：规范化路径 + 检测版本 + 有效要求指纹。
         var savedAcknowledgement = settings.Get<string?>(JavaRiskIdentity.SettingsKey);
