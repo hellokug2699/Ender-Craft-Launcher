@@ -7,6 +7,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Shell.Output;
+using Ecl.Configuration.Settings;
 using Ecl.Core.Localization;
 using Ecl.Minecraft.Launch;
 
@@ -30,6 +31,7 @@ public sealed partial class HomeLaunchCardViewModel : ObservableObject, IDisposa
     private readonly IHomeLaunchHost _host;
     private readonly ILaunchService _launchService;
     private readonly ILaunchStatusStore _statuses;
+    private readonly ISettingsService _settings;
     private readonly HomeLaunchLogCapture _logCapture;
     private readonly ILocalizer _localizer;
     private readonly Dispatcher _dispatcher;
@@ -51,6 +53,7 @@ public sealed partial class HomeLaunchCardViewModel : ObservableObject, IDisposa
         IHomeLaunchHost host,
         ILaunchService launchService,
         ILaunchStatusStore statuses,
+        ISettingsService settings,
         AppLogBuffer logBuffer,
         ILocalizer localizer,
         Dispatcher dispatcher)
@@ -58,6 +61,7 @@ public sealed partial class HomeLaunchCardViewModel : ObservableObject, IDisposa
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(launchService);
         ArgumentNullException.ThrowIfNull(statuses);
+        ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(logBuffer);
         ArgumentNullException.ThrowIfNull(localizer);
         ArgumentNullException.ThrowIfNull(dispatcher);
@@ -65,6 +69,7 @@ public sealed partial class HomeLaunchCardViewModel : ObservableObject, IDisposa
         _host = host;
         _launchService = launchService;
         _statuses = statuses;
+        _settings = settings;
         _localizer = localizer;
         _dispatcher = dispatcher;
         _logCapture = new HomeLaunchLogCapture(logBuffer);
@@ -284,6 +289,12 @@ public sealed partial class HomeLaunchCardViewModel : ObservableObject, IDisposa
                 ShowErrorLogEntry = false;
                 ShowNoSessionNotice = false;
             }
+            else if (started)
+            {
+                // F-09 S4：失败后自动打开日志工作区（默认关闭）。只影响界面导航：
+                // 会话、日志写盘与采集早已由会话服务独立完成，不依赖本页面是否打开。
+                TryOpenFailedLaunchLog();
+            }
 
             UpdateLaunchAvailability();
         }
@@ -325,6 +336,32 @@ public sealed partial class HomeLaunchCardViewModel : ObservableObject, IDisposa
         {
             OpenLogSession?.Invoke(sessionId);
         }
+    }
+
+    /// <summary>
+    /// F-09 S4：只有“本次启动确实产生了失败记录”且用户开启偏好时才自动打开日志；
+    /// 没有会话时不打开、不猜测“最新日志”。设置读取失败按关闭处理（保守）。
+    /// </summary>
+    private void TryOpenFailedLaunchLog()
+    {
+        if (_snapshot is not { State: LaunchAttemptState.Failed, SessionId: { Length: > 0 } sessionId })
+        {
+            return;
+        }
+
+        try
+        {
+            if (!_settings.Get<bool>(LogDisplayKeys.AutoOpenOnFailure))
+            {
+                return;
+            }
+        }
+        catch (Exception exception) when (exception is KeyNotFoundException or FormatException)
+        {
+            return;
+        }
+
+        OpenLogSession?.Invoke(sessionId);
     }
 
     public void Dispose()

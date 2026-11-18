@@ -393,6 +393,23 @@
                             CommandParameter="{Binding SelectedLine}"
                             Style="{StaticResource ToolbarButton}"
                             Margin="0,0,6,6" />
+                    <!-- F-09 S8：多选/范围复制只写入剪贴板，不修改原始日志。 -->
+                    <Button Content="{Binding CopySelectedText}"
+                            Command="{Binding CopyLinesCommand}"
+                            Style="{StaticResource ToolbarButton}"
+                            Margin="0,0,6,6"
+                            ToolTip="{loc:Loc Key=logs.selectionHint}"
+                            IsEnabled="{Binding HasSelection}" />
+                    <Button Content="{loc:Loc Key=logs.copyVisible}"
+                            Command="{Binding CopyVisibleLinesCommand}"
+                            Style="{StaticResource ToolbarButton}"
+                            Margin="0,0,6,6" />
+                    <!-- F-09 S4：启动失败时自动打开日志（只影响导航，不影响采集）。 -->
+                    <Button Content="{Binding AutoOpenText}"
+                            Command="{Binding ToggleAutoOpenOnFailureCommand}"
+                            Style="{StaticResource ToolbarButton}"
+                            Margin="0,0,6,6"
+                            ToolTip="{loc:Loc Key=option.logs.autoOpenOnFailure.desc}" />
                     <Button Content="{loc:Loc Key=logs.openFolder}"
                             Command="{Binding OpenFolderCommand}"
                             Style="{StaticResource ToolbarButton}"
@@ -637,6 +654,8 @@
 
                         <ListBox x:Name="LogList"
                                  SelectedItem="{Binding SelectedLine, Mode=TwoWay}"
+                                 SelectionMode="Extended"
+                                 SelectionChanged="OnLogListSelectionChanged"
                                  ItemContainerStyle="{StaticResource LogLineItemStyle}"
                                  Style="{StaticResource LogListStyle}"
                                  AutomationProperties.Name="{loc:Loc Key=logs.reader.title}">
@@ -733,10 +752,19 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="{Binding StatusMessage}"
-                               FontSize="10"
-                               Foreground="{DynamicResource TextMutedBrush}"
-                               TextWrapping="Wrap" />
+                    <StackPanel>
+                        <TextBlock Text="{Binding StatusMessage}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   TextWrapping="Wrap" />
+                        <!-- F-09 S5：停滞提示只表达不确定，不判定卡死。 -->
+                        <TextBlock Text="{Binding StallHint}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource WarningBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,2,0,0"
+                                   Visibility="{Binding HasStallHint, Converter={StaticResource BoolToVisibility}}" />
+                    </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="12,0,0,0">
                         <Button Content="{loc:Loc Key=logs.loadOlder}"
                                 Command="{Binding LoadOlderCommand}"

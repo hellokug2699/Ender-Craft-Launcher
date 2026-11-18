@@ -36,6 +36,18 @@ public interface IGameSessionService
     /// <summary>采集宿主异常退出：只标记不完整，不终止游戏、不伪造正常完成。</summary>
     void MarkCaptureHostLost(string sessionId, string reason);
 
+    /// <summary>
+    /// 记录本次会话的采集方式与字节计量（F-09 S3/S9）。控制台模式没有重定向，
+    /// 写入与丢弃都为 0，但必须显式记录“未采集”，不能让缺失伪装成完整采集。
+    /// </summary>
+    /// <param name="warning">可选警告代码（见 <see cref="SessionWarnings"/>），写入 manifest 警告列表。</param>
+    void SetCaptureAccounting(
+        string sessionId,
+        string mode,
+        long writtenBytes,
+        long droppedBytes,
+        string? warning = null);
+
     void SetExitCode(string sessionId, int exitCode);
 
     /// <summary>
@@ -237,10 +249,45 @@ public sealed class GameSessionService : IGameSessionService
         session = Update(session, session.Manifest with
         {
             CaptureFault = fault,
-            Warnings = AppendWarning(session.Manifest.Warnings, "session.capture.fault"),
+            Warnings = AppendWarning(session.Manifest.Warnings, SessionWarnings.CaptureFault),
         });
 
         AppendEvent(session, "capture.fault", fault);
+    }
+
+    public void SetCaptureAccounting(
+        string sessionId,
+        string mode,
+        long writtenBytes,
+        long droppedBytes,
+        string? warning = null)
+    {
+        var session = Require(sessionId);
+        var warnings = session.Manifest.Warnings;
+        if (warning is { Length: > 0 })
+        {
+            warnings = AppendWarning(warnings, warning);
+        }
+
+        if (droppedBytes > 0)
+        {
+            warnings = AppendWarning(warnings, SessionWarnings.CaptureDropped);
+        }
+
+        session = Update(session, session.Manifest with
+        {
+            CaptureMode = mode,
+            CaptureWrittenBytes = Math.Max(0, writtenBytes),
+            CaptureDroppedBytes = Math.Max(0, droppedBytes),
+            CaptureAccountedAtUtc = DateTimeOffset.UtcNow,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+            Warnings = warnings,
+        });
+
+        AppendEvent(
+            session,
+            "capture.accounting",
+            $"mode={mode}; written={writtenBytes}; dropped={droppedBytes}");
     }
 
     public void SetExitCode(string sessionId, int exitCode)

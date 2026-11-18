@@ -4382,6 +4382,12 @@ internal sealed class CliApplication
                     Console.WriteLine($"创建      : {session.Manifest.CreatedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
                     Console.WriteLine($"进程      : {session.Manifest.ProcessId?.ToString() ?? "未知"}");
                     Console.WriteLine($"日志隔离  : {session.Manifest.LogIsolation}");
+                    // F-09 S3/S9：采集方式与字节计量——控制台模式或丢弃字节都不能显示成完整采集。
+                    Console.WriteLine(
+                        $"采集方式  : {session.Manifest.CaptureMode}" +
+                        (session.Manifest.CaptureAccountedAtUtc is null
+                            ? "（尚未记录计量）"
+                            : $" · 写入 {session.Manifest.CaptureWrittenBytes} 字节 · 丢弃 {session.Manifest.CaptureDroppedBytes} 字节"));
                     Console.WriteLine($"证据      : {session.Manifest.Artifacts.Count} 项");
                     foreach (var artifact in session.Manifest.Artifacts)
                     {

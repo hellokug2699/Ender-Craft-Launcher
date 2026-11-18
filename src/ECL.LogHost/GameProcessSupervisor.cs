@@ -191,6 +191,13 @@ internal sealed class GameProcessSupervisor
                 _sessions.SetCaptureFault(session.SessionId, $"日志写入失败：{writeFault}");
             }
 
+            // F-09 S3：会话结束时把实际写入/丢弃字节写入 manifest，丢弃不能伪装成完整采集。
+            _sessions.SetCaptureAccounting(
+                session.SessionId,
+                SessionCaptureModes.LogHost,
+                WrittenBytes,
+                DroppedBytes);
+
             _artifacts.CollectAfterExit(session);
             _sessions.MarkState(
                 session.SessionId,

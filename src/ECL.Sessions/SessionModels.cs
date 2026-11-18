@@ -26,6 +26,38 @@ public enum ArtifactOwnership
     Unassociated,
 }
 
+/// <summary>
+/// 进程输出采集方式（F-09 S3/S9）。采集方式决定“这份会话有没有 stdout/stderr 证据”，
+/// 因此必须持久化在 manifest 里，而不是由 UI 或日志页推断。
+/// </summary>
+public static class SessionCaptureModes
+{
+    /// <summary>尚未记录（旧会话或采集尚未开始）。</summary>
+    public const string Unknown = "unknown";
+
+    /// <summary>独立 LogHost 进程重定向并排空 stdout/stderr。</summary>
+    public const string LogHost = "loghost";
+
+    /// <summary>ECL 主进程内重定向并排空 stdout/stderr。</summary>
+    public const string Redirect = "redirect";
+
+    /// <summary>
+    /// 控制台模式（<c>game.showConsole=true</c>）：进程继承控制台，没有重定向，
+    /// 因此本次会话不会产生 stdout/stderr 证据。它是显式的采集空洞，不是“采集完整”。
+    /// </summary>
+    public const string Console = "console";
+}
+
+/// <summary>会话警告代码（manifest.Warnings）。UI 按前缀本地化，未知代码原样显示。</summary>
+public static class SessionWarnings
+{
+    public const string CaptureConsole = "session.capture.console";
+
+    public const string CaptureDropped = "session.capture.dropped";
+
+    public const string CaptureFault = "session.capture.fault";
+}
+
 public static class SessionArtifactKinds
 {
     public const string Stdout = "stdout";
@@ -110,6 +142,18 @@ public sealed record SessionManifest
     public int? CaptureHostProcessId { get; init; }
 
     public string? CaptureFault { get; init; }
+
+    /// <summary>采集方式（<see cref="SessionCaptureModes"/>）；旧 manifest 为 unknown。</summary>
+    public string CaptureMode { get; init; } = SessionCaptureModes.Unknown;
+
+    /// <summary>标准输出与标准错误实际写入会话文件的字节数；仅在记录后有效。</summary>
+    public long CaptureWrittenBytes { get; init; }
+
+    /// <summary>因队列饱和或写入故障被丢弃的字节数；大于零表示日志不完整。</summary>
+    public long CaptureDroppedBytes { get; init; }
+
+    /// <summary>最近一次采集计量时间；null 表示尚未记录。</summary>
+    public DateTimeOffset? CaptureAccountedAtUtc { get; init; }
 
     public IReadOnlyList<string> Warnings { get; init; } = [];
 

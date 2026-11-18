@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using Ecl.App.Dialogs;
 using Ecl.App.Services;
+using Ecl.App.Tests.Support;
 using Ecl.App.ViewModels;
 using Ecl.Core;
 using Ecl.Core.Diagnostics;
@@ -246,6 +247,162 @@ public sealed class LogSessionsPageTests : IDisposable
         ui.Invoke(() => vm.Dispose());
     }
 
+    /// <summary>
+    /// F-09 S3/S9：Inspector 显示采集方式与写入/丢弃字节；控制台模式不能显示成完整采集。
+    /// </summary>
+    [Fact]
+    public async Task InspectorShowsCaptureAccountingAndConsoleGap()
+    {
+        using var ui = new UiThread();
+        var session = CreateSession("a", "1.21.1");
+        File.WriteAllText(Path.Combine(session.DirectoryPath, "game.log"), "line\n");
+        _sessions.SetCaptureAccounting(
+            session.SessionId,
+            SessionCaptureModes.Console,
+            0,
+            0,
+            SessionWarnings.CaptureConsole);
+
+        var vm = await ui.InvokeAsync(() => CreateViewModel());
+        ui.Invoke(() => vm.Activate());
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+
+        var fields = vm.BuildInspectorContext()!.Fields;
+        Assert.Contains(fields, field => field.Label == "采集方式" && field.Value.Contains("控制台"));
+        Assert.Contains(fields, field => field.Label == "采集写入" && field.Value.Contains("0"));
+        Assert.Contains(fields, field => field.Label == "警告" && field.Value.Contains("未被重定向"));
+
+        ui.Invoke(() => vm.Dispose());
+    }
+
+    /// <summary>
+    /// F-09 S8：多选与可见范围复制只写入剪贴板；多选结果按显示顺序，不修改原始日志。
+    /// </summary>
+    [Fact]
+    public async Task MultiSelectionCopyUsesSelectedAndVisibleLines()
+    {
+        using var ui = new UiThread();
+        var session = CreateSession("a", "1.21.1");
+        File.WriteAllText(
+            Path.Combine(session.DirectoryPath, "game.log"),
+            "first\nsecond\nthird\n");
+        var vm = await ui.InvokeAsync(() => CreateViewModel());
+        ui.Invoke(() => vm.Activate());
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+
+        await ui.InvokeAsync(async () =>
+        {
+            // 选择顺序故意倒序：复制必须按显示顺序输出。
+            vm.UpdateLineSelection([vm.Lines[2], vm.Lines[0]]);
+            Assert.Equal(2, vm.SelectedLineCount);
+            Assert.Equal($"first{Environment.NewLine}third", vm.SelectionCopyText());
+            Assert.Equal(
+                $"first{Environment.NewLine}second{Environment.NewLine}third",
+                vm.VisibleCopyText());
+
+            // 命令本身只写剪贴板；无桌面剪贴板的测试环境即使失败也不能抛异常。
+            vm.CopyLinesCommand.Execute(null);
+            vm.CopyVisibleLinesCommand.Execute(null);
+            Assert.False(string.IsNullOrEmpty(vm.StatusMessage));
+            await Task.CompletedTask;
+        }).Unwrap();
+
+        // 复制是视图行为：原始文件不变。
+        Assert.Equal(
+            "first\nsecond\nthird\n",
+            await File.ReadAllTextAsync(Path.Combine(session.DirectoryPath, "game.log")));
+
+        ui.Invoke(() => vm.Dispose());
+    }
+
+    /// <summary>
+    /// F-09 S4/S8：显示偏好持久化到设置服务；重新打开页面恢复，且“从未设置”不会被解释成 false。
+    /// </summary>
+    [Fact]
+    public async Task DisplayPreferencesPersistAndReload()
+    {
+        using var ui = new UiThread();
+        var session = CreateSession("a", "1.21.1");
+        File.WriteAllText(Path.Combine(session.DirectoryPath, "game.log"), "line\n");
+        var settings = new FakeSettingsService();
+
+        var first = await ui.InvokeAsync(() => CreateViewModel(settings: settings));
+        Assert.True(first.Follow);
+        Assert.False(first.AutoWrap);
+        Assert.False(first.AutoOpenOnFailure);
+
+        ui.Invoke(() =>
+        {
+            first.AutoWrap = true;
+            first.Follow = false;
+            first.FilterDebug = false;
+            first.ToggleAutoOpenOnFailureCommand.Execute(null);
+        });
+
+        Assert.Equal("true", settings.Values["logs.autoWrap"]);
+        Assert.Equal("false", settings.Values["logs.follow"]);
+        Assert.Equal("Debug", settings.Values["logs.hiddenLevels"]);
+        Assert.Equal("true", settings.Values["logs.autoOpenOnFailure"]);
+
+        var second = await ui.InvokeAsync(() => CreateViewModel(settings: settings));
+        Assert.True(second.AutoWrap);
+        Assert.False(second.Follow);
+        Assert.False(second.FilterDebug);
+        Assert.True(second.AutoOpenOnFailure);
+
+        ui.Invoke(() =>
+        {
+            first.Dispose();
+            second.Dispose();
+        });
+    }
+
+    /// <summary>
+    /// F-09 S5：运行中会话在一段时间没有新输出时给出不确定提示；控制台模式说明静默不代表无输出。
+    /// </summary>
+    [Fact]
+    public async Task StallHintIsUncertainAndExplicitAboutCaptureGaps()
+    {
+        using var ui = new UiThread();
+        var session = CreateSession("a", "1.21.1");
+        var path = Path.Combine(session.DirectoryPath, "game.log");
+        File.WriteAllText(path, "line\n");
+        // 证据是“来源最后一次写入时间”而不是 UI 计时器：把写入时间推回，静默时长才可复现。
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(-5));
+        _sessions.AttachProcess(
+            session.SessionId,
+            Environment.ProcessId,
+            DateTimeOffset.UtcNow.AddMinutes(-5),
+            @"C:\Java\bin\javaw.exe",
+            @"C:\Games");
+        _sessions.SetCaptureAccounting(session.SessionId, SessionCaptureModes.Redirect, 5, 0);
+
+        var vm = await ui.InvokeAsync(() => CreateViewModel());
+        ui.Invoke(() => vm.Activate());
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+        await ui.InvokeAsync(() => vm.PollAsync()).Unwrap();
+
+        Assert.True(vm.HasStallHint);
+        Assert.Contains("不能据此判定卡死", vm.StallHint);
+
+        ui.Invoke(() =>
+        {
+            _sessions.SetCaptureAccounting(
+                session.SessionId,
+                SessionCaptureModes.Console,
+                0,
+                0,
+                SessionWarnings.CaptureConsole);
+            // 重新读取会话列表，让页面看到新的采集方式（不刷新 UI 状态、不猜测）。
+            vm.RefreshSessionsCommand.Execute(null);
+        });
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+        await ui.InvokeAsync(() => vm.PollAsync()).Unwrap();
+        Assert.Contains("没有 stdout/stderr 采集", vm.StallHint);
+
+        ui.Invoke(() => vm.Dispose());
+    }
+
     private GameLogSession CreateSession(string instanceId, string version) =>
         _sessions.Create(new SessionCreateRequest
         {
@@ -257,7 +414,9 @@ public sealed class LogSessionsPageTests : IDisposable
             LogIsolation = "direct",
         });
 
-    private LogSessionsViewModel CreateViewModel(ISessionLogReader? reader = null) =>
+    private LogSessionsViewModel CreateViewModel(
+        ISessionLogReader? reader = null,
+        FakeSettingsService? settings = null) =>
         new(
             _sessions,
             reader ?? new SessionLogReader(),
@@ -268,6 +427,7 @@ public sealed class LogSessionsPageTests : IDisposable
             new UnavailableDialogEngine(),
             new UnavailableDialogService(),
             _paths,
+            settings ?? new FakeSettingsService(),
             NullLogger<LogSessionsViewModel>.Instance);
 
     public void Dispose()

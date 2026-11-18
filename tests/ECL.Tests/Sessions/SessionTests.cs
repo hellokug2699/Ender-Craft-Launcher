@@ -356,6 +356,51 @@ public sealed class SessionTests : IDisposable
         Assert.Equal(rawLog, await File.ReadAllTextAsync(session.StdoutPath));
     }
 
+    /// <summary>
+    /// F-09 S3：采集计量写入 manifest 与 journal；丢弃字节必须产生警告，
+    /// 让“日志不完整”在没有 UI 的情况下也可复核。
+    /// </summary>
+    [Fact]
+    public void CaptureAccountingPersistsBytesAndWarnsWhenDropped()
+    {
+        var service = CreateService();
+        var session = service.Create(Request());
+
+        service.SetCaptureAccounting(session.SessionId, SessionCaptureModes.Redirect, 4096, 512);
+
+        var manifest = service.Get(session.SessionId)!.Manifest;
+        Assert.Equal(SessionCaptureModes.Redirect, manifest.CaptureMode);
+        Assert.Equal(4096, manifest.CaptureWrittenBytes);
+        Assert.Equal(512, manifest.CaptureDroppedBytes);
+        Assert.NotNull(manifest.CaptureAccountedAtUtc);
+        Assert.Contains(SessionWarnings.CaptureDropped, manifest.Warnings);
+
+        var events = SessionJournal.ReadAll(session.JournalPath, out _);
+        Assert.Contains(events, entry => entry.Type == "capture.accounting");
+    }
+
+    /// <summary>
+    /// F-09 S9：控制台模式没有重定向，会话必须显式记录“未采集”而不是 0 字节的完整采集。
+    /// </summary>
+    [Fact]
+    public void ConsoleCaptureModeIsRecordedAsEvidenceGap()
+    {
+        var service = CreateService();
+        var session = service.Create(Request());
+
+        service.SetCaptureAccounting(
+            session.SessionId,
+            SessionCaptureModes.Console,
+            0,
+            0,
+            SessionWarnings.CaptureConsole);
+
+        var manifest = service.Get(session.SessionId)!.Manifest;
+        Assert.Equal(SessionCaptureModes.Console, manifest.CaptureMode);
+        Assert.Contains(SessionWarnings.CaptureConsole, manifest.Warnings);
+        Assert.DoesNotContain(SessionWarnings.CaptureDropped, manifest.Warnings);
+    }
+
     private static async Task<string> ReadEntryAsync(ZipArchive archive, string name)
     {
         var entry = archive.GetEntry(name);

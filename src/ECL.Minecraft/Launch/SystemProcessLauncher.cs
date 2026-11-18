@@ -78,6 +78,15 @@ internal sealed class SystemProcessLauncher(
         if (session is not null)
         {
             sessions.AttachProcess(session.SessionId, process.Id, startedAt, command.Executable, workingDirectory);
+
+            // F-09 S9：控制台模式下进程继承控制台，ECL 不重定向 stdout/stderr，
+            // 本次会话不会产生进程输出证据。立即显式记录，避免之后被误读为“采集完整”。
+            sessions.SetCaptureAccounting(
+                session.SessionId,
+                showConsole ? SessionCaptureModes.Console : SessionCaptureModes.Redirect,
+                0,
+                0,
+                showConsole ? SessionWarnings.CaptureConsole : null);
         }
 
         Task? stdoutPump = null;
@@ -144,6 +153,9 @@ internal sealed class SystemProcessLauncher(
                     GameSessionState.GameExitedDraining,
                     $"exit={process.ExitCode}");
 
+                // 控制台模式下 stdout/stderr 未被重定向：写入 0 不代表“全部采集成功”。
+                var consoleMode = stdout is null && stderr is null;
+                var written = (stdout?.WrittenBytes ?? 0) + (stderr?.WrittenBytes ?? 0);
                 var dropped = (stdout?.DroppedBytes ?? 0) + (stderr?.DroppedBytes ?? 0);
                 if (dropped > 0)
                 {
@@ -151,6 +163,19 @@ internal sealed class SystemProcessLauncher(
                         session.SessionId,
                         $"stdout/stderr 采集队列饱和，丢弃 {dropped} 字节。");
                 }
+
+                var writeFault = stdout?.Fault ?? stderr?.Fault;
+                if (writeFault is not null)
+                {
+                    sessions.SetCaptureFault(session.SessionId, $"日志写入失败：{writeFault}");
+                }
+
+                sessions.SetCaptureAccounting(
+                    session.SessionId,
+                    consoleMode ? SessionCaptureModes.Console : SessionCaptureModes.Redirect,
+                    written,
+                    dropped,
+                    consoleMode ? SessionWarnings.CaptureConsole : null);
 
                 var current = sessions.Get(session.SessionId)?.Manifest;
                 if (current is { LogIsolation: "pending" })
@@ -163,15 +188,9 @@ internal sealed class SystemProcessLauncher(
                         File.Exists(isolated) ? null : "session.log_isolation_unverified");
                 }
 
-                var writeFault = stdout?.Fault ?? stderr?.Fault;
-                if (writeFault is not null)
-                {
-                    sessions.SetCaptureFault(session.SessionId, $"日志写入失败：{writeFault}");
-                }
-
                 artifacts.CollectAfterExit(session);
 
-                var finalState = dropped > 0 || writeFault is not null
+                var finalState = dropped > 0 || writeFault is not null || consoleMode
                     ? GameSessionState.CaptureIncomplete
                     : GameSessionState.CaptureCompleted;
                 sessions.MarkState(session.SessionId, finalState);

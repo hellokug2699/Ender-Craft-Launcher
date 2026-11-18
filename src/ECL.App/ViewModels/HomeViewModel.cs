@@ -9,6 +9,7 @@ using Ecl.Additions;
 using Ecl.App.Services;
 using Ecl.App.Shell.Output;
 using Ecl.App.ViewModels.Home;
+using Ecl.Configuration.Settings;
 using Ecl.Core.Localization;
 using Ecl.Minecraft.Launch;
 
@@ -39,11 +40,13 @@ public sealed partial class HomeViewModel : ObservableObject
         AppLogBuffer logBuffer,
         IAdditionsService additions,
         ILocalizer localizer,
+        ISettingsService settings,
         Dispatcher dispatcher)
     {
         ArgumentNullException.ThrowIfNull(launcher);
         ArgumentNullException.ThrowIfNull(additions);
         ArgumentNullException.ThrowIfNull(localizer);
+        ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(dispatcher);
 
         Launcher = launcher;
@@ -54,6 +57,7 @@ public sealed partial class HomeViewModel : ObservableObject
             new InstancesLaunchHost(launcher),
             launchService,
             launchStatuses,
+            settings,
             logBuffer,
             localizer,
             dispatcher);

@@ -82,4 +82,19 @@ public partial class LogSessionsView : UserControl
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e) =>
         _viewModel?.SetNarrow(ActualWidth < 760);
+
+    /// <summary>
+    /// F-09 S8：<c>SelectedItems</c> 不是可绑定属性，多选结果通过本事件推给 ViewModel；
+    /// 视图不解释选择含义，也不复制日志内容。
+    /// </summary>
+    private void OnLogListSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is not LogSessionsViewModel viewModel)
+        {
+            return;
+        }
+
+        viewModel.UpdateLineSelection(
+            LogList.SelectedItems.OfType<LogLineViewModel>().ToList());
+    }
 }

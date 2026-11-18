@@ -281,10 +281,64 @@ public sealed class HomeLaunchCardTests
         Assert.Contains("未找到版本", card.PreviewNote, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// F-09 S4：只有偏好开启且本次启动产生了失败会话时才自动打开日志；默认不打开、不猜测会话。
+    /// </summary>
+    [Fact]
+    public async Task FailedLaunchOpensLogsOnlyWhenPreferenceIsEnabled()
+    {
+        using var ui = new UiThread();
+        using var buffer = new TestAppLogBuffer();
+        var paths = HomeTestData.CreatePaths();
+        var store = new FakeLaunchStatusStore();
+        var settings = new FakeSettingsService();
+        settings.Values["logs.autoOpenOnFailure"] = "true";
+        var card = CreateCard(ui, buffer, store, settings, out var host, "validate");
+        string? opened = null;
+        ui.Invoke(() => card.OpenLogSession = sessionId => opened = sessionId);
+        host.OnLaunch = (item, _, _, _) =>
+        {
+            store.Seed(HomeTestData.Snapshot(item.Model.Id, LaunchAttemptState.Failed, "session-9"));
+            return Task.CompletedTask;
+        };
+
+        ui.Invoke(() => card.Bind(HomeTestData.Instance("a", paths)));
+        ui.Invoke(() => card.LaunchCommand.ExecuteAsync(null).GetAwaiter().GetResult());
+
+        Assert.Equal("session-9", opened);
+
+        // 默认设置（未开启）时不得自动跳转。
+        using var secondBuffer = new TestAppLogBuffer();
+        var secondStore = new FakeLaunchStatusStore();
+        var secondCard = CreateCard(ui, secondBuffer, secondStore, out var secondHost, "validate");
+        string? secondOpened = null;
+        ui.Invoke(() => secondCard.OpenLogSession = sessionId => secondOpened = sessionId);
+        secondHost.OnLaunch = (item, _, _, _) =>
+        {
+            secondStore.Seed(HomeTestData.Snapshot(item.Model.Id, LaunchAttemptState.Failed, "session-10"));
+            return Task.CompletedTask;
+        };
+
+        ui.Invoke(() => secondCard.Bind(HomeTestData.Instance("a", paths)));
+        ui.Invoke(() => secondCard.LaunchCommand.ExecuteAsync(null).GetAwaiter().GetResult());
+
+        Assert.Null(secondOpened);
+        Assert.True(secondCard.ShowErrorLogEntry);
+    }
+
     private static HomeLaunchCardViewModel CreateCard(
         UiThread ui,
         TestAppLogBuffer buffer,
         FakeLaunchStatusStore store,
+        out FakeLaunchHost host,
+        params string[] steps) =>
+        CreateCard(ui, buffer, store, settings: null, out host, steps);
+
+    private static HomeLaunchCardViewModel CreateCard(
+        UiThread ui,
+        TestAppLogBuffer buffer,
+        FakeLaunchStatusStore store,
+        FakeSettingsService? settings,
         out FakeLaunchHost host,
         params string[] steps)
     {
@@ -294,6 +348,7 @@ public sealed class HomeLaunchCardTests
             created,
             new FakeLaunchService(steps),
             store,
+            settings ?? new FakeSettingsService(),
             buffer.Buffer,
             HomeTestData.Localizer,
             ui.Dispatcher));

@@ -1603,6 +1603,15 @@ public sealed class InstanceModifyPageTests
         {
         }
 
+        public void SetCaptureAccounting(
+            string sessionId,
+            string mode,
+            long writtenBytes,
+            long droppedBytes,
+            string? warning = null)
+        {
+        }
+
         public void SetExitCode(string sessionId, int exitCode)
         {
         }

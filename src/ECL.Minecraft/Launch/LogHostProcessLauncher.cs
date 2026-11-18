@@ -56,6 +56,7 @@ internal sealed class LogHostProcessLauncher(
         }
 
         logger.LogInformation("LogHost 已启动实例 {InstanceId} 的游戏进程，PID {Pid}。", instanceId, pid);
+        sessions.SetCaptureAccounting(sessionId, Ecl.Sessions.SessionCaptureModes.LogHost, 0, 0);
         lock (_sessionsGate)
         {
             _sessions[sessionId] = instanceId;

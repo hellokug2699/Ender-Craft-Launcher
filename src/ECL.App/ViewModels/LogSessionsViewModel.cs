@@ -13,7 +13,9 @@ using Ecl.App.Dialogs;
 using Ecl.App.Dialogs.ViewModels;
 using Ecl.App.Services;
 using Ecl.App.Shell.Inspector;
+using Ecl.App.ViewModels.Home;
 using Ecl.App.ViewModels.LogSessions;
+using Ecl.Configuration.Settings;
 using Ecl.Core;
 using Ecl.Core.Diagnostics;
 using Ecl.Core.Localization;
@@ -55,15 +57,18 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     private readonly IDialogEngine _dialogs;
     private readonly IDialogService _dialogService;
     private readonly IAppPaths _paths;
+    private readonly ISettingsService _settings;
     private readonly ILogger<LogSessionsViewModel> _logger;
     private readonly DispatcherTimer _timer;
     private readonly List<LogLineViewModel> _allLines = [];
     private readonly List<LogLineViewModel> _matches = [];
     private readonly List<LogSessionRowViewModel> _rows = [];
+    private readonly List<LogLineViewModel> _selectedLines = [];
 
     private int _maxLines = MaxLines;
     private bool _disposed;
     private bool _polling;
+    private bool _loadingDisplayPreferences;
     private long _sourceOffset;
     private long _sourceWindowStart;
     private SessionArtifact? _evidenceArtifact;
@@ -84,6 +89,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         IDialogEngine dialogs,
         IDialogService dialogService,
         IAppPaths paths,
+        ISettingsService settings,
         ILogger<LogSessionsViewModel> logger)
     {
         _sessions = sessions;
@@ -95,6 +101,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         _dialogs = dialogs;
         _dialogService = dialogService;
         _paths = paths;
+        _settings = settings;
         _logger = logger;
 
         SessionsView = CollectionViewSource.GetDefaultView(Sessions);
@@ -131,6 +138,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         _selectedStateFilter = StateFilterOptions[0];
         _selectedTimeFilter = TimeFilterOptions[0];
         _selectedInstanceFilter = InstanceFilterOptions[0];
+        LoadDisplayPreferences();
     }
 
     public ObservableCollection<LogSessionRowViewModel> Sessions { get; } = [];
@@ -262,6 +270,33 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _loadedRangeText = string.Empty;
+
+    /// <summary>
+    /// F-09 S5：运行期停滞提示。它是**不确定**提示：只有“已运行较久 + 一段时间的来源没有增长”
+    /// 同时成立才出现，并且永远不表述为“卡死”；控制台模式等采集空洞会说明“静默不代表无输出”。
+    /// </summary>
+    [ObservableProperty]
+    private string _stallHint = string.Empty;
+
+    /// <summary>F-09 S4：启动失败后自动打开日志工作区（只影响导航，不影响采集）。</summary>
+    [ObservableProperty]
+    private bool _autoOpenOnFailure;
+
+    /// <summary>F-09 S8：当前多选的行数；0 表示只有单选行或没有选择。</summary>
+    [ObservableProperty]
+    private int _selectedLineCount;
+
+    public bool HasStallHint => !string.IsNullOrWhiteSpace(StallHint);
+
+    public bool HasSelection => SelectedLine is not null || _selectedLines.Count > 0;
+
+    public string CopySelectedText => SelectedLineCount > 1
+        ? _localizer.Get("logs.copySelectedCount", SelectedLineCount)
+        : _localizer.Get("logs.copySelected");
+
+    public string AutoOpenText => _localizer.Get(
+        "logs.autoOpen.toggle",
+        _localizer.Get(AutoOpenOnFailure ? "logs.autoOpen.on" : "logs.autoOpen.off"));
 
     public bool HasTargetUnavailable => !string.IsNullOrWhiteSpace(TargetUnavailableMessage);
 
@@ -550,19 +585,47 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
 
     partial void OnMetadataSearchChanged(string value) => ApplySessionFilter();
 
-    partial void OnFilterTraceChanged(bool value) => ApplyLineFilter();
+    partial void OnFilterTraceChanged(bool value)
+    {
+        SaveHiddenLevels();
+        ApplyLineFilter();
+    }
 
-    partial void OnFilterDebugChanged(bool value) => ApplyLineFilter();
+    partial void OnFilterDebugChanged(bool value)
+    {
+        SaveHiddenLevels();
+        ApplyLineFilter();
+    }
 
-    partial void OnFilterInfoChanged(bool value) => ApplyLineFilter();
+    partial void OnFilterInfoChanged(bool value)
+    {
+        SaveHiddenLevels();
+        ApplyLineFilter();
+    }
 
-    partial void OnFilterWarnChanged(bool value) => ApplyLineFilter();
+    partial void OnFilterWarnChanged(bool value)
+    {
+        SaveHiddenLevels();
+        ApplyLineFilter();
+    }
 
-    partial void OnFilterErrorChanged(bool value) => ApplyLineFilter();
+    partial void OnFilterErrorChanged(bool value)
+    {
+        SaveHiddenLevels();
+        ApplyLineFilter();
+    }
 
-    partial void OnFilterFatalChanged(bool value) => ApplyLineFilter();
+    partial void OnFilterFatalChanged(bool value)
+    {
+        SaveHiddenLevels();
+        ApplyLineFilter();
+    }
 
-    partial void OnOnlyWarningsAndErrorsChanged(bool value) => ApplyLineFilter();
+    partial void OnOnlyWarningsAndErrorsChanged(bool value)
+    {
+        SavePreference(LogDisplayKeys.OnlyWarningsAndErrors, value);
+        ApplyLineFilter();
+    }
 
     partial void OnThreadFilterChanged(string value) => ApplyLineFilter();
 
@@ -593,6 +656,9 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         _evidenceArtifact = null;
         SelectedEvidence = null;
         SearchText = string.Empty;
+        // F-09 S5：切换会话后停滞提示必须重新判定，不能沿用上一个会话的静默状态。
+        SetStallHint(string.Empty);
+        UpdateLineSelection([]);
 
         if (value is null)
         {
@@ -651,6 +717,9 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsEvidenceSource));
         OnPropertyChanged(nameof(CanLoadOlder));
         SetSourceWarning(value?.Warning ?? string.Empty);
+
+        // F-09 S5：换来源重新判定，避免把另一个来源的静默算到当前来源上。
+        SetStallHint(string.Empty);
 
         if (value is null)
         {
@@ -898,6 +967,10 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private void ToggleWrap() => AutoWrap = !AutoWrap;
+
+    /// <summary>F-09 S4：切换“启动失败后自动打开日志”。只改导航偏好，不影响采集。</summary>
+    [RelayCommand]
+    private void ToggleAutoOpenOnFailure() => AutoOpenOnFailure = !AutoOpenOnFailure;
 
     [RelayCommand]
     private void ToggleSessionList()
@@ -1343,16 +1416,68 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void CopyLines()
     {
-        LogLineViewModel[] selected = SelectedLine is null ? [] : [SelectedLine];
-        if (selected.Length == 0)
+        var text = SelectionCopyText();
+        if (text.Length == 0)
         {
+            StatusMessage = _localizer.Get("logs.selectionHint");
             return;
         }
 
+        CopyToClipboard(text, SelectedLines().Count);
+    }
+
+    /// <summary>F-09 S8：复制当前可见范围（过滤/搜索后的视图范围），不改动原始日志。</summary>
+    [RelayCommand]
+    private void CopyVisibleLines()
+    {
+        if (Lines.Count == 0)
+        {
+            StatusMessage = _localizer.Get("logs.selectionHint");
+            return;
+        }
+
+        CopyToClipboard(VisibleCopyText(), Lines.Count);
+    }
+
+    /// <summary>多选取中的原始文本（按显示顺序）；没有多选时退回当前单行。</summary>
+    public string SelectionCopyText() =>
+        string.Join(Environment.NewLine, SelectedLines().Select(line => line.CopyText));
+
+    /// <summary>当前可见范围的原始文本（按显示顺序）。</summary>
+    public string VisibleCopyText() =>
+        string.Join(Environment.NewLine, Lines.Select(line => line.CopyText));
+
+    /// <summary>
+    /// F-09 S8：视图的多选结果。WPF <c>SelectedItems</c> 不可直接绑定，由视图的
+    /// <c>SelectionChanged</c> 推进来；单选仍更新 <see cref="SelectedLine"/> 以保持既有语义。
+    /// </summary>
+    public void UpdateLineSelection(IReadOnlyList<LogLineViewModel> lines)
+    {
+        _selectedLines.Clear();
+        _selectedLines.AddRange(lines);
+        SelectedLineCount = _selectedLines.Count;
+        SelectedLine = _selectedLines.Count > 0 ? _selectedLines[^1] : null;
+        OnPropertyChanged(nameof(HasSelection));
+        OnPropertyChanged(nameof(CopySelectedText));
+    }
+
+    /// <summary>多选结果按显示顺序返回；没有多选时退回当前单行。</summary>
+    private List<LogLineViewModel> SelectedLines()
+    {
+        if (_selectedLines.Count > 0)
+        {
+            return _selectedLines.OrderBy(line => line.DisplayNumber).ToList();
+        }
+
+        return SelectedLine is { } line ? [line] : [];
+    }
+
+    private void CopyToClipboard(string text, int count)
+    {
         try
         {
-            System.Windows.Clipboard.SetText(string.Join(Environment.NewLine, selected.Select(line => line.CopyText)));
-            StatusMessage = _localizer.Get("logs.copiedLines", selected.Length);
+            System.Windows.Clipboard.SetText(text);
+            StatusMessage = _localizer.Get("logs.copiedLines", count);
         }
         catch (Exception exception) when (exception is System.Runtime.InteropServices.COMException or System.Threading.ThreadStateException)
         {
@@ -1398,12 +1523,236 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             }
 
             await DrainPendingAsync();
+            UpdateStallHint(row, source);
         }
         finally
         {
             _polling = false;
         }
     }
+
+    /// <summary>
+    /// F-09 S5：运行期停滞提示。只用两个信号：来源文件的最后写入时间（证据）与该会话已运行较久。
+    /// 静默本身不是卡死证据（加载、暂停、GC 都会静默），因此提示必须带不确定性；
+    /// 控制台模式没有 stdout/stderr 采集时更要说清“静默不代表无输出”。
+    /// </summary>
+    private void UpdateStallHint(LogSessionRowViewModel row, LogSourceViewModel source)
+    {
+        var manifest = row.Manifest;
+        if (manifest.State is not (GameSessionState.Running or GameSessionState.Starting))
+        {
+            SetStallHint(string.Empty);
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var startedAt = manifest.ProcessStartedAtUtc ?? manifest.CreatedAtUtc;
+        if (now - startedAt < HomeLaunchPresentation.LongRunningAfter)
+        {
+            SetStallHint(string.Empty);
+            return;
+        }
+
+        SessionLogSourceInfo? info = null;
+        try
+        {
+            info = _reader.DescribeSources(row.Session)
+                .FirstOrDefault(item => item.Kind == source.Kind);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogDebug(exception, "读取来源状态失败：{SessionId}", row.Id);
+        }
+
+        var consoleMode = string.Equals(manifest.CaptureMode, SessionCaptureModes.Console, StringComparison.Ordinal);
+        if (consoleMode && info is not { Availability: SessionSourceAvailability.Available })
+        {
+            // 没有进程输出采集：静默不代表进程没有输出，不能把空洞说成“无输出”。
+            SetStallHint(_localizer.Get("logs.stall.captureGap"));
+            return;
+        }
+
+        if (info?.LastWriteTimeUtc is not { } lastWrite)
+        {
+            SetStallHint(string.Empty);
+            return;
+        }
+
+        var silentFor = now - lastWrite;
+        if (silentFor < HomeLaunchPresentation.SilentOutputAfter)
+        {
+            SetStallHint(string.Empty);
+            return;
+        }
+
+        var seconds = (int)silentFor.TotalSeconds;
+        if (consoleMode)
+        {
+            SetStallHint(_localizer.Get("logs.stall.captureGap"));
+            return;
+        }
+
+        SetStallHint(manifest.ProcessId is null
+            ? _localizer.Get("logs.stall.unverified", seconds)
+            : _localizer.Get("logs.stall.silent", seconds));
+    }
+
+    private void SetStallHint(string hint)
+    {
+        if (string.Equals(StallHint, hint, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        StallHint = hint;
+        OnPropertyChanged(nameof(HasStallHint));
+    }
+
+    #region 显示偏好（F-09 S4/S8）
+
+    private void LoadDisplayPreferences()
+    {
+        _loadingDisplayPreferences = true;
+        try
+        {
+            AutoWrap = ReadPreference(LogDisplayKeys.AutoWrap, defaultValue: false);
+            Follow = ReadPreference(LogDisplayKeys.Follow, defaultValue: true);
+            OnlyWarningsAndErrors = ReadPreference(LogDisplayKeys.OnlyWarningsAndErrors, defaultValue: false);
+            AutoOpenOnFailure = ReadPreference(LogDisplayKeys.AutoOpenOnFailure, defaultValue: false);
+
+            var hidden = ParseHiddenLevels(_settings.GetRawString(LogDisplayKeys.HiddenLevels));
+            FilterTrace = !hidden.Contains(Microsoft.Extensions.Logging.LogLevel.Trace);
+            FilterDebug = !hidden.Contains(Microsoft.Extensions.Logging.LogLevel.Debug);
+            FilterInfo = !hidden.Contains(Microsoft.Extensions.Logging.LogLevel.Information);
+            FilterWarn = !hidden.Contains(Microsoft.Extensions.Logging.LogLevel.Warning);
+            FilterError = !hidden.Contains(Microsoft.Extensions.Logging.LogLevel.Error);
+            FilterFatal = !hidden.Contains(Microsoft.Extensions.Logging.LogLevel.Critical);
+        }
+        finally
+        {
+            _loadingDisplayPreferences = false;
+        }
+    }
+
+    /// <summary>未显式保存时使用页面默认值：不把“从未设置”解释成 false。</summary>
+    private bool ReadPreference(string key, bool defaultValue) =>
+        _settings.GetSource(key) == SettingsValueSource.Default
+            ? defaultValue
+            : _settings.Get<bool>(key);
+
+    private void SavePreference(string key, bool value)
+    {
+        if (_loadingDisplayPreferences)
+        {
+            return;
+        }
+
+        try
+        {
+            _settings.TrySetRaw(key, value ? "true" : "false", null, out _);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(exception, "保存日志显示偏好失败：{Key}", key);
+        }
+    }
+
+    private void SaveHiddenLevels()
+    {
+        if (_loadingDisplayPreferences)
+        {
+            return;
+        }
+
+        var hidden = new List<string>();
+        if (!FilterTrace)
+        {
+            hidden.Add(nameof(Microsoft.Extensions.Logging.LogLevel.Trace));
+        }
+
+        if (!FilterDebug)
+        {
+            hidden.Add(nameof(Microsoft.Extensions.Logging.LogLevel.Debug));
+        }
+
+        if (!FilterInfo)
+        {
+            hidden.Add(nameof(Microsoft.Extensions.Logging.LogLevel.Information));
+        }
+
+        if (!FilterWarn)
+        {
+            hidden.Add(nameof(Microsoft.Extensions.Logging.LogLevel.Warning));
+        }
+
+        if (!FilterError)
+        {
+            hidden.Add(nameof(Microsoft.Extensions.Logging.LogLevel.Error));
+        }
+
+        if (!FilterFatal)
+        {
+            hidden.Add(nameof(Microsoft.Extensions.Logging.LogLevel.Critical));
+        }
+
+        try
+        {
+            _settings.TrySetRaw(
+                LogDisplayKeys.HiddenLevels,
+                string.Join(LogDisplayKeys.HiddenLevelsSeparator, hidden),
+                null,
+                out _);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(exception, "保存日志显示偏好失败：{Key}", LogDisplayKeys.HiddenLevels);
+        }
+    }
+
+    /// <summary>未知级别名被忽略：旧配置或手工编辑不得让过滤器失效。</summary>
+    private static HashSet<Microsoft.Extensions.Logging.LogLevel> ParseHiddenLevels(string? raw)
+    {
+        var hidden = new HashSet<Microsoft.Extensions.Logging.LogLevel>();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return hidden;
+        }
+
+        foreach (var part in raw.Split(
+                     LogDisplayKeys.HiddenLevelsSeparator,
+                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (Enum.TryParse<Microsoft.Extensions.Logging.LogLevel>(part, ignoreCase: true, out var level) &&
+                Enum.IsDefined(level))
+            {
+                hidden.Add(level);
+            }
+        }
+
+        return hidden;
+    }
+
+    partial void OnAutoWrapChanged(bool value)
+    {
+        SavePreference(LogDisplayKeys.AutoWrap, value);
+        OnPropertyChanged(nameof(WrapText));
+    }
+
+    partial void OnFollowChanged(bool value)
+    {
+        SavePreference(LogDisplayKeys.Follow, value);
+        OnPropertyChanged(nameof(FollowText));
+    }
+
+    partial void OnAutoOpenOnFailureChanged(bool value)
+    {
+        SavePreference(LogDisplayKeys.AutoOpenOnFailure, value);
+        OnPropertyChanged(nameof(AutoOpenText));
+    }
+
+    partial void OnSelectedLineCountChanged(int value) => OnPropertyChanged(nameof(CopySelectedText));
+
+    #endregion
 
     private async Task DrainPendingAsync()
     {
@@ -1553,6 +1902,8 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             new(_localizer.Get("logs.inspector.evidenceCount"), manifest.Artifacts.Count.ToString()),
         };
 
+        AddCaptureFields(manifest, fields);
+
         AddLaunchStageFields(manifest.SessionId, fields);
 
         if (!string.IsNullOrWhiteSpace(manifest.CaptureFault))
@@ -1598,6 +1949,38 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             $"{row.StateText} · {manifest.MinecraftVersion ?? _localizer.Get("logs.unknownVersion")}",
             fields);
     }
+
+    /// <summary>
+    /// F-09 S3/S9：采集方式与字节计量。没有记录过计量时只显示采集方式（若已知），
+    /// 不把 0 字节显示成“采集完成”。
+    /// </summary>
+    private void AddCaptureFields(SessionManifest manifest, List<InspectorSelectionField> fields)
+    {
+        if (!string.Equals(manifest.CaptureMode, SessionCaptureModes.Unknown, StringComparison.Ordinal))
+        {
+            fields.Add(new(_localizer.Get("logs.inspector.captureMode"), DescribeCaptureMode(manifest.CaptureMode)));
+        }
+
+        if (manifest.CaptureAccountedAtUtc is null)
+        {
+            return;
+        }
+
+        fields.Add(new(
+            _localizer.Get("logs.inspector.captureWritten"),
+            _localizer.Get("logs.capture.bytes", manifest.CaptureWrittenBytes)));
+        fields.Add(new(
+            _localizer.Get("logs.inspector.captureDropped"),
+            _localizer.Get("logs.capture.bytes", manifest.CaptureDroppedBytes)));
+    }
+
+    private string DescribeCaptureMode(string mode) => mode switch
+    {
+        SessionCaptureModes.LogHost => _localizer.Get("logs.capture.mode.loghost"),
+        SessionCaptureModes.Redirect => _localizer.Get("logs.capture.mode.redirect"),
+        SessionCaptureModes.Console => _localizer.Get("logs.capture.mode.console"),
+        _ => _localizer.Get("logs.capture.mode.unknown"),
+    };
 
     /// <summary>
     /// F-09 S2：启动阶段事实来自会话 journal，不属于面板状态。没有阶段事件的旧会话

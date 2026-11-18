@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 using Ecl.Configuration.Network;
+using Ecl.Configuration.Settings;
 
 namespace Ecl.Configuration.Options;
 
@@ -539,6 +540,85 @@ internal sealed class LauncherOptionsProvider : IOptionProvider
             DescriptionKey = "option.game.extraArguments.desc",
             Default = string.Empty,
             Order = 60,
+        };
+
+        // F-09 S4/S8：日志阅读器显示偏好。由日志页工具栏直接切换，故标记为隐藏项，
+        // 不在通用设置编辑器中重复出现；仍需注册才能持久化与校验。
+        foreach (var definition in LogDisplayOptions())
+        {
+            yield return definition;
+        }
+    }
+
+    /// <summary>
+    /// 日志阅读器的显示偏好（F-09 S4/S8）。隐藏项只承载持久化，呈现入口在日志页工具栏；
+    /// 任何一项都不得影响会话采集、日志写盘或证据归属。
+    /// </summary>
+    private static IEnumerable<OptionDefinition> LogDisplayOptions()
+    {
+        yield return new OptionDefinition<bool>
+        {
+            Key = LogDisplayKeys.AutoOpenOnFailure,
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.logs",
+            DisplayNameKey = "option.logs.autoOpenOnFailure.name",
+            DescriptionKey = "option.logs.autoOpenOnFailure.desc",
+            Default = false,
+            IsHidden = true,
+            Order = 10,
+        };
+
+        yield return new OptionDefinition<bool>
+        {
+            Key = LogDisplayKeys.AutoWrap,
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.logs",
+            DisplayNameKey = "option.logs.autoWrap.name",
+            DescriptionKey = "option.logs.autoWrap.desc",
+            Default = false,
+            IsHidden = true,
+            Order = 20,
+        };
+
+        yield return new OptionDefinition<bool>
+        {
+            Key = LogDisplayKeys.Follow,
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.logs",
+            DisplayNameKey = "option.logs.follow.name",
+            DescriptionKey = "option.logs.follow.desc",
+            Default = true,
+            IsHidden = true,
+            Order = 30,
+        };
+
+        yield return new OptionDefinition<bool>
+        {
+            Key = LogDisplayKeys.OnlyWarningsAndErrors,
+            Kind = OptionKind.Boolean,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.logs",
+            DisplayNameKey = "option.logs.onlyWarningsAndErrors.name",
+            DescriptionKey = "option.logs.onlyWarningsAndErrors.desc",
+            Default = false,
+            IsHidden = true,
+            Order = 40,
+        };
+
+        yield return new OptionDefinition<string>
+        {
+            Key = LogDisplayKeys.HiddenLevels,
+            Kind = OptionKind.Text,
+            Scope = OptionScope.Global,
+            CategoryKey = "category.logs",
+            DisplayNameKey = "option.logs.hiddenLevels.name",
+            DescriptionKey = "option.logs.hiddenLevels.desc",
+            Default = string.Empty,
+            IsHidden = true,
+            Order = 50,
         };
     }
 }
