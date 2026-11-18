@@ -38,6 +38,17 @@ public static partial class SecretRedaction
                 match => $"{match.Groups[1].Value}{Mask(match.Groups[2].Value)}");
 
     /// <summary>
+    /// OAuth 授权地址只保留 scheme://authority/path。
+    /// 查询串里的 <c>code</c>、<c>state</c> 与 <c>code_verifier</c> 都是本轮登录的凭据材料，
+    /// 日志与诊断导出只需要知道“回调打到哪里”，不需要知道具体参数。
+    /// </summary>
+    public static string OAuthUrl(Uri uri)
+    {
+        ArgumentNullException.ThrowIfNull(uri);
+        return $"{uri.Scheme}://{uri.Authority}{uri.AbsolutePath}";
+    }
+
+    /// <summary>
     /// 通用文本脱敏：用于日志、崩溃报告与诊断导出。只处理明确的凭据形态，
     /// 不修改原始本地证据；调用方应在派生副本上使用。
     /// </summary>
@@ -50,6 +61,7 @@ public static partial class SecretRedaction
 
         var result = BearerPattern().Replace(text, "Bearer ***");
         result = TokenKeyPattern().Replace(result, "$1***");
+        result = OAuthQueryParameterPattern().Replace(result, "$1***");
         result = CommandLine(result);
         result = SignedJwtPattern().Replace(result, "$1***");
         return UrlCredentialsPattern().Replace(result, "$1***@");
@@ -64,6 +76,10 @@ public static partial class SecretRedaction
 
     [GeneratedRegex("(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+")]
     private static partial Regex BearerPattern();
+
+    /// <summary>OAuth 回调查询参数：授权码、CSRF state 与 PKCE verifier 都按秘密处理。</summary>
+    [GeneratedRegex("(?i)([?&](?:code|state|code_verifier)=)[^&\\s]+")]
+    private static partial Regex OAuthQueryParameterPattern();
 
     [GeneratedRegex(@"(?i)(SignedJWT:\s*)[A-Za-z0-9._~+/=-]{16,}")]
     private static partial Regex SignedJwtPattern();

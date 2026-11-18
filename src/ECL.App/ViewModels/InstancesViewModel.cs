@@ -37,7 +37,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IInstanceService _instances;
     private readonly IAccountService _accounts;
     private readonly IAuthServerService _authServers;
-    private readonly IMicrosoftAuthenticationService _microsoftAuthentication;
+    private readonly IMicrosoftLoginSessionService _microsoftLoginSessions;
     private readonly ILaunchService _launchService;
     private readonly IVersionInstallService _installService;
     private readonly ISettingsService _settings;
@@ -63,6 +63,9 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly Ecl.Minecraft.Engine.Lifecycle.IInstanceDeletionService _deletions;
     private bool _initialized;
     private bool _suppressAccountSelection;
+
+    /// <summary>当前正在进行的 Microsoft 登录会话；取消按钮通过它终止登录。</summary>
+    private IMicrosoftLoginSession? _activeMicrosoftLogin;
 
     /// <summary>打开当前实例的独立工作区页面。</summary>
     public Action<string>? NavigateToDetails { get; set; }
@@ -121,6 +124,10 @@ public sealed partial class InstancesViewModel : ObservableObject
     /// <summary>实例读取失败原因；仅在没有可展示实例时呈现错误态。</summary>
     [ObservableProperty]
     private string _instanceLoadError = string.Empty;
+
+    /// <summary>Microsoft 登录进行中：仅用于显示“取消登录”，不参与启动等其它忙碌判定。</summary>
+    [ObservableProperty]
+    private bool _isMicrosoftSignInActive;
 
     [ObservableProperty]
     private bool _isInstalling;
@@ -196,7 +203,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         IInstanceService instances,
         IAccountService accounts,
         IAuthServerService authServers,
-        IMicrosoftAuthenticationService microsoftAuthentication,
+        IMicrosoftLoginSessionService microsoftLoginSessions,
         ILaunchService launchService,
         IVersionInstallService installService,
         ISettingsService settings,
@@ -224,7 +231,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         _instances = instances;
         _accounts = accounts;
         _authServers = authServers;
-        _microsoftAuthentication = microsoftAuthentication;
+        _microsoftLoginSessions = microsoftLoginSessions;
         _launchService = launchService;
         _installService = installService;
         _settings = settings;
@@ -949,6 +956,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     /// <summary>
     /// 实机验证入口：只有用户主动点击才会打开浏览器并开始 Microsoft 登录。
     /// 启动器不会在启动时自动登录，也不会代替用户输入凭据。
+    /// 登录期间可以取消（ADR 0065）：取消与提交互斥，未提交的账户永远不会写入。
     /// </summary>
     [RelayCommand]
     private async Task SignInMicrosoftAsync()
@@ -958,40 +966,45 @@ public sealed partial class InstancesViewModel : ObservableObject
             return;
         }
 
-        var clientId = MicrosoftClientIdentity.DefaultClientId;
-
         IsBusy = true;
         StatusMessage = _localizer.Get("instances.microsoftSigningIn");
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-            Result<Account> result;
-            try
+            var started = _microsoftLoginSessions.BeginSignIn(
+                new MicrosoftAuthenticationOptions { ClientId = MicrosoftClientIdentity.DefaultClientId },
+                OpenBrowserAsync);
+
+            if (!started.IsSuccess)
             {
-                result = await _microsoftAuthentication
-                    .SignInAsync(new MicrosoftAuthenticationOptions { ClientId = clientId }, OpenBrowserAsync, timeout.Token)
-                    .ConfigureAwait(true);
-            }
-            catch (OperationCanceledException)
-            {
-                StatusMessage = _localizer.Get(
-                    "instances.microsoftSignInFailed",
-                    "auth.callback_timeout",
-                    _localizer.Get("instances.microsoftSignInTimeout"));
+                StatusMessage = DescribeMicrosoftSignInStartFailure(started.Error!);
                 return;
             }
 
-            if (!result.IsSuccess)
+            using var session = started.Value!;
+            _activeMicrosoftLogin = session;
+            IsMicrosoftSignInActive = true;
+
+            MicrosoftLoginOutcome outcome;
+            try
             {
-                StatusMessage = _localizer.Get(
-                    "instances.microsoftSignInFailed",
-                    result.Error!.Code,
-                    result.Error.Message);
+                outcome = await session.Completion.ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                StatusMessage = _localizer.Get("instances.microsoftSignInTimeout");
+                return;
+            }
+
+            // 必须先提交再写账户：取消/超时发生在“令牌已取得、账户未写”的窗口时提交会失败，
+            // 此时即使 outcome.Account 有值也必须丢弃，避免把已终止的登录结果落盘。
+            if (!session.TryCommit() || outcome.Account is null)
+            {
+                StatusMessage = DescribeMicrosoftSignInOutcome(outcome);
                 return;
             }
 
             var added = await _accounts
-                .AddAsync(result.Value!, makeDefault: Accounts.Count == 0)
+                .AddAsync(outcome.Account, makeDefault: Accounts.Count == 0)
                 .ConfigureAwait(true);
             if (!added.IsSuccess)
             {
@@ -1003,6 +1016,10 @@ public sealed partial class InstancesViewModel : ObservableObject
             SelectedAccount = Accounts.FirstOrDefault(item => item.Id == added.Value!.Id) ?? SelectedAccount;
             StatusMessage = _localizer.Get("instances.microsoftSignedIn", added.Value!.Name);
         }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = _localizer.Get("instances.microsoftSignInCancelled");
+        }
         catch (Exception exception)
         {
             StatusMessage = _localizer.Get(
@@ -1012,9 +1029,39 @@ public sealed partial class InstancesViewModel : ObservableObject
         }
         finally
         {
+            _activeMicrosoftLogin = null;
+            IsMicrosoftSignInActive = false;
             IsBusy = false;
         }
     }
+
+    /// <summary>取消进行中的 Microsoft 登录；终止成功后迟到的授权码不会再兑换成账户。</summary>
+    [RelayCommand]
+    private void CancelMicrosoftSignIn() =>
+        _activeMicrosoftLogin?.Terminate(MicrosoftLoginStopReason.UserCancelled);
+
+    private string DescribeMicrosoftSignInStartFailure(EclError error) => error.Code switch
+    {
+        "auth.callback_listener_unavailable" => _localizer.Get("instances.microsoftSignInListenerUnavailable"),
+        _ => _localizer.Get("instances.microsoftSignInFailed", error.Code, error.Message),
+    };
+
+    private string DescribeMicrosoftSignInOutcome(MicrosoftLoginOutcome outcome) => outcome.StopReason switch
+    {
+        MicrosoftLoginStopReason.UserCancelled => _localizer.Get("instances.microsoftSignInCancelled"),
+        MicrosoftLoginStopReason.TimedOut => _localizer.Get("instances.microsoftSignInTimeout"),
+        MicrosoftLoginStopReason.CallbackRejected => _localizer.Get("instances.microsoftSignInDenied"),
+        MicrosoftLoginStopReason.ProtocolViolation => _localizer.Get("instances.microsoftSignInRejected"),
+        MicrosoftLoginStopReason.StateMismatch => string.Concat(
+            _localizer.Get("instances.microsoftSignInStateMismatch"),
+            " ",
+            _localizer.Get("instances.microsoftSignInSecurityHint")),
+        MicrosoftLoginStopReason.TokenExchangeFailed => _localizer.Get(
+            "instances.microsoftSignInTokenFailed",
+            outcome.Error?.Message ?? _localizer.Get("instances.microsoftSignInTerminated")),
+        MicrosoftLoginStopReason.ListenerUnavailable => _localizer.Get("instances.microsoftSignInListenerUnavailable"),
+        _ => _localizer.Get("instances.microsoftSignInTerminated"),
+    };
 
     /// <summary>
     /// 第三方账户只在这里创建：认证服务器地址（必填）与注册链接（可选）只出现在该对话框内。

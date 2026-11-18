@@ -48,4 +48,33 @@ public sealed class SecretRedactionTests
         const string commandLine = "java -cp libs net.minecraft.client.main.Main --username hellokug";
         Assert.Equal(commandLine, SecretRedaction.CommandLine(commandLine));
     }
+
+    [Fact]
+    public void TextRedactsOAuthQueryParameters()
+    {
+        var redacted = SecretRedaction.Text(
+            "https://localhost:49152/?code=the-auth-code&state=csrf-state&code_verifier=pkce-verifier&client_id=public-id");
+
+        Assert.DoesNotContain("the-auth-code", redacted, StringComparison.Ordinal);
+        Assert.DoesNotContain("csrf-state", redacted, StringComparison.Ordinal);
+        Assert.DoesNotContain("pkce-verifier", redacted, StringComparison.Ordinal);
+        Assert.Contains("code=***", redacted, StringComparison.Ordinal);
+        Assert.Contains("state=***", redacted, StringComparison.Ordinal);
+        Assert.Contains("code_verifier=***", redacted, StringComparison.Ordinal);
+        Assert.Contains("client_id=public-id", redacted, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OAuthUrlDropsQueryAndFragment()
+    {
+        var uri = new Uri(
+            "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?client_id=x&state=secret#fragment");
+
+        var url = SecretRedaction.OAuthUrl(uri);
+
+        Assert.Equal("https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize", url);
+        Assert.DoesNotContain("?", url, StringComparison.Ordinal);
+        Assert.DoesNotContain("state", url, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret", url, StringComparison.Ordinal);
+    }
 }

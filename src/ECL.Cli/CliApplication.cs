@@ -2133,36 +2133,47 @@ internal sealed class CliApplication
 
             case "login-microsoft":
                 {
-                    var authentication = _provider.GetRequiredService<IMicrosoftAuthenticationService>();
+                    var sessions = _provider.GetRequiredService<IMicrosoftLoginSessionService>();
                     var clientId = MicrosoftClientIdentity.DefaultClientId;
 
                     // 仅供实机验证的诊断入口：必须由用户主动触发，不会在启动时自动登录。
                     Console.WriteLine($"Microsoft Client ID: {clientId}");
-                    Console.WriteLine("按回车后 ECL 将打开系统默认浏览器；请在浏览器中自行完成 Microsoft 登录。");
+                    Console.WriteLine("按回车后 ECL 将打开系统默认浏览器；请在浏览器中自行完成 Microsoft 登录（按 Ctrl+C 可取消）。");
                     Console.ReadLine();
 
-                    Result<Account> result;
-                    using (var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(5)))
+                    var started = sessions.BeginSignIn(
+                        new MicrosoftAuthenticationOptions { ClientId = clientId },
+                        OpenBrowserAsync);
+                    if (!started.IsSuccess)
                     {
-                        try
-                        {
-                            result = await authentication
-                                .SignInAsync(new MicrosoftAuthenticationOptions { ClientId = clientId }, OpenBrowserAsync, timeout.Token)
-                                .ConfigureAwait(false);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            return WriteError(new EclError("auth.callback_timeout", "等待浏览器回调超时（5 分钟），未收到授权码。"));
-                        }
+                        return WriteError(started.Error);
                     }
 
-                    if (!result.IsSuccess)
+                    using var session = started.Value!;
+                    ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
                     {
-                        return WriteError(result.Error);
+                        // 第一次 Ctrl+C 只取消登录并保留进程；若会话已结束仍未退出，则交回默认的强制退出行为。
+                        eventArgs.Cancel = session.Terminate(MicrosoftLoginStopReason.UserCancelled);
+                    };
+                    Console.CancelKeyPress += cancelHandler;
+
+                    MicrosoftLoginOutcome outcome;
+                    try
+                    {
+                        outcome = await session.Completion.ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        Console.CancelKeyPress -= cancelHandler;
+                    }
+
+                    if (!session.TryCommit() || outcome.Account is null)
+                    {
+                        return WriteError(MapMicrosoftLoginFailure(outcome));
                     }
 
                     var added = await accounts
-                        .AddAsync(result.Value!, _commandLine.HasFlag("default"))
+                        .AddAsync(outcome.Account, _commandLine.HasFlag("default"))
                         .ConfigureAwait(false);
                     if (!added.IsSuccess)
                     {
@@ -4624,6 +4635,33 @@ internal sealed class CliApplication
         Console.Error.WriteLine(Program.HelpText);
         return 2;
     }
+
+    /// <summary>
+    /// 把登录会话的停止原因翻译成稳定错误码与中文文案。命令行与 GUI 使用同一份原因语义，
+    /// 但 CLI 不依赖本地化资源，避免在无界面环境读取界面语言配置。
+    /// </summary>
+    private static EclError MapMicrosoftLoginFailure(MicrosoftLoginOutcome outcome) => outcome.StopReason switch
+    {
+        MicrosoftLoginStopReason.UserCancelled => new EclError("auth.login_cancelled", "已取消 Microsoft 登录。"),
+        MicrosoftLoginStopReason.TimedOut => new EclError("auth.login_timeout", "等待浏览器回调超时（5 分钟），未收到授权码。"),
+        MicrosoftLoginStopReason.StateMismatch => new EclError(
+            "auth.state_mismatch",
+            "Microsoft 登录状态校验失败，已放弃本次登录。"),
+        MicrosoftLoginStopReason.CallbackRejected => new EclError(
+            "auth.microsoft_denied",
+            "Microsoft 未授权本次登录。"),
+        MicrosoftLoginStopReason.TokenExchangeFailed => new EclError(
+            "auth.login_token_failed",
+            "Microsoft 登录未能换取有效凭据。",
+            outcome.Error?.Code),
+        MicrosoftLoginStopReason.ListenerUnavailable => new EclError(
+            "auth.callback_listener_unavailable",
+            "无法启动本机登录回调监听（端口被占用或缺少权限）。"),
+        MicrosoftLoginStopReason.ProtocolViolation => new EclError(
+            "auth.login_protocol_violation",
+            "Microsoft 登录回调无效，已放弃本次登录。"),
+        _ => new EclError("auth.login_terminated", "Microsoft 登录已终止，未添加账户。"),
+    };
 
     private static int WriteError(EclError? error, int exitCode = 1)
     {
