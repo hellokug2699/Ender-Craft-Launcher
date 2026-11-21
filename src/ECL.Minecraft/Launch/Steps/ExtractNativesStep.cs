@@ -37,7 +37,7 @@ internal sealed class ExtractNativesStep(
         try
         {
             var plan = PlatformLibrarySelector.Plan(
-                context.Version.Libraries,
+                context.EffectiveLibraries,
                 LibraryRules.CurrentOsName,
                 LibraryRules.CurrentArch);
 

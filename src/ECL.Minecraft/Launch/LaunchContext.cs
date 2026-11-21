@@ -33,6 +33,13 @@ public sealed class LaunchContext
 
     public MinecraftVersion? Version { get; set; }
 
+    /// <summary>
+    /// 本次启动实际使用的库列表。Cleanroom 必须使用 LWJGL 3 + lwjglxx，
+    /// 导入的整合包 JSON 若同时带有 LWJGL 2，会在启动时移除（见 <see cref="LaunchLibraryFilter"/>）。
+    /// </summary>
+    public IReadOnlyList<VersionLibrary> EffectiveLibraries =>
+        Version is null ? [] : LaunchLibraryFilter.Apply(Instance.Loader, Version.Libraries);
+
     public int MemoryMb { get; set; } = 4096;
 
     public string JavaExecutable { get; set; } = "java";

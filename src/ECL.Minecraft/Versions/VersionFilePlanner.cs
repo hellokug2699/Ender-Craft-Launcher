@@ -74,13 +74,19 @@ public static class VersionFilePlanner
         return Path.Combine(paths.LibrariesDirectory, artifact.Path.Replace('/', Path.DirectorySeparatorChar));
     }
 
-    public static IReadOnlyList<LibraryPlanItem> PlanLibraries(MinecraftVersion version) =>
-        PlatformLibrarySelector.Plan(version.Libraries, LibraryRules.CurrentOsName, LibraryRules.CurrentArch);
+    public static IReadOnlyList<LibraryPlanItem> PlanLibraries(
+        MinecraftVersion version,
+        IReadOnlyList<VersionLibrary>? libraries = null) =>
+        PlatformLibrarySelector.Plan(
+            libraries ?? version.Libraries,
+            LibraryRules.CurrentOsName,
+            LibraryRules.CurrentArch);
 
     public static IReadOnlyList<VersionFileCheck> GetRequiredFileChecks(
         MinecraftVersion version,
         IAppPaths paths,
-        string versionId)
+        string versionId,
+        IReadOnlyList<VersionLibrary>? libraries = null)
     {
         var checks = new List<VersionFileCheck>
         {
@@ -91,7 +97,7 @@ public static class VersionFilePlanner
                 VerifyHash: true),
         };
 
-        foreach (var artifact in PlatformLibrarySelector.GetDownloadArtifacts(PlanLibraries(version)))
+        foreach (var artifact in PlatformLibrarySelector.GetDownloadArtifacts(PlanLibraries(version, libraries)))
         {
             checks.Add(new VersionFileCheck(
                 GetLibraryPath(paths, artifact),

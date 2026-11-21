@@ -28,7 +28,8 @@ internal sealed class ValidateGameFilesStep(IAppPaths paths, ILocalizer localize
         var requiredFiles = VersionFilePlanner.GetRequiredFileChecks(
                 context.Version,
                 paths,
-                context.Instance.VersionId)
+                context.Instance.VersionId,
+                context.EffectiveLibraries)
             .GroupBy(check => check.Path, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .ToArray();

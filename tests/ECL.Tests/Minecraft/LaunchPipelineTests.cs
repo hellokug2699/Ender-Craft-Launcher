@@ -262,6 +262,91 @@ public sealed class LaunchPipelineTests
     }
 
     [Fact]
+    public async Task CleanroomLaunchExcludesLegacyLwjglFromClasspath()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeProcessLauncher();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IProcessLauncher>(fake));
+
+        var created = await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Cleanroom", "1.12.2", "cleanroom", "0.7.12-alpha");
+        Assert.True(created.IsSuccess);
+        var instance = created.Value!;
+        await provider.GetRequiredService<IAccountService>().AddOfflineAsync("Player");
+        ConfigureFakeJava(environment, provider);
+
+        var versionDirectory = Path.Combine(environment.Paths.VersionsDirectory, instance.VersionId);
+        Directory.CreateDirectory(versionDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(versionDirectory, $"{instance.VersionId}.json"),
+            $$"""
+            {
+              "id": "{{instance.VersionId}}",
+              "type": "release",
+              "mainClass": "top.outlands.foundation.boot.Foundation",
+              "minecraftArguments": "--username ${auth_player_name} --gameDir ${game_directory} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",
+              "libraries": [
+                { "name": "org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209" },
+                { "name": "org.lwjgl.lwjgl:lwjgl_util:2.9.4-nightly-20150209" },
+                { "name": "org.lwjgl.lwjgl:lwjgl-platform:2.9.4-nightly-20150209" },
+                { "name": "org.lwjgl:lwjgl:3.4.1-unsafe" },
+                { "name": "com.cleanroommc:lwjglxx:1.1.22" }
+              ]
+            }
+            """);
+
+        var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: true);
+
+        Assert.True(
+            report.Success,
+            string.Join(Environment.NewLine, report.Steps.Select(step => $"{step.StepId}: {step.Message}")));
+        Assert.NotNull(report.CommandLine);
+        Assert.DoesNotContain("lwjgl-2.9.4", report.CommandLine, StringComparison.Ordinal);
+        Assert.DoesNotContain("lwjgl_util-2.9.4", report.CommandLine, StringComparison.Ordinal);
+        Assert.Contains("lwjgl-3.4.1-unsafe", report.CommandLine, StringComparison.Ordinal);
+        Assert.Contains("lwjglxx", report.CommandLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ForgeLaunchKeepsLegacyLwjglOnClasspath()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeProcessLauncher();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IProcessLauncher>(fake));
+
+        var created = await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("Forge", "1.12.2", "forge", "14.23.5.2864");
+        Assert.True(created.IsSuccess);
+        var instance = created.Value!;
+        await provider.GetRequiredService<IAccountService>().AddOfflineAsync("Player");
+        ConfigureFakeJava(environment, provider);
+
+        var versionDirectory = Path.Combine(environment.Paths.VersionsDirectory, instance.VersionId);
+        Directory.CreateDirectory(versionDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(versionDirectory, $"{instance.VersionId}.json"),
+            $$"""
+            {
+              "id": "{{instance.VersionId}}",
+              "type": "release",
+              "mainClass": "net.minecraft.launchwrapper.Launch",
+              "minecraftArguments": "--username ${auth_player_name} --gameDir ${game_directory}",
+              "libraries": [
+                { "name": "org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209" }
+              ]
+            }
+            """);
+
+        var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: true);
+
+        Assert.True(
+            report.Success,
+            string.Join(Environment.NewLine, report.Steps.Select(step => $"{step.StepId}: {step.Message}")));
+        Assert.NotNull(report.CommandLine);
+        Assert.Contains("lwjgl-2.9.4", report.CommandLine, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SplitsQuotedExtraArguments()
     {
         var arguments = CommandLineBuilder.SplitArguments("-Dfoo=\"a b\" 'c d' -Xmx2G");

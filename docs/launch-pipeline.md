@@ -138,6 +138,7 @@ public sealed record LaunchCommand(
 - 现代版本的 natives 以 `natives-<os>[-arch]` classifier 形式出现在 `name` 中；每组按架构选择唯一变体。
 - 类路径只包含主 artifact；natives classifier 与 legacy `Natives` 的 native jar 不进入类路径。
 - 库路径来自 `downloads.artifact.path`，缺失时按 Maven 坐标推导。
+- Cleanroom 启动时排除 LWJGL 2（`org.lwjgl.lwjgl:*` 与 `org.lwjgl:*:2.x`）：Cleanroom 使用 LWJGL 3 + `lwjglxx` 兼容层；从其它启动器导入的版本 JSON 可能同时带有原版 LWJGL 2，两套 `org.lwjgl` 同时进入类路径会让 `org.lwjgl.Sys` 加载不匹配的原生库并报 `NoSuchMethodError: getPointer`。类路径、natives 解压与启动前文件校验共用同一份过滤后的库列表。
 - 追加实例的 client jar：优先 `<data>/versions/<versionId>/<versionId>.jar`；该文件不存在时回退到继承链中声明 `downloads.client` 的版本目录，兼容其它启动器生成的加载器版本。
 - 版本 JSON 缺失时使用 `<classpath>` 占位（仅 Dry Run）。
 

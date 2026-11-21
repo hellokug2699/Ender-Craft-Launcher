@@ -223,7 +223,7 @@ public static class CommandLineBuilder
         }
 
         var plan = Versions.PlatformLibrarySelector.Plan(
-            context.Version.Libraries,
+            context.EffectiveLibraries,
             Versions.LibraryRules.CurrentOsName,
             Versions.LibraryRules.CurrentArch);
 
