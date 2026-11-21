@@ -135,6 +135,11 @@ public sealed record LaunchCommand(
 
 - 通过 `PlatformLibrarySelector` 按当前 OS/架构与 library `rules` 过滤。
 - 继承链合并时加载器库排在原版库之前（Forge 1.7.10 的 guava 17.0 需要覆盖原版 15.0）。
+- **合并型版本 JSON（`patches`）按段优先级重排**（`VersionLibraryResolver`）：其它启动器把
+  Cleanroom/Forge 等加载器与原版合并成顶层 `libraries` 时，数组顺序是「原版段在前」，段信息只留在
+  `patches`（带 `priority`）。ECL 在解析版本时按 `priority` 从高到低重排，同优先级时 `game` 基础段垫底，
+  并让高优先段在构件冲突时获胜——与其它启动器「加载器段覆盖原版段」的语义一致；顶层未被任何段覆盖的
+  条目保持在末尾。没有 `patches` 的版本（ECL 自建实例、官方 JSON）不受影响。
 - **同一构件只保留最高版本**（`MavenVersionComparer`，按 `group:artifact:classifier` 去重）：从其它启动器
   导入的整合包 JSON 常把原版库与加载器库合并成一张列表，同一构件会出现多个版本。Java 只加载第一个同名类，
   旧版本先出现就会遮蔽新版本并抛 `NoSuchMethodError`（实测 `log4j-api:2.8.1` 遮蔽 `2.26.0`，使 Cleanroom
@@ -147,6 +152,11 @@ public sealed record LaunchCommand(
 - 存在 `net.java.dev.jna:jna-platform` 时排除 JNA 3.x 的旧构件名 `net.java.dev.jna:platform`（JNA 4 起改名）：
   两者提供同一批 `com.sun.jna.platform.*` 类，旧构件先进入类路径会让 Cleanroom 的 Taskbar API 报
   `NoSuchMethodError: Guid$GUID.<init>(String)`。这条规范化对所有加载器生效，且在没有替代构件时不会删除唯一可用的库。
+- 存在完整 `com.ibm.icu:icu4j` 时排除原版 1.12.2 的裁剪版 `com.ibm.icu:icu4j-core-mojang`：
+  两者包名相同、构件名不同（按坐标去重抓不到），裁剪版不带 brkitr 断行数据，旧版先进入类路径时
+  Cleanroom 的 `ICU4JInstances` 会抛
+  `MissingResourceException: com/ibm/icu/impl/data/icudt51b/brkitr/en_US`（实测表现是 `rustic` 的
+  `BookBakedModel` 在模型烘焙期触发 `FontRenderer` 断行，启动失败）。同样只在替代构件存在时删除。
 - 追加实例的 client jar：优先 `<data>/versions/<versionId>/<versionId>.jar`；该文件不存在时回退到继承链中声明 `downloads.client` 的版本目录，兼容其它启动器生成的加载器版本。
 - 版本 JSON 缺失时使用 `<classpath>` 占位（仅 Dry Run）。
 

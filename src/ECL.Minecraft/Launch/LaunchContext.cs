@@ -40,8 +40,10 @@ public sealed class LaunchContext
     public MinecraftVersion? Version { get; set; }
 
     /// <summary>
-    /// 本次启动实际使用的库列表。Cleanroom 必须使用 LWJGL 3 + lwjglxx，
-    /// 导入的整合包 JSON 若同时带有 LWJGL 2，会在启动时移除（见 <see cref="LaunchLibraryFilter"/>）。
+    /// 本次启动实际使用的库列表。<see cref="Versions.VersionLibraryResolver"/> 已在解析版本时
+    /// 按合并型 JSON 的 <c>patches</c> 优先级重排库顺序；这里只做启动期剔除：
+    /// Cleanroom 移除 LWJGL 2（必须使用 LWJGL 3 + lwjglxx），并剔除已被替代的同包旧构件
+    /// （见 <see cref="LaunchLibraryFilter"/>）。
     /// </summary>
     public IReadOnlyList<VersionLibrary> EffectiveLibraries =>
         Version is null ? [] : LaunchLibraryFilter.Apply(Instance.Loader, Version.Libraries);

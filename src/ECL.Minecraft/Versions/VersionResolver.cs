@@ -56,6 +56,17 @@ internal sealed class VersionResolver(IAppPaths paths, ILogger<VersionResolver> 
             currentId = version.InheritsFrom;
         }
 
+        // 合并型版本 JSON（patches）先按段优先级归一化库顺序，再进入继承链合并。
+        // 其它启动器把原版段与加载器段合并成顶层 libraries 时是「原版段在前」，
+        // 不归一化会让原版旧库先进入类路径并遮蔽加载器库（见 VersionLibraryResolver）。
+        foreach (var version in chain)
+        {
+            if (version.Patches is { Count: > 0 })
+            {
+                version.Libraries = VersionLibraryResolver.Resolve(version).ToList();
+            }
+        }
+
         var merged = chain[^1];
         for (var index = chain.Count - 2; index >= 0; index--)
         {

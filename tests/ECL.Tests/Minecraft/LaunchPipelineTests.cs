@@ -307,6 +307,84 @@ public sealed class LaunchPipelineTests
         Assert.Contains("lwjglxx", report.CommandLine, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// 合并型版本 JSON 的顶层 libraries 是「原版段在前」，但 patches 里 cleanroom 段 priority=30000。
+    /// 解析阶段必须按段优先级重排：加载器库在前，原版旧库被遮蔽；同时启动期剔除原版裁剪版 ICU4J。
+    /// </summary>
+    [Fact]
+    public async Task MergedPatchesPutLoaderLibrariesBeforeVanillaOnClasspath()
+    {
+        using var environment = new TestEnvironment();
+        var fake = new FakeProcessLauncher();
+        await using var provider = environment.CreateServices(services => services.AddSingleton<IProcessLauncher>(fake));
+
+        var created = await provider.GetRequiredService<IInstanceService>()
+            .CreateAsync("GreedyCraft2", "1.12.2", "cleanroom", "0.6.13-alpha");
+        Assert.True(created.IsSuccess);
+        var instance = created.Value!;
+        await provider.GetRequiredService<IAccountService>().AddOfflineAsync("Player");
+        ConfigureFakeJava(environment, provider);
+
+        var versionDirectory = Path.Combine(environment.Paths.VersionsDirectory, instance.VersionId);
+        Directory.CreateDirectory(versionDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(versionDirectory, $"{instance.VersionId}.json"),
+            $$"""
+            {
+              "id": "{{instance.VersionId}}",
+              "type": "release",
+              "mainClass": "top.outlands.foundation.boot.Foundation",
+              "minecraftArguments": "--username ${auth_player_name} --gameDir ${game_directory} --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",
+              "libraries": [
+                { "name": "com.ibm.icu:icu4j-core-mojang:51.2" },
+                { "name": "io.netty:netty-all:4.1.9.Final" },
+                { "name": "com.ibm.icu:icu4j:78.3" },
+                { "name": "io.netty:netty-handler:4.2.15.Final" }
+              ],
+              "patches": [
+                {
+                  "id": "game",
+                  "version": "1.12.2",
+                  "priority": 0,
+                  "libraries": [
+                    { "name": "com.ibm.icu:icu4j-core-mojang:51.2" },
+                    { "name": "io.netty:netty-all:4.1.9.Final" }
+                  ]
+                },
+                {
+                  "id": "cleanroom",
+                  "version": "0.6.13-alpha",
+                  "priority": 30000,
+                  "libraries": [
+                    { "name": "com.ibm.icu:icu4j:78.3" },
+                    { "name": "io.netty:netty-handler:4.2.15.Final" }
+                  ]
+                }
+              ]
+            }
+            """);
+
+        var report = await provider.GetRequiredService<ILaunchService>().LaunchAsync(instance.Id, dryRun: true);
+
+        Assert.True(
+            report.Success,
+            string.Join(Environment.NewLine, report.Steps.Select(step => $"{step.StepId}: {step.Message}")));
+        var commandLine = report.CommandLine!;
+
+        // 原版裁剪版 ICU4J 被完整 ICU4J 取代（否则 Cleanroom 的 ICU4JInstances 找不到 brkitr 数据）。
+        Assert.DoesNotContain("icu4j-core-mojang", commandLine, StringComparison.Ordinal);
+        Assert.Contains("icu4j-78.3", commandLine, StringComparison.Ordinal);
+
+        // 同包不同构件：加载器段在前，原版 netty-all 只能排在后面被遮蔽。
+        var loaderNetty = commandLine.IndexOf("netty-handler-4.2.15.Final", StringComparison.Ordinal);
+        var vanillaNetty = commandLine.IndexOf("netty-all-4.1.9.Final", StringComparison.Ordinal);
+        Assert.True(loaderNetty >= 0, "类路径缺少加载器段的 netty-handler。");
+        Assert.True(vanillaNetty >= 0, "类路径缺少原版 netty-all（应保留但排在后面）。");
+        Assert.True(
+            loaderNetty < vanillaNetty,
+            $"加载器段库应排在原版段之前：netty-handler@{loaderNetty} > netty-all@{vanillaNetty}");
+    }
+
     [Fact]
     public async Task ForgeLaunchKeepsLegacyLwjglOnClasspath()
     {

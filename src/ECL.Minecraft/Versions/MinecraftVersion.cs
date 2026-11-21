@@ -40,6 +40,14 @@ public sealed partial class MinecraftVersion
 
     public List<VersionLibrary> Libraries { get; set; } = [];
 
+    /// <summary>
+    /// 其它启动器（PCL/HMCL 等）合并 Cleanroom、Forge 等加载器时写入的 <c>patches</c> 段。
+    /// 顶层 <see cref="Libraries"/> 是这些段合并后的结果，但合并顺序是「原版段在前」，
+    /// 会让原版旧库遮蔽加载器库；<see cref="VersionLibraryResolver"/> 以这里的 <c>priority</c>
+    /// 重建顺序。只读取库列表，其余字段不参与启动。
+    /// </summary>
+    public List<VersionPatch>? Patches { get; set; }
+
     public static bool IsValidVersionId(string? versionId) =>
         !string.IsNullOrWhiteSpace(versionId) && VersionIdRegex().IsMatch(versionId);
 
@@ -113,6 +121,21 @@ public sealed class VersionLoggingFile
     public string? Sha1 { get; set; }
 
     public long? Size { get; set; }
+}
+
+/// <summary>
+/// 合并型版本 JSON 中的一段（例如 <c>game</c> 原版段、<c>cleanroom</c> 加载器段）。
+/// <see cref="Priority"/> 越大越靠前，与其它启动器一致：加载器段必须排在原版段之前。
+/// </summary>
+public sealed class VersionPatch
+{
+    public string? Id { get; set; }
+
+    public string? Version { get; set; }
+
+    public int Priority { get; set; }
+
+    public List<VersionLibrary> Libraries { get; set; } = [];
 }
 
 public sealed class VersionLibrary

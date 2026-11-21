@@ -104,6 +104,61 @@ public sealed class LaunchLibraryFilterTests
     public void DetectsLegacyJnaPlatformCoordinates(string name, bool expected) =>
         Assert.Equal(expected, LaunchLibraryFilter.IsLegacyJnaPlatform(name));
 
+    /// <summary>
+    /// 原版 1.12.2 带裁剪版 <c>com.ibm.icu:icu4j-core-mojang:51.2</c>（无 brkitr 断行数据），
+    /// Cleanroom 带完整 <c>com.ibm.icu:icu4j:78.3</c>。两者构件名不同，按坐标去重抓不到；
+    /// 裁剪版先被命中时 Cleanroom 的 <c>ICU4JInstances</c> 会抛
+    /// <c>MissingResourceException: .../icudt51b/brkitr/en_US</c>，启动在模型烘焙期就崩。
+    /// </summary>
+    [Fact]
+    public void MojangIcu4jIsDroppedWhenFullIcu4jExists()
+    {
+        var libraries = new[]
+        {
+            Library("com.ibm.icu:icu4j-core-mojang:51.2"),
+            Library("com.ibm.icu:icu4j:78.3"),
+        };
+
+        var filtered = LaunchLibraryFilter.Apply("cleanroom", libraries);
+
+        var library = Assert.Single(filtered);
+        Assert.Equal("com.ibm.icu:icu4j:78.3", library.Name);
+    }
+
+    [Fact]
+    public void MojangIcu4jIsDroppedForEveryLoader()
+    {
+        var libraries = new[]
+        {
+            Library("com.ibm.icu:icu4j-core-mojang:51.2"),
+            Library("com.ibm.icu:icu4j:78.3"),
+        };
+
+        foreach (var loader in new[] { "forge", "vanilla", "fabric", "cleanroom", null })
+        {
+            var filtered = LaunchLibraryFilter.Apply(loader, libraries);
+            Assert.DoesNotContain(filtered, library => library.Name.Contains("icu4j-core-mojang", StringComparison.Ordinal));
+            Assert.Contains(filtered, library => library.Name == "com.ibm.icu:icu4j:78.3");
+        }
+    }
+
+    [Fact]
+    public void MojangIcu4jIsKeptWhenNoFullIcu4jExists()
+    {
+        var libraries = new[] { Library("com.ibm.icu:icu4j-core-mojang:51.2") };
+
+        // 原版 1.12.2 单独使用时该库仍然需要，不能把唯一可用的库删掉。
+        Assert.Same(libraries, LaunchLibraryFilter.Apply("vanilla", libraries));
+    }
+
+    [Theory]
+    [InlineData("com.ibm.icu:icu4j-core-mojang:51.2", true)]
+    [InlineData("com.ibm.icu:icu4j:78.3", false)]
+    [InlineData("com.ibm.icu:icu4j:73.2", false)]
+    [InlineData("", false)]
+    public void DetectsMojangIcu4jCoordinates(string name, bool expected) =>
+        Assert.Equal(expected, LaunchLibraryFilter.IsMojangIcu4j(name));
+
     [Theory]
     [InlineData("org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209", true)]
     [InlineData("org.lwjgl.lwjgl:lwjgl_util:2.9.4-nightly-20150209", true)]

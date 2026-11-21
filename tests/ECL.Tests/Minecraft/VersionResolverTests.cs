@@ -81,6 +81,52 @@ public sealed class VersionResolverTests
         Assert.Equal("version.missing", resolved.Error?.Code);
     }
 
+    /// <summary>
+    /// 合并型版本 JSON：顶层 libraries 是「原版段在前」，但 patches 的 cleanroom 段优先级更高。
+    /// 解析结果必须把加载器段库排到原版段之前，否则原版旧库会遮蔽加载器库。
+    /// </summary>
+    [Fact]
+    public async Task ResolvesMergedPatchesInPriorityOrder()
+    {
+        using var environment = new TestEnvironment();
+        await using var provider = environment.CreateServices();
+
+        WriteVersion(environment, "merged", """
+            {
+              "id": "merged",
+              "mainClass": "top.outlands.foundation.boot.Foundation",
+              "libraries": [
+                { "name": "com.ibm.icu:icu4j-core-mojang:51.2" },
+                { "name": "com.ibm.icu:icu4j:78.3" }
+              ],
+              "patches": [
+                {
+                  "id": "game",
+                  "version": "1.12.2",
+                  "priority": 0,
+                  "libraries": [ { "name": "com.ibm.icu:icu4j-core-mojang:51.2" } ]
+                },
+                {
+                  "id": "cleanroom",
+                  "version": "0.6.13-alpha",
+                  "priority": 30000,
+                  "libraries": [ { "name": "com.ibm.icu:icu4j:78.3" } ]
+                }
+              ]
+            }
+            """);
+
+        var resolved = await provider.GetRequiredService<IVersionResolver>().ResolveAsync("merged");
+
+        Assert.True(resolved.IsSuccess);
+        var libraries = resolved.Value!.Libraries;
+        var loaderIndex = libraries.FindIndex(library => library.Name == "com.ibm.icu:icu4j:78.3");
+        var vanillaIndex = libraries.FindIndex(library => library.Name == "com.ibm.icu:icu4j-core-mojang:51.2");
+        Assert.True(loaderIndex >= 0, "缺少加载器段 ICU4J。");
+        Assert.True(vanillaIndex >= 0, "缺少原版段裁剪版 ICU4J。");
+        Assert.True(loaderIndex < vanillaIndex, "加载器段库必须排在原版段之前。");
+    }
+
     private static void WriteVersion(TestEnvironment environment, string versionId, string json)
     {
         var path = VersionFilePlanner.GetVersionJsonPath(environment.Paths, versionId);
