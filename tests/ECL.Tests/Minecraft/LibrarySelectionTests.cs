@@ -47,6 +47,83 @@ public sealed class LibrarySelectionTests
         Assert.False(LibraryRules.IsAllowed(windowsOnly, "linux", "x86_64"));
     }
 
+    /// <summary>
+    /// netty 的原生传输 jar 在整合包 JSON 里被写成「classifier 拼进版本段」
+    /// （<c>…:4.2.15.Final-linux-x86_64</c>，没有 rules）；Windows 上不应进入类路径。
+    /// </summary>
+    [Fact]
+    public void DropsNativeArtifactsWhosePlatformSuffixIsForeign()
+    {
+        var libraries = new[]
+        {
+            PlainLibrary("io.netty:netty-transport-native-epoll:4.2.15.Final-linux-x86_64"),
+            PlainLibrary("io.netty:netty-transport-native-epoll:4.2.15.Final-windows-x86_64"),
+            PlainLibrary("io.netty:netty-transport-native-unix-common:4.2.15.Final-linux-x86_64"),
+            PlainLibrary("com.example:plain:1.0"),
+        };
+
+        var windows = Names(PlatformLibrarySelector.Plan(libraries, "windows", "x86_64"));
+
+        Assert.Equal(
+            [
+                "io.netty:netty-transport-native-epoll:4.2.15.Final-windows-x86_64",
+                "com.example:plain:1.0",
+            ],
+            windows);
+
+        var linux = Names(PlatformLibrarySelector.Plan(libraries, "linux", "x86_64"));
+
+        Assert.Contains("io.netty:netty-transport-native-epoll:4.2.15.Final-linux-x86_64", linux);
+        Assert.Contains("io.netty:netty-transport-native-unix-common:4.2.15.Final-linux-x86_64", linux);
+        Assert.DoesNotContain("io.netty:netty-transport-native-epoll:4.2.15.Final-windows-x86_64", linux);
+    }
+
+    [Fact]
+    public void DropsNativeClassifierArtifactsWhosePlatformIsForeign()
+    {
+        var libraries = new[]
+        {
+            PlainLibrary("com.example:native:1.0:linux-x86_64"),
+            PlainLibrary("com.example:native:1.0:windows-x86_64"),
+            PlainLibrary("com.example:native:1.0:sources"),
+        };
+
+        var windows = Names(PlatformLibrarySelector.Plan(libraries, "windows", "x86_64"));
+
+        // 普通 classifier（sources 等）不是平台标识，必须保留。
+        Assert.Equal(
+            ["com.example:native:1.0:windows-x86_64", "com.example:native:1.0:sources"],
+            windows);
+    }
+
+    [Theory]
+    [InlineData("windows", "x86_64", "windows-x86_64", true)]
+    [InlineData("windows", "x86_64", "windows-x86", false)]
+    [InlineData("windows", "x86", "windows-x86", true)]
+    [InlineData("windows", "x86_64", "osx-x86_64", false)]
+    public void ForeignArchitectureNativeArtifactsAreDropped(string os, string arch, string classifier, bool expected)
+    {
+        var library = PlainLibrary($"com.example:native:1.0:{classifier}");
+
+        Assert.Equal(expected, !LibraryRules.IsForeignNativeArtifact(library, os, arch));
+    }
+
+    [Fact]
+    public void UnrecognizedCoordinatesAreNeverDroppedAsNative()
+    {
+        // 版本段或 classifier 无法识别为平台时保持原行为，避免误删普通库。
+        foreach (var name in new[]
+                 {
+                     "com.example:demo:1.0",
+                     "org.lwjgl:lwjgl:3.4.1-unsafe",
+                     "com.example:demo:1.0:sources",
+                     "com.example:demo:1.0-natives",
+                 })
+        {
+            Assert.False(LibraryRules.IsForeignNativeArtifact(PlainLibrary(name), "windows", "x86_64"));
+        }
+    }
+
     [Theory]
     [InlineData("x64")]
     [InlineData("x86_64")]
@@ -170,6 +247,18 @@ public sealed class LibrarySelectionTests
         Assert.True(File.Exists(Path.Combine(nativesDirectory, "native.dll")));
         Assert.False(File.Exists(Path.Combine(nativesDirectory, "META-INF", "MANIFEST.MF")));
     }
+
+    private static string[] Names(IReadOnlyList<LibraryPlanItem> plan) =>
+        plan.Select(item => item.Library.Name).ToArray();
+
+    private static VersionLibrary PlainLibrary(string name) => new()
+    {
+        Name = name,
+        Downloads = new VersionLibraryDownloads
+        {
+            Artifact = new VersionLibraryArtifact { Path = MavenCoordinates.GetPath(name) },
+        },
+    };
 
     private static VersionLibrary NormalLibrary() => new()
     {

@@ -26,7 +26,143 @@ public static class LibraryRules
         string osName,
         string osArch,
         IReadOnlyDictionary<string, bool>? features = null) =>
-        VersionRuleEvaluator.IsAllowed(library.Rules, osName, osArch, features);
+        VersionRuleEvaluator.IsAllowed(library.Rules, osName, osArch, features) &&
+        !IsForeignNativeArtifact(library, osName, osArch);
+
+    /// <summary>
+    /// 剔除与当前平台不符的原生 jar。部分加载器产物把平台写进坐标而不写 <c>rules</c>：
+    /// 既可能是 classifier（<c>io.netty:netty-transport-native-epoll:4.2.15.Final:linux-x86_64</c>），
+    /// 也可能被直接拼进版本段（<c>…:4.2.15.Final-linux-x86_64</c>，实测整合包如此）。
+    /// 这类 jar 对当前 JVM 无用；Windows 上带着 Linux 原生库只会污染类路径与文件校验。
+    /// 无法识别的平台写法保持原行为（允许）。
+    /// </summary>
+    public static bool IsForeignNativeArtifact(VersionLibrary library, string osName, string osArch)
+    {
+        if (IsModernNativeClassifier(library))
+        {
+            // natives-xxx / native-xxx 由 NativeClassifierPriority 按平台与架构挑选，不在这里判断。
+            return false;
+        }
+
+        var (artifactOs, artifactArch) = GetNativePlatform(library);
+        if (artifactOs is null)
+        {
+            return false;
+        }
+
+        var currentOs = NormalizeOsToken(osName) ?? osName.Trim().ToLowerInvariant();
+        if (!string.Equals(artifactOs, currentOs, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (artifactArch is null)
+        {
+            return false;
+        }
+
+        var currentArch = VersionRuleEvaluator.NormalizeArch(osArch);
+        if (string.IsNullOrWhiteSpace(currentArch) ||
+            string.Equals(currentArch, "unknown", StringComparison.Ordinal))
+        {
+            // 架构未知时不按架构剔除，避免歧义机器上删掉唯一可用的原生库。
+            return false;
+        }
+
+        return !string.Equals(artifactArch, currentArch, StringComparison.Ordinal);
+    }
+
+    /// <summary>从 classifier 或版本段尾部解析原生库的平台/架构；解析不出时返回 (null, null)。</summary>
+    private static (string? Os, string? Arch) GetNativePlatform(VersionLibrary library)
+    {
+        var classifier = MavenCoordinates.GetClassifier(library.Name);
+        if (classifier is not null && TryParsePlatformToken(classifier, out var classifierOs, out var classifierArch))
+        {
+            return (classifierOs, classifierArch);
+        }
+
+        var version = MavenCoordinates.GetVersion(library.Name);
+        if (version is not null && TryParsePlatformPrefix(version, out var versionOs, out var versionArch))
+        {
+            return (versionOs, versionArch);
+        }
+
+        return (null, null);
+    }
+
+    private static bool TryParsePlatformToken(string token, out string? os, out string? arch)
+    {
+        var parts = token.Trim().ToLowerInvariant().Split('-', StringSplitOptions.RemoveEmptyEntries);
+        os = parts.Length > 0 ? NormalizeOsToken(parts[0]) : null;
+        arch = parts.Length > 1 ? NormalizeArchToken(parts[1]) : null;
+        return os is not null;
+    }
+
+    /// <summary>匹配以 <c>-&lt;os&gt;[-&lt;arch&gt;]</c> 结尾的版本段（classifier 被拼进 version 的写法）。</summary>
+    private static bool TryParsePlatformPrefix(string version, out string? os, out string? arch)
+    {
+        os = null;
+        arch = null;
+
+        var normalized = version.Trim().ToLowerInvariant();
+        var separator = normalized.LastIndexOf('-');
+        if (separator < 0 || separator == normalized.Length - 1)
+        {
+            return false;
+        }
+
+        var last = normalized[(separator + 1)..];
+        var lastArch = NormalizeArchToken(last);
+        var head = normalized[..separator];
+
+        if (lastArch is not null)
+        {
+            var secondSeparator = head.LastIndexOf('-');
+            if (secondSeparator < 0)
+            {
+                return false;
+            }
+
+            var headOs = NormalizeOsToken(head[(secondSeparator + 1)..]);
+            if (headOs is null)
+            {
+                return false;
+            }
+
+            os = headOs;
+            arch = lastArch;
+            return true;
+        }
+
+        var directOs = NormalizeOsToken(last);
+        if (directOs is null)
+        {
+            return false;
+        }
+
+        os = directOs;
+        return true;
+    }
+
+    private static string? NormalizeOsToken(string token) => token.Trim().ToLowerInvariant() switch
+    {
+        "windows" or "win" or "win32" or "win64" => "windows",
+        "osx" or "macos" or "macosx" or "mac" or "darwin" => "osx",
+        "linux" => "linux",
+        _ => null,
+    };
+
+    private static string? NormalizeArchToken(string token) => token.Trim().ToLowerInvariant() switch
+    {
+        "x86_64" or "x86-64" or "x64" or "amd64" => "x86_64",
+        "x86" or "i386" or "i686" or "32" => "x86",
+        "aarch_64" or "aarch64" or "arm64" or "arm_64" => "arm64",
+        "arm32" or "arm" or "armv7" => "arm32",
+        "ppcle_64" or "ppc64le" => "ppc64le",
+        "s390_64" => "s390x",
+        "riscv64" => "riscv64",
+        _ => null,
+    };
 
     public static bool IsModernNativeClassifier(VersionLibrary library)
     {

@@ -146,6 +146,11 @@ public sealed record LaunchCommand(
   的 `log4j-slf4j2-impl` 报 `LoggerContextFactory.isClassLoaderDependent()`；`httpclient`、`commons-lang3`、
   `jopt-simple` 等 25 个重复构件同理）。
 - 现代版本的 natives 以 `natives-<os>[-arch]` classifier 形式出现在 `name` 中；每组按架构选择唯一变体。
+- 平台不匹配的原生 jar 一律剔除：坐标里带 `linux` / `windows` / `osx` 平台标识时（classifier 形式如
+  `…:4.2.15.Final:linux-x86_64`，或整合包常见的「classifier 拼进版本段」形式如
+  `io.netty:netty-transport-native-epoll:4.2.15.Final-linux-x86_64`），与当前 OS 不符即排除；OS 相符但架构
+  （`x86_64`/`x86`/`arm64`/`arm32`）不符也排除。无法识别为平台标识的 classifier（如 `sources`）与普通版本号
+  保持原行为，`natives-*` 仍由上面的架构选择规则处理。
 - 类路径只包含主 artifact；natives classifier 与 legacy `Natives` 的 native jar 不进入类路径。
 - 库路径来自 `downloads.artifact.path`，缺失时按 Maven 坐标推导。
 - Cleanroom 启动时排除 LWJGL 2（`org.lwjgl.lwjgl:*` 与 `org.lwjgl:*:2.x`）：Cleanroom 使用 LWJGL 3 + `lwjglxx` 兼容层；从其它启动器导入的版本 JSON 可能同时带有原版 LWJGL 2，两套 `org.lwjgl` 同时进入类路径会让 `org.lwjgl.Sys` 加载不匹配的原生库并报 `NoSuchMethodError: getPointer`。类路径、natives 解压与启动前文件校验共用同一份过滤后的库列表。
@@ -157,6 +162,9 @@ public sealed record LaunchCommand(
   Cleanroom 的 `ICU4JInstances` 会抛
   `MissingResourceException: com/ibm/icu/impl/data/icudt51b/brkitr/en_US`（实测表现是 `rustic` 的
   `BookBakedModel` 在模型烘焙期触发 `FontRenderer` 断行，启动失败）。同样只在替代构件存在时删除。
+- `io.netty:netty-all` **保留**（排在模块化 netty 之后，被遮蔽）：4.2 已移除 memcache/xml/proxy 等模块，
+  实测 netty-all 4.1.9 有 455 个类不在 4.2.15 模块集合中；整包剔除会让引用这些类的模组直接
+  `NoClassDefFoundError`，因此不做删除，只依赖段顺序让加载器模块先命中。
 - 追加实例的 client jar：优先 `<data>/versions/<versionId>/<versionId>.jar`；该文件不存在时回退到继承链中声明 `downloads.client` 的版本目录，兼容其它启动器生成的加载器版本。
 - 版本 JSON 缺失时使用 `<classpath>` 占位（仅 Dry Run）。
 
