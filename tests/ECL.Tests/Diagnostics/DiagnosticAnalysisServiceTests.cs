@@ -408,11 +408,28 @@ public sealed class DiagnosticAnalysisServiceTests : IDisposable
             GameLogSession session,
             SessionArtifact artifact,
             int maxBytes = SessionLogReader.DefaultChunkBytes,
+            SessionEvidenceAnchor anchor = SessionEvidenceAnchor.Tail,
             CancellationToken cancellationToken = default)
         {
             ReadEvidenceCalls++;
-            return _inner.ReadEvidenceAsync(session, artifact, maxBytes, cancellationToken);
+            return _inner.ReadEvidenceAsync(session, artifact, maxBytes, anchor, cancellationToken);
         }
+
+        public Task<SessionLogChunk> ReadEvidenceBeforeAsync(
+            GameLogSession session,
+            SessionArtifact artifact,
+            long beforeOffset,
+            int maxBytes = SessionLogReader.DefaultChunkBytes,
+            CancellationToken cancellationToken = default) =>
+            _inner.ReadEvidenceBeforeAsync(session, artifact, beforeOffset, maxBytes, cancellationToken);
+
+        public Task<SessionLogChunk> ReadEvidenceAfterAsync(
+            GameLogSession session,
+            SessionArtifact artifact,
+            long afterOffset,
+            int maxBytes = SessionLogReader.DefaultChunkBytes,
+            CancellationToken cancellationToken = default) =>
+            _inner.ReadEvidenceAfterAsync(session, artifact, afterOffset, maxBytes, cancellationToken);
     }
 
     private sealed class FakeInstanceService(GameInstance? instance) : IInstanceService

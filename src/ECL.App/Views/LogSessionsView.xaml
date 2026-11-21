@@ -64,9 +64,30 @@
         </Style>
 
         <Style x:Key="LogSourceTabStyle" TargetType="ListBoxItem" BasedOn="{StaticResource TabStripItemStyle}">
-            <Setter Property="Padding" Value="10,7" />
-            <Setter Property="Margin" Value="0,0,6,6" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Margin" Value="0,0,6,0" />
             <Setter Property="AutomationProperties.Name" Value="{Binding Title}" />
+        </Style>
+
+        <!--
+            阅读器工具栏：与来源页签同一行，按钮按“紧凑但仍可点”的密度排版。
+            辅助操作收进“更多”，避免工具栏自己再占一行（正文高度优先）。
+        -->
+        <Style x:Key="ReaderToolButton" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="ReaderToggleButton" TargetType="ToggleButton" BasedOn="{StaticResource PanelToggleButton}">
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
         <Style x:Key="LogListStyle" TargetType="ListBox">
@@ -135,8 +156,8 @@
 
         <StackPanel Grid.Row="1">
             <!-- 目标会话不可用（logs.md §7.1）：保留说明，不静默改看其它会话。 -->
-            <Border Margin="24,0,24,10"
-                    Padding="12,9"
+            <Border Margin="24,0,24,8"
+                    Padding="10,6"
                     CornerRadius="10"
                     Background="{DynamicResource WarningSoftBrush}"
                     BorderBrush="{DynamicResource WarningBorderBrush}"
@@ -144,13 +165,13 @@
                     Visibility="{Binding HasTargetUnavailable, Converter={StaticResource BoolToVisibility}}">
                 <TextBlock Text="{Binding TargetUnavailableMessage}"
                            Foreground="{DynamicResource WarningBrush}"
-                           FontSize="11"
+                           FontSize="10"
                            TextWrapping="Wrap" />
             </Border>
 
             <!-- 实例快捷入口的筛选上下文（logs.md §7.2）。 -->
-            <Border Margin="24,0,24,10"
-                    Padding="12,8"
+            <Border Margin="24,0,24,8"
+                    Padding="10,6"
                     CornerRadius="10"
                     Background="{DynamicResource AccentSoftBrush}"
                     BorderBrush="{DynamicResource AccentBorderBrush}"
@@ -162,7 +183,7 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="{Binding InstanceFocusMessage}"
-                               FontSize="11"
+                               FontSize="10"
                                Foreground="{DynamicResource AccentHoverBrush}"
                                TextWrapping="Wrap"
                                VerticalAlignment="Center" />
@@ -344,12 +365,12 @@
                           Background="Transparent"
                           Visibility="{Binding ShowSessionSplitter, Converter={StaticResource BoolToVisibility}}" />
 
-            <!-- 中央阅读区 -->
+            <!--
+                中央阅读区：正文是主体。来源页签与阅读器操作共用一行，
+                搜索/过滤改为浮层，证据清单改为右侧栏——三者都不再占用正文上方的垂直空间。
+            -->
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -357,8 +378,8 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- 标题行：当前会话身份。工具栏单独一行，避免窄窗口把标题压成竖排。 -->
-                <Grid Margin="0,0,0,8">
+                <!-- 标题行：当前会话身份。 -->
+                <Grid Margin="0,0,0,6">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -376,112 +397,145 @@
                     <Button Grid.Column="1"
                             Content="{loc:Loc Key=logs.sessionList.toggle}"
                             Command="{Binding ToggleSessionListCommand}"
-                            Style="{StaticResource ToolbarButton}"
+                            Style="{StaticResource ReaderToolButton}"
                             VerticalAlignment="Top"
                             Margin="8,0,0,0" />
                 </Grid>
 
-                <!-- 阅读器工具栏：窄窗口自动换行，不挤压日志正文。 -->
-                <WrapPanel Grid.Row="1" Margin="0,0,0,6">
-                    <Button Content="{Binding FollowText}"
-                            Command="{Binding ToggleFollowCommand}"
-                            Style="{StaticResource ToolbarButton}"
-                            Margin="0,0,6,6" />
-                    <Button Content="{Binding WrapText}"
-                            Command="{Binding ToggleWrapCommand}"
-                            Style="{StaticResource ToolbarButton}"
-                            Margin="0,0,6,6" />
-                    <Button Content="{loc:Loc Key=logs.copyLine}"
-                            Command="{Binding CopyLineCommand}"
-                            CommandParameter="{Binding SelectedLine}"
-                            Style="{StaticResource ToolbarButton}"
-                            Margin="0,0,6,6" />
-                    <!-- F-09 S8：多选/范围复制只写入剪贴板，不修改原始日志。 -->
-                    <Button Content="{Binding CopySelectedText}"
-                            Command="{Binding CopyLinesCommand}"
-                            Style="{StaticResource ToolbarButton}"
-                            Margin="0,0,6,6"
-                            ToolTip="{loc:Loc Key=logs.selectionHint}"
-                            IsEnabled="{Binding HasSelection}" />
-                    <Button Content="{loc:Loc Key=logs.copyVisible}"
-                            Command="{Binding CopyVisibleLinesCommand}"
-                            Style="{StaticResource ToolbarButton}"
-                            Margin="0,0,6,6" />
-                    <!-- F-09 S4：启动失败时自动打开日志（只影响导航，不影响采集）。 -->
-                    <Button Content="{Binding AutoOpenText}"
-                            Command="{Binding ToggleAutoOpenOnFailureCommand}"
-                            Style="{StaticResource ToolbarButton}"
-                            Margin="0,0,6,6"
-                            ToolTip="{loc:Loc Key=option.logs.autoOpenOnFailure.desc}" />
-                    <Button Content="{loc:Loc Key=logs.openFolder}"
-                            Command="{Binding OpenFolderCommand}"
-                            Style="{StaticResource ToolbarButton}"
-                            Margin="0,0,6,6" />
-                </WrapPanel>
+                <!-- 来源选择与阅读器操作同一行。 -->
+                <Grid Grid.Row="1" Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                <!-- 来源切换：游戏日志 / stdout / stderr / 诊断证据 -->
-                <ListBox Grid.Row="2"
-                         ItemsSource="{Binding Sources}"
-                         SelectedItem="{Binding SelectedSource, Mode=TwoWay}"
-                         ItemContainerStyle="{StaticResource LogSourceTabStyle}"
-                         Background="Transparent"
-                         BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                         AutomationProperties.Name="{loc:Loc Key=logs.sources}"
-                         Visibility="{Binding IsNarrow, Converter={StaticResource InverseBoolToVisibility}}">
-                    <ListBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel />
-                        </ItemsPanelTemplate>
-                    </ListBox.ItemsPanel>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding Title}" FontSize="12" />
+                    <!-- 来源切换：游戏日志 / stdout / stderr / 诊断证据 -->
+                    <ListBox Grid.Column="0"
+                             ItemsSource="{Binding Sources}"
+                             SelectedItem="{Binding SelectedSource, Mode=TwoWay}"
+                             ItemContainerStyle="{StaticResource LogSourceTabStyle}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                             AutomationProperties.Name="{loc:Loc Key=logs.sources}"
+                             VerticalAlignment="Top"
+                             Visibility="{Binding IsCompactSources, Converter={StaticResource InverseBoolToVisibility}}">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <!-- 来源页签保持一行：警告只以提示点表达，完整说明在 ToolTip 与选中后的提示条里。 -->
+                                <StackPanel Orientation="Horizontal" ToolTip="{Binding Warning}">
+                                    <TextBlock Text="{Binding Title}"
+                                               FontSize="11"
+                                               VerticalAlignment="Center" />
+                                    <Ellipse Width="6"
+                                             Height="6"
+                                             Margin="6,0,0,0"
+                                             Fill="{DynamicResource WarningBrush}"
+                                             VerticalAlignment="Center"
+                                             Visibility="{Binding Warning, Converter={StaticResource StringToVisibility}}" />
                                     <TextBlock Text="{Binding StatusText}"
                                                FontSize="9"
-                                               Margin="8,0,0,0"
+                                               Margin="6,0,0,0"
                                                Foreground="{DynamicResource TextMutedBrush}"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxWidth="140" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- 窄窗口用单行来源选择器替代页签。 -->
+                    <ComboBox Grid.Column="0"
+                              ItemsSource="{Binding Sources}"
+                              SelectedItem="{Binding SelectedSource, Mode=TwoWay}"
+                              VerticalAlignment="Top"
+                              AutomationProperties.Name="{loc:Loc Key=logs.sources}"
+                              Visibility="{Binding IsCompactSources, Converter={StaticResource BoolToVisibility}}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Title}" FontSize="11" />
+                                    <TextBlock Text="{Binding StatusText}"
+                                               FontSize="9"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               Margin="6,0,0,0"
                                                VerticalAlignment="Center" />
                                 </StackPanel>
-                                <TextBlock Text="{Binding Warning}"
-                                           FontSize="9"
-                                           Foreground="{DynamicResource WarningBrush}"
-                                           MaxWidth="280"
-                                           TextTrimming="CharacterEllipsis"
-                                           Visibility="{Binding Warning, Converter={StaticResource StringToVisibility}}" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
 
-                <!-- 窄窗口用单行来源选择器替代页签，避免来源区占用两行高度。 -->
-                <ComboBox Grid.Row="2"
-                          ItemsSource="{Binding Sources}"
-                          SelectedItem="{Binding SelectedSource, Mode=TwoWay}"
-                          Margin="0,0,0,6"
-                          AutomationProperties.Name="{loc:Loc Key=logs.sources}"
-                          Visibility="{Binding IsNarrow, Converter={StaticResource BoolToVisibility}}">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate>
+                    <!-- 阅读器操作：只保留高频动作，其余收进“更多”。 -->
+                    <WrapPanel Grid.Column="1"
+                               Orientation="Horizontal"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Top"
+                               Margin="6,0,0,0">
+                        <Button Content="{Binding FollowText}"
+                                Command="{Binding ToggleFollowCommand}"
+                                Style="{StaticResource ReaderToolButton}"
+                                ToolTip="{loc:Loc Key=logs.follow.hint}" />
+                        <Button Content="{Binding WrapText}"
+                                Command="{Binding ToggleWrapCommand}"
+                                Style="{StaticResource ReaderToolButton}"
+                                ToolTip="{loc:Loc Key=logs.wrap.hint}" />
+                        <Button Content="{Binding CopySelectedText}"
+                                Command="{Binding CopyLinesCommand}"
+                                Style="{StaticResource ReaderToolButton}"
+                                ToolTip="{loc:Loc Key=logs.selectionHint}"
+                                IsEnabled="{Binding HasSelection}" />
+                        <ToggleButton IsChecked="{Binding IsFilterPanelOpen, Mode=TwoWay}"
+                                      Style="{StaticResource ReaderToggleButton}"
+                                      ToolTip="{loc:Loc Key=logs.searchAndFilter}"
+                                      AutomationProperties.Name="{loc:Loc Key=logs.searchAndFilter}">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding Title}" FontSize="12" />
-                                <TextBlock Text="{Binding StatusText}"
-                                           FontSize="9"
-                                           Foreground="{DynamicResource TextMutedBrush}"
-                                           Margin="8,0,0,0"
+                                <Path Data="{StaticResource IconFilter}"
+                                      Stroke="{DynamicResource TextSecondaryBrush}"
+                                      StrokeThickness="1.3"
+                                      Width="12"
+                                      Height="12"
+                                      Stretch="Uniform"
+                                      VerticalAlignment="Center" />
+                                <TextBlock Text="{loc:Loc Key=logs.filter.short}"
+                                           Margin="5,0,0,0"
+                                           FontSize="10"
                                            VerticalAlignment="Center" />
                             </StackPanel>
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
+                        </ToggleButton>
+                        <Button x:Name="ReaderMoreButton"
+                                Content="{loc:Loc Key=logs.moreActions}"
+                                Click="OnReaderMoreClick"
+                                Style="{StaticResource ReaderToolButton}"
+                                AutomationProperties.Name="{loc:Loc Key=logs.moreActions}">
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="{loc:Loc Key=logs.copyLine}"
+                                              Command="{Binding PlacementTarget.DataContext.CopyLineCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                              CommandParameter="{Binding PlacementTarget.DataContext.SelectedLine, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    <MenuItem Header="{loc:Loc Key=logs.copyVisible}"
+                                              Command="{Binding PlacementTarget.DataContext.CopyVisibleLinesCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    <Separator Style="{StaticResource MenuSeparator}" />
+                                    <MenuItem Header="{Binding PlacementTarget.DataContext.AutoOpenText, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                              Command="{Binding PlacementTarget.DataContext.ToggleAutoOpenOnFailureCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    <MenuItem Header="{loc:Loc Key=logs.openFolder}"
+                                              Command="{Binding PlacementTarget.DataContext.OpenFolderCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                    </WrapPanel>
+                </Grid>
 
                 <!-- 来源歧义/错误提示 -->
-                <Border Grid.Row="3"
+                <Border Grid.Row="2"
                         Margin="0,0,0,6"
-                        Padding="10,6"
+                        Padding="10,5"
                         CornerRadius="8"
                         Background="{DynamicResource WarningSoftBrush}"
                         BorderBrush="{DynamicResource WarningBorderBrush}"
@@ -493,264 +547,336 @@
                                TextWrapping="Wrap" />
                 </Border>
 
-                <!-- 搜索可折叠（logs.md §3.2）：默认关闭，把垂直空间留给中央日志正文。 -->
-                <Expander Grid.Row="4"
-                          Header="{loc:Loc Key=logs.searchAndFilter}"
-                          Margin="0,0,0,6"
-                          IsExpanded="False">
-                    <Grid Margin="0,6,0,0">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                 AutomationProperties.Name="{loc:Loc Key=logs.search.label}"
-                                 ToolTip="{loc:Loc Key=logs.search.label}"
-                                 Margin="0,0,6,0" />
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding SearchStatus}"
-                                   FontSize="10"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   VerticalAlignment="Center"
-                                   TextWrapping="Wrap"
-                                   MaxWidth="200" />
-                        <WrapPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,6,0,0">
-                            <CheckBox Content="{loc:Loc Key=logs.search.caseSensitive}"
-                                      IsChecked="{Binding SearchCaseSensitive, Mode=TwoWay}"
-                                      VerticalAlignment="Center"
-                                      Margin="0,0,10,6" />
-                            <CheckBox Content="{loc:Loc Key=logs.search.regex}"
-                                      IsChecked="{Binding SearchUseRegex, Mode=TwoWay}"
-                                      VerticalAlignment="Center"
-                                      Margin="0,0,10,6" />
-                            <Button Content="{loc:Loc Key=logs.search.apply}"
-                                    Command="{Binding SearchCommand}"
-                                    Style="{StaticResource ToolbarButton}"
-                                    Margin="0,0,4,6" />
-                            <Button Content="{loc:Loc Key=logs.search.previous}"
-                                    Command="{Binding PreviousMatchCommand}"
-                                    Style="{StaticResource ToolbarButton}"
-                                    Margin="0,0,4,6" />
-                            <Button Content="{loc:Loc Key=logs.search.next}"
-                                    Command="{Binding NextMatchCommand}"
-                                    Style="{StaticResource ToolbarButton}"
-                                    Margin="0,0,0,6" />
-                        </WrapPanel>
-                        <Border Grid.Row="2" Grid.ColumnSpan="2"
-                                Height="1"
-                                Background="{DynamicResource BorderSoftBrush}"
-                                Margin="0,4,0,6" />
-                        <WrapPanel Grid.Row="3" Grid.ColumnSpan="2">
-                        <CheckBox Content="{loc:Loc Key=logs.level.trace}"
-                                  IsChecked="{Binding FilterTrace, Mode=TwoWay}" Margin="0,0,10,6" />
-                        <CheckBox Content="{loc:Loc Key=logs.level.debug}"
-                                  IsChecked="{Binding FilterDebug, Mode=TwoWay}" Margin="0,0,10,6" />
-                        <CheckBox Content="{loc:Loc Key=logs.level.info}"
-                                  IsChecked="{Binding FilterInfo, Mode=TwoWay}" Margin="0,0,10,6" />
-                        <CheckBox Content="{loc:Loc Key=logs.level.warn}"
-                                  IsChecked="{Binding FilterWarn, Mode=TwoWay}" Margin="0,0,10,6" />
-                        <CheckBox Content="{loc:Loc Key=logs.level.error}"
-                                  IsChecked="{Binding FilterError, Mode=TwoWay}" Margin="0,0,10,6" />
-                        <CheckBox Content="{loc:Loc Key=logs.level.fatal}"
-                                  IsChecked="{Binding FilterFatal, Mode=TwoWay}" Margin="0,0,10,6" />
-                        <CheckBox Content="{loc:Loc Key=logs.filter.onlyWarnings}"
-                                  IsChecked="{Binding OnlyWarningsAndErrors, Mode=TwoWay}" Margin="0,0,10,6" />
-                        <TextBlock Text="{loc:Loc Key=logs.filter.thread}"
-                                   FontSize="10"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   VerticalAlignment="Center"
-                                   Margin="0,0,6,6" />
-                        <TextBox Text="{Binding ThreadFilter, UpdateSourceTrigger=PropertyChanged}"
-                                 Width="160"
-                                 Margin="0,0,10,6" />
-                        <Button Content="{loc:Loc Key=logs.filter.clear}"
-                                Command="{Binding ClearFiltersCommand}"
-                                Style="{StaticResource ToolbarButton}" />
-                        <TextBlock Text="{loc:Loc Key=logs.filter.unparsedHint}"
-                                   FontSize="10"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   VerticalAlignment="Center"
-                                   Margin="10,0,0,6"
-                                   TextWrapping="Wrap" />
-                        </WrapPanel>
-                    </Grid>
-                </Expander>
+                <!-- 正文 + 证据侧栏 + 搜索浮层。 -->
+                <Grid Grid.Row="3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                <!-- 证据清单：只在诊断证据来源下出现 -->
-                <Border Grid.Row="5"
-                        Margin="0,0,0,6"
-                        MaxHeight="180"
-                        Style="{StaticResource Card}"
-                        Padding="0"
-                        Visibility="{Binding IsEvidenceSource, Converter={StaticResource BoolToVisibility}}">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <TextBlock Text="{loc:Loc Key=logs.evidence.title}"
-                                   Margin="12,8,12,4"
-                                   Style="{StaticResource SectionText}" />
-                        <ListBox Grid.Row="1"
-                                 ItemsSource="{Binding Evidence}"
-                                 SelectedItem="{Binding SelectedEvidence, Mode=TwoWay}"
-                                 Background="Transparent"
-                                 BorderThickness="0"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                            <ListBox.ItemContainerStyle>
-                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource NavItemStyle}">
-                                    <Setter Property="AutomationProperties.Name" Value="{Binding KindText}" />
-                                </Style>
-                            </ListBox.ItemContainerStyle>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="8,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel>
-                                            <TextBlock Text="{Binding KindText}" FontSize="11" Style="{StaticResource EmphasisText}" />
+                    <!-- 日志正文：中央主体，虚拟化列表 + 等宽只读文本。 -->
+                    <Border Grid.Column="0" Style="{StaticResource Card}" Padding="0" MinHeight="160">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <ListBox x:Name="LogList"
+                                     SelectedItem="{Binding SelectedLine, Mode=TwoWay}"
+                                     SelectionMode="Extended"
+                                     SelectionChanged="OnLogListSelectionChanged"
+                                     ItemContainerStyle="{StaticResource LogLineItemStyle}"
+                                     Style="{StaticResource LogListStyle}"
+                                     AutomationProperties.Name="{loc:Loc Key=logs.reader.title}">
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <VirtualizingStackPanel />
+                                    </ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="46" />
+                                                <ColumnDefinition Width="82" />
+                                                <ColumnDefinition Width="52" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding DisplayNumber}"
+                                                       FontFamily="Consolas, Cascadia Mono, monospace"
+                                                       FontSize="10"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       HorizontalAlignment="Right"
+                                                       Margin="0,1,8,1" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding TimestampText}"
+                                                       FontFamily="Consolas, Cascadia Mono, monospace"
+                                                       FontSize="10"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       Margin="0,1,6,1" />
+                                            <TextBlock Grid.Column="2"
+                                                       Text="{Binding LevelText}"
+                                                       FontFamily="Consolas, Cascadia Mono, monospace"
+                                                       FontSize="10"
+                                                       Foreground="{Binding Level, Converter={StaticResource LogLevelBrush}}"
+                                                       Margin="0,1,4,1" />
+                                            <TextBox Grid.Column="3"
+                                                     Text="{Binding Message, Mode=OneWay}"
+                                                     ToolTip="{Binding Raw}">
+                                                <TextBox.Style>
+                                                    <Style TargetType="TextBox" BasedOn="{StaticResource LogLineTextStyle}">
+                                                        <Setter Property="TextWrapping" Value="NoWrap" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding DataContext.AutoWrap, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                                                <Setter Property="TextWrapping" Value="Wrap" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBox.Style>
+                                            </TextBox>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <TextBlock Text="{Binding EmptyLinesText}"
+                                       Margin="18"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       TextWrapping="Wrap"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       IsHitTestVisible="False">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Lines.Count}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                            <!-- 暂停跟随后有新内容时提示；点击恢复跟随并回到最新行。 -->
+                            <Button Content="{loc:Loc Key=logs.newLines}"
+                                    Command="{Binding ToggleFollowCommand}"
+                                    Style="{StaticResource PrimaryButton}"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Bottom"
+                                    Margin="0,0,0,14"
+                                    Visibility="{Binding HasNewLines, Converter={StaticResource BoolToVisibility}}" />
+
+                            <ProgressBar IsIndeterminate="True"
+                                         Height="2"
+                                         VerticalAlignment="Bottom"
+                                         Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+                        </Grid>
+                    </Border>
+
+                    <!--
+                        诊断证据清单：右侧栏。证据条目与预览入口在这里常驻，
+                        不再压在正文上方（原先最多占 180px 高度）。
+                    -->
+                    <Border Grid.Column="1"
+                            Padding="0"
+                            Margin="8,0,0,0"
+                            Visibility="{Binding IsEvidenceSource, Converter={StaticResource BoolToVisibility}}">
+                        <Border.Style>
+                            <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                                <Setter Property="Width" Value="248" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsNarrow}" Value="True">
+                                        <Setter Property="Width" Value="196" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Grid Margin="12,9,12,4">
+                                <TextBlock Text="{loc:Loc Key=logs.evidence.title}"
+                                           Style="{StaticResource SectionText}" />
+                                <TextBlock Text="{Binding Evidence.Count}"
+                                           HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource TextMutedBrush}" />
+                            </Grid>
+                            <ListBox Grid.Row="1"
+                                     ItemsSource="{Binding Evidence}"
+                                     SelectedItem="{Binding SelectedEvidence, Mode=TwoWay}"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource NavItemStyle}">
+                                        <Setter Property="AutomationProperties.Name" Value="{Binding KindText}" />
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="10,6">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding KindText}"
+                                                           FontSize="11"
+                                                           Style="{StaticResource EmphasisText}"
+                                                           TextWrapping="Wrap" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding OwnershipText}"
+                                                           FontSize="9"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           VerticalAlignment="Center"
+                                                           Margin="6,0,0,0" />
+                                            </Grid>
                                             <TextBlock Text="{Binding Summary}"
                                                        FontSize="9"
-                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       Margin="0,2,0,0"
+                                                       TextWrapping="Wrap" />
                                             <TextBlock Text="{Binding WarningText}"
                                                        FontSize="9"
                                                        Foreground="{DynamicResource WarningBrush}"
                                                        TextWrapping="Wrap"
+                                                       Margin="0,2,0,0"
                                                        Visibility="{Binding HasWarning, Converter={StaticResource BoolToVisibility}}" />
+                                            <Button Content="{loc:Loc Key=logs.evidence.previewButton}"
+                                                    Command="{Binding DataContext.PreviewEvidenceCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource ReaderToolButton}"
+                                                    HorizontalAlignment="Left"
+                                                    Margin="0,5,0,0" />
                                         </StackPanel>
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding OwnershipText}"
-                                                   FontSize="10"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   VerticalAlignment="Center"
-                                                   Margin="8,0,0,0" />
-                                        <Button Grid.Column="2"
-                                                Content="{loc:Loc Key=logs.evidence.previewButton}"
-                                                Command="{Binding DataContext.PreviewEvidenceCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                                CommandParameter="{Binding}"
-                                                Style="{StaticResource ToolbarButton}"
-                                                Margin="10,0,0,0"
-                                                VerticalAlignment="Center" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </Grid>
-                </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
 
-                <!-- 日志正文：中央主体，虚拟化列表 + 等宽只读文本。 -->
-                <Border Grid.Row="6" Style="{StaticResource Card}" Padding="0" MinHeight="160">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+                    <!--
+                        搜索与过滤浮层：默认收起，展开时浮在正文之上，不改变正文高度。
+                    -->
+                    <Border Grid.Column="0"
+                            Panel.ZIndex="4"
+                            Width="460"
+                            MaxHeight="420"
+                            Margin="0,6,8,0"
+                            Padding="12,10"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Background="{DynamicResource SurfaceAltBrush}"
+                            BorderBrush="{DynamicResource BorderStrongBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            Visibility="{Binding IsFilterPanelOpen, Converter={StaticResource BoolToVisibility}}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
 
-                        <ListBox x:Name="LogList"
-                                 SelectedItem="{Binding SelectedLine, Mode=TwoWay}"
-                                 SelectionMode="Extended"
-                                 SelectionChanged="OnLogListSelectionChanged"
-                                 ItemContainerStyle="{StaticResource LogLineItemStyle}"
-                                 Style="{StaticResource LogListStyle}"
-                                 AutomationProperties.Name="{loc:Loc Key=logs.reader.title}">
-                            <ListBox.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <VirtualizingStackPanel />
-                                </ItemsPanelTemplate>
-                            </ListBox.ItemsPanel>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="46" />
-                                            <ColumnDefinition Width="82" />
-                                            <ColumnDefinition Width="52" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding DisplayNumber}"
-                                                   FontFamily="Consolas, Cascadia Mono, monospace"
-                                                   FontSize="10"
-                                                   Foreground="{DynamicResource TextMutedBrush}"
-                                                   HorizontalAlignment="Right"
-                                                   Margin="0,1,8,1" />
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding TimestampText}"
-                                                   FontFamily="Consolas, Cascadia Mono, monospace"
-                                                   FontSize="10"
-                                                   Foreground="{DynamicResource TextMutedBrush}"
-                                                   Margin="0,1,6,1" />
-                                        <TextBlock Grid.Column="2"
-                                                   Text="{Binding LevelText}"
-                                                   FontFamily="Consolas, Cascadia Mono, monospace"
-                                                   FontSize="10"
-                                                   Foreground="{Binding Level, Converter={StaticResource LogLevelBrush}}"
-                                                   Margin="0,1,4,1" />
-                                        <TextBox Grid.Column="3"
-                                                 Text="{Binding Message, Mode=OneWay}"
-                                                 ToolTip="{Binding Raw}">
-                                            <TextBox.Style>
-                                                <Style TargetType="TextBox" BasedOn="{StaticResource LogLineTextStyle}">
-                                                    <Setter Property="TextWrapping" Value="NoWrap" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding DataContext.AutoWrap, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
-                                                            <Setter Property="TextWrapping" Value="Wrap" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBox.Style>
-                                        </TextBox>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
+                                <TextBlock Text="{loc:Loc Key=logs.searchAndFilter}"
+                                           Style="{StaticResource EmphasisText}"
+                                           FontSize="11"
+                                           VerticalAlignment="Center" />
+                                <ToggleButton Grid.Column="1"
+                                              IsChecked="{Binding IsFilterPanelOpen, Mode=TwoWay}"
+                                              Style="{StaticResource ReaderToggleButton}"
+                                              Margin="0"
+                                              AutomationProperties.Name="{loc:Loc Key=logs.filter.close}"
+                                              ToolTip="{loc:Loc Key=logs.filter.close}">
+                                    <Path Data="{StaticResource IconClose}"
+                                          Stroke="{DynamicResource TextMutedBrush}"
+                                          StrokeThickness="1.4"
+                                          Width="10"
+                                          Height="10"
+                                          Stretch="Uniform"
+                                          VerticalAlignment="Center" />
+                                </ToggleButton>
 
-                        <TextBlock Text="{Binding EmptyLinesText}"
-                                   Margin="18"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   TextWrapping="Wrap"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   IsHitTestVisible="False">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding Lines.Count}" Value="0">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
+                                <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.Name="{loc:Loc Key=logs.search.label}"
+                                             ToolTip="{loc:Loc Key=logs.search.label}"
+                                             Margin="0,0,6,0" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding SearchStatus}"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               VerticalAlignment="Center"
+                                               TextWrapping="Wrap"
+                                               MaxWidth="150" />
+                                </Grid>
 
-                        <!-- 暂停跟随后有新内容时提示；点击恢复跟随并回到最新行。 -->
-                        <Button Content="{loc:Loc Key=logs.newLines}"
-                                Command="{Binding ToggleFollowCommand}"
-                                Style="{StaticResource PrimaryButton}"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Bottom"
-                                Margin="0,0,0,14"
-                                Visibility="{Binding HasNewLines, Converter={StaticResource BoolToVisibility}}" />
+                                <WrapPanel Grid.Row="2" Grid.ColumnSpan="2" Margin="0,6,0,0">
+                                    <CheckBox Content="{loc:Loc Key=logs.search.caseSensitive}"
+                                              IsChecked="{Binding SearchCaseSensitive, Mode=TwoWay}"
+                                              VerticalAlignment="Center"
+                                              Margin="0,0,10,6" />
+                                    <CheckBox Content="{loc:Loc Key=logs.search.regex}"
+                                              IsChecked="{Binding SearchUseRegex, Mode=TwoWay}"
+                                              VerticalAlignment="Center"
+                                              Margin="0,0,10,6" />
+                                    <Button Content="{loc:Loc Key=logs.search.apply}"
+                                            Command="{Binding SearchCommand}"
+                                            Style="{StaticResource ReaderToolButton}"
+                                            Margin="0,0,4,6" />
+                                    <Button Content="{loc:Loc Key=logs.search.previous}"
+                                            Command="{Binding PreviousMatchCommand}"
+                                            Style="{StaticResource ReaderToolButton}"
+                                            Margin="0,0,4,6" />
+                                    <Button Content="{loc:Loc Key=logs.search.next}"
+                                            Command="{Binding NextMatchCommand}"
+                                            Style="{StaticResource ReaderToolButton}"
+                                            Margin="0,0,0,6" />
+                                </WrapPanel>
 
-                        <ProgressBar IsIndeterminate="True"
-                                     Height="2"
-                                     VerticalAlignment="Bottom"
-                                     Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
-                    </Grid>
-                </Border>
+                                <Border Grid.Row="3" Grid.ColumnSpan="2"
+                                        Height="1"
+                                        Background="{DynamicResource BorderSoftBrush}"
+                                        Margin="0,2,0,6" />
 
-                <!-- 底部阅读状态 -->
-                <Grid Grid.Row="7" Margin="0,6,0,0">
+                                <WrapPanel Grid.Row="4" Grid.ColumnSpan="2">
+                                    <CheckBox Content="{loc:Loc Key=logs.level.trace}"
+                                              IsChecked="{Binding FilterTrace, Mode=TwoWay}" Margin="0,0,10,6" />
+                                    <CheckBox Content="{loc:Loc Key=logs.level.debug}"
+                                              IsChecked="{Binding FilterDebug, Mode=TwoWay}" Margin="0,0,10,6" />
+                                    <CheckBox Content="{loc:Loc Key=logs.level.info}"
+                                              IsChecked="{Binding FilterInfo, Mode=TwoWay}" Margin="0,0,10,6" />
+                                    <CheckBox Content="{loc:Loc Key=logs.level.warn}"
+                                              IsChecked="{Binding FilterWarn, Mode=TwoWay}" Margin="0,0,10,6" />
+                                    <CheckBox Content="{loc:Loc Key=logs.level.error}"
+                                              IsChecked="{Binding FilterError, Mode=TwoWay}" Margin="0,0,10,6" />
+                                    <CheckBox Content="{loc:Loc Key=logs.level.fatal}"
+                                              IsChecked="{Binding FilterFatal, Mode=TwoWay}" Margin="0,0,10,6" />
+                                    <CheckBox Content="{loc:Loc Key=logs.filter.onlyWarnings}"
+                                              IsChecked="{Binding OnlyWarningsAndErrors, Mode=TwoWay}" Margin="0,0,10,6" />
+                                    <TextBlock Text="{loc:Loc Key=logs.filter.thread}"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,6,6" />
+                                    <TextBox Text="{Binding ThreadFilter, UpdateSourceTrigger=PropertyChanged}"
+                                             Width="150"
+                                             Margin="0,0,10,6" />
+                                    <Button Content="{loc:Loc Key=logs.filter.clear}"
+                                            Command="{Binding ClearFiltersCommand}"
+                                            Style="{StaticResource ReaderToolButton}" />
+                                    <TextBlock Text="{loc:Loc Key=logs.filter.unparsedHint}"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               VerticalAlignment="Center"
+                                               Margin="10,0,0,6"
+                                               TextWrapping="Wrap" />
+                                </WrapPanel>
+                            </Grid>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+
+                <!-- 底部阅读状态：翻页动作集中在右侧，与已加载范围一起说明“现在看的是哪一段”。 -->
+                <Grid Grid.Row="4" Margin="0,6,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -769,15 +895,29 @@
                                    Visibility="{Binding HasStallHint, Converter={StaticResource BoolToVisibility}}" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="12,0,0,0">
+                        <!-- 证据的锚点位置：崩溃报告与 hs_err 的结论在开头，允许按锚点直接跳转。 -->
+                        <Button Content="{loc:Loc Key=logs.evidence.jumpHead}"
+                                Command="{Binding JumpEvidenceToHeadCommand}"
+                                Style="{StaticResource ReaderToolButton}"
+                                Visibility="{Binding IsEvidenceSource, Converter={StaticResource BoolToVisibility}}" />
+                        <Button Content="{loc:Loc Key=logs.evidence.jumpTail}"
+                                Command="{Binding JumpEvidenceToTailCommand}"
+                                Style="{StaticResource ReaderToolButton}"
+                                Visibility="{Binding IsEvidenceSource, Converter={StaticResource BoolToVisibility}}" />
                         <Button Content="{loc:Loc Key=logs.loadOlder}"
                                 Command="{Binding LoadOlderCommand}"
-                                Style="{StaticResource ToolbarButton}"
+                                Style="{StaticResource ReaderToolButton}"
                                 IsEnabled="{Binding CanLoadOlder}" />
+                        <Button Content="{loc:Loc Key=logs.loadNewer}"
+                                Command="{Binding LoadNewerCommand}"
+                                Style="{StaticResource ReaderToolButton}"
+                                IsEnabled="{Binding CanLoadNewer}"
+                                Visibility="{Binding IsEvidenceSource, Converter={StaticResource BoolToVisibility}}" />
                         <TextBlock Text="{Binding LoadedRangeText}"
                                    FontSize="10"
                                    Foreground="{DynamicResource TextMutedBrush}"
                                    VerticalAlignment="Center"
-                                   Margin="10,0,0,0" />
+                                   Margin="6,0,0,0" />
                     </StackPanel>
                 </Grid>
             </Grid>

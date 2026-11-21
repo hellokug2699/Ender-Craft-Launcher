@@ -72,6 +72,8 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     private long _sourceOffset;
     private long _sourceWindowStart;
     private SessionArtifact? _evidenceArtifact;
+    /// <summary>当前证据窗口的锚点：崩溃类证据从开头读，其余从末尾读。</summary>
+    private SessionEvidenceAnchor _evidenceAnchor = SessionEvidenceAnchor.Tail;
     private string? _targetSessionId;
     private string? _instanceFocusId;
     private string? _instanceFocusName;
@@ -210,11 +212,26 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _hasOlderLines;
 
+    /// <summary>已加载窗口之前/之后都还有内容：证据可以双向翻阅，不能用“更早内容”冒充更晚内容。</summary>
+    [ObservableProperty]
+    private bool _hasNewerLines;
+
+    /// <summary>搜索与过滤默认收进浮动面板，不占用日志正文的垂直空间。</summary>
+    [ObservableProperty]
+    private bool _isFilterPanelOpen;
+
     [ObservableProperty]
     private bool _isBusy;
 
     [ObservableProperty]
     private bool _isNarrow;
+
+    /// <summary>
+    /// 中央阅读区放不下“多行来源页签 + 工具栏”时改用单行来源选择器。
+    /// 只压缩来源选择器，不改变会话栏的折叠策略（那是 <see cref="IsNarrow"/> 的职责）。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isCompactSources;
 
     [ObservableProperty]
     private string _statusMessage = string.Empty;
@@ -317,10 +334,19 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     public bool HasInstanceFocus => !string.IsNullOrWhiteSpace(InstanceFocusMessage);
 
     public bool CanLoadOlder => HasOlderLines &&
-                                SelectedSource is { IsAvailable: true, IsEvidence: false } &&
+                                SelectedSource is { IsAvailable: true } &&
                                 _allLines.Count < _maxLines;
 
+    /// <summary>证据窗口之后还有内容时可继续向下读取；崩溃报告的开头窗口通常就停在这里。</summary>
+    public bool CanLoadNewer => IsEvidenceSource && HasNewerLines && _allLines.Count < _maxLines;
+
     public bool IsEvidenceSource => SelectedSource?.IsEvidence == true;
+
+    /// <summary>当前证据是否按开头锚点显示（崩溃报告/JVM 致命错误日志的默认行为）。</summary>
+    public bool IsEvidenceHead => IsEvidenceSource && _evidenceAnchor == SessionEvidenceAnchor.Head;
+
+    /// <summary>跟随只对“最新内容在末尾”的视图有意义；按开头阅读证据时不能把人拽到末尾。</summary>
+    public bool FollowsTail => Follow && !IsEvidenceHead;
 
     public bool ShowSessionSplitter => IsSessionListOpen && !IsNarrow;
 
@@ -737,6 +763,8 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         _sourceSignature = string.Empty;
         _evidenceSignature = string.Empty;
         _evidenceArtifact = null;
+        _evidenceAnchor = SessionEvidenceAnchor.Tail;
+        NotifyEvidenceAnchorChanged();
         SelectedEvidence = null;
         SearchText = string.Empty;
         // F-09 S5：切换会话后停滞提示必须重新判定，不能沿用上一个会话的静默状态。
@@ -961,6 +989,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(IsEvidenceSource));
         OnPropertyChanged(nameof(CanLoadOlder));
+        NotifyEvidenceAnchorChanged();
         SetSourceWarning(value?.Warning ?? string.Empty);
 
         // F-09 S5：换来源重新判定，避免把另一个来源的静默算到当前来源上。
@@ -1032,26 +1061,11 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
                     return;
                 }
 
-                _evidenceArtifact = evidence.Artifact;
-                var chunk = await _reader.ReadEvidenceAsync(row.Session, evidence.Artifact, InitialChunkBytes);
-                if (generation != _loadGeneration || !IsCurrent(row, source))
-                {
-                    return;
-                }
-
-                _sourceWindowStart = 0;
-                _sourceOffset = 0;
-                HasOlderLines = false;
-                await AppendLinesAsync(chunk.Lines, initial: true).ConfigureAwait(true);
-                if (generation != _loadGeneration)
-                {
-                    return;
-                }
-
-                RequestScrollToEnd();
-                StatusMessage = evidence.Size is { } size && chunk.EndOffset < size
-                    ? _localizer.Get("logs.evidence.truncated")
-                    : _localizer.Get("logs.evidence.preview", evidence.KindText);
+                await LoadEvidenceWindowAsync(
+                    row,
+                    source,
+                    evidence,
+                    DefaultEvidenceAnchor(evidence.Artifact)).ConfigureAwait(true);
                 return;
             }
 
@@ -1088,6 +1102,105 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// 崩溃报告与 JVM 致命错误日志（hs_err）把结论写在开头：描述、异常类型、问题帧、信号/内存信息。
+    /// 这些证据默认从开头读；其它证据（游戏日志、stdout/stderr、轮转归档）仍以最新内容为准。
+    /// </summary>
+    private static SessionEvidenceAnchor DefaultEvidenceAnchor(SessionArtifact artifact) =>
+        artifact.Kind is SessionArtifactKinds.ClientCrashReport
+            or SessionArtifactKinds.ServerCrashReport
+            or SessionArtifactKinds.JvmFatalError
+            ? SessionEvidenceAnchor.Head
+            : SessionEvidenceAnchor.Tail;
+
+    /// <summary>
+    /// 读取证据的一段窗口。两种锚点都保留真实的字节偏移：可以继续向更早或更新翻阅，
+    /// 也能从末尾直接跳到开头，不需要把整份证据载入内存。
+    /// </summary>
+    private async Task LoadEvidenceWindowAsync(
+        LogSessionRowViewModel row,
+        LogSourceViewModel source,
+        LogEvidenceRowViewModel evidence,
+        SessionEvidenceAnchor anchor)
+    {
+        var generation = ++_loadGeneration;
+        ClearLoadedLines();
+        SelectedEvidence = evidence;
+        _evidenceArtifact = evidence.Artifact;
+        _evidenceAnchor = anchor;
+        NotifyEvidenceAnchorChanged();
+
+        try
+        {
+            var chunk = await _reader
+                .ReadEvidenceAsync(row.Session, evidence.Artifact, InitialChunkBytes, anchor)
+                .ConfigureAwait(true);
+            if (generation != _loadGeneration || !IsCurrent(row, source))
+            {
+                return;
+            }
+
+            _sourceWindowStart = chunk.StartOffset;
+            _sourceOffset = chunk.EndOffset;
+            HasOlderLines = chunk.HasMoreBefore;
+            HasNewerLines = chunk.HasMoreAfter;
+            await AppendLinesAsync(chunk.Lines, initial: true).ConfigureAwait(true);
+            if (generation != _loadGeneration)
+            {
+                return;
+            }
+
+            UpdateLoadedRangeText();
+            StatusMessage = DescribeEvidenceStatus(evidence, chunk, anchor);
+            if (anchor == SessionEvidenceAnchor.Head)
+            {
+                RequestScrollToStart();
+            }
+            else
+            {
+                RequestScrollToEnd();
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(
+                exception,
+                "读取证据失败：{SessionId} {Kind}",
+                row.Id,
+                evidence.Artifact.Kind);
+            StatusMessage = _localizer.Get("logs.readError", exception.Message);
+        }
+    }
+
+    private string DescribeEvidenceStatus(
+        LogEvidenceRowViewModel evidence,
+        SessionLogChunk chunk,
+        SessionEvidenceAnchor anchor)
+    {
+        if (chunk.Error is not null)
+        {
+            return _localizer.Get("logs.readError", chunk.Error);
+        }
+
+        if (anchor == SessionEvidenceAnchor.Head)
+        {
+            return chunk.HasMoreAfter || HasNewerLines
+                ? _localizer.Get("logs.evidence.truncatedHead")
+                : _localizer.Get("logs.evidence.previewHead", evidence.KindText);
+        }
+
+        return chunk.HasMoreBefore
+            ? _localizer.Get("logs.evidence.truncatedTail")
+            : _localizer.Get("logs.evidence.preview", evidence.KindText);
+    }
+
+    private void NotifyEvidenceAnchorChanged()
+    {
+        OnPropertyChanged(nameof(IsEvidenceHead));
+        OnPropertyChanged(nameof(FollowsTail));
+        OnPropertyChanged(nameof(CanLoadNewer));
+    }
+
     private static string SourceKey(SessionLogSourceKind kind) =>
         kind switch
         {
@@ -1109,6 +1222,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         _currentMatchIndex = -1;
         SearchStatus = string.Empty;
         HasOlderLines = false;
+        HasNewerLines = false;
         HasNewLines = false;
         _sourceOffset = 0;
         _sourceWindowStart = 0;
@@ -1154,9 +1268,21 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         var trimmed = false;
         if (excess > 0)
         {
-            // 一次性移除超出上限的头部（批量），并同步移除这些行在可见集合中的副本。
-            removed = new HashSet<LogLineViewModel>(_allLines.Take(excess));
-            _allLines.RemoveRange(0, excess);
+            // 显示上限按阅读方向裁剪：常规日志保留最近内容，按开头阅读的证据必须保留开头
+            // （崩溃描述与问题帧就在开头），否则大文件会把错因裁掉。
+            var keepHead = IsEvidenceHead;
+            removed = keepHead
+                ? new HashSet<LogLineViewModel>(_allLines.Skip(_maxLines))
+                : new HashSet<LogLineViewModel>(_allLines.Take(excess));
+            if (keepHead)
+            {
+                _allLines.RemoveRange(_maxLines, _allLines.Count - _maxLines);
+            }
+            else
+            {
+                _allLines.RemoveRange(0, excess);
+            }
+
             for (var index = Lines.Count - 1; index >= 0; index--)
             {
                 if (removed.Contains(Lines[index]))
@@ -1184,8 +1310,18 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
 
         if (trimmed)
         {
-            HasOlderLines = false;
-            StatusMessage = _localizer.Get("logs.trimmed", _allLines.Count);
+            if (IsEvidenceHead)
+            {
+                HasNewerLines = true;
+            }
+            else
+            {
+                HasOlderLines = false;
+            }
+
+            StatusMessage = IsEvidenceHead
+                ? _localizer.Get("logs.trimmedHead", _allLines.Count)
+                : _localizer.Get("logs.trimmed", _allLines.Count);
         }
 
         OnPropertyChanged(nameof(CanLoadOlder));
@@ -1508,8 +1644,13 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
 
         try
         {
+            // 证据同样按真实字节偏移分页；重新读取末尾会重复追加同一段内容。
             var chunk = source.IsEvidence
-                ? await _reader.ReadEvidenceAsync(row.Session, _evidenceArtifact!, InitialChunkBytes)
+                ? await _reader.ReadEvidenceBeforeAsync(
+                    row.Session,
+                    _evidenceArtifact!,
+                    _sourceWindowStart,
+                    InitialChunkBytes)
                 : await _reader.ReadBeforeAsync(row.Session, source.Kind, _sourceWindowStart, InitialChunkBytes);
             if (chunk.Lines.Count == 0)
             {
@@ -1519,6 +1660,11 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
 
             _sourceWindowStart = chunk.StartOffset;
             HasOlderLines = chunk.HasMoreBefore;
+            if (source.IsEvidence)
+            {
+                HasNewerLines = chunk.HasMoreAfter;
+            }
+
             var createdAt = row.Manifest.CreatedAtUtc;
             var prepended = await Task.Run(() => chunk.Lines
                 .Select(raw => LogLineParser.Parse(raw, createdAt))
@@ -1542,10 +1688,94 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>证据向更新方向继续读取（从开头锚点读起时，调用栈在末尾）。</summary>
+    [RelayCommand]
+    private async Task LoadNewerAsync()
+    {
+        if (!CanLoadNewer ||
+            SelectedSession is not { } row ||
+            SelectedSource is not { IsEvidence: true } source ||
+            _evidenceArtifact is not { } artifact)
+        {
+            return;
+        }
+
+        try
+        {
+            var chunk = await _reader
+                .ReadEvidenceAfterAsync(row.Session, artifact, _sourceOffset, InitialChunkBytes)
+                .ConfigureAwait(true);
+            if (!IsCurrent(row, source))
+            {
+                return;
+            }
+
+            if (chunk.Lines.Count == 0)
+            {
+                HasNewerLines = false;
+                return;
+            }
+
+            _sourceOffset = chunk.EndOffset;
+            HasNewerLines = chunk.HasMoreAfter;
+            var beforeCount = _allLines.Count;
+            await AppendLinesAsync(chunk.Lines, initial: false).ConfigureAwait(true);
+            if (!IsCurrent(row, source))
+            {
+                return;
+            }
+
+            // 证据分页不是实时日志：“有新日志”提示与跟随暂停无关。
+            HasNewLines = false;
+            UpdateLoadedRangeText();
+            RequestScrollToEnd();
+            // 显示上限已经裁掉刚读到的内容时，不要把上限说明改写成“已加载 N 行”。
+            if (beforeCount + chunk.Lines.Count <= _maxLines)
+            {
+                StatusMessage = _localizer.Get("logs.loadedNewer", chunk.Lines.Count);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            StatusMessage = _localizer.Get("logs.readError", exception.Message);
+        }
+    }
+
+    /// <summary>证据直接跳到开头：崩溃报告的关键信息在第一屏，不必逐段向更早翻阅。</summary>
+    [RelayCommand]
+    private Task JumpEvidenceToHeadAsync() => JumpEvidenceAsync(SessionEvidenceAnchor.Head);
+
+    /// <summary>证据直接跳到末尾：长调用栈的尾部仍可一次到达。</summary>
+    [RelayCommand]
+    private Task JumpEvidenceToTailAsync() => JumpEvidenceAsync(SessionEvidenceAnchor.Tail);
+
+    private async Task JumpEvidenceAsync(SessionEvidenceAnchor anchor)
+    {
+        if (IsEvidenceHead == (anchor == SessionEvidenceAnchor.Head) &&
+            _allLines.Count > 0 &&
+            !HasOlderLines &&
+            !HasNewerLines)
+        {
+            // 已经完整显示整份证据：重复读取没有必要。
+            return;
+        }
+
+        if (SelectedSession is not { } row ||
+            SelectedSource is not { IsEvidence: true } source ||
+            SelectedEvidence is not { IsReadable: true } evidence)
+        {
+            return;
+        }
+
+        await LoadEvidenceWindowAsync(row, source, evidence, anchor).ConfigureAwait(true);
+    }
+
     [RelayCommand]
     private async Task PreviewEvidenceAsync(LogEvidenceRowViewModel? evidence)
     {
-        if (evidence is null || SelectedSession is not { } row)
+        if (evidence is null ||
+            SelectedSession is not { } row ||
+            SelectedSource is not { IsEvidence: true } source)
         {
             return;
         }
@@ -1557,19 +1787,8 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             return;
         }
 
-        try
-        {
-            var chunk = await _reader.ReadEvidenceAsync(row.Session, evidence.Artifact, InitialChunkBytes);
-            ClearLoadedLines();
-            _evidenceArtifact = evidence.Artifact;
-            await AppendLinesAsync(chunk.Lines, initial: true).ConfigureAwait(true);
-            RequestScrollToEnd();
-            StatusMessage = _localizer.Get("logs.evidence.preview", evidence.KindText);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            StatusMessage = _localizer.Get("logs.readError", exception.Message);
-        }
+        await LoadEvidenceWindowAsync(row, source, evidence, DefaultEvidenceAnchor(evidence.Artifact))
+            .ConfigureAwait(true);
     }
 
     [RelayCommand]
@@ -2113,7 +2332,12 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     {
         SavePreference(LogDisplayKeys.Follow, value);
         OnPropertyChanged(nameof(FollowText));
+        OnPropertyChanged(nameof(FollowsTail));
     }
+
+    partial void OnHasOlderLinesChanged(bool value) => OnPropertyChanged(nameof(CanLoadOlder));
+
+    partial void OnHasNewerLinesChanged(bool value) => OnPropertyChanged(nameof(CanLoadNewer));
 
     partial void OnAutoOpenOnFailureChanged(bool value)
     {
@@ -2216,8 +2440,19 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         }
 
         var excess = _allLines.Count - _maxLines;
-        var removed = new HashSet<LogLineViewModel>(_allLines.Take(excess));
-        _allLines.RemoveRange(0, excess);
+        var keepHead = IsEvidenceHead;
+        var removed = keepHead
+            ? new HashSet<LogLineViewModel>(_allLines.Skip(_maxLines))
+            : new HashSet<LogLineViewModel>(_allLines.Take(excess));
+        if (keepHead)
+        {
+            _allLines.RemoveRange(_maxLines, excess);
+        }
+        else
+        {
+            _allLines.RemoveRange(0, excess);
+        }
+
         for (var index = Lines.Count - 1; index >= 0; index--)
         {
             if (removed.Contains(Lines[index]))
@@ -2226,11 +2461,21 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             }
         }
 
-        HasOlderLines = false;
+        if (keepHead)
+        {
+            HasNewerLines = true;
+        }
+        else
+        {
+            HasOlderLines = false;
+        }
+
         RenumberLines();
         _ = ReapplySearchAsync();
         UpdateLoadedRangeText();
-        StatusMessage = _localizer.Get("logs.trimmed", _allLines.Count);
+        StatusMessage = keepHead
+            ? _localizer.Get("logs.trimmedHead", _allLines.Count)
+            : _localizer.Get("logs.trimmed", _allLines.Count);
     }
 
     private void SetTargetUnavailable(string message)
@@ -2462,10 +2707,15 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
 
     private void RequestScrollToEnd() => ScrollToEndRequested?.Invoke(this, EventArgs.Empty);
 
+    private void RequestScrollToStart() => ScrollToStartRequested?.Invoke(this, EventArgs.Empty);
+
     private void RequestScrollToLine(LogLineViewModel line) => ScrollToLineRequested?.Invoke(this, line);
 
     /// <summary>视图订阅：跟随模式或恢复跟随时滚动到最新行。</summary>
     public event EventHandler? ScrollToEndRequested;
+
+    /// <summary>视图订阅：按开头阅读证据时滚动到第一行。</summary>
+    public event EventHandler? ScrollToStartRequested;
 
     /// <summary>视图订阅：搜索命中导航时滚动到指定行。</summary>
     public event EventHandler<LogLineViewModel>? ScrollToLineRequested;
@@ -2485,6 +2735,12 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             IsSessionListOpen = false;
         }
     }
+
+    /// <summary>
+    /// 来源页签需要约 400px 才不会再折行堆高。页面变窄时改用单行选择器，
+    /// 让工具栏与来源选择器保持在同一行，而不是把正文挤成一条缝。
+    /// </summary>
+    public void SetCompactSources(bool compact) => IsCompactSources = compact || IsNarrow;
 
     public void Dispose()
     {

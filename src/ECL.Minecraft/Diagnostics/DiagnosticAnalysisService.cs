@@ -486,8 +486,21 @@ public sealed class DiagnosticAnalysisService : IDiagnosticAnalysisService
         SessionLogChunk chunk;
         try
         {
+            // 崩溃报告与 JVM 致命错误日志的结论写在开头（描述、问题帧、信号/内存信息），
+            // 按末尾读取会在长调用栈下完全丢失根因；其余证据仍以最新内容为准。
+            var anchor = artifact.Kind is
+                SessionArtifactKinds.ClientCrashReport or
+                SessionArtifactKinds.ServerCrashReport or
+                SessionArtifactKinds.JvmFatalError
+                    ? SessionEvidenceAnchor.Head
+                    : SessionEvidenceAnchor.Tail;
             chunk = await _logReader
-                .ReadEvidenceAsync(session, artifact, SessionLogReader.MaxChunkBytes, cancellationToken)
+                .ReadEvidenceAsync(
+                    session,
+                    artifact,
+                    SessionLogReader.MaxChunkBytes,
+                    anchor,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)

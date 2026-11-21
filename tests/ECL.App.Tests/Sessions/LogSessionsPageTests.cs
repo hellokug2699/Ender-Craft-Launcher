@@ -464,6 +464,161 @@ public sealed class LogSessionsPageTests : IDisposable
         ui.Invoke(() => vm.Dispose());
     }
 
+    /// <summary>
+    /// 崩溃报告与 hs_err 的结论在开头：证据来源默认从开头显示，长调用栈不会再让错因不可见；
+    /// “跳到结尾”仍能一次到达尾部，“跳到开头”再回来。
+    /// </summary>
+    [Fact]
+    public async Task CrashReportEvidenceOpensAtTheHeadAndCanJumpToTheEnd()
+    {
+        using var ui = new UiThread();
+        var session = CreateSession("a", "1.21.1");
+        var lines = new List<string>
+        {
+            "Description: Rendering overlay crashed",
+            "java.lang.NullPointerException: Cannot invoke registry lookup",
+        };
+        lines.AddRange(Enumerable.Range(1, 12000).Select(index =>
+            $"#  at example.package.Class{index:0000}.method(Class{index:0000}.java:{index})"));
+        RegisterEvidence(session, "crash-2026-11-21.txt", SessionArtifactKinds.ClientCrashReport, lines);
+
+        var vm = await ui.InvokeAsync(() => CreateViewModel());
+        ui.Invoke(() => vm.Activate());
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+        ui.Invoke(() => vm.SelectedSource = vm.Sources.Single(source => source.Kind == SessionLogSourceKind.Evidence));
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+
+        Assert.True(vm.IsEvidenceHead);
+        Assert.False(vm.FollowsTail);
+        Assert.Equal("Description: Rendering overlay crashed", vm.Lines[0].Message);
+        Assert.Contains("开头", vm.StatusMessage);
+        // 大文件仍然受显示上限保护，但裁剪必须保留开头（错因所在）。
+        Assert.True(vm.Lines.Count <= 2000);
+        Assert.Equal("Description: Rendering overlay crashed", vm.Lines[0].Message);
+
+        await ui.InvokeAsync(() => vm.JumpEvidenceToTailCommand.ExecuteAsync(null)).Unwrap();
+        Assert.False(vm.IsEvidenceHead);
+        Assert.Contains(vm.Lines, line => line.Message.Contains("Class12000", StringComparison.Ordinal));
+        Assert.DoesNotContain(vm.Lines, line => line.Message.StartsWith("Description:", StringComparison.Ordinal));
+
+        await ui.InvokeAsync(() => vm.JumpEvidenceToHeadCommand.ExecuteAsync(null)).Unwrap();        Assert.True(vm.IsEvidenceHead);
+        Assert.Equal("Description: Rendering overlay crashed", vm.Lines[0].Message);
+
+        ui.Invoke(() => vm.Dispose());
+    }
+
+    /// <summary>游戏日志等证据仍以最新内容为准：不能因为崩溃报告改了锚点就把所有证据都从头读。</summary>
+    [Fact]
+    public async Task GameLogEvidenceStillOpensAtTheEnd()
+    {
+        using var ui = new UiThread();
+        var session = CreateSession("a", "1.21.1");
+        var lines = new List<string> { "first line" };
+        lines.AddRange(Enumerable.Range(1, 9000).Select(index => $"[10:00:00] [main/INFO]: line-{index:0000}"));
+        RegisterEvidence(session, "rotated.log", SessionArtifactKinds.RotatedLog, lines);
+
+        var vm = await ui.InvokeAsync(() => CreateViewModel());
+        ui.Invoke(() => vm.Activate());
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+        ui.Invoke(() => vm.SelectedSource = vm.Sources.Single(source => source.Kind == SessionLogSourceKind.Evidence));
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+
+        Assert.False(vm.IsEvidenceHead);
+        Assert.True(vm.FollowsTail);
+        Assert.Equal(lines[^1], vm.Lines[^1].Raw);
+        Assert.DoesNotContain(vm.Lines, line => line.Raw == "first line");
+
+        ui.Invoke(() => vm.Dispose());
+    }
+
+    /// <summary>
+    /// 证据向更早分页必须按真实字节偏移读取：重新读取末尾会把同一段内容重复追加一次。
+    /// </summary>
+    [Fact]
+    public async Task EvidenceLoadOlderPagesBackwardsInsteadOfRereadingTheTail()
+    {
+        using var ui = new UiThread();
+        var session = CreateSession("a", "1.21.1");
+        // 每行较长，使 512KB 尾窗只覆盖一部分行（行数远低于显示上限）。
+        var lines = Enumerable.Range(1, 1000)
+            .Select(index => $"# evidence line {index:0000} " + new string('x', 600))
+            .ToList();
+        RegisterEvidence(session, "rotated.log", SessionArtifactKinds.RotatedLog, lines);
+
+        var vm = await ui.InvokeAsync(() => CreateViewModel());
+        ui.Invoke(() => vm.Activate());
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+        ui.Invoke(() => vm.SelectedSource = vm.Sources.Single(source => source.Kind == SessionLogSourceKind.Evidence));
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+
+        Assert.True(vm.CanLoadOlder);
+        var loadedBefore = vm.Lines.Count;
+
+        await ui.InvokeAsync(() => vm.LoadOlderCommand.ExecuteAsync(null)).Unwrap();
+
+        Assert.True(vm.Lines.Count > loadedBefore);
+        // 分页读取的是更早的内容，不是把同一段末尾重复追加。
+        Assert.Equal(lines[0], vm.Lines[0].Message);
+        var duplicates = vm.Lines
+            .GroupBy(line => line.Message, StringComparer.Ordinal)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToArray();
+        Assert.Empty(duplicates);
+
+        ui.Invoke(() => vm.Dispose());
+    }
+
+    /// <summary>从开头读到一半时可以继续向更新读，且不会丢掉已加载的开头。</summary>
+    [Fact]
+    public async Task EvidenceLoadNewerContinuesAfterTheHeadWindow()
+    {
+        using var ui = new UiThread();
+        var session = CreateSession("a", "1.21.1");
+        var lines = new List<string> { "Description: start of the crash report" };
+        lines.AddRange(Enumerable.Range(1, 1100).Select(index =>
+            $"#  at example.Class{index:0000}.frame(Frame{index:0000}.java:{index}) " + new string('y', 600)));
+        RegisterEvidence(session, "crash-big.txt", SessionArtifactKinds.ClientCrashReport, lines);
+
+        var vm = await ui.InvokeAsync(() => CreateViewModel());
+        ui.Invoke(() => vm.Activate());
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+        ui.Invoke(() => vm.SelectedSource = vm.Sources.Single(source => source.Kind == SessionLogSourceKind.Evidence));
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+
+        Assert.True(vm.IsEvidenceHead);
+        Assert.True(vm.CanLoadNewer);
+        Assert.Equal(lines[0], vm.Lines[0].Message);
+
+        var loadedBefore = vm.Lines.Count;
+        await ui.InvokeAsync(() => vm.LoadNewerCommand.ExecuteAsync(null)).Unwrap();
+
+        Assert.True(vm.Lines.Count > loadedBefore);
+        Assert.Equal(lines[0], vm.Lines[0].Message);
+        Assert.Equal(lines[^1], vm.Lines[^1].Message);
+
+        ui.Invoke(() => vm.Dispose());
+    }
+
+    private void RegisterEvidence(
+        GameLogSession session,
+        string fileName,
+        string kind,
+        IReadOnlyList<string> lines)
+    {
+        var report = Path.Combine(session.DirectoryPath, "artifacts", fileName);
+        Directory.CreateDirectory(Path.GetDirectoryName(report)!);
+        File.WriteAllText(report, string.Join('\n', lines) + "\n");
+        _sessions.RegisterArtifact(session.SessionId, new SessionArtifact
+        {
+            Id = $"{kind}:{fileName}",
+            Kind = kind,
+            SourcePath = report,
+            CapturedPath = report,
+            Ownership = ArtifactOwnership.Direct,
+        });
+    }
+
     private GameLogSession CreateSession(
         string instanceId,
         string version,
@@ -563,8 +718,25 @@ public sealed class LogSessionsPageTests : IDisposable
             GameLogSession session,
             SessionArtifact artifact,
             int maxBytes = SessionLogReader.DefaultChunkBytes,
+            SessionEvidenceAnchor anchor = SessionEvidenceAnchor.Tail,
             CancellationToken cancellationToken = default) =>
-            inner.ReadEvidenceAsync(session, artifact, maxBytes, cancellationToken);
+            inner.ReadEvidenceAsync(session, artifact, maxBytes, anchor, cancellationToken);
+
+        public Task<SessionLogChunk> ReadEvidenceBeforeAsync(
+            GameLogSession session,
+            SessionArtifact artifact,
+            long beforeOffset,
+            int maxBytes = SessionLogReader.DefaultChunkBytes,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadEvidenceBeforeAsync(session, artifact, beforeOffset, maxBytes, cancellationToken);
+
+        public Task<SessionLogChunk> ReadEvidenceAfterAsync(
+            GameLogSession session,
+            SessionArtifact artifact,
+            long afterOffset,
+            int maxBytes = SessionLogReader.DefaultChunkBytes,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadEvidenceAfterAsync(session, artifact, afterOffset, maxBytes, cancellationToken);
     }
 
     private sealed class TestMemoryPressureMonitor : IMemoryPressureMonitor

@@ -34,6 +34,20 @@ public sealed record SessionLogSourceInfo(
     DateTimeOffset? LastWriteTimeUtc,
     string? Warning);
 
+/// <summary>
+/// 证据文件的读取锚点。崩溃报告与 JVM 致命错误日志把结论写在开头
+/// （描述、异常类型、问题帧、内存/信号信息），一旦调用栈很长，只看末尾会完全丢失错因；
+/// 游戏日志、stdout/stderr 等则以最新内容结尾。两种锚点都支持向更早/更新继续翻阅。
+/// </summary>
+public enum SessionEvidenceAnchor
+{
+    /// <summary>从文件末尾开始（最新内容）。</summary>
+    Tail,
+
+    /// <summary>从文件开头开始（崩溃类证据的关键信息所在位置）。</summary>
+    Head,
+}
+
 /// <summary>已登记证据的呈现状态（logs.md §4.2）。</summary>
 public sealed record SessionEvidenceItem(
     SessionArtifact Artifact,
@@ -87,10 +101,30 @@ public interface ISessionLogReader
         int maxBytes = SessionLogReader.DefaultChunkBytes,
         CancellationToken cancellationToken = default);
 
-    /// <summary>读取一条已登记证据的原始文本；只读、不修改证据。</summary>
+    /// <summary>
+    /// 读取一条已登记证据的原始文本；只读、不修改证据。
+    /// <paramref name="anchor"/> 决定首个窗口取开头还是末尾：崩溃报告与 JVM 致命错误日志的关键信息在开头。
+    /// </summary>
     Task<SessionLogChunk> ReadEvidenceAsync(
         GameLogSession session,
         SessionArtifact artifact,
+        int maxBytes = SessionLogReader.DefaultChunkBytes,
+        SessionEvidenceAnchor anchor = SessionEvidenceAnchor.Tail,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>读取证据中指定偏移之前的一段（向更早翻阅）；不改变证据文件。</summary>
+    Task<SessionLogChunk> ReadEvidenceBeforeAsync(
+        GameLogSession session,
+        SessionArtifact artifact,
+        long beforeOffset,
+        int maxBytes = SessionLogReader.DefaultChunkBytes,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>读取证据中指定偏移之后的一段（向更新翻阅）；不改变证据文件。</summary>
+    Task<SessionLogChunk> ReadEvidenceAfterAsync(
+        GameLogSession session,
+        SessionArtifact artifact,
+        long afterOffset,
         int maxBytes = SessionLogReader.DefaultChunkBytes,
         CancellationToken cancellationToken = default);
 }
@@ -190,19 +224,63 @@ public sealed class SessionLogReader : ISessionLogReader
         GameLogSession session,
         SessionArtifact artifact,
         int maxBytes = DefaultChunkBytes,
+        SessionEvidenceAnchor anchor = SessionEvidenceAnchor.Tail,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(artifact);
-        var path = ExistingPath(artifact.CapturedPath) ?? ExistingPath(artifact.SourcePath);
+        var path = EvidencePath(artifact);
         if (path is null)
         {
             return Task.FromResult(EmptyChunk(null));
         }
 
         return Task.Run(
-            () => ReadLatest(path, maxBytes, cancellationToken),
+            () => anchor == SessionEvidenceAnchor.Head
+                ? ReadHead(path, maxBytes, cancellationToken)
+                : ReadLatest(path, maxBytes, cancellationToken),
             cancellationToken);
     }
+
+    public Task<SessionLogChunk> ReadEvidenceBeforeAsync(
+        GameLogSession session,
+        SessionArtifact artifact,
+        long beforeOffset,
+        int maxBytes = DefaultChunkBytes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(artifact);
+        var path = EvidencePath(artifact);
+        if (path is null)
+        {
+            return Task.FromResult(EmptyChunk(null));
+        }
+
+        return Task.Run(
+            () => ReadBefore(path, beforeOffset, maxBytes, cancellationToken),
+            cancellationToken);
+    }
+
+    public Task<SessionLogChunk> ReadEvidenceAfterAsync(
+        GameLogSession session,
+        SessionArtifact artifact,
+        long afterOffset,
+        int maxBytes = DefaultChunkBytes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(artifact);
+        var path = EvidencePath(artifact);
+        if (path is null)
+        {
+            return Task.FromResult(EmptyChunk(null));
+        }
+
+        return Task.Run(
+            () => ReadAfter(path, afterOffset, maxBytes, cancellationToken),
+            cancellationToken);
+    }
+
+    private static string? EvidencePath(SessionArtifact artifact) =>
+        ExistingPath(artifact.CapturedPath) ?? ExistingPath(artifact.SourcePath);
 
     private static SessionLogSourceInfo DescribeGameLog(GameLogSession session)
     {
@@ -484,6 +562,43 @@ public sealed class SessionLogReader : ISessionLogReader
         }
     }
 
+    /// <summary>
+    /// 读取文件开头的窗口。窗口没有覆盖整个文件时丢掉末尾可能被截断的半行，
+    /// 让下一段严格从行首继续，避免把半行伪装成完整行。
+    /// </summary>
+    private static SessionLogChunk ReadHead(string path, int maxBytes, CancellationToken cancellationToken)
+    {
+        var limit = Math.Clamp(maxBytes, 4096, MaxChunkBytes);
+        try
+        {
+            using var stream = OpenShared(path);
+            var length = stream.Length;
+            var count = (int)Math.Min(limit, length);
+            stream.Seek(0, SeekOrigin.Begin);
+            var raw = ReadBytes(stream, count, cancellationToken);
+            var hasMoreAfter = count < length;
+            var bytes = hasMoreAfter ? TrimTrailingPartialLine(raw) : raw;
+            // 极端情况：首窗口内没有换行（单行巨型文件）。保留原字节继续前进，不制造空窗口。
+            if (bytes.Length == 0 && raw.Length > 0)
+            {
+                bytes = raw;
+            }
+
+            return new SessionLogChunk(
+                SplitLines(Decode(bytes)),
+                0,
+                bytes.Length,
+                false,
+                hasMoreAfter,
+                false,
+                null);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return EmptyChunk(exception.Message);
+        }
+    }
+
     private static SessionLogChunk ReadFrom(string path, long offset, int maxBytes, CancellationToken cancellationToken)
     {
         var limit = Math.Clamp(maxBytes, 4096, MaxChunkBytes);
@@ -544,7 +659,7 @@ public sealed class SessionLogReader : ISessionLogReader
                 start,
                 end,
                 start > 0,
-                false,
+                end < length,
                 skipped,
                 null);
         }
@@ -552,6 +667,55 @@ public sealed class SessionLogReader : ISessionLogReader
         {
             return EmptyChunk(exception.Message);
         }
+    }
+
+    /// <summary>读取指定偏移之后的一段；偏移本身来自上一次读取的 <see cref="SessionLogChunk.EndOffset"/>，
+    /// 因此总是行首对齐。窗口未覆盖文件末尾时丢弃末尾半行。</summary>
+    private static SessionLogChunk ReadAfter(string path, long afterOffset, int maxBytes, CancellationToken cancellationToken)
+    {
+        var limit = Math.Clamp(maxBytes, 4096, MaxChunkBytes);
+        try
+        {
+            using var stream = OpenShared(path);
+            var length = stream.Length;
+            var start = Math.Clamp(afterOffset, 0, length);
+            var count = (int)Math.Min(limit, length - start);
+            stream.Seek(start, SeekOrigin.Begin);
+            var raw = ReadBytes(stream, count, cancellationToken);
+            var hasMoreAfter = start + count < length;
+            var bytes = hasMoreAfter ? TrimTrailingPartialLine(raw) : raw;
+            if (bytes.Length == 0 && raw.Length > 0)
+            {
+                bytes = raw;
+            }
+
+            return new SessionLogChunk(
+                SplitLines(Decode(bytes)),
+                start,
+                start + bytes.Length,
+                start > 0,
+                hasMoreAfter,
+                false,
+                null);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return EmptyChunk(exception.Message);
+        }
+    }
+
+    /// <summary>把窗口裁剪到最后一个换行之后；窗口内没有换行时返回空，由调用方决定如何前进。</summary>
+    private static byte[] TrimTrailingPartialLine(byte[] bytes)
+    {
+        for (var index = bytes.Length - 1; index >= 0; index--)
+        {
+            if (bytes[index] == (byte)'\n')
+            {
+                return bytes[..(index + 1)];
+            }
+        }
+
+        return [];
     }
 
     private static FileStream OpenShared(string path) =>

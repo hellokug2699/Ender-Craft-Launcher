@@ -1012,10 +1012,26 @@ ADR 0039（应用生命周期）、ADR 0041（性能监测）；日志入口契�
   右键复制会话 ID/打开目录/导出），中央阅读器（跟随/暂停、自动换行、搜索、清除过滤、复制当前行、
   打开目录），Inspector 选择层展示会话概览与证据置信度。中央正文是主体；窄窗口会话栏变为覆盖层，
   并用单行来源选择器替代页签。
+- **正文优先的阅读区**（2026-11-21 按维护者反馈重构，当时未做真实窗口截图验收）：
+  来源页签与阅读器操作**同一行**，跟随/换行/复制/筛选/更多按紧凑密度排版，复制可见行、
+  失败时自动打开、打开目录收进“更多”；来源页签压成单行（标题 + 可用性 + 警告提示点，
+  完整警告在 ToolTip 与选中后的提示条里）。`SetCompactSources`（`IsCompactSources`，阅读区宽度 < 880；会话栏展开/收起会重新判断）
+  改用单行来源选择器，避免页签在窄阅读区里逐个折行堆高；`SetNarrow`（< 760）仍负责会话栏改为覆盖层。
+  搜索与过滤从“占一行的折叠区”改为**浮层**（`IsFilterPanelOpen`）：展开时浮在正文右上角，
+  关闭后不留空白行，垂直空间全部留给日志。诊断证据清单从正文上方的 180px 列表改为
+  **正文右侧栏**（宽 248、窄窗口 196），条目按种类/归属/大小/预览按钮纵向排列。
+  1400×860 下顶部固定开销约 143px（含页面标题），正文约 666px。
 - **来源与阅读**：游戏日志/stdout/stderr/证据为独立来源，不拼接成伪统一时间线；未知格式保留原始行；
   级别/Trace–Fatal 过滤与线程/Logger 过滤只作用于视图；无法解析级别的行不被丢弃。
   搜索范围是当前已加载窗口（最多 2000 行），文件更大或内存压力降级时显示“至少 N 条”，不伪造精确总数；
   支持大小写敏感与正则，正则错误只显示错误、不清空正文。
+- **证据按方向读取**（2026-11-21 修正）：崩溃报告（`client_crash_report` / `server_crash_report`）与
+  JVM 致命错误日志（`jvm_fatal_error`，即 hs_err）默认 `SessionEvidenceAnchor.Head`，从文件开头显示；
+  长调用栈不再让“Description / 异常类型 / 问题帧”被挤到不可见位置。游戏日志、轮转归档等证据仍按末尾读取。
+  阅读器提供“跳到开头/跳到结尾”与“加载更早/加载更新”，三者都按真实字节偏移分页
+  （`ReadEvidenceBeforeAsync` / `ReadEvidenceAfterAsync`），不会把同一段末尾重复追加。
+  按开头阅读时显示上限的裁剪方向改为保留开头；`FollowsTail` 保证跟随滚动不会把开头视图拽到末尾。
+  诊断分析（`DiagnosticAnalysisService`）对同类证据同样按开头读取。
 - **生命周期与性能**：进入页面激活、离开页面停表；关闭工作区/切换会话不停止采集、不删除证据。
   阅读器按来源分段读取并限制为最近 N 行（内存压力下 400/800/1200），支持“加载更早”；
   不一次性加载整份历史日志。导出任务仍归 `IOperationService`。
@@ -1029,15 +1045,28 @@ ADR 0039（应用生命周期）、ADR 0041（性能监测）；日志入口契�
   两者都打开同一个全局 Logs Workspace 并按 InstanceId 筛选，不建立实例私有日志页面。
   卡片原有的实例级 latest.log 导出/崩溃分析/诊断包仍保留，它们是实例操作而不是会话阅读器。
 - **本地化**：新增 `logs.workspace.*` / `logs.source.*` / `logs.search.*` / `logs.filter.*` /
-  `logs.inspector.*` / `logs.export.*` / `logs.evidence.*` / `logs.ownership.*` 等键（zh/en 成对）。
+  `logs.inspector.*` / `logs.export.*` / `logs.evidence.*` / `logs.ownership.*` 等键（zh/en 成对）；
+  2026-11-21 补充 `logs.filter.short` / `logs.filter.close` / `logs.moreActions` /
+  `logs.follow.hint` / `logs.wrap.hint` / `logs.loadNewer` / `logs.loadedNewer` / `logs.trimmedHead` /
+  `logs.evidence.jumpHead` / `logs.evidence.jumpTail` / `logs.evidence.previewHead` /
+  `logs.evidence.truncatedHead` / `logs.evidence.truncatedTail`，删除失效的 `logs.evidence.truncated`。
 - **测试**：核心 +10（`SessionLogReaderTests`：来源身份、运行期 pending 归属、空会话日志、过期共享日志、
   登记证据保留说明、证据缺失回退、尾窗半行、增量偏移、截断重建、共享歧义；导出脱敏选项由原 `SessionTests` 覆盖）；
   应用 +8（`LogSessionsPageTests`：会话选择与来源分离、轮询切换共享→会话日志、来源不变时只追加、
   目标会话不可用、实例筛选、搜索与级别过滤、暂停跟随的新行、证据置信度本地化）；
   导航 +1（日志快捷入口不改变当前二级页）。
+  2026-11-21 追加：核心 +2（`SessionLogReaderTests`：证据开头读取只返回完整行并标记后续内容、
+  头部窗口的双向偏移分页）；应用 +5（`LogSessionsPageTests`：崩溃报告按开头打开并可跳到结尾、
+  游戏日志证据仍按末尾打开、证据向更早分页不重复追加、开头窗口可继续向更新加载；
+  `UiResourcesLoadTests`：浮层/侧栏重构后日志视图在真实主题下可加载、右键菜单使用深色主题样式）。
 - **实机（2026-11-14，`ECL_DATA_DIR` 隔离数据目录 + 合成会话）**：1400×880 / 1500×950 / 1080×720，
   zh-CN / en-US；会话分组与来源页签、搜索命中高亮与计数、证据预览、导出确认 → 真实 ZIP 生成并进入
   Task/Output、窄窗口覆盖层会话栏。真实游戏失败启动产生的会话仍为 NOT RUN（见 §8.2）。
+- **离屏渲染核对（2026-11-21，非实机窗口）**：用真实 `LogSessionsView` 与真实主题资源在
+  `RenderTargetBitmap` 下渲染 1400×860 / 1000×720 / 820×720 / 760×720 / 700×720，确认：
+  搜索浮层展开不改变正文高度；证据侧栏在正文右侧；来源页签单行；崩溃报告首屏就是
+  `Description` / 异常行；`IsCompactSources` 在 980 以下生效且正文高度保持在 500px 以上。
+  该检查是一次性手工脚本，未纳入自动化测试；真实窗口、DPI 缩放与多显示器仍未复核。
 
 ### 2.20 存储管理与清理（B7，2026-11-14 按维护者要求重写逻辑）
 
@@ -1236,6 +1265,7 @@ B0 只提供 B1 立即需要的三个共享件，其余控件（`DataTable`、`S
 | `PageHeader` | `src/ECL.App/Controls/PageHeader.xaml` | 目的地页面的标题 + 副标题 + 标题行右侧操作槽；不可见项自动折叠 |
 | `PageStateView` | `src/ECL.App/Controls/PageStateView.xaml` | 加载 / 空 / 错误 / 不可用四态；状态用文字标签 + 颜色双重表达 |
 | `ToolbarButton` | `Themes/Theme.xaml` | 页面标题行与工具条的次级操作，紧凑但仍保留 32px 高度与焦点环 |
+| `ContextMenu` / `MenuItem`（隐式样式） | `Themes/Theme.xaml` | 右键菜单与“更多”菜单的深色弹层：表面色 + 边框 + 圆角 + 阴影，悬停 `SurfaceHoverBrush`，禁用项降透明度 |
 | `SecurityStatusCircle` | `src/ECL.App/Controls/SecurityStatusCircle.xaml` | 安全中心/状态中心共用的顶部圆形状态、盾牌描边、两枚圆内操作按钮（B11） |
 
 - `PageHeader` 与 `PageStateView` 的默认文案走本地化键 `page.state.*`；页面覆盖说明时必须写清“为什么”和“怎样解除”。
@@ -1244,6 +1274,10 @@ B0 只提供 B1 立即需要的三个共享件，其余控件（`DataTable`、`S
 - 页面根元素不得再叠加外围外边距；外围边距由 `PageHost` 统一提供。
 - `ResourceRowButton`（`Themes/Theme.xaml`）是下载中心内容发现列表的整行按钮样式：卡片外观、
   悬停高亮与键盘焦点环，替代默认 Button 外观，不引入第二套列表控件。
+- `ContextMenu` / `MenuItem` 必须有隐式深色样式：WPF 默认菜单使用系统颜色，在深色主题里会显示成
+  一块白色面板（2026-11-21 维护者反馈）。菜单分隔线使用带 key 的 `MenuSeparator`，
+  不影响页面上其它 `Separator` 的默认外观；`UiResourcesLoadTests.ContextMenusUseTheDarkThemeChrome`
+  断言这两个隐式样式存在且使用主题画刷。
 
 ## 4. Inspector
 

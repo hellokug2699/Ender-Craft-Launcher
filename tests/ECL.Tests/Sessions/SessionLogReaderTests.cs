@@ -293,5 +293,91 @@ public sealed class SessionLogReaderTests : IDisposable
         Assert.Equal("first\nsecond\n", await File.ReadAllTextAsync(report));
     }
 
+    /// <summary>
+    /// 崩溃报告与 JVM 致命错误日志的结论在开头（描述、异常类型、问题帧）：按开头读取必须保住
+    /// 前几行，并且只返回完整行；长调用栈下按末尾读取会把错因完全丢掉。
+    /// </summary>
+    [Fact]
+    public async Task EvidenceHeadReadKeepsTheBeginningAndReportsMoreAfter()
+    {
+        var service = Service();
+        var session = service.Create(Request());
+        var (artifact, lines) = RegisterCrashReport(session, lineCount: 800);
+        var current = service.Get(session.SessionId)!;
+
+        var head = await _reader.ReadEvidenceAsync(
+            current,
+            artifact,
+            maxBytes: 4096,
+            SessionEvidenceAnchor.Head);
+        var tail = await _reader.ReadEvidenceAsync(current, artifact, maxBytes: 4096);
+
+        Assert.False(head.HasMoreBefore);
+        Assert.True(head.HasMoreAfter);
+        Assert.Equal(lines[0], head.Lines[0]);
+        Assert.Equal(lines[1], head.Lines[1]);
+
+        // 不能把被字节窗口截断的半行伪装成完整行。
+        var known = new HashSet<string>(lines, StringComparer.Ordinal);
+        Assert.All(head.Lines, line => Assert.Contains(line, known));
+
+        Assert.True(tail.HasMoreBefore);
+        Assert.False(tail.HasMoreAfter);
+        Assert.Equal(lines[^1], tail.Lines[^1]);
+        Assert.DoesNotContain(lines[0], tail.Lines);
+    }
+
+    /// <summary>
+    /// 证据按真实字节偏移双向分页：从开头读完可以继续向更新读，也可以退回到同一窗口，
+    /// 不需要把整份证据载入内存。
+    /// </summary>
+    [Fact]
+    public async Task EvidencePagesForwardAndBackwardFromTheHead()
+    {
+        var service = Service();
+        var session = service.Create(Request());
+        var (artifact, lines) = RegisterCrashReport(session, lineCount: 800);
+        var current = service.Get(session.SessionId)!;
+
+        var head = await _reader.ReadEvidenceAsync(
+            current,
+            artifact,
+            maxBytes: 4096,
+            SessionEvidenceAnchor.Head);
+        var forward = await _reader.ReadEvidenceAfterAsync(current, artifact, head.EndOffset, 4096);
+        var back = await _reader.ReadEvidenceBeforeAsync(current, artifact, forward.StartOffset, 4096);
+
+        Assert.Equal(head.EndOffset, forward.StartOffset);
+        Assert.True(forward.HasMoreBefore);
+
+        // 续读必须从下一整行开始，不漏行也不重行。
+        var lastIndex = Array.IndexOf(lines, head.Lines[^1]);
+        Assert.Equal(lines[lastIndex + 1], forward.Lines[0]);
+
+        Assert.Equal(head.EndOffset, back.EndOffset);
+        Assert.Equal(head.Lines, back.Lines);
+    }
+
+    private (SessionArtifact Artifact, string[] Lines) RegisterCrashReport(GameLogSession session, int lineCount)
+    {
+        var report = Path.Combine(session.DirectoryPath, "crash-report.txt");
+        var lines = new List<string>
+        {
+            "Description: Rendering overlay crashed",
+            "java.lang.NullPointerException: Cannot invoke registry lookup",
+        };
+        lines.AddRange(Enumerable.Range(1, lineCount).Select(index =>
+            $"#  at example.package.Class{index:0000}.method(Class{index:0000}.java:{index})"));
+        File.WriteAllText(report, string.Join('\n', lines) + "\n");
+        var artifact = new SessionArtifact
+        {
+            Id = "client_crash_report:crash-report.txt",
+            Kind = SessionArtifactKinds.ClientCrashReport,
+            SourcePath = report,
+            CapturedPath = report,
+        };
+        return (artifact, lines.ToArray());
+    }
+
     public void Dispose() => _environment.Dispose();
 }
