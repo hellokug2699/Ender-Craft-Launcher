@@ -3,6 +3,7 @@
 using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using Ecl.App.ViewModels;
 using Ecl.App.ViewModels.LogSessions;
 
@@ -16,6 +17,7 @@ public partial class LogSessionsView : UserControl
 {
     private readonly List<INotifyCollectionChanged> _tracked = [];
     private LogSessionsViewModel? _viewModel;
+    private bool _scrollToEndScheduled;
 
     public LogSessionsView()
     {
@@ -63,14 +65,35 @@ public partial class LogSessionsView : UserControl
     {
         if (_viewModel is { Follow: true })
         {
-            ScrollToEnd();
+            ScheduleScrollToEnd();
         }
     }
 
-    private void OnScrollToEndRequested(object? sender, EventArgs e) => ScrollToEnd();
+    private void OnScrollToEndRequested(object? sender, EventArgs e) => ScheduleScrollToEnd();
 
     private void OnScrollToLineRequested(object? sender, LogLineViewModel line) =>
         LogList.ScrollIntoView(line);
+
+    /// <summary>
+    /// 一轮增量追加可能产生多条 Add 通知；跟随滚动合并为一次，避免逐行
+    /// <see cref="ItemsControl.ScrollIntoView"/> 触发重复布局（logs.md §6.3）。
+    /// </summary>
+    private void ScheduleScrollToEnd()
+    {
+        if (_scrollToEndScheduled)
+        {
+            return;
+        }
+
+        _scrollToEndScheduled = true;
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            new Action(() =>
+            {
+                _scrollToEndScheduled = false;
+                ScrollToEnd();
+            }));
+    }
 
     private void ScrollToEnd()
     {

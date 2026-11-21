@@ -29,86 +29,96 @@ internal sealed class FileSystemInstanceStore(
         "natives",
     ];
 
-    public Task<IReadOnlyList<GameInstance>> ListAsync(CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var instances = new List<GameInstance>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var (rootId, instancesDirectory) in EnumerateInstanceDirectories())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!Directory.Exists(instancesDirectory))
-            {
-                continue;
-            }
-
-            foreach (var directory in Directory.EnumerateDirectories(instancesDirectory))
+    public Task<IReadOnlyList<GameInstance>> ListAsync(CancellationToken cancellationToken = default) =>
+        // 目录枚举与 manifest 读取是同步磁盘 I/O；用 Task.Run 显式移出调用线程，
+        // 避免 async 方法在调用者线程（UI Dispatcher）上同步完成全部工作。
+        Task.Run<IReadOnlyList<GameInstance>>(
+            () =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var instanceId = Path.GetFileName(directory);
-                if (!AppPaths.IsValidInstanceId(instanceId) || !seen.Add(instanceId))
+
+                var instances = new List<GameInstance>();
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var (rootId, instancesDirectory) in EnumerateInstanceDirectories())
                 {
-                    continue;
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (!Directory.Exists(instancesDirectory))
+                    {
+                        continue;
+                    }
+
+                    foreach (var directory in Directory.EnumerateDirectories(instancesDirectory))
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var instanceId = Path.GetFileName(directory);
+                        if (!AppPaths.IsValidInstanceId(instanceId) || !seen.Add(instanceId))
+                        {
+                            continue;
+                        }
+
+                        var instance = TryLoadAt(directory);
+                        if (instance is null)
+                        {
+                            continue;
+                        }
+
+                        if (rootId is not null && instance.SourceRootId is null)
+                        {
+                            instance = instance with { SourceRootId = rootId };
+                        }
+
+                        instances.Add(instance);
+                    }
                 }
 
-                var instance = TryLoadAt(directory);
-                if (instance is null)
+                return instances
+                    .OrderByDescending(instance => instance.LastPlayedAt ?? instance.CreatedAt)
+                    .ToArray();
+            },
+            cancellationToken);
+
+    public Task<GameInstance?> GetAsync(string instanceId, CancellationToken cancellationToken = default) =>
+        // 与 ListAsync 相同：路径存在性检查与 JSON 读取都在后台线程完成。
+        Task.Run<GameInstance?>(
+            () =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!AppPaths.IsValidInstanceId(instanceId))
                 {
-                    continue;
+                    return null;
                 }
 
-                if (rootId is not null && instance.SourceRootId is null)
+                var instance = TryLoadAt(paths.GetInstanceDirectory(instanceId));
+                if (instance is not null)
                 {
-                    instance = instance with { SourceRootId = rootId };
+                    return instance;
                 }
 
-                instances.Add(instance);
-            }
-        }
+                // 映射缺失（例如外部登记后未刷新）：退回按受管理根查找同一记录。
+                foreach (var (rootId, instancesDirectory) in EnumerateInstanceDirectories())
+                {
+                    if (rootId is null)
+                    {
+                        continue;
+                    }
 
-        return Task.FromResult<IReadOnlyList<GameInstance>>(
-            instances.OrderByDescending(instance => instance.LastPlayedAt ?? instance.CreatedAt).ToArray());
-    }
+                    var candidate = Path.Combine(instancesDirectory, instanceId);
+                    if (!Directory.Exists(candidate))
+                    {
+                        continue;
+                    }
 
-    public Task<GameInstance?> GetAsync(string instanceId, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!AppPaths.IsValidInstanceId(instanceId))
-        {
-            return Task.FromResult<GameInstance?>(null);
-        }
+                    instance = TryLoadAt(candidate);
+                    if (instance is not null)
+                    {
+                        paths.RegisterInstanceRoot(instanceId, Path.GetDirectoryName(instancesDirectory)!);
+                        return instance with { SourceRootId = instance.SourceRootId ?? rootId };
+                    }
+                }
 
-        var instance = TryLoadAt(paths.GetInstanceDirectory(instanceId));
-        if (instance is not null)
-        {
-            return Task.FromResult<GameInstance?>(instance);
-        }
-
-        // 映射缺失（例如外部登记后未刷新）：退回按受管理根查找同一记录。
-        foreach (var (rootId, instancesDirectory) in EnumerateInstanceDirectories())
-        {
-            if (rootId is null)
-            {
-                continue;
-            }
-
-            var candidate = Path.Combine(instancesDirectory, instanceId);
-            if (!Directory.Exists(candidate))
-            {
-                continue;
-            }
-
-            instance = TryLoadAt(candidate);
-            if (instance is not null)
-            {
-                paths.RegisterInstanceRoot(instanceId, Path.GetDirectoryName(instancesDirectory)!);
-                return Task.FromResult<GameInstance?>(instance with { SourceRootId = instance.SourceRootId ?? rootId });
-            }
-        }
-
-        return Task.FromResult<GameInstance?>(null);
-    }
+                return null;
+            },
+            cancellationToken);
 
     public Task SaveAsync(GameInstance instance, CancellationToken cancellationToken = default)
     {

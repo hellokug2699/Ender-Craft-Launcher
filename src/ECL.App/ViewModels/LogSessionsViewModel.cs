@@ -77,7 +77,16 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     private string? _instanceFocusName;
     private bool _suppressFilterRefresh;
     private int _currentMatchIndex = -1;
+    private Task _sessionsLoad = Task.CompletedTask;
+    private Task _sessionSourcesLoad = Task.CompletedTask;
     private Task _sourceLoad = Task.CompletedTask;
+    private CancellationTokenSource? _searchCancellation;
+    private int _searchVersion;
+    /// <summary>来源/会话切换代次：异步读取返回时若代次已变，丢弃过期结果，避免旧来源覆盖新视图。</summary>
+    private int _loadGeneration;
+    private CancellationTokenSource? _filterDebounce;
+    // 小集合直接同步搜索（测试与低延迟），大集合才移出 UI 线程，避免每次键入都等待全量扫描。
+    private const int SynchronousSearchThreshold = 4000;
 
     public LogSessionsViewModel(
         IGameSessionService sessions,
@@ -336,7 +345,9 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
 
     public void Activate()
     {
-        RefreshSessions(_targetSessionId is null);
+        // 会话清单来自磁盘（每个会话一个 manifest），不能在 UI 线程同步枚举；
+        // 首屏先呈现加载状态，清单在后台读取完成后统一回填（logs.md §9 生命周期）。
+        _sessionsLoad = RefreshSessionsAsync(_targetSessionId is null);
         _timer.Start();
     }
 
@@ -351,9 +362,13 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         var target = string.IsNullOrWhiteSpace(sessionId) ? null : sessionId;
         _targetSessionId = target;
         SetTargetUnavailable(string.Empty);
+        _sessionsLoad = FocusSessionAsync(target);
+    }
 
-        RefreshSessions(selectFallback: target is null);
-        if (target is null)
+    private async Task FocusSessionAsync(string? target)
+    {
+        await RefreshSessionsAsync(selectFallback: target is null).ConfigureAwait(true);
+        if (target is null || _disposed)
         {
             return;
         }
@@ -385,7 +400,16 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         SetInstanceFocus(_localizer.Get("logs.instanceFocus", instanceName ?? instanceId));
         _targetSessionId = null;
         SetTargetUnavailable(string.Empty);
-        RefreshSessions(selectFallback: true);
+        _sessionsLoad = FocusInstanceAsync();
+    }
+
+    private async Task FocusInstanceAsync()
+    {
+        await RefreshSessionsAsync(selectFallback: false).ConfigureAwait(true);
+        if (_disposed)
+        {
+            return;
+        }
 
         // 实例快捷入口的默认选中项必须来自筛选后的可见会话；
         // 没有该实例的会话时保持空选择，由空状态说明实例上下文。
@@ -419,13 +443,29 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void RefreshSessions()
     {
-        RefreshSessions(selectFallback: _targetSessionId is null);
+        _sessionsLoad = RefreshSessionsAsync(selectFallback: _targetSessionId is null);
     }
 
-    private void RefreshSessions(bool selectFallback)
+    private async Task RefreshSessionsAsync(bool selectFallback)
     {
         var selectedId = SelectedSession?.Id;
-        var sessions = _sessions.List();
+        IReadOnlyList<GameLogSession> sessions;
+        try
+        {
+            // 目录枚举与 manifest 反序列化在后台完成；UI 线程只做集合回填。
+            sessions = await Task.Run(() => _sessions.List()).ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(exception, "读取游戏日志会话失败。");
+            return;
+        }
+
+        if (_disposed)
+        {
+            return;
+        }
+
         _rows.Clear();
         foreach (var session in sessions)
         {
@@ -627,16 +667,50 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         ApplyLineFilter();
     }
 
-    partial void OnThreadFilterChanged(string value) => ApplyLineFilter();
+    // 线程/Logger 过滤是逐字输入框：合并快速连击，只重建一次可见集合，
+    // 避免每键入一个字符就清空并重新填充上千行（logs.md §6.2 输入必须即时响应）。
+    partial void OnThreadFilterChanged(string value)
+    {
+        if (_suppressFilterRefresh)
+        {
+            return;
+        }
 
-    partial void OnSearchCaseSensitiveChanged(bool value) => ReapplySearch();
+        _filterDebounce?.Cancel();
+        _filterDebounce?.Dispose();
+        var cancellation = new CancellationTokenSource();
+        _filterDebounce = cancellation;
+        _ = DebounceFilterAsync(cancellation);
+    }
 
-    partial void OnSearchUseRegexChanged(bool value) => ReapplySearch();
+    private async Task DebounceFilterAsync(CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(180, cancellation.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (_disposed || cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+
+        RebuildVisibleLines();
+        await ReapplySearchAsync().ConfigureAwait(true);
+    }
+
+    partial void OnSearchCaseSensitiveChanged(bool value) => _ = ReapplySearchAsync();
+
+    partial void OnSearchUseRegexChanged(bool value) => _ = ReapplySearchAsync();
 
     private void ApplyLineFilter()
     {
         RebuildVisibleLines();
-        ReapplySearch();
+        _ = ReapplySearchAsync();
     }
 
     partial void OnSelectedSessionChanged(LogSessionRowViewModel? value)
@@ -669,13 +743,38 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         }
 
         SessionSummary = $"{value.InstanceName} · {value.StartedText} · {value.StateText}";
-        BuildSources(value);
+        _sessionSourcesLoad = LoadSourcesAsync(value);
         UpdateInspector(value);
     }
 
-    private void BuildSources(LogSessionRowViewModel row)
+    private bool IsCurrentSession(LogSessionRowViewModel row) =>
+        ReferenceEquals(SelectedSession, row);
+
+    /// <summary>
+    /// 读取来源/证据清单需要访问磁盘（文件存在性、大小与写入时间）。放到后台线程，
+    /// 避免在会话切换时阻塞 UI；返回后再回到 UI 线程填充集合。
+    /// </summary>
+    private async Task LoadSourcesAsync(LogSessionRowViewModel row)
     {
-        var sources = _reader.DescribeSources(row.Session);
+        IReadOnlyList<SessionLogSourceInfo> sources;
+        IReadOnlyList<SessionEvidenceItem> evidence;
+        try
+        {
+            (sources, evidence) = await Task.Run(() => (
+                _reader.DescribeSources(row.Session),
+                _reader.DescribeEvidence(row.Session))).ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(exception, "读取会话来源失败：{SessionId}", row.Id);
+            return;
+        }
+
+        if (_disposed || !IsCurrentSession(row))
+        {
+            return;
+        }
+
         foreach (var source in sources)
         {
             Sources.Add(new LogSourceViewModel(
@@ -688,7 +787,6 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
                 source.Ownership));
         }
 
-        var evidence = _reader.DescribeEvidence(row.Session);
         foreach (var item in evidence)
         {
             Evidence.Add(new LogEvidenceRowViewModel(item, _localizer));
@@ -730,8 +828,29 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         _sourceLoad = LoadSourceAsync(value);
     }
 
-    /// <summary>等待当前来源的首屏读取完成；供测试与需要确定时序的调用方使用。</summary>
-    public Task WaitForSourceLoadAsync() => _sourceLoad;
+    /// <summary>
+    /// 等待当前来源的首屏读取完成；供测试与需要确定时序的调用方使用。
+    /// 先等会话清单（磁盘枚举），再等来源清单（文件状态），最后等来源正文读取。
+    /// </summary>
+    public async Task WaitForSourceLoadAsync()
+    {
+        // 会话清单与来源清单可能因一次刷新/切换而替换，逐层等待当前链路完成。
+        for (var attempt = 0; attempt < 64; attempt++)
+        {
+            var sessions = _sessionsLoad;
+            var sources = _sessionSourcesLoad;
+            var content = _sourceLoad;
+            await sessions.ConfigureAwait(true);
+            await sources.ConfigureAwait(true);
+            await content.ConfigureAwait(true);
+            if (ReferenceEquals(sessions, _sessionsLoad)
+                && ReferenceEquals(sources, _sessionSourcesLoad)
+                && ReferenceEquals(content, _sourceLoad))
+            {
+                return;
+            }
+        }
+    }
 
     private async Task LoadSourceAsync(LogSourceViewModel source)
     {
@@ -740,6 +859,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var generation = ++_loadGeneration;
         ClearLoadedLines();
         _evidenceArtifact = null;
 
@@ -767,7 +887,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
 
                 _evidenceArtifact = evidence.Artifact;
                 var chunk = await _reader.ReadEvidenceAsync(row.Session, evidence.Artifact, InitialChunkBytes);
-                if (!IsCurrent(row, source))
+                if (generation != _loadGeneration || !IsCurrent(row, source))
                 {
                     return;
                 }
@@ -775,7 +895,12 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
                 _sourceWindowStart = 0;
                 _sourceOffset = 0;
                 HasOlderLines = false;
-                AppendLines(chunk.Lines, initial: true);
+                await AppendLinesAsync(chunk.Lines, initial: true).ConfigureAwait(true);
+                if (generation != _loadGeneration)
+                {
+                    return;
+                }
+
                 RequestScrollToEnd();
                 StatusMessage = evidence.Size is { } size && chunk.EndOffset < size
                     ? _localizer.Get("logs.evidence.truncated")
@@ -784,7 +909,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             }
 
             var loaded = await _reader.ReadLatestAsync(row.Session, source.Kind, InitialChunkBytes);
-            if (!IsCurrent(row, source))
+            if (generation != _loadGeneration || !IsCurrent(row, source))
             {
                 return;
             }
@@ -792,7 +917,12 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             _sourceWindowStart = loaded.StartOffset;
             _sourceOffset = loaded.EndOffset;
             HasOlderLines = loaded.HasMoreBefore;
-            AppendLines(loaded.Lines, initial: true);
+            await AppendLinesAsync(loaded.Lines, initial: true).ConfigureAwait(true);
+            if (generation != _loadGeneration)
+            {
+                return;
+            }
+
             StatusMessage = loaded.Error is not null
                 ? _localizer.Get("logs.readError", loaded.Error)
                 : loaded.SkippedPartialLine
@@ -838,7 +968,11 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         LoadedRangeText = string.Empty;
     }
 
-    private void AppendLines(IReadOnlyList<string> rawLines, bool initial)
+    /// <summary>
+    /// 增量追加日志行。解析（每行最多 4 个正则）放到后台线程；UI 线程只做有界增量插入，
+    /// 不再每次清空并重建整个可见集合，也不逐行 <c>RemoveAt(0)</c>（logs.md §9 背压与锚点）。
+    /// </summary>
+    private async Task AppendLinesAsync(IReadOnlyList<string> rawLines, bool initial)
     {
         if (rawLines.Count == 0)
         {
@@ -846,19 +980,59 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         }
 
         var createdAt = SelectedSession?.Manifest.CreatedAtUtc ?? DateTimeOffset.UtcNow;
-        var added = new List<LogLineViewModel>(rawLines.Count);
-        foreach (var raw in rawLines)
+        var startNumber = _allLines.Count + 1;
+        var generation = _loadGeneration;
+
+        var parsed = await Task.Run(() =>
         {
-            var parsed = LogLineParser.Parse(raw, createdAt);
-            added.Add(new LogLineViewModel(_allLines.Count + added.Count + 1, parsed));
+            var list = new List<LogLineViewModel>(rawLines.Count);
+            var number = startNumber;
+            foreach (var raw in rawLines)
+            {
+                list.Add(new LogLineViewModel(number++, LogLineParser.Parse(raw, createdAt)));
+            }
+
+            return list;
+        }).ConfigureAwait(true);
+
+        // 读取期间会话/来源可能已切换：过期结果直接丢弃，不能写进新视图。
+        if (_disposed || generation != _loadGeneration)
+        {
+            return;
         }
 
-        _allLines.AddRange(added);
+        _allLines.AddRange(parsed);
+        var excess = _allLines.Count - _maxLines;
+        HashSet<LogLineViewModel>? removed = null;
         var trimmed = false;
-        while (_allLines.Count > _maxLines)
+        if (excess > 0)
         {
-            _allLines.RemoveAt(0);
+            // 一次性移除超出上限的头部（批量），并同步移除这些行在可见集合中的副本。
+            removed = new HashSet<LogLineViewModel>(_allLines.Take(excess));
+            _allLines.RemoveRange(0, excess);
+            for (var index = Lines.Count - 1; index >= 0; index--)
+            {
+                if (removed.Contains(Lines[index]))
+                {
+                    Lines.RemoveAt(index);
+                }
+            }
+
             trimmed = true;
+            RenumberLines();
+        }
+
+        foreach (var line in parsed)
+        {
+            if (removed is not null && removed.Contains(line))
+            {
+                continue;
+            }
+
+            if (MatchesFilters(line))
+            {
+                Lines.Add(line);
+            }
         }
 
         if (trimmed)
@@ -867,8 +1041,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             StatusMessage = _localizer.Get("logs.trimmed", _allLines.Count);
         }
 
-        RenumberLines();
-        RebuildVisibleLines();
+        OnPropertyChanged(nameof(CanLoadOlder));
 
         if (!initial && !Follow)
         {
@@ -880,7 +1053,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         }
 
         UpdateLoadedRangeText();
-        ReapplySearch();
+        await ReapplySearchAsync().ConfigureAwait(true);
     }
 
     private void RenumberLines()
@@ -1012,15 +1185,21 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private async Task SearchAsync()
-    {
-        ReapplySearch();
-        await Task.CompletedTask;
-    }
+    private async Task SearchAsync() => await ReapplySearchAsync().ConfigureAwait(true);
 
-    private void ReapplySearch()
+    /// <summary>
+    /// 重新计算命中。小集合同步完成（保持低延迟与确定性），大集合移出 UI 线程并支持取消；
+    /// 新查询到来时旧查询被取消，旧结果不会写回（logs.md §6.2）。
+    /// </summary>
+    private async Task ReapplySearchAsync()
     {
-        foreach (var line in _allLines)
+        var version = ++_searchVersion;
+        _searchCancellation?.Cancel();
+        _searchCancellation?.Dispose();
+        _searchCancellation = null;
+
+        // 只清除上一轮命中标记（O(命中数)），不要每次追加都遍历全部已加载行。
+        foreach (var line in _matches)
         {
             line.IsMatch = false;
             line.IsCurrentMatch = false;
@@ -1067,22 +1246,60 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         }
         else
         {
-            predicate = text => text.Contains(
-                query,
-                SearchCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+            var comparison = SearchCaseSensitive
+                ? StringComparison.Ordinal
+                : StringComparison.OrdinalIgnoreCase;
+            predicate = text => text.Contains(query, comparison);
         }
 
-        foreach (var line in _allLines)
+        var snapshot = _allLines.ToArray();
+        LogLineViewModel[] hits;
+        if (snapshot.Length <= SynchronousSearchThreshold)
         {
-            if (!MatchesFilters(line) || !predicate(line.Raw))
+            hits = snapshot
+                .Where(line => MatchesFilters(line) && predicate(line.Raw))
+                .ToArray();
+        }
+        else
+        {
+            var cancellation = new CancellationTokenSource();
+            _searchCancellation = cancellation;
+            try
             {
-                continue;
-            }
+                hits = await Task.Run(
+                    () =>
+                    {
+                        var result = new List<LogLineViewModel>();
+                        foreach (var line in snapshot)
+                        {
+                            cancellation.Token.ThrowIfCancellationRequested();
+                            if (MatchesFilters(line) && predicate(line.Raw))
+                            {
+                                result.Add(line);
+                            }
+                        }
 
-            line.IsMatch = true;
-            _matches.Add(line);
+                        return result.ToArray();
+                    },
+                    cancellation.Token).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
         }
 
+        if (version != _searchVersion || _disposed)
+        {
+            return;
+        }
+
+        foreach (var line in hits)
+        {
+            line.IsMatch = true;
+        }
+
+        _matches.AddRange(hits);
         SearchStatus = _matches.Count == 0
             ? _localizer.Get("logs.search.none")
             : HasOlderLines || _maxLines < MaxLines
@@ -1156,14 +1373,19 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             _sourceWindowStart = chunk.StartOffset;
             HasOlderLines = chunk.HasMoreBefore;
             var createdAt = row.Manifest.CreatedAtUtc;
-            var prepended = chunk.Lines
+            var prepended = await Task.Run(() => chunk.Lines
                 .Select(raw => LogLineParser.Parse(raw, createdAt))
-                .Select((parsed, _) => new LogLineViewModel(0, parsed))
-                .ToList();
+                .Select(parsed => new LogLineViewModel(0, parsed))
+                .ToList()).ConfigureAwait(true);
+            if (SelectedSession != row || SelectedSource != source)
+            {
+                return;
+            }
+
             _allLines.InsertRange(0, prepended);
             RenumberLines();
             RebuildVisibleLines();
-            ReapplySearch();
+            await ReapplySearchAsync().ConfigureAwait(true);
             UpdateLoadedRangeText();
             StatusMessage = _localizer.Get("logs.loadedOlder", prepended.Count);
         }
@@ -1193,7 +1415,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             var chunk = await _reader.ReadEvidenceAsync(row.Session, evidence.Artifact, InitialChunkBytes);
             ClearLoadedLines();
             _evidenceArtifact = evidence.Artifact;
-            AppendLines(chunk.Lines, initial: true);
+            await AppendLinesAsync(chunk.Lines, initial: true).ConfigureAwait(true);
             RequestScrollToEnd();
             StatusMessage = _localizer.Get("logs.evidence.preview", evidence.KindText);
         }
@@ -1792,7 +2014,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
                 if (chunk.Lines.Count > 0)
                 {
                     _sourceOffset = chunk.EndOffset;
-                    AppendLines(chunk.Lines, initial: false);
+                    await AppendLinesAsync(chunk.Lines, initial: false).ConfigureAwait(true);
                 }
                 else
                 {
@@ -1844,11 +2066,20 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _allLines.RemoveRange(0, _allLines.Count - _maxLines);
+        var excess = _allLines.Count - _maxLines;
+        var removed = new HashSet<LogLineViewModel>(_allLines.Take(excess));
+        _allLines.RemoveRange(0, excess);
+        for (var index = Lines.Count - 1; index >= 0; index--)
+        {
+            if (removed.Contains(Lines[index]))
+            {
+                Lines.RemoveAt(index);
+            }
+        }
+
         HasOlderLines = false;
         RenumberLines();
-        RebuildVisibleLines();
-        ReapplySearch();
+        _ = ReapplySearchAsync();
         UpdateLoadedRangeText();
         StatusMessage = _localizer.Get("logs.trimmed", _allLines.Count);
     }
@@ -2112,6 +2343,12 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         _timer.Stop();
         _timer.Tick -= OnTimerTick;
         _pressure.LevelChanged -= OnPressureChanged;
+        _searchCancellation?.Cancel();
+        _searchCancellation?.Dispose();
+        _searchCancellation = null;
+        _filterDebounce?.Cancel();
+        _filterDebounce?.Dispose();
+        _filterDebounce = null;
         _allLines.Clear();
         Lines.Clear();
         Evidence.Clear();

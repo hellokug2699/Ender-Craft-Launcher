@@ -96,15 +96,17 @@ public sealed class LogSessionsPageTests : IDisposable
         CreateSession("beta", "1.20.1");
         var vm = await ui.InvokeAsync(() => CreateViewModel());
         ui.Invoke(() => vm.Activate());
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
 
         var filteredCount = 0;
         var restoredCount = 0;
         var focusedInstance = string.Empty;
         var hadFocus = false;
         var focusCleared = false;
+        ui.Invoke(() => vm.FocusInstance("alpha", "Alpha"));
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
         ui.Invoke(() =>
         {
-            vm.FocusInstance("alpha", "Alpha");
             hadFocus = vm.HasInstanceFocus;
             filteredCount = vm.SessionsView.Cast<object>().Count();
             focusedInstance = vm.SelectedSession!.Manifest.InstanceId ?? string.Empty;

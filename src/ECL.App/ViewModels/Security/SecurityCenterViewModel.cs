@@ -182,6 +182,7 @@ public sealed partial class SecurityCenterViewModel : ObservableObject
 
         Categories.Clear();
         NotifyCategoriesChanged();
+        EnsureCategoryShell();
         HasScanned = false;
         _isScanComplete = false;
         ActionHintText = string.Empty;
@@ -196,7 +197,11 @@ public sealed partial class SecurityCenterViewModel : ObservableObject
         var failures = new List<string>();
         try
         {
-            var instances = await _instances.GetInstancesAsync(cancellation.Token).ConfigureAwait(true);
+            // 实例清单与扫描器都可能包含同步磁盘枚举/哈希；显式移到后台线程，
+            // 保证扫描的同步工作永远不会在 UI Dispatcher 上执行（security-center 验收）。
+            var instances = await Task.Run(
+                () => _instances.GetInstancesAsync(cancellation.Token),
+                cancellation.Token).ConfigureAwait(true);
             _instanceTotal = instances.Count;
             _logger.LogInformation("安全扫描开始：{Count} 个实例。", instances.Count);
             if (instances.Count == 0)
@@ -228,12 +233,17 @@ public sealed partial class SecurityCenterViewModel : ObservableObject
 
                 try
                 {
-                    var scan = await _security
-                        .ScanAsync(instance.Id, options: null, progress: null, cancellation.Token)
-                        .ConfigureAwait(true);
+                    // ScanAsync 内部可能同步枚举目录并计算哈希：即使首个 await 同步完成，
+                    // 也不能让这段循环落在 UI 线程上。Task.Run 明确隔离执行线程。
+                    var scan = await Task.Run(
+                        () => _security.ScanAsync(instance.Id, options: null, progress: null, cancellation.Token),
+                        cancellation.Token).ConfigureAwait(true);
                     if (scan.IsSuccess)
                     {
                         reports.Add(scan.Value!);
+                        // 增量呈现：每完成一个实例就把发现追加到分类，避免扫描结束后
+                        // 一次性重建全部结果集合造成界面停顿。
+                        AppendReportFindings(scan.Value!, instanceNames);
                     }
                     else
                     {
@@ -273,7 +283,8 @@ public sealed partial class SecurityCenterViewModel : ObservableObject
             _isScanComplete = failures.Count == 0 && reports.All(report => report.IsComplete);
             HasScanned = true;
             _lastFailures = failures.ToList();
-            BuildCategories(reports, instanceNames, failures);
+            ScannedReports = reports.ToList();
+            RecomputeAllCategories();
             UpdateOverallState(failures);
             _logger.LogInformation(
                 "安全扫描完成：实例 {Scanned}/{Total}，覆盖问题 {Failures}，结果 {State}。",
@@ -288,9 +299,10 @@ public sealed partial class SecurityCenterViewModel : ObservableObject
             _isScanComplete = false;
             HasScanned = reports.Count > 0;
             _lastFailures = failures.Append(_localizer.Get("security.status.cancelled")).ToList();
+            ScannedReports = reports.Count > 0 ? reports.ToList() : null;
             if (HasScanned)
             {
-                BuildCategories(reports, instanceNames, failures);
+                RecomputeAllCategories();
             }
 
             OverallState = SecurityOverallState.Incomplete;
@@ -544,56 +556,58 @@ public sealed partial class SecurityCenterViewModel : ObservableObject
 
     private List<ThreatScanReport>? ScannedReports { get; set; }
 
-    private void BuildCategories(
-        IReadOnlyList<ThreatScanReport> reports,
-        Dictionary<string, string> instanceNames,
-        IReadOnlyList<string> failures)
+    /// <summary>
+    /// 扫描开始时先建立固定的七个分类容器。分类顺序是页面契约的一部分，
+    /// 即使某个分类没有发现也要显示“无对应异常”。
+    /// </summary>
+    private void EnsureCategoryShell()
     {
-        ScannedReports = reports.ToList();
-        var categories = new Dictionary<string, SecurityCategoryViewModel>(StringComparer.Ordinal);
-        foreach (var report in reports)
-        {
-            var instanceName = instanceNames.TryGetValue(report.InstanceId, out var name)
-                ? name
-                : report.InstanceId;
-            foreach (var finding in report.Findings)
-            {
-                var key = CategoryKey(finding.RelativePath);
-                if (!categories.TryGetValue(key, out var category))
-                {
-                    category = new SecurityCategoryViewModel(
-                        key,
-                        _localizer.Get(CategoryOrder.First(item => item.Key == key).TitleKey),
-                        _localizer);
-                    categories[key] = category;
-                }
-
-                var identity = IdentityKey(report.InstanceId, finding);
-                category.Findings.Add(new SecurityFindingItemViewModel(
-                    report.InstanceId,
-                    instanceName,
-                    finding,
-                    key,
-                    identity,
-                    _ignoredKeys.Contains(identity),
-                    _localizer));
-            }
-        }
-
         foreach (var (key, titleKey) in CategoryOrder)
         {
-            if (!categories.TryGetValue(key, out var category))
-            {
-                category = new SecurityCategoryViewModel(key, _localizer.Get(titleKey), _localizer);
-                categories[key] = category;
-            }
-
-            category.Recompute();
-            Categories.Add(category);
+            Categories.Add(new SecurityCategoryViewModel(key, _localizer.Get(titleKey), _localizer));
         }
 
         NotifyCategoriesChanged();
-        UpdateOverallState(failures);
+    }
+
+    /// <summary>
+    /// 把一个实例的发现追加到已有分类。逐条添加到分类集合而不是全量重建，
+    /// 让扫描过程中的界面更新保持有界（security-center 性能验收）。
+    /// </summary>
+    private void AppendReportFindings(ThreatScanReport report, IReadOnlyDictionary<string, string> instanceNames)
+    {
+        var instanceName = instanceNames.TryGetValue(report.InstanceId, out var name)
+            ? name
+            : report.InstanceId;
+        var byKey = Categories.ToDictionary(category => category.Key, StringComparer.Ordinal);
+        foreach (var finding in report.Findings)
+        {
+            var key = CategoryKey(finding.RelativePath);
+            if (!byKey.TryGetValue(key, out var category))
+            {
+                continue;
+            }
+
+            var identity = IdentityKey(report.InstanceId, finding);
+            category.Findings.Add(new SecurityFindingItemViewModel(
+                report.InstanceId,
+                instanceName,
+                finding,
+                key,
+                identity,
+                _ignoredKeys.Contains(identity),
+                _localizer));
+        }
+    }
+
+    private void RecomputeAllCategories()
+    {
+        foreach (var category in Categories)
+        {
+            category.Recompute();
+        }
+
+        NotifyCategoriesChanged();
     }
 
     private void RecomputeCategories()

@@ -7,6 +7,9 @@ using Ecl.App.ViewModels;
 using Ecl.Core.Localization;
 using Ecl.Minecraft.Mods;
 using Ecl.Minecraft.Storage;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.IO;
 
 namespace Ecl.App.Workspace.ViewModels;
 
@@ -26,6 +29,10 @@ namespace Ecl.App.Workspace.ViewModels;
 /// </summary>
 public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDisposable
 {
+    private readonly HashSet<object> _initializedPages = new(ReferenceEqualityComparer.Instance);
+    private readonly Microsoft.Extensions.Logging.ILogger<InstanceDetailPageViewModel> _logger;
+    private bool _initialized;
+
     public InstanceDetailPageViewModel(
         InstanceWorkspaceState state,
         InstancesViewModel instances,
@@ -41,12 +48,14 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
         ScreenshotPageFactory screenshotFactory,
         SchematicPageFactory schematicFactory,
         ExportPageFactory exportFactory,
-        ILocalizer localizer)
+        ILocalizer localizer,
+        Microsoft.Extensions.Logging.ILogger<InstanceDetailPageViewModel>? logger = null)
     {
         State = state;
         Instances = instances;
         Mods = mods;
         Runtime = runtime;
+        _logger = logger ?? NullLogger<InstanceDetailPageViewModel>.Instance;
         Operations = new InstanceOperationsViewModel(instances, state);
         Storage = new InstanceStorageViewModel(
             state.Model,
@@ -85,6 +94,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
                 [InstanceWorkspacePageKeys.Export] = Export,
             });
         Navigation.OpenLogs = () => openLogs?.Invoke(State.InstanceId, State.Item.Name);
+        Navigation.PropertyChanged += OnNavigationPropertyChanged;
     }
 
     public InstanceWorkspaceState State { get; }
@@ -151,19 +161,86 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
     public string InstanceMeta => State.Item.VersionText;
 
     /// <summary>
-    /// 加载本页面的实例作用域状态（运行设置、模组内容与存储占用）。
-    /// 失败只影响本页文案，不构造空白页面；调用方负责记录异常。
+    /// 打开工作区时只加载默认页（基本信息）立即需要的数据：运行设置与存储占用。
+    /// 模组/资源包/光影/数据包/截图/投影/导出等页面在首次切换进入时才加载，
+    /// 避免一次打开同时扫描多个大目录（instance-workspace.md §5、性能交接 §5）。
     /// </summary>
-    public Task InitializeAsync() =>
-        Task.WhenAll(
-            Runtime.InitializeAsync(),
-            Mods.InitializeAsync(),
-            Storage.RefreshAsync(),
-            ResourcePacks.InitializeAsync(),
-            Shaders.InitializeAsync(),
-            DataPacks.InitializeAsync(),
-            Screenshots.InitializeAsync(),
-            Schematics.InitializeAsync());
+    public async Task InitializeAsync()
+    {
+        if (_initialized || IsDisposed)
+        {
+            return;
+        }
+
+        _initialized = true;
+        _initializedPages.Add(BasicInfo);
+        _initializedPages.Add(Runtime);
+        _initializedPages.Add(Storage);
+        try
+        {
+            await Task.WhenAll(
+                Runtime.InitializeAsync(),
+                Storage.RefreshAsync()).ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(exception, "实例工作区首屏初始化失败：{InstanceId}", InstanceId);
+        }
+    }
+
+    private void OnNavigationPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(InstanceWorkspaceNavigationViewModel.CurrentPage))
+        {
+            _ = EnsurePageInitializedAsync(Navigation.CurrentPage);
+        }
+    }
+
+    /// <summary>
+    /// 首次进入二级页时加载该页数据；重复进入复用已有结果，不重复扫描。
+    /// </summary>
+    private async Task EnsurePageInitializedAsync(object? page)
+    {
+        if (page is null || IsDisposed || !_initializedPages.Add(page))
+        {
+            return;
+        }
+
+        try
+        {
+            switch (page)
+            {
+                case ModsViewModel mods:
+                    await mods.InitializeAsync().ConfigureAwait(true);
+                    break;
+                case ContentPackPageViewModel packs:
+                    await packs.InitializeAsync().ConfigureAwait(true);
+                    break;
+                case InstanceDataPacksViewModel dataPacks:
+                    await dataPacks.InitializeAsync().ConfigureAwait(true);
+                    break;
+                case ScreenshotPageViewModel screenshots:
+                    await screenshots.InitializeAsync().ConfigureAwait(true);
+                    break;
+                case SchematicPageViewModel schematics:
+                    await schematics.InitializeAsync().ConfigureAwait(true);
+                    break;
+                case InstanceExportViewModel export:
+                    await export.InitializeAsync().ConfigureAwait(true);
+                    break;
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(
+                exception,
+                "实例工作区二级页初始化失败：{InstanceId} / {Page}",
+                InstanceId,
+                page.GetType().Name);
+        }
+    }
+
+    public bool IsDisposed => State.IsDisposed;
 
     /// <summary>
     /// 受控变更成功后重新读取实例并刷新工作区身份（B2 步骤 3b-4b）：
@@ -194,6 +271,7 @@ public sealed partial class InstanceDetailPageViewModel : ObservableObject, IDis
 
     public void Dispose()
     {
+        Navigation.PropertyChanged -= OnNavigationPropertyChanged;
         Navigation.Dispose();
         Modify.Dispose();
         ResourcePacks.Dispose();

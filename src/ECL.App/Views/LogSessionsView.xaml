@@ -75,11 +75,14 @@
             <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
             <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
             <!--
-                阅读器按来源分段读取并限制为最近 N 行，不一次性加载整份历史日志；
-                这里关闭 UI 虚拟化：VirtualizingStackPanel 在条目数骤减时会留下孤儿容器，
-                在“10 行游戏日志 → 1 行证据”这类切换中把旧行画在新来源上。
+                阅读器按来源分段读取并限制为最近 N 行；长列表必须使用有效虚拟化，
+                只创建可见区附近的容器。切换来源时通过清空集合（Reset）重建，
+                而不是关闭虚拟化来规避容器复用问题（logs.md §3.4、§9）。
             -->
-            <Setter Property="VirtualizingPanel.IsVirtualizing" Value="False" />
+            <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
+            <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
+            <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel" />
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBox">
@@ -90,7 +93,7 @@
                                 SnapsToDevicePixels="True">
                             <ScrollViewer x:Name="LogScroller"
                                           Focusable="False"
-                                          CanContentScroll="False"
+                                          CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}"
                                           HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
                                           VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}">
                                 <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
@@ -661,7 +664,7 @@
                                  AutomationProperties.Name="{loc:Loc Key=logs.reader.title}">
                             <ListBox.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <StackPanel />
+                                    <VirtualizingStackPanel />
                                 </ItemsPanelTemplate>
                             </ListBox.ItemsPanel>
                             <ListBox.ItemTemplate>
