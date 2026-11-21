@@ -30,6 +30,12 @@ public interface IGameSessionService
 
     void SetCaptureFault(string sessionId, string fault);
 
+    /// <summary>
+    /// 记录采集降级（独立 LogHost 不可用、改用进程内重定向）。降级不是故障：
+    /// 本次会话仍有 stdout/stderr 证据，UI 必须与真正的采集故障区分展示。
+    /// </summary>
+    void MarkCaptureDegraded(string sessionId, string reason);
+
     /// <summary>记录日志隔离方式、配置指纹与降级原因。</summary>
     void SetLogIsolation(string sessionId, string mode, string? fingerprint, string? warning);
 
@@ -253,6 +259,18 @@ public sealed class GameSessionService : IGameSessionService
         });
 
         AppendEvent(session, "capture.fault", fault);
+    }
+
+    public void MarkCaptureDegraded(string sessionId, string reason)
+    {
+        var session = Require(sessionId);
+        session = Update(session, session.Manifest with
+        {
+            CaptureDegraded = reason,
+            Warnings = AppendWarning(session.Manifest.Warnings, SessionWarnings.CaptureDegraded),
+        });
+
+        AppendEvent(session, "capture.degraded", reason);
     }
 
     public void SetCaptureAccounting(

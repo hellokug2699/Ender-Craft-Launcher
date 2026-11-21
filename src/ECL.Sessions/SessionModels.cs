@@ -76,6 +76,12 @@ public static class SessionWarnings
     public const string CaptureDropped = "session.capture.dropped";
 
     public const string CaptureFault = "session.capture.fault";
+
+    /// <summary>
+    /// 采集降级：独立 LogHost 不可用时改用进程内重定向。采集本身仍然工作，
+    /// 只是不再具备“主 UI 退出后继续采集”的能力，因此必须与真正的采集故障区分。
+    /// </summary>
+    public const string CaptureDegraded = "session.capture.degraded";
 }
 
 public static class SessionArtifactKinds
@@ -162,6 +168,12 @@ public sealed record SessionManifest
     public int? CaptureHostProcessId { get; init; }
 
     public string? CaptureFault { get; init; }
+
+    /// <summary>
+    /// 采集降级原因（例如 LogHost 不可用、改为进程内重定向）。降级不等于故障：
+    /// 采集仍然产生 stdout/stderr 证据，只是隔离能力下降。
+    /// </summary>
+    public string? CaptureDegraded { get; init; }
 
     /// <summary>采集方式（<see cref="SessionCaptureModes"/>）；旧 manifest 为 unknown。</summary>
     public string CaptureMode { get; init; } = SessionCaptureModes.Unknown;

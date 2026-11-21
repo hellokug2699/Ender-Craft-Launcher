@@ -195,6 +195,22 @@ public sealed class SessionTests : IDisposable
     }
 
     [Fact]
+    public void CaptureDegradationIsRecordedAsDegradedNotFault()
+    {
+        var service = CreateService();
+        var session = service.Create(Request());
+
+        service.MarkCaptureDegraded(session.SessionId, "未找到 ECL.LogHost.exe");
+
+        var manifest = service.Get(session.SessionId)!.Manifest;
+        Assert.Equal("未找到 ECL.LogHost.exe", manifest.CaptureDegraded);
+        Assert.Null(manifest.CaptureFault);
+        Assert.Contains("session.capture.degraded", manifest.Warnings);
+        Assert.DoesNotContain("session.capture.fault", manifest.Warnings);
+        Assert.Contains(service.ReadEvents(session.SessionId), entry => entry.Type == "capture.degraded");
+    }
+
+    [Fact]
     public void HostLossMarksRunningSessionIncompleteWithoutFakingSuccess()
     {
         var service = CreateService();
@@ -399,6 +415,70 @@ public sealed class SessionTests : IDisposable
         Assert.Equal(SessionCaptureModes.Console, manifest.CaptureMode);
         Assert.Contains(SessionWarnings.CaptureConsole, manifest.Warnings);
         Assert.DoesNotContain(SessionWarnings.CaptureDropped, manifest.Warnings);
+    }
+
+    [Fact]
+    public void ProcessMonitorListsAliveGameSessionsAndTerminatesThem()
+    {
+        var service = CreateService();
+        var session = service.Create(Request());
+        var started = new DateTimeOffset(2026, 11, 21, 12, 0, 0, TimeSpan.Zero);
+        service.AttachProcess(session.SessionId, 4242, started, "java.exe", _environment.Root);
+
+        var killed = new List<int>();
+        var monitor = new GameProcessMonitor(
+            service,
+            logger: null,
+            probe: pid => pid == 4242 ? new GameProcessInfo(4242, started) : null,
+            kill: pid =>
+            {
+                killed.Add(pid);
+                return true;
+            });
+
+        var snapshot = Assert.Single(monitor.Scan());
+        Assert.Equal(session.SessionId, snapshot.SessionId);
+        Assert.False(snapshot.RecoveredAfterRestart);
+
+        Assert.True(monitor.TryTerminate(session.SessionId, out var error), error);
+        Assert.Equal([4242], killed);
+        Assert.Equal(GameSessionState.Interrupted, service.Get(session.SessionId)!.Manifest.State);
+    }
+
+    [Fact]
+    public void ProcessMonitorIgnoresPidReuseByStartTimeMismatch()
+    {
+        var service = CreateService();
+        var session = service.Create(Request());
+        var started = new DateTimeOffset(2026, 11, 21, 12, 0, 0, TimeSpan.Zero);
+        service.AttachProcess(session.SessionId, 4243, started, "java.exe", _environment.Root);
+
+        var monitor = new GameProcessMonitor(
+            service,
+            logger: null,
+            probe: _ => new GameProcessInfo(4243, started.AddHours(-2)),
+            kill: _ => true);
+
+        Assert.Empty(monitor.Scan());
+    }
+
+    [Fact]
+    public void ProcessMonitorMarksRecoveredSessions()
+    {
+        var service = CreateService();
+        var session = service.Create(Request());
+        var started = DateTimeOffset.UtcNow;
+        service.AttachProcess(session.SessionId, 4244, started, "java.exe", _environment.Root);
+        service.MarkState(session.SessionId, GameSessionState.ProcessStateUnknown);
+
+        var monitor = new GameProcessMonitor(
+            service,
+            logger: null,
+            probe: _ => new GameProcessInfo(4244, started),
+            kill: _ => true);
+
+        var snapshot = Assert.Single(monitor.Scan());
+        Assert.True(snapshot.RecoveredAfterRestart);
     }
 
     private static async Task<string> ReadEntryAsync(ZipArchive archive, string name)

@@ -175,7 +175,9 @@ internal sealed class LogHostProcessLauncher(
 }
 
 /// <summary>
-/// 优先把游戏进程与管道交给 LogHost；不可用时降级为进程内采集，并在会话中明确记录降级事实。
+/// 优先把游戏进程与管道交给 LogHost；不可用时降级为进程内采集。
+/// 降级不是故障：本次会话仍然产生 stdout/stderr 证据，因此写入 `CaptureDegraded`
+/// 而不是 `CaptureFault`，由日志页以“采集降级”呈现（与丢包、写入失败等真实故障区分）。
 /// </summary>
 internal sealed class HybridProcessLauncher(
     LogHostProcessLauncher logHost,
@@ -199,7 +201,7 @@ internal sealed class HybridProcessLauncher(
             logger.LogWarning("LogHost 不可用，降级为进程内采集：{Message}", exception.Message);
             if (sessionId is not null)
             {
-                sessions.SetCaptureFault(sessionId, $"LogHost 不可用，已降级为进程内采集：{exception.Message}");
+                sessions.MarkCaptureDegraded(sessionId, exception.Message);
             }
 
             return fallback.Start(command, workingDirectory, showConsole, instanceId, sessionId);

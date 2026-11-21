@@ -15,6 +15,7 @@ using Ecl.App.Shell.Notifications;
 using Ecl.App.Shell.Output;
 using Ecl.App.ViewModels;
 using Ecl.App.ViewModels.Settings;
+using Ecl.App.Shell.RunningGames;
 using Ecl.App.Workspace;
 using Ecl.App.Workspace.ViewModels;
 using Ecl.Core;
@@ -40,6 +41,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     private readonly IDialogEngine _dialogs;
     private readonly ILocalizer _localizer;
     private readonly ILogger<ShellViewModel> _logger;
+    private readonly RunningGamesViewModel? _runningGames;
     private readonly HomeViewModel _home;
     private readonly DownloadViewModel _download;
     private readonly InstancesViewModel _instances;
@@ -90,7 +92,8 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         IDialogEngine dialogs,
         IAppPaths paths,
         ILocalizer localizer,
-        ILogger<ShellViewModel> logger)
+        ILogger<ShellViewModel> logger,
+        RunningGamesViewModel? runningGames = null)
     {
         _home = home;
         _download = download;
@@ -111,6 +114,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _memoryPressure = memoryPressure;
         _localizer = localizer;
         _logger = logger;
+        _runningGames = runningGames;
         _workspaces = workspaces;
         _workspaceService = workspaceService;
         _paths = paths;
@@ -202,7 +206,13 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _workspaceService.Changed += OnWorkspaceServiceChanged;
         _instances.PropertyChanged += OnInstancesPropertyChanged;
         OpenDestination(_selectedNavigationItem);
+
+        // 全局运行中实例监视：启动即扫描（含 ECL 上次退出后遗留的游戏进程）。
+        _runningGames?.Start();
     }
+
+    /// <summary>侧边栏「运行中的游戏」：所有页面可见，版本显示上方；为空时整块隐藏。</summary>
+    public RunningGamesViewModel? RunningGames => _runningGames;
 
     public ObservableCollection<ShellNavigationItem> NavigationItems { get; }
 
@@ -928,6 +938,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _runningGames?.Dispose();
         _logs.InspectorSelectionChanged -= OnLogsInspectorSelectionChanged;
         _workspaceService.Changed -= OnWorkspaceServiceChanged;
         _instances.PropertyChanged -= OnInstancesPropertyChanged;

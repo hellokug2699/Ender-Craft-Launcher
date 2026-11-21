@@ -188,6 +188,65 @@
                         </ScrollViewer>
 
                         <StackPanel Grid.Row="1" Margin="22,0,22,18">
+                            <!--
+                                全局运行中实例（维护者显式需求）：一级导航内、版本显示上方，所有页面可见；
+                                为空时整块隐藏。实例名优先使用用户设定名，时间为进程启动至今。
+                            -->
+                            <StackPanel Margin="0,0,0,10"
+                                        Visibility="{Binding RunningGames.HasItems, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="{loc:Loc Key=runningGames.header}"
+                                           Foreground="{DynamicResource TextMutedBrush}"
+                                           FontSize="11"
+                                           Style="{StaticResource EmphasisText}"
+                                           Margin="2,0,0,6" />
+                                <ItemsControl ItemsSource="{Binding RunningGames.Items}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{DynamicResource SurfaceBrush}"
+                                                    BorderBrush="{DynamicResource BorderSoftBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="10"
+                                                    Padding="10,8"
+                                                    Margin="0,0,0,6">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Margin="0,0,8,0">
+                                                        <TextBlock Text="{Binding InstanceName}"
+                                                                   FontSize="12"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Style="{StaticResource EmphasisText}" />
+                                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                            <TextBlock Text="{Binding ElapsedText}"
+                                                                       FontSize="11"
+                                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                                            <TextBlock Text="{Binding OriginText}"
+                                                                       FontSize="11"
+                                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                                       Margin="8,0,0,0" />
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding PidText}"
+                                                                   FontSize="10"
+                                                                   Foreground="{DynamicResource TextMutedBrush}"
+                                                                   Margin="0,1,0,0" />
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1"
+                                                            Content="{loc:Loc Key=runningGames.terminate}"
+                                                            Command="{Binding TerminateCommand}"
+                                                            Style="{StaticResource DangerButton}"
+                                                            Padding="10,5"
+                                                            VerticalAlignment="Center"
+                                                            IsEnabled="{Binding IsTerminating, Converter={StaticResource InverseBoolean}}"
+                                                            AutomationProperties.Name="{loc:Loc Key=runningGames.terminate}" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
                             <Border Background="{DynamicResource SurfaceBrush}"
                                     BorderBrush="{DynamicResource BorderSoftBrush}"
                                     BorderThickness="1"

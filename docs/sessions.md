@@ -43,6 +43,16 @@ ECL 启动后由 `GameSessionService.Recover()` 处理遗留会话：
 - PID 单独不足以证明身份，避免 PID 复用导致的错误附着；
 - 若采集宿主已退出（记录的主机 PID 不存在），保留 `Running` 并标记 `session.recovered.hostUnverified`，同时把会话独立 `game.log` 登记为 `Direct` 证据；
 - 恢复幂等：重复执行不会重复登记文件或破坏证据。
+- 恢复后的 `Running` 会话会在 Shell 侧边栏「运行中的游戏」中显示（来源标注“ECL 重启前已运行”），可强制终止；
+  强制终止只结束游戏进程，不结束独立日志宿主，会话随后由采集收尾（或以 `Interrupted` 结束）。
+
+### 采集降级与故障的区分
+
+- 独立 LogHost 不可用时降级为进程内重定向：manifest 写 `captureDegraded` 与 `session.capture.degraded`，
+  **采集仍然正常**（仍有 stdout/stderr 证据），只是 ECL 退出后采集会中断；
+- 只有队列丢包、写入失败或采集宿主异常退出才写 `captureFault` 与 `session.capture.fault`；
+- 日志页分别显示“采集降级”和“采集故障”；历史会话里以 `LogHost 不可用` 开头的旧 `captureFault`
+  按降级展示，不误报为故障。
 
 ## 4. 证据与置信度
 

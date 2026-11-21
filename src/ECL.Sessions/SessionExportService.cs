@@ -231,6 +231,7 @@ public sealed class SessionExportService : ISessionExportService
         builder.AppendLine($"日志隔离: {manifest.LogIsolation}");
         builder.AppendLine($"退出码: {manifest.ExitCode?.ToString() ?? "未知"}");
         builder.AppendLine($"采集故障: {manifest.CaptureFault ?? "无"}");
+        builder.AppendLine($"采集降级: {manifest.CaptureDegraded ?? "无"}");
         builder.AppendLine();
         builder.AppendLine("缺失或无法关联的证据:");
         if (missing.Count == 0)

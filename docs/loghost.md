@@ -28,7 +28,10 @@ ECL.UI (WPF)  ──Named Pipe──▶  ECL.LogHost  ──stdout/stderr──�
 - LogHost 启动游戏时：校验会话存在 → 创建进程 → 记录 PID/启动时间/可执行文件 → 持续排空管道。
 - 退出后：排空 → 刷新 → 记录退出码 → 登记崩溃证据 → `CaptureCompleted` / `CaptureIncomplete`。
 - 存在活动会话时拒绝 `shutdown`；无客户端且无活动会话超过空闲时间（默认 300 秒）后自行退出。
-- 主程序找不到 LogHost 时降级为进程内采集，并在会话 manifest 写入 `CaptureFault`，不伪装成正常隔离。
+- 主程序找不到 LogHost 时降级为进程内采集，并在会话 manifest 写入 `CaptureDegraded`
+  （`session.capture.degraded` 警告 + `capture.degraded` 事件）：采集仍然工作且产生 stdout/stderr 证据，
+  只是主 UI 退出后采集会中断。真正的采集故障（队列丢包、写入失败、宿主异常退出）才写 `CaptureFault`，
+  日志页把两者分别显示为“采集降级”和“采集故障”。
 
 ## 4. 资源与背压
 

@@ -2286,9 +2286,14 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
 
         AddLaunchStageFields(manifest.SessionId, fields);
 
-        if (!string.IsNullOrWhiteSpace(manifest.CaptureFault))
+        if (SessionCaptureStatus.DegradedReason(manifest) is { } degradedReason)
         {
-            fields.Add(new(_localizer.Get("logs.inspector.captureFault"), manifest.CaptureFault));
+            fields.Add(new(_localizer.Get("logs.inspector.captureDegraded"), degradedReason));
+        }
+
+        if (SessionCaptureStatus.FaultOrNull(manifest) is { } captureFault)
+        {
+            fields.Add(new(_localizer.Get("logs.inspector.captureFault"), captureFault));
         }
 
         foreach (var warning in manifest.Warnings)

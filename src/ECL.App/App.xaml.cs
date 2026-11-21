@@ -185,6 +185,12 @@ public partial class App : Application
                 logger: provider.GetService<ILogger<WorkspaceHost>>()));
             services.AddSingleton<InspectorViewModel>();
             services.AddSingleton<OutputPanelViewModel>();
+            // 全局运行中实例：扫描会话 manifest 中的存活游戏进程，供侧边栏展示与强制终止。
+            services.AddSingleton<Ecl.Sessions.IGameProcessMonitor>(provider =>
+                new Ecl.Sessions.GameProcessMonitor(
+                    provider.GetRequiredService<Ecl.Sessions.IGameSessionService>(),
+                    provider.GetService<ILogger<Ecl.Sessions.GameProcessMonitor>>()));
+            services.AddSingleton<Ecl.App.Shell.RunningGames.RunningGamesViewModel>();
             services.AddSingleton<ShellViewModel>();
             services.AddSingleton<MainWindow>();
             // F-12：会话快照跟踪 Shell 的导航/工作区变化；退出前由宿主再显式保存一次。
@@ -219,6 +225,26 @@ public partial class App : Application
             _services = services.BuildServiceProvider();
             _logger = _services.GetRequiredService<ILogger<App>>();
             DispatcherUnhandledException += OnDispatcherUnhandledException;
+
+            // 显式需求：ECL 中途结束/重启后，启动时扫描仍在运行的 Minecraft 进程并恢复会话状态；
+            // 侧边栏「运行中的游戏」随后会列出这些进程，可强制终止。恢复幂等，失败不阻断启动。
+            try
+            {
+                var recovery = _services.GetRequiredService<Ecl.Sessions.IGameSessionService>().Recover();
+                if (recovery.Scanned > 0)
+                {
+                    _logger.LogInformation(
+                        "启动会话恢复：扫描 {Scanned}，重连 {Reattached}，中断 {Interrupted}，未知 {Unknown}。",
+                        recovery.Scanned,
+                        recovery.Reattached,
+                        recovery.Interrupted,
+                        recovery.Unknown);
+                }
+            }
+            catch (Exception exception)
+            {
+                _logger.LogWarning(exception, "启动时会话恢复失败；运行中实例仍可从会话 manifest 扫描。");
+            }
 
             // D-03：旧配置的显式内存值迁移为“手动指定”，未修改过默认值的用户保持自动。
             // 迁移可能写一次全局配置；失败不阻断启动（运行时的兼容回退仍保留数值）。

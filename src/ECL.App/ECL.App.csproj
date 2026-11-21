@@ -40,7 +40,30 @@
     <ProjectReference Include="..\ECL.Additions\ECL.Additions.csproj" />
     <ProjectReference Include="..\ECL.Wardrobe\ECL.Wardrobe.csproj" />
     <ProjectReference Include="..\ECL.Diagnostics\ECL.Diagnostics.csproj" />
+    <!--
+      独立日志宿主是采集隔离开关：本地 build/运行（bin 目录）也必须随带 ECL.LogHost.exe，
+      否则每次启动都会降级为进程内采集并在会话里记录“采集降级”。正式打包仍由
+      build/pack-release.ps1 单独发布 LogHost（self-contained 配置以打包脚本为准）。
+    -->
+    <ProjectReference Include="..\ECL.LogHost\ECL.LogHost.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+    </ProjectReference>
   </ItemGroup>
+
+  <Target Name="CopyLogHostForLocalRun" AfterTargets="Build">
+    <ItemGroup>
+      <LogHostRuntimeFiles Include="$(MSBuildThisFileDirectory)..\ECL.LogHost\bin\$(Configuration)\net10.0\ECL.LogHost.exe" />
+      <LogHostRuntimeFiles Include="$(MSBuildThisFileDirectory)..\ECL.LogHost\bin\$(Configuration)\net10.0\ECL.LogHost.dll" />
+      <LogHostRuntimeFiles Include="$(MSBuildThisFileDirectory)..\ECL.LogHost\bin\$(Configuration)\net10.0\ECL.LogHost.deps.json" />
+      <LogHostRuntimeFiles Include="$(MSBuildThisFileDirectory)..\ECL.LogHost\bin\$(Configuration)\net10.0\ECL.LogHost.runtimeconfig.json" />
+      <LogHostRuntimeFiles Include="$(MSBuildThisFileDirectory)..\ECL.LogHost\bin\$(Configuration)\net10.0\Ecl.LogHost.Contracts.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(LogHostRuntimeFiles)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\ECL.LogHost\bin\$(Configuration)\net10.0\ECL.LogHost.exe')" />
+  </Target>
 
   <ItemGroup>
     <!-- 应用图标：同时嵌入 EXE（ApplicationIcon）并作为 WPF 资源供窗口使用。 -->

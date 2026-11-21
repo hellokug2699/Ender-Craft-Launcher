@@ -1595,6 +1595,10 @@ public sealed class InstanceModifyPageTests
         {
         }
 
+        public void MarkCaptureDegraded(string sessionId, string reason)
+        {
+        }
+
         public void SetLogIsolation(string sessionId, string mode, string? fingerprint, string? warning)
         {
         }

@@ -117,12 +117,15 @@ public sealed partial class LogSessionRowViewModel : ObservableObject
                 or SessionArtifactKinds.ServerCrashReport
                 or SessionArtifactKinds.JvmFatalError);
         var abnormalExit = manifest.ExitCode is { } exitCode && exitCode != 0;
-        HasEvidenceHint = hasCrashEvidence || abnormalExit || manifest.CaptureFault is not null;
+        // 采集降级（LogHost 不可用、改用进程内重定向）仍然正常采集，不进入“证据提示”；
+        // 只有真正的采集故障（丢包、写入失败、宿主异常退出）才显示故障提示。
+        var captureFault = SessionCaptureStatus.FaultOrNull(manifest);
+        HasEvidenceHint = hasCrashEvidence || abnormalExit || captureFault is not null;
         EvidenceHint = hasCrashEvidence
             ? _localizer.Get("logs.hint.crashEvidence")
             : abnormalExit
                 ? _localizer.Get("logs.hint.nonZeroExit", manifest.ExitCode!.Value)
-                : manifest.CaptureFault is not null
+                : captureFault is not null
                     ? _localizer.Get("logs.hint.captureFault")
                     : string.Empty;
 

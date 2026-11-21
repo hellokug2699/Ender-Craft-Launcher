@@ -196,6 +196,9 @@ public sealed class LogSessionsResponsivenessTests : IDisposable
 
         public void SetCaptureFault(string sessionId, string fault) => inner.SetCaptureFault(sessionId, fault);
 
+        public void MarkCaptureDegraded(string sessionId, string reason) =>
+            inner.MarkCaptureDegraded(sessionId, reason);
+
         public void SetLogIsolation(string sessionId, string mode, string? fingerprint, string? warning) =>
             inner.SetLogIsolation(sessionId, mode, fingerprint, warning);
 

@@ -40,6 +40,14 @@ try {
             -o $output
         if ($LASTEXITCODE -ne 0) { throw "dotnet publish 失败" }
 
+        # 独立日志宿主必须与主程序一起发布，否则会话会降级为进程内采集。
+        dotnet publish src/ECL.LogHost/ECL.LogHost.csproj `
+            -c $Configuration `
+            -r win-x64 `
+            --self-contained false `
+            -o $output
+        if ($LASTEXITCODE -ne 0) { throw "发布 ECL.LogHost 失败" }
+
         if (Test-Path $archive) { Remove-Item $archive -Force }
         Compress-Archive -Path (Join-Path $output "*") -DestinationPath $archive -Force
         Write-Host "输出：$archive" -ForegroundColor Green
