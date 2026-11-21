@@ -5,7 +5,7 @@
         实例「修改」页的执行确认：目标组合、影响三档摘要、快照范围与执行提示。
         破坏性操作默认焦点在取消按钮上（由调用方通过 DialogRequest.InitialFocus 指定）。
     -->
-    <StackPanel Margin="20,0,20,18">
+    <StackPanel Margin="{StaticResource DialogBodyMargin}">
         <ItemsControl ItemsSource="{Binding Summary}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
@@ -40,7 +40,7 @@
                    Margin="0,10,0,0"
                    Foreground="{DynamicResource TextMutedBrush}" />
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="{StaticResource DialogFooterSpacing}">
             <Button x:Name="CancelButton"
                     Content="{Binding CancelText}"
                     Command="{Binding CancelCommand}"

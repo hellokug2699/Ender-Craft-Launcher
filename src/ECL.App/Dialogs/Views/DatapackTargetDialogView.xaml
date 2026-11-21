@@ -5,7 +5,7 @@
         数据包「安装到其他位置」：先选实例，再选该实例的具体世界。
         世界条目只来自领域发现结果，不提供路径输入或任意目录目标。
     -->
-    <StackPanel Margin="20,0,20,18">
+    <StackPanel Margin="{StaticResource DialogBodyMargin}">
         <TextBlock Text="{Binding InstanceSectionText}" Style="{StaticResource LabelText}" />
         <ListBox ItemsSource="{Binding Instances}"
                  SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
@@ -84,7 +84,7 @@
                    Margin="0,6,0,0"
                    Visibility="{Binding WorldErrorText, Converter={StaticResource StringToVisibility}}" />
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="{StaticResource DialogFooterSpacing}">
             <Button Content="{Binding CancelText}"
                     Command="{Binding CancelCommand}"
                     Style="{StaticResource GhostButton}"

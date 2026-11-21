@@ -181,6 +181,19 @@
         <Setter Property="Margin" Value="0,0,0,7" />
     </Style>
 
+    <!--
+        弹窗排版与间距令牌（交接 §3.1 / §3.4）：宿主标题栏与各弹窗内容共用同一组数值，
+        避免每个弹窗各自写外边距。动效时长/位移/缩放由 Ecl.App.Dialogs.DialogMotion 集中提供。
+    -->
+    <Thickness x:Key="DialogHeaderPadding">20,16,12,12</Thickness>
+    <Thickness x:Key="DialogBodyMargin">20,0,20,18</Thickness>
+    <Thickness x:Key="DialogFooterSpacing">0,18,0,0</Thickness>
+
+    <Style x:Key="DialogTitleText" TargetType="TextBlock" BasedOn="{StaticResource SectionText}">
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
     <!-- 下拉框共用条目模板：自定义模板下 DisplayMemberPath 不会进入选中框，统一改用 ItemTemplate。 -->
     <DataTemplate x:Key="DisplayNameItemTemplate">
         <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
@@ -1238,9 +1251,15 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="14" />
         <Setter Property="Padding" Value="0" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Effect">
             <Setter.Value>
-                <DropShadowEffect BlurRadius="28" ShadowDepth="10" Opacity="0.5" Color="#000000" />
+                <!-- 只用于弹窗这一层；列表与页面区域不使用实时阴影。 -->
+                <DropShadowEffect BlurRadius="34"
+                                  ShadowDepth="14"
+                                  Direction="270"
+                                  Opacity="0.55"
+                                  Color="#05030B" />
             </Setter.Value>
         </Setter>
     </Style>

@@ -1268,9 +1268,23 @@ B0 增加了**选择层**的最小契约（ADR 0056 §3）：
 - 弹窗栈只显示最上层弹窗；父弹窗在下层保留，子弹窗关闭后恢复父弹窗与焦点。
 - 尺寸受主窗口客户区约束（`DialogHostView` 动态计算），内容过多时在弹窗内部滚动。
 - 关闭语义区分 `Primary` / `Secondary` / `Cancel` / `Closed` / `Failed`；忙碌状态拒绝普通关闭。
-- 焦点：打开时记录原焦点，内容与宿主协作把焦点移入弹窗；关闭后恢复原焦点（元素仍可用时）。
-  Escape 仅在请求允许关闭时生效；单操作弹窗才设置默认按钮，破坏性操作初始焦点在取消按钮。
-- 动效遵循 `MotionSettings`（减少动态效果时直接进入最终状态），关闭不等待动画。
+- 焦点：打开时记录原焦点，内容与宿主协作把焦点移入弹窗；`DialogRequest.InitialFocus` 会优先把焦点放到
+  内容里同名的 `PrimaryButton` / `SecondaryButton` / `CancelButton`（不存在时退回首个可聚焦控件）。
+  关闭后恢复原焦点（元素仍可用时）；恢复动作排队到 `Loaded` 优先级并校验弹窗代次，期间又打开新弹窗时
+  不会把焦点抢回旧控件。Escape 仅在请求允许关闭时生效；单操作弹窗才设置默认按钮，破坏性操作初始焦点在取消按钮。
+- 视觉与动效（统一由 `Themes/Theme.xaml` + `Dialogs/DialogMotion.cs` 提供，内容视图不得自写 Storyboard）：
+  - 卡片使用 `DialogCard`（`SurfaceAltBrush` + `BorderStrongBrush` + 14 圆角 + 单层阴影）；标题栏使用
+    `DialogHeaderPadding` / `DialogTitleText`，带 1px `BorderSoftBrush` 分隔线和按 `DialogSeverity` 着色的
+    6px 级别圆点（Neutral 灰、Information 品牌紫、Warning 黄、Error 红）；正文与页脚使用
+    `DialogBodyMargin` / `DialogFooterSpacing`，弹窗内容视图统一引用这些令牌，不再各自写外边距；
+  - 打开：遮罩与卡片同时进入（卡片 160ms 淡入 + 12px 上移 + 0.975→1 缩放，两个方向都用 EaseOut）；
+  - 关闭：卡片先完成 120ms 淡出/轻微上移收缩，**之后**才释放遮罩与宿主可见性，避免“遮罩先消失、内容悬空”；
+  - 层叠切换（关闭顶层露出下一层）：旧卡片在 `ExitContent` 上做 140ms 交叉淡出，新卡片同时淡入；
+  - 动画回调只做表现层清理，并通过代次校验丢弃过期回调；快速开关、嵌套切换、窗口提前关闭或宿主卸载时，
+    `Unloaded` 会取消动画并清理遮罩/退出层/焦点记录，不会残留透明覆盖层或焦点锁定；
+  - 业务结果、模态锁定、Esc 与焦点语义都在动画开始前由引擎/宿主提交，动画完成不是释放资源或决定结果的依据。
+- 动效遵循 `MotionSettings`（减少动态效果时所有弹窗时长归零，直接进入终态但保留遮罩、焦点与关闭语义）。
+  Windows“减少动画”与 ECL `launcher.animationsEnabled` 任一开启减少动效即生效。
 
 ### 迁移状态
 

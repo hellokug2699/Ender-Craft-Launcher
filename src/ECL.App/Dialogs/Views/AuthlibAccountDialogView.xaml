@@ -6,7 +6,7 @@
         Authlib-Injector 账户弹窗内容（ADR 0052、ADR 0065）。
         密码输入沿用 PasswordBox 边界：不通过绑定属性，也不进入页面状态。
     -->
-    <StackPanel Margin="20,0,20,18" MinWidth="420">
+    <StackPanel Margin="{StaticResource DialogBodyMargin}" MinWidth="420">
         <TextBlock Text="{Binding IntroText}"
                    Foreground="{DynamicResource TextMutedBrush}"
                    FontSize="10"
@@ -76,7 +76,7 @@
                    Margin="0,10,0,0"
                    TextWrapping="Wrap" />
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="{StaticResource DialogFooterSpacing}">
             <Button x:Name="ConfirmButton"
                     Content="{Binding ConfirmText}"
                     Style="{StaticResource PrimaryButton}"

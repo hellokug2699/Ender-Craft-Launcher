@@ -139,7 +139,7 @@
         </DataTemplate>
     </UserControl.Resources>
 
-    <StackPanel Margin="20,0,20,18">
+    <StackPanel Margin="{StaticResource DialogBodyMargin}">
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="64" />
@@ -296,6 +296,6 @@
                 Command="{Binding CloseCommand}"
                 Style="{StaticResource GhostButton}"
                 HorizontalAlignment="Right"
-                Margin="0,16,0,0" />
+                Margin="{StaticResource DialogFooterSpacing}" />
     </StackPanel>
 </UserControl>

@@ -7,7 +7,7 @@
         添加入口是紫色虚线框；本次选择无效时变红，成功添加后恢复紫色。
         页面不自行绘制模态层或遮罩，全部由 Dialog Engine 提供。
     -->
-    <Grid Margin="20,0,20,18">
+    <Grid Margin="{StaticResource DialogBodyMargin}">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -139,7 +139,7 @@
             </StackPanel>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="{StaticResource DialogFooterSpacing}">
             <TextBlock Text="{loc:Loc Key=instanceDirectories.footnote}"
                        Foreground="{DynamicResource TextMutedBrush}"
                        FontSize="10"

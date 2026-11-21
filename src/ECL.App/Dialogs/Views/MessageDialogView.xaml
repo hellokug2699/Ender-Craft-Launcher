@@ -1,7 +1,7 @@
 <UserControl x:Class="Ecl.App.Dialogs.Views.MessageDialogView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <StackPanel Margin="20,0,20,18">
+    <StackPanel Margin="{StaticResource DialogBodyMargin}">
         <TextBlock x:Name="MessageText"
                    Text="{Binding Message}"
                    TextWrapping="Wrap"
@@ -19,7 +19,7 @@
             </TextBlock.Style>
         </TextBlock>
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="{StaticResource DialogFooterSpacing}">
             <Button x:Name="CancelButton"
                     Content="{Binding CancelText}"
                     Command="{Binding CancelCommand}"

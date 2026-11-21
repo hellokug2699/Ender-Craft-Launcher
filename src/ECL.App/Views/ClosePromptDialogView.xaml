@@ -5,7 +5,7 @@
         关闭询问内容（F-12）：最小化到托盘 / 退出 / 取消 + “记住我的选择”。
         托盘不可用时只禁用“最小化到托盘”并说明原因，不隐藏另外两个选择。
     -->
-    <StackPanel Margin="20,0,20,18">
+    <StackPanel Margin="{StaticResource DialogBodyMargin}">
         <TextBlock Text="{Binding Message}"
                    TextWrapping="Wrap"
                    FontSize="13"
@@ -24,7 +24,7 @@
                   Margin="0,14,0,0"
                   AutomationProperties.Name="{Binding RememberText}" />
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="{StaticResource DialogFooterSpacing}">
             <Button Content="{Binding CancelText}"
                     Command="{Binding CancelCommand}"
                     Style="{StaticResource GhostButton}"
@@ -36,6 +36,7 @@
                     Margin="0,0,8,0" />
             <Button Content="{Binding MinimizeText}"
                     Command="{Binding MinimizeCommand}"
+                    Style="{StaticResource PrimaryButton}"
                     IsEnabled="{Binding CanMinimizeToTray}"
                     IsDefault="True" />
         </StackPanel>

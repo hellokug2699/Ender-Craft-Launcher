@@ -5,7 +5,7 @@
         版本导入弹窗内容（ADR 0052）：多选列表 + 批量导入。标题与关闭入口由 Dialog Engine 提供；
         执行状态登记在统一 Operation 中，因此这里只显示忙碌态与条级结果。
     -->
-    <Grid Margin="20,0,20,18" MinWidth="440">
+    <Grid Margin="{StaticResource DialogBodyMargin}" MinWidth="440">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />

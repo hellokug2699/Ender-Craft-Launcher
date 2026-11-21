@@ -5,7 +5,7 @@
         单会话诊断导出确认（logs.md §5）：范围、目标位置、脱敏选项与隐私提示。
         页面不自行扫描目录或拼接 ZIP；确认后由 SessionExportService 生成导出副本。
     -->
-    <StackPanel Margin="20,0,20,18">
+    <StackPanel Margin="{StaticResource DialogBodyMargin}">
         <TextBlock Text="{Binding Title}"
                    FontSize="14"
                    Style="{StaticResource EmphasisText}"
@@ -86,7 +86,7 @@
                    Margin="0,6,0,0"
                    Visibility="{Binding SnapshotNotice, Converter={StaticResource StringToVisibility}}" />
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="{StaticResource DialogFooterSpacing}">
             <Button Content="{Binding CancelText}"
                     Command="{Binding CancelCommand}"
                     Style="{StaticResource GhostButton}"

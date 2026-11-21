@@ -5,7 +5,7 @@
         整合包模组预览（download-modpacks.md §8.1）：只读展示清单声明的文件，
         不提供修改清单、安装或批量操作。
     -->
-    <StackPanel Margin="20,0,20,18">
+    <StackPanel Margin="{StaticResource DialogBodyMargin}">
         <TextBlock Text="{Binding ModpackName}"
                    Style="{StaticResource SectionText}"
                    TextTrimming="CharacterEllipsis" />
@@ -46,6 +46,6 @@
                 Command="{Binding CloseCommand}"
                 Style="{StaticResource GhostButton}"
                 HorizontalAlignment="Right"
-                Margin="0,16,0,0" />
+                Margin="{StaticResource DialogFooterSpacing}" />
     </StackPanel>
 </UserControl>

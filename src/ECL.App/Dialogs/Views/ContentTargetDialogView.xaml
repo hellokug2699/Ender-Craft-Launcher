@@ -5,7 +5,7 @@
         「安装到其他位置」目标选择。已登记实例始终可选；只有模组允许再选择目录
         （资源包/光影包/数据包必须安装到已登记实例）。
     -->
-    <StackPanel Margin="20,0,20,18">
+    <StackPanel Margin="{StaticResource DialogBodyMargin}">
         <TextBlock Text="{Binding InstanceSectionText}" Style="{StaticResource LabelText}" />
         <ListBox ItemsSource="{Binding Instances}"
                  SelectedItem="{Binding SelectedInstance, Mode=TwoWay}"
@@ -61,7 +61,7 @@
             </Grid>
         </StackPanel>
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="{StaticResource DialogFooterSpacing}">
             <Button Content="{Binding CancelText}"
                     Command="{Binding CancelCommand}"
                     Style="{StaticResource GhostButton}"
