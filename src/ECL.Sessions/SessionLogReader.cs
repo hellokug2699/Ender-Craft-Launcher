@@ -210,45 +210,74 @@ public sealed class SessionLogReader : ISessionLogReader
         var artifact = manifest.Artifacts.FirstOrDefault(item =>
             string.Equals(item.Kind, SessionArtifactKinds.GameLog, StringComparison.Ordinal));
 
-        // 隔离日志由游戏进程直接写入会话目录，是唯一可直接声明 Direct 的来源。
-        var isolated = Path.Combine(session.DirectoryPath, "game.log");
-        if (string.Equals(manifest.LogIsolation, "direct", StringComparison.OrdinalIgnoreCase) &&
-            File.Exists(isolated))
-        {
-            return DescribeFile(SessionLogSourceKind.GameLog, isolated, ArtifactOwnership.Direct, null);
-        }
-
-        // 共享日志只能在有登记证据时读取；文件名与最新修改时间不能提高归属置信度。
+        // 已登记的证据优先：它带有归属置信度与采集说明（例如宿主退出后改用会话独立日志），
+        // 不能让同一份文件在登记后丢掉这些说明。
         if (artifact is not null)
         {
             var path = ExistingPath(artifact.CapturedPath) ?? ExistingPath(artifact.SourcePath);
-            return path is null
-                ? new SessionLogSourceInfo(
+            if (path is not null)
+            {
+                return DescribeFile(
+                    SessionLogSourceKind.GameLog,
+                    path,
+                    artifact.Ownership,
+                    string.IsNullOrWhiteSpace(artifact.Warning) ? null : artifact.Warning);
+            }
+
+            // 登记的共享日志证据已不可读取；会话独立日志仍然可用时继续往下判断。
+            if (!IsolationPrepared(manifest.LogIsolation) ||
+                ExistingPath(Path.Combine(session.DirectoryPath, "game.log")) is null)
+            {
+                return new SessionLogSourceInfo(
                     SessionLogSourceKind.GameLog,
                     null,
                     artifact.Ownership,
                     SessionSourceAvailability.Missing,
                     null,
                     null,
-                    string.IsNullOrWhiteSpace(artifact.Warning) ? "共享日志证据已不可读取。" : artifact.Warning)
-                : DescribeFile(
-                    SessionLogSourceKind.GameLog,
-                    path,
-                    artifact.Ownership,
-                    string.IsNullOrWhiteSpace(artifact.Warning) ? null : artifact.Warning);
+                    string.IsNullOrWhiteSpace(artifact.Warning) ? "共享日志证据已不可读取。" : artifact.Warning);
+            }
+        }
+
+        // 会话独立日志由游戏进程按会话专属 log4j 配置直接写入，路径本身就是归属证据：
+        // 该文件只存在于本次会话目录，只有本次启动的游戏进程会写入它。
+        // 隔离处于 pending 只表示“退出后尚未复核”，不代表没有隔离——因此运行期也必须
+        // 呈现这份日志，否则会退回到实例共享的 latest.log（上一次启动的内容）。
+        if (IsolationPrepared(manifest.LogIsolation) &&
+            ExistingPath(Path.Combine(session.DirectoryPath, "game.log")) is { } isolated)
+        {
+            return DescribeFile(
+                SessionLogSourceKind.GameLog,
+                isolated,
+                ArtifactOwnership.Direct,
+                warning: null,
+                reportEmptyAsNotGenerated: true);
         }
 
         // 运行中的共享日志：latest.log 可能由多个进程写入，只作为歧义来源呈现。
+        // 但早于本次会话创建的 latest.log 属于上一次启动，不能当作本次会话的游戏日志。
         var latest = string.IsNullOrWhiteSpace(manifest.GameDirectory)
             ? null
             : Path.Combine(manifest.GameDirectory, "logs", "latest.log");
         if (ExistingPath(latest) is { } available)
         {
-            return DescribeFile(
+            if (WrittenSince(available, manifest.CreatedAtUtc))
+            {
+                return DescribeFile(
+                    SessionLogSourceKind.GameLog,
+                    available,
+                    ArtifactOwnership.SharedOrAmbiguous,
+                    "该来源是实例共享的 latest.log，可能由多个进程写入，不能视为本会话的完整日志。");
+            }
+
+            return new SessionLogSourceInfo(
                 SessionLogSourceKind.GameLog,
-                available,
-                ArtifactOwnership.SharedOrAmbiguous,
-                "该来源是实例共享的 latest.log，可能由多个进程写入，不能视为本会话的完整日志。");
+                null,
+                null,
+                SessionSourceAvailability.NotGenerated,
+                null,
+                null,
+                "本次启动尚未写入日志；实例目录中的 latest.log 早于本会话，不能代表本次启动。");
         }
 
         var state = manifest.State;
@@ -261,6 +290,24 @@ public sealed class SessionLogReader : ISessionLogReader
             null,
             null,
             notGenerated ? "游戏日志尚未生成。" : "没有为本次启动登记可读取的游戏日志。");
+    }
+
+    /// <summary>只有声明了会话独立日志配置的方式，才可能在会话目录产生 game.log。</summary>
+    private static bool IsolationPrepared(string isolation) =>
+        string.Equals(isolation, SessionLogIsolationModes.Direct, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(isolation, SessionLogIsolationModes.Pending, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>文件在会话创建之后是否被写过；更早的内容只属于上一次启动。</summary>
+    private static bool WrittenSince(string path, DateTimeOffset since)
+    {
+        try
+        {
+            return File.GetLastWriteTimeUtc(path) >= since.UtcDateTime;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static SessionLogSourceInfo DescribeProcessSource(
@@ -349,11 +396,25 @@ public sealed class SessionLogReader : ISessionLogReader
         SessionLogSourceKind kind,
         string path,
         ArtifactOwnership ownership,
-        string? warning)
+        string? warning,
+        bool reportEmptyAsNotGenerated = false)
     {
         try
         {
             var info = new FileInfo(path);
+            if (reportEmptyAsNotGenerated && info.Length == 0)
+            {
+                // 文件已创建但还没有写入：这是“尚未生成内容”，不是可用来源。
+                return new SessionLogSourceInfo(
+                    kind,
+                    null,
+                    ownership,
+                    SessionSourceAvailability.NotGenerated,
+                    0,
+                    new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero),
+                    "该来源已创建但尚未写入内容。");
+            }
+
             return new SessionLogSourceInfo(
                 kind,
                 path,

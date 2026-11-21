@@ -48,6 +48,26 @@ public static class SessionCaptureModes
     public const string Console = "console";
 }
 
+/// <summary>
+/// 日志隔离方式（manifest.LogIsolation）。<c>pending</c> 表示已为本次会话生成独立
+/// log4j 配置并交给了游戏进程，但尚未在退出后复核该配置是否真正生效；它不等于
+/// “没有隔离”，也不允许因此回退到实例共享日志。
+/// </summary>
+public static class SessionLogIsolationModes
+{
+    /// <summary>已生成会话独立日志配置，等待进程写入并按退出结果复核。</summary>
+    public const string Pending = "pending";
+
+    /// <summary>已确认游戏进程把日志写入了会话目录。</summary>
+    public const string Direct = "direct";
+
+    /// <summary>日志配置不可隔离（自定义/整合包配置），共享 latest.log 保持歧义归属。</summary>
+    public const string Shared = "shared";
+
+    /// <summary>启动命令没有 log4j 配置（或控制台模式），没有文件日志来源。</summary>
+    public const string Unavailable = "unavailable";
+}
+
 /// <summary>会话警告代码（manifest.Warnings）。UI 按前缀本地化，未知代码原样显示。</summary>
 public static class SessionWarnings
 {
@@ -127,8 +147,8 @@ public sealed record SessionManifest
 
     public string? Loader { get; init; }
 
-    /// <summary><c>direct</c>、<c>shared</c> 或 <c>unavailable</c>。</summary>
-    public string LogIsolation { get; init; } = "unavailable";
+    /// <summary>日志隔离方式，取值见 <see cref="SessionLogIsolationModes"/>。</summary>
+    public string LogIsolation { get; init; } = SessionLogIsolationModes.Unavailable;
 
     public string? LogConfigFingerprint { get; init; }
 

@@ -80,6 +80,11 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
     private Task _sessionsLoad = Task.CompletedTask;
     private Task _sessionSourcesLoad = Task.CompletedTask;
     private Task _sourceLoad = Task.CompletedTask;
+    /// <summary>最近一次描述到的来源状态；轮询用它比较变化，也供停滞提示使用，避免每秒回调磁盘。</summary>
+    private IReadOnlyList<SessionLogSourceInfo> _sourceStates = [];
+    /// <summary>来源/证据身份签名：只有身份字段变化才重建列表，不把每秒的文件大小当成变化。</summary>
+    private string _sourceSignature = string.Empty;
+    private string _evidenceSignature = string.Empty;
     private CancellationTokenSource? _searchCancellation;
     private int _searchVersion;
     /// <summary>来源/会话切换代次：异步读取返回时若代次已变，丢弃过期结果，避免旧来源覆盖新视图。</summary>
@@ -727,6 +732,10 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
         ClearLoadedLines();
         Evidence.Clear();
         Sources.Clear();
+        // 来源/证据签名与快照属于上一个会话，必须一起清空，否则新会话会被误判为“没有变化”。
+        _sourceStates = [];
+        _sourceSignature = string.Empty;
+        _evidenceSignature = string.Empty;
         _evidenceArtifact = null;
         SelectedEvidence = null;
         SearchText = string.Empty;
@@ -775,9 +784,112 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             return;
         }
 
+        ApplyEvidence(evidence, force: true);
+        ApplySources(sources, evidence, selectPreferred: true);
+    }
+
+    /// <summary>
+    /// 运行期来源刷新（logs.md §3.3：来源按实际可用性逐步出现）。会话开始时隔离日志可能
+    /// 还没有写入、stdout 可能还是空文件、证据要等退出后才登记——这些变化都不会改
+    /// manifest，所以必须按文件状态重新描述来源。否则页面会一直停在进入时的快照上，
+    /// 表现为“游戏在跑，日志页却仍然显示上一次启动的共享 latest.log”。
+    /// </summary>
+    private async Task RefreshSourceStateAsync(LogSessionRowViewModel row, bool forceEvidence)
+    {
+        IReadOnlyList<SessionLogSourceInfo> sources;
+        IReadOnlyList<SessionEvidenceItem> evidence;
+        try
+        {
+            (sources, evidence) = await Task.Run(() => (
+                _reader.DescribeSources(row.Session),
+                _reader.DescribeEvidence(row.Session))).ConfigureAwait(true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogDebug(exception, "刷新会话来源失败：{SessionId}", row.Id);
+            return;
+        }
+
+        if (_disposed || !IsCurrentSession(row))
+        {
+            return;
+        }
+
+        var sourcesChanged = !string.Equals(
+            BuildSourceSignature(sources),
+            _sourceSignature,
+            StringComparison.Ordinal);
+        var evidenceChanged = forceEvidence ||
+                              !string.Equals(
+                                  BuildEvidenceSignature(evidence),
+                                  _evidenceSignature,
+                                  StringComparison.Ordinal);
+        if (!sourcesChanged && !evidenceChanged)
+        {
+            _sourceStates = sources;
+            return;
+        }
+
+        if (evidenceChanged)
+        {
+            ApplyEvidence(evidence, force: true);
+        }
+
+        ApplySources(sources, evidence, selectPreferred: false);
+    }
+
+    /// <summary>来源身份签名：只包含决定“这是哪份日志、是否可用”的字段，不含每秒变化的大小。</summary>
+    private static string BuildSourceSignature(IReadOnlyList<SessionLogSourceInfo> sources) =>
+        string.Join(
+            "|",
+            sources.Select(source =>
+                $"{source.Kind}/{source.Ownership}/{source.Availability}/{source.Path}/{source.Warning}"));
+
+    private static string BuildEvidenceSignature(IReadOnlyList<SessionEvidenceItem> evidence) =>
+        string.Join(
+            "|",
+            evidence.Select(item =>
+                $"{item.Artifact.Id}/{item.Availability}/{item.Size}/{item.Detail}"));
+
+    /// <summary>回填证据清单；仅在身份变化时重建，并按 Artifact Id 保留当前选中证据。</summary>
+    private void ApplyEvidence(IReadOnlyList<SessionEvidenceItem> evidence, bool force)
+    {
+        var signature = BuildEvidenceSignature(evidence);
+        if (!force && string.Equals(signature, _evidenceSignature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _evidenceSignature = signature;
+        var selectedId = SelectedEvidence?.Artifact.Id;
+        Evidence.Clear();
+        foreach (var item in evidence)
+        {
+            Evidence.Add(new LogEvidenceRowViewModel(item, _localizer));
+        }
+
+        SelectedEvidence = selectedId is null
+            ? null
+            : Evidence.FirstOrDefault(item =>
+                string.Equals(item.Artifact.Id, selectedId, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 用当前文件状态回填来源栏。身份未变的条目保留原实例，避免重建集合让选中项失效；
+    /// 身份变化的条目就地替换，使选中来源切换到新的真实文件并重新读取正文。
+    /// </summary>
+    private void ApplySources(
+        IReadOnlyList<SessionLogSourceInfo> sources,
+        IReadOnlyList<SessionEvidenceItem> evidence,
+        bool selectPreferred)
+    {
+        _sourceStates = sources;
+        _sourceSignature = BuildSourceSignature(sources);
+
+        var desired = new List<LogSourceViewModel>(sources.Count + 1);
         foreach (var source in sources)
         {
-            Sources.Add(new LogSourceViewModel(
+            desired.Add(new LogSourceViewModel(
                 source.Kind,
                 _localizer.Get("logs.source." + SourceKey(source.Kind)),
                 source.Availability == SessionSourceAvailability.Available,
@@ -787,12 +899,7 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
                 source.Ownership));
         }
 
-        foreach (var item in evidence)
-        {
-            Evidence.Add(new LogEvidenceRowViewModel(item, _localizer));
-        }
-
-        Sources.Add(new LogSourceViewModel(
+        desired.Add(new LogSourceViewModel(
             SessionLogSourceKind.Evidence,
             _localizer.Get("logs.source.evidence"),
             evidence.Count > 0,
@@ -802,12 +909,52 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             evidence.Count == 0 ? _localizer.Get("logs.evidence.none") : null,
             null));
 
-        var preferred = Sources.FirstOrDefault(source =>
-                            source.IsGameLog &&
-                            source.IsAvailable)
-                        ?? Sources.FirstOrDefault(source => source.IsAvailable)
-                        ?? Sources[0];
-        SelectedSource = preferred;
+        var previousKind = selectPreferred ? (SessionLogSourceKind?)null : SelectedSource?.Kind;
+        for (var index = 0; index < desired.Count; index++)
+        {
+            var item = desired[index];
+            if (index >= Sources.Count)
+            {
+                Sources.Add(item);
+                continue;
+            }
+
+            // 值相等的条目沿用原实例：来源栏不闪动，正文也不会被无谓重读。
+            if (Equals(Sources[index], item))
+            {
+                continue;
+            }
+
+            var wasSelected = Equals(SelectedSource, Sources[index]);
+            Sources[index] = item;
+            if (wasSelected)
+            {
+                // 选中的来源换成了新的真实文件：跟随新实例，触发正文重读。
+                SelectedSource = item;
+            }
+        }
+
+        while (Sources.Count > desired.Count)
+        {
+            Sources.RemoveAt(Sources.Count - 1);
+        }
+
+        if (selectPreferred)
+        {
+            SelectedSource = Sources.FirstOrDefault(source => source.IsGameLog && source.IsAvailable)
+                             ?? Sources.FirstOrDefault(source => source.IsAvailable)
+                             ?? Sources.FirstOrDefault();
+            return;
+        }
+
+        if (SelectedSource is null || !Sources.Contains(SelectedSource))
+        {
+            // 选中的条目被替换或消失：按原来源种类回到新实例，绝不停留在已移除的对象上。
+            SelectedSource =
+                (previousKind is { } kind ? Sources.FirstOrDefault(source => source.Kind == kind) : null)
+                ?? Sources.FirstOrDefault(source => source.IsAvailable)
+                ?? Sources.FirstOrDefault();
+        }
     }
 
     partial void OnSelectedSourceChanged(LogSourceViewModel? value)
@@ -1731,12 +1878,22 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            if (current.Manifest.UpdatedAtUtc != row.Manifest.UpdatedAtUtc ||
-                current.Manifest.State != row.Manifest.State)
+            var manifestChanged = current.Manifest.UpdatedAtUtc != row.Manifest.UpdatedAtUtc ||
+                                  current.Manifest.State != row.Manifest.State;
+            if (manifestChanged)
             {
                 row.Refresh(current.Manifest, current.DirectoryPath);
                 SessionSummary = $"{row.InstanceName} · {row.StartedText} · {row.StateText}";
                 UpdateInspector(row);
+            }
+
+            // 来源可用性会随文件状态变化（隔离日志开始写入、stdout 产生输出、退出后登记证据），
+            // 这些变化不改 manifest，必须按文件状态刷新，不能停在进入页面时的快照。
+            await RefreshSourceStateAsync(row, forceEvidence: manifestChanged);
+            if (!_sourceLoad.IsCompleted)
+            {
+                // 选中的来源刚被替换，正文正在重新读取；此时按偏移增量读取会重复追加整份文件。
+                return;
             }
 
             if (SelectedSource is not { IsAvailable: true, IsEvidence: false } source)
@@ -1775,16 +1932,8 @@ public sealed partial class LogSessionsViewModel : ObservableObject, IDisposable
             return;
         }
 
-        SessionLogSourceInfo? info = null;
-        try
-        {
-            info = _reader.DescribeSources(row.Session)
-                .FirstOrDefault(item => item.Kind == source.Kind);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            _logger.LogDebug(exception, "读取来源状态失败：{SessionId}", row.Id);
-        }
+        // 来源状态来自最近一次轮询描述，不在 UI 线程上再做一次磁盘探测（性能交接 §4）。
+        var info = _sourceStates.FirstOrDefault(item => item.Kind == source.Kind);
 
         var consoleMode = string.Equals(manifest.CaptureMode, SessionCaptureModes.Console, StringComparison.Ordinal);
         if (consoleMode && info is not { Availability: SessionSourceAvailability.Available })

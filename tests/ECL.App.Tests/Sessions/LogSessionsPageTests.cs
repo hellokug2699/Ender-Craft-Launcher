@@ -405,7 +405,69 @@ public sealed class LogSessionsPageTests : IDisposable
         ui.Invoke(() => vm.Dispose());
     }
 
-    private GameLogSession CreateSession(string instanceId, string version) =>
+    /// <summary>
+    /// logs.md §3.3：来源按实际可用性逐步出现。会话启动时会话独立日志可能还不存在，
+    /// 页面不能停在“共享 latest.log”快照上，必须在轮询时切到本次会话自己的 game.log。
+    /// </summary>
+    [Fact]
+    public async Task PollingSwitchesFromSharedLatestLogToTheLiveSessionLog()
+    {
+        using var ui = new UiThread();
+        var session = CreateSession("live", "1.12.2", SessionLogIsolationModes.Pending);
+        var gameDirectory = session.Manifest.GameDirectory!;
+        Directory.CreateDirectory(Path.Combine(gameDirectory, "logs"));
+        // 会话创建后由上一次启动残留的共享日志仍在写入窗口内：此时只能按歧义来源呈现。
+        File.WriteAllText(Path.Combine(gameDirectory, "logs", "latest.log"), "old-shared-line\n");
+
+        var vm = await ui.InvokeAsync(() => CreateViewModel());
+        ui.Invoke(() => vm.Activate());
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+
+        Assert.False(string.IsNullOrWhiteSpace(vm.SelectedSource!.Warning));
+        Assert.Contains(vm.Lines, line => line.Message.Contains("old-shared-line", StringComparison.Ordinal));
+
+        // 游戏进程开始写会话独立日志。
+        File.WriteAllText(
+            Path.Combine(session.DirectoryPath, "game.log"),
+            "[10:00:00] [main/INFO]: session-line\n");
+        await ui.InvokeAsync(() => vm.PollAsync()).Unwrap();
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+
+        Assert.True(vm.SelectedSource!.IsGameLog);
+        Assert.Null(vm.SelectedSource.Warning);
+        Assert.Contains(vm.Lines, line => line.Message.Contains("session-line", StringComparison.Ordinal));
+        Assert.DoesNotContain(vm.Lines, line => line.Message.Contains("old-shared-line", StringComparison.Ordinal));
+
+        ui.Invoke(() => vm.Dispose());
+    }
+
+    [Fact]
+    public async Task PollingKeepsTheLoadedWindowWhenSourcesAreUnchanged()
+    {
+        using var ui = new UiThread();
+        var session = CreateSession("stable", "1.21.1");
+        var path = Path.Combine(session.DirectoryPath, "game.log");
+        File.WriteAllText(path, "one\ntwo\nthree\n");
+        var vm = await ui.InvokeAsync(() => CreateViewModel());
+        ui.Invoke(() => vm.Activate());
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+        Assert.Equal(3, vm.Lines.Count);
+
+        // 文件继续增长但来源身份没变：轮询只追加新行，不重建来源栏、不重读整份日志。
+        File.AppendAllText(path, "four\n");
+        await ui.InvokeAsync(() => vm.PollAsync()).Unwrap();
+        await ui.InvokeAsync(() => vm.WaitForSourceLoadAsync()).Unwrap();
+
+        Assert.Equal(["one", "two", "three", "four"], vm.Lines.Select(line => line.Message).ToArray());
+        Assert.Equal(4, vm.Sources.Count);
+
+        ui.Invoke(() => vm.Dispose());
+    }
+
+    private GameLogSession CreateSession(
+        string instanceId,
+        string version,
+        string logIsolation = SessionLogIsolationModes.Direct) =>
         _sessions.Create(new SessionCreateRequest
         {
             InstanceId = instanceId,
@@ -413,7 +475,7 @@ public sealed class LogSessionsPageTests : IDisposable
             GameDirectory = Path.Combine(_root, "games", instanceId),
             MinecraftVersion = version,
             Loader = "fabric",
-            LogIsolation = "direct",
+            LogIsolation = logIsolation,
         });
 
     private LogSessionsViewModel CreateViewModel(
