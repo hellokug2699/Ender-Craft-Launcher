@@ -39,7 +39,7 @@ public sealed class LaunchLibraryFilterTests
     }
 
     [Fact]
-    public void NonCleanroomLoadersKeepLegacyLwjgl()
+    public void LegacyLwjglIsOnlyDroppedForCleanroom()
     {
         var libraries = new[] { Library("org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209") };
 
@@ -47,6 +47,62 @@ public sealed class LaunchLibraryFilterTests
         Assert.Same(libraries, LaunchLibraryFilter.Apply("vanilla", libraries));
         Assert.Same(libraries, LaunchLibraryFilter.Apply(null, libraries));
     }
+
+    /// <summary>
+    /// JNA 4 把 <c>net.java.dev.jna:platform</c> 改名为 <c>jna-platform</c>，两者提供同一批
+    /// <c>com.sun.jna.platform.*</c> 类。旧构件先进入 classpath 会让 Cleanroom 的 Taskbar API
+    /// 报 <c>NoSuchMethodError: Guid$GUID.&lt;init&gt;(String)</c>，因此必须剔除旧构件名。
+    /// </summary>
+    [Fact]
+    public void LegacyJnaPlatformIsDroppedWhenJnaPlatformExists()
+    {
+        var libraries = new[]
+        {
+            Library("net.java.dev.jna:jna:4.4.0"),
+            Library("net.java.dev.jna:platform:3.4.0"),
+            Library("net.java.dev.jna:jna:5.19.1"),
+            Library("net.java.dev.jna:jna-platform:5.19.1"),
+        };
+
+        var filtered = LaunchLibraryFilter.Apply("cleanroom", libraries);
+
+        Assert.DoesNotContain(filtered, library => library.Name == "net.java.dev.jna:platform:3.4.0");
+        Assert.Contains(filtered, library => library.Name == "net.java.dev.jna:jna-platform:5.19.1");
+        Assert.Contains(filtered, library => library.Name == "net.java.dev.jna:jna:4.4.0");
+    }
+
+    [Fact]
+    public void LegacyJnaPlatformIsDroppedForEveryLoader()
+    {
+        var libraries = new[]
+        {
+            Library("net.java.dev.jna:platform:3.4.0"),
+            Library("net.java.dev.jna:jna-platform:5.19.1"),
+        };
+
+        foreach (var loader in new[] { "forge", "vanilla", "fabric", null })
+        {
+            var filtered = LaunchLibraryFilter.Apply(loader, libraries);
+            Assert.DoesNotContain(filtered, library => library.Name == "net.java.dev.jna:platform:3.4.0");
+        }
+    }
+
+    [Fact]
+    public void LegacyJnaPlatformIsKeptWhenNoSuccessorExists()
+    {
+        var libraries = new[] { Library("net.java.dev.jna:platform:3.4.0") };
+
+        // 没有 jna-platform 时不能把唯一可用的库删掉。
+        Assert.Same(libraries, LaunchLibraryFilter.Apply("cleanroom", libraries));
+    }
+
+    [Theory]
+    [InlineData("net.java.dev.jna:platform:3.4.0", true)]
+    [InlineData("net.java.dev.jna:jna-platform:5.19.1", false)]
+    [InlineData("net.java.dev.jna:jna:4.4.0", false)]
+    [InlineData("", false)]
+    public void DetectsLegacyJnaPlatformCoordinates(string name, bool expected) =>
+        Assert.Equal(expected, LaunchLibraryFilter.IsLegacyJnaPlatform(name));
 
     [Theory]
     [InlineData("org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209", true)]

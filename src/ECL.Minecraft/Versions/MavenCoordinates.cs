@@ -25,6 +25,25 @@ public static class MavenCoordinates
         return parts is null ? null : $"{parts[0]}:{parts[1]}:{parts[2]}";
     }
 
+    /// <summary>
+    /// 构件身份：<c>group:artifact:classifier</c>（不含版本）。用于“同一构件出现多个版本”时去重；
+    /// classifier 为空表示普通 jar，natives 等分类器与普通 jar 不是同一构件。
+    /// </summary>
+    public static string? GetArtifactKey(string? name)
+    {
+        var parts = Split(name);
+        if (parts is null)
+        {
+            return null;
+        }
+
+        var classifier = parts.Length >= 4 ? parts[3] : string.Empty;
+        return $"{parts[0]}:{parts[1]}:{classifier}".ToLowerInvariant();
+    }
+
+    /// <summary>取 Maven 坐标中的版本段；无法解析时返回 null。</summary>
+    public static string? GetVersion(string? name) => Split(name) is { } parts ? parts[2] : null;
+
     public static string? GetClassifier(string? name)
     {
         var parts = Split(name);

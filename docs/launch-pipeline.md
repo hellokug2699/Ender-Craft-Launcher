@@ -135,10 +135,18 @@ public sealed record LaunchCommand(
 
 - 通过 `PlatformLibrarySelector` 按当前 OS/架构与 library `rules` 过滤。
 - 继承链合并时加载器库排在原版库之前（Forge 1.7.10 的 guava 17.0 需要覆盖原版 15.0）。
+- **同一构件只保留最高版本**（`MavenVersionComparer`，按 `group:artifact:classifier` 去重）：从其它启动器
+  导入的整合包 JSON 常把原版库与加载器库合并成一张列表，同一构件会出现多个版本。Java 只加载第一个同名类，
+  旧版本先出现就会遮蔽新版本并抛 `NoSuchMethodError`（实测 `log4j-api:2.8.1` 遮蔽 `2.26.0`，使 Cleanroom
+  的 `log4j-slf4j2-impl` 报 `LoggerContextFactory.isClassLoaderDependent()`；`httpclient`、`commons-lang3`、
+  `jopt-simple` 等 25 个重复构件同理）。
 - 现代版本的 natives 以 `natives-<os>[-arch]` classifier 形式出现在 `name` 中；每组按架构选择唯一变体。
 - 类路径只包含主 artifact；natives classifier 与 legacy `Natives` 的 native jar 不进入类路径。
 - 库路径来自 `downloads.artifact.path`，缺失时按 Maven 坐标推导。
 - Cleanroom 启动时排除 LWJGL 2（`org.lwjgl.lwjgl:*` 与 `org.lwjgl:*:2.x`）：Cleanroom 使用 LWJGL 3 + `lwjglxx` 兼容层；从其它启动器导入的版本 JSON 可能同时带有原版 LWJGL 2，两套 `org.lwjgl` 同时进入类路径会让 `org.lwjgl.Sys` 加载不匹配的原生库并报 `NoSuchMethodError: getPointer`。类路径、natives 解压与启动前文件校验共用同一份过滤后的库列表。
+- 存在 `net.java.dev.jna:jna-platform` 时排除 JNA 3.x 的旧构件名 `net.java.dev.jna:platform`（JNA 4 起改名）：
+  两者提供同一批 `com.sun.jna.platform.*` 类，旧构件先进入类路径会让 Cleanroom 的 Taskbar API 报
+  `NoSuchMethodError: Guid$GUID.<init>(String)`。这条规范化对所有加载器生效，且在没有替代构件时不会删除唯一可用的库。
 - 追加实例的 client jar：优先 `<data>/versions/<versionId>/<versionId>.jar`；该文件不存在时回退到继承链中声明 `downloads.client` 的版本目录，兼容其它启动器生成的加载器版本。
 - 版本 JSON 缺失时使用 `<classpath>` 占位（仅 Dry Run）。
 
