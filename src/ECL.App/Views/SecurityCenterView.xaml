@@ -103,7 +103,8 @@
                                                TextTrimming="CharacterEllipsis" />
 
                                     <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding InstanceName}"
+                                        <TextBlock Text="{Binding LocationText}"
+                                                   ToolTip="{Binding LocationText}"
                                                    FontSize="12"
                                                    Foreground="{DynamicResource TextPrimaryBrush}"
                                                    TextTrimming="CharacterEllipsis" />

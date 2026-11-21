@@ -194,6 +194,7 @@ public sealed partial class SecurityCenterViewModel : ObservableObject
 
         var reports = new List<ThreatScanReport>();
         var instanceNames = new Dictionary<string, string>(StringComparer.Ordinal);
+        var instanceOrigins = new Dictionary<string, string>(StringComparer.Ordinal);
         var failures = new List<string>();
         try
         {
@@ -216,6 +217,7 @@ public sealed partial class SecurityCenterViewModel : ObservableObject
             foreach (var instance in instances)
             {
                 instanceNames[instance.Id] = instance.Name;
+                instanceOrigins[instance.Id] = ResolveOriginLabel(instance);
             }
 
             var total = instances.Count;
@@ -243,7 +245,7 @@ public sealed partial class SecurityCenterViewModel : ObservableObject
                         reports.Add(scan.Value!);
                         // 增量呈现：每完成一个实例就把发现追加到分类，避免扫描结束后
                         // 一次性重建全部结果集合造成界面停顿。
-                        AppendReportFindings(scan.Value!, instanceNames);
+                        AppendReportFindings(scan.Value!, instanceNames, instanceOrigins);
                     }
                     else
                     {
@@ -574,11 +576,17 @@ public sealed partial class SecurityCenterViewModel : ObservableObject
     /// 把一个实例的发现追加到已有分类。逐条添加到分类集合而不是全量重建，
     /// 让扫描过程中的界面更新保持有界（security-center 性能验收）。
     /// </summary>
-    private void AppendReportFindings(ThreatScanReport report, IReadOnlyDictionary<string, string> instanceNames)
+    private void AppendReportFindings(
+        ThreatScanReport report,
+        IReadOnlyDictionary<string, string> instanceNames,
+        IReadOnlyDictionary<string, string> instanceOrigins)
     {
         var instanceName = instanceNames.TryGetValue(report.InstanceId, out var name)
             ? name
             : report.InstanceId;
+        var originLabel = instanceOrigins.TryGetValue(report.InstanceId, out var origin)
+            ? origin
+            : instanceName;
         var byKey = Categories.ToDictionary(category => category.Key, StringComparer.Ordinal);
         foreach (var finding in report.Findings)
         {
@@ -592,12 +600,37 @@ public sealed partial class SecurityCenterViewModel : ObservableObject
             category.Findings.Add(new SecurityFindingItemViewModel(
                 report.InstanceId,
                 instanceName,
+                originLabel,
                 finding,
                 key,
                 identity,
                 _ignoredKeys.Contains(identity),
                 _localizer));
         }
+    }
+
+    /// <summary>
+    /// 条目的“来源”前缀：优先用游戏目录的文件夹名（例如 <c>versions\1.20.1</c> → <c>1.20.1</c>），
+    /// 让用户能与文件系统目录对应；没有独立游戏目录（托管实例）或只是通用容器
+    /// （<c>.minecraft</c>/<c>minecraft</c>）时回退为实例显示名。绝不返回盘符或完整路径。
+    /// </summary>
+    private static string ResolveOriginLabel(GameInstance instance)
+    {
+        if (!string.IsNullOrWhiteSpace(instance.GameDirectory))
+        {
+            var trimmed = Path.TrimEndingDirectorySeparator(instance.GameDirectory);
+            var leaf = Path.GetFileName(trimmed);
+            if (!string.IsNullOrWhiteSpace(leaf) &&
+                !string.Equals(leaf, ".", StringComparison.Ordinal) &&
+                !string.Equals(leaf, "..", StringComparison.Ordinal) &&
+                !string.Equals(leaf, ".minecraft", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(leaf, "minecraft", StringComparison.OrdinalIgnoreCase))
+            {
+                return leaf;
+            }
+        }
+
+        return instance.Name;
     }
 
     private void RecomputeAllCategories()
@@ -776,7 +809,10 @@ public sealed class SecurityCategoryViewModel : System.ComponentModel.INotifyPro
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
 }
 
-/// <summary>一条安全发现。不暴露文件路径给视图；命令参数只携带领域发现与实例身份。</summary>
+/// <summary>
+/// 一条安全发现。不暴露盘符或完整磁盘路径；页面显示「来源 + 实例内相对路径」，
+/// 命令参数仍只携带领域发现与实例身份。
+/// </summary>
 public sealed partial class SecurityFindingItemViewModel : ObservableObject
 {
     private readonly ILocalizer _localizer;
@@ -784,6 +820,7 @@ public sealed partial class SecurityFindingItemViewModel : ObservableObject
     public SecurityFindingItemViewModel(
         string instanceId,
         string instanceName,
+        string originLabel,
         ThreatFinding finding,
         string categoryKey,
         string identityKey,
@@ -792,6 +829,8 @@ public sealed partial class SecurityFindingItemViewModel : ObservableObject
     {
         InstanceId = instanceId;
         InstanceName = instanceName;
+        OriginText = string.IsNullOrWhiteSpace(originLabel) ? instanceName : originLabel;
+        RelativePathDisplay = FormatRelativePath(finding.RelativePath);
         Finding = finding;
         CategoryKey = categoryKey;
         IdentityKey = identityKey;
@@ -808,6 +847,20 @@ public sealed partial class SecurityFindingItemViewModel : ObservableObject
 
     public string InstanceName { get; }
 
+    /// <summary>来源前缀：游戏目录文件夹名，或回退的实例显示名。</summary>
+    public string OriginText { get; }
+
+    /// <summary>实例内相对路径（以 <c>\</c> 分隔）；启动参数等逻辑目标保留原 token。</summary>
+    public string RelativePathDisplay { get; }
+
+    /// <summary>
+    /// 页面显示的来源摘要，例如 <c>1.20.1 scripts\1.ps1</c>。
+    /// 只包含来源标签与相对路径，不含盘符、用户目录或完整磁盘路径。
+    /// </summary>
+    public string LocationText => RelativePathDisplay.Length == 0
+        ? OriginText
+        : $"{OriginText} {RelativePathDisplay}";
+
     public ThreatFinding Finding { get; }
 
     public string CategoryKey { get; }
@@ -820,6 +873,38 @@ public sealed partial class SecurityFindingItemViewModel : ObservableObject
     public bool CanDelete { get; }
 
     public string? DeleteUnavailableReason { get; }
+
+    /// <summary>
+    /// 规范化显示用的相对路径：统一为反斜杠、去掉当前目录前缀，并防御性拒绝盘符、
+    /// UNC 根与上跳段；异常输入只保留文件名，避免泄露完整路径。
+    /// </summary>
+    private static string FormatRelativePath(string? relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return string.Empty;
+        }
+
+        var normalized = relativePath.Replace('/', '\\').Trim();
+        while (normalized.StartsWith(".\\", StringComparison.Ordinal))
+        {
+            normalized = normalized[2..];
+        }
+
+        if (normalized.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        if (normalized.Contains(':', StringComparison.Ordinal) ||
+            normalized.StartsWith("\\\\", StringComparison.Ordinal) ||
+            normalized.Split('\\').Any(segment => string.Equals(segment, "..", StringComparison.Ordinal)))
+        {
+            return Path.GetFileName(normalized);
+        }
+
+        return normalized;
+    }
 
     public string LevelKey => Finding.Level switch
     {

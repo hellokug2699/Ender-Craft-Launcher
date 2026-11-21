@@ -2764,7 +2764,7 @@
   "security.scan.coverageIncomplete": "{0} coverage issue(s); the result is incomplete.",
   "security.scan.coverageIncompleteGeneric": "The scan reached a limit or could not read some files; the result is incomplete.",
   "security.scan.coverageTitle": "Coverage",
-  "security.scan.pathHidden": "For privacy, the Security Center does not show file paths; handle specific files on the instance content pages.",
+  "security.scan.pathHidden": "The Security Center shows the instance origin and the relative path inside the instance, never the full disk path.",
   "security.category.mods": "Mods",
   "security.category.resourcePacks": "Resource packs",
   "security.category.shaderPacks": "Shader packs",

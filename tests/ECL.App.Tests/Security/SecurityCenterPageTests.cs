@@ -236,16 +236,95 @@ public sealed class SecurityCenterPageTests
     }
 
     [Fact]
-    public void TheViewHidesPathsAndUsesTheSharedStatusCircle()
+    public void TheViewShowsOriginNotFullPathsAndUsesTheSharedStatusCircle()
     {
         var xaml = ReadSource("src/ECL.App/Views/SecurityCenterView.xaml");
 
         Assert.Contains("SecurityStatusCircle", xaml, StringComparison.Ordinal);
+        Assert.Contains("LocationText", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("RelativePath", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("CapturedPath", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("SourcePath", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("<TabControl", xaml, StringComparison.Ordinal);
         Assert.Contains("security.finding.ignore", xaml, StringComparison.Ordinal);
         Assert.Contains("security.finding.delete", xaml, StringComparison.Ordinal);
         Assert.Contains("VirtualizingPanel.IsVirtualizing=\"True\"", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task FindingsShowOriginFolderAndRelativePathWithoutFullPaths()
+    {
+        var host = new Host();
+        host.Instances.Instances.Add(Instance("a", "Instance A") with
+        {
+            GameDirectory = @"D:\.minecraft\versions\1.20.1",
+        });
+        host.Security.Scan = (instanceId, _) => Task.FromResult(Ecl.Core.Result<ThreatScanReport>.Ok(
+            FakeSecurityService.Report(
+                instanceId,
+                FakeSecurityService.Finding("scripts/1.ps1", ThreatLevel.Suspicious),
+                FakeSecurityService.Finding("suspected.jar", ThreatLevel.HighRisk))));
+
+        await host.Page.StartScanCommand.ExecuteAsync(null);
+
+        var script = host.Page.Categories.Single(category => category.Key == "scripts").Findings[0];
+        Assert.Equal(@"1.20.1 scripts\1.ps1", script.LocationText);
+        Assert.DoesNotContain("D:", script.LocationText, StringComparison.Ordinal);
+        Assert.DoesNotContain(".minecraft", script.LocationText, StringComparison.Ordinal);
+
+        var other = host.Page.Categories.Single(category => category.Key == "other").Findings[0];
+        Assert.Equal("1.20.1 suspected.jar", other.LocationText);
+    }
+
+    [Fact]
+    public async Task ManagedInstanceFallsBackToInstanceNameAsOrigin()
+    {
+        var host = new Host();
+        host.Instances.Instances.Add(Instance("a", "Instance A"));
+        host.Security.Scan = (instanceId, _) => Task.FromResult(Ecl.Core.Result<ThreatScanReport>.Ok(
+            FakeSecurityService.Report(
+                instanceId,
+                FakeSecurityService.Finding("mods/evil.jar", ThreatLevel.HighRisk))));
+
+        await host.Page.StartScanCommand.ExecuteAsync(null);
+
+        var row = host.Page.Categories.Single(category => category.Key == "mods").Findings[0];
+        Assert.Equal(@"Instance A mods\evil.jar", row.LocationText);
+        Assert.Equal("Instance A", row.OriginText);
+    }
+
+    [Fact]
+    public async Task LaunchArgumentFindingKeepsRawTargetWithoutFilePrefix()
+    {
+        var host = new Host();
+        host.Instances.Instances.Add(Instance("a", "Instance A"));
+        host.Security.Scan = (instanceId, _) => Task.FromResult(Ecl.Core.Result<ThreatScanReport>.Ok(
+            FakeSecurityService.Report(
+                instanceId,
+                FakeSecurityService.Finding("launch-arguments", ThreatLevel.Suspicious, sha256: null))));
+
+        await host.Page.StartScanCommand.ExecuteAsync(null);
+
+        var row = host.Page.Categories.Single(category => category.Key == "launch-arguments").Findings[0];
+        Assert.Equal("Instance A launch-arguments", row.LocationText);
+        Assert.False(row.CanDelete);
+    }
+
+    [Fact]
+    public async Task AbsoluteRelativePathIsReducedToFileName()
+    {
+        var host = new Host();
+        host.Instances.Instances.Add(Instance("a", "Instance A"));
+        host.Security.Scan = (instanceId, _) => Task.FromResult(Ecl.Core.Result<ThreatScanReport>.Ok(
+            FakeSecurityService.Report(
+                instanceId,
+                FakeSecurityService.Finding(@"D:\evil\1.ps1", ThreatLevel.HighRisk))));
+
+        await host.Page.StartScanCommand.ExecuteAsync(null);
+
+        var row = host.Page.Categories.SelectMany(category => category.Findings).Single();
+        Assert.Equal("Instance A 1.ps1", row.LocationText);
+        Assert.DoesNotContain("D:", row.LocationText, StringComparison.Ordinal);
     }
 
     [Fact]
