@@ -140,6 +140,10 @@ public sealed record LaunchCommand(
   `patches`（带 `priority`）。ECL 在解析版本时按 `priority` 从高到低重排，同优先级时 `game` 基础段垫底，
   并让高优先段在构件冲突时获胜——与其它启动器「加载器段覆盖原版段」的语义一致；顶层未被任何段覆盖的
   条目保持在末尾。没有 `patches` 的版本（ECL 自建实例、官方 JSON）不受影响。
+  **同一构件的候选只在 `rules` 允许当前平台的条目里择优**：被 rules 排除的高版本不能顶掉可用版本
+  （否则平台过滤会把整个构件丢光，实测 `com.mojang:text2speech` 的「通用 1.10.3 + 仅 `osx-arm64` 的
+  1.11.3」会让 Windows 缺 `com.mojang.text2speech.Narrator`，在初始化末尾
+  `NoClassDefFoundError`）。`rules` 的 `os.name` 支持 `osx-arm64` 这类「OS-架构」组合写法。
 - **同一构件只保留最高版本**（`MavenVersionComparer`，按 `group:artifact:classifier` 去重）：从其它启动器
   导入的整合包 JSON 常把原版库与加载器库合并成一张列表，同一构件会出现多个版本。Java 只加载第一个同名类，
   旧版本先出现就会遮蔽新版本并抛 `NoSuchMethodError`（实测 `log4j-api:2.8.1` 遮蔽 `2.26.0`，使 Cleanroom

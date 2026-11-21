@@ -17,7 +17,9 @@ namespace Ecl.Minecraft.Versions;
 ///
 /// 这里按 <c>priority</c> 从高到低重建顺序（同优先级时 <c>game</c> 基础段垫底），
 /// 并让高优先段在构件冲突时获胜，与其它启动器「加载器段覆盖原版段」的语义一致。
-/// 顶层列表中未被任何段覆盖的条目保持在末尾，避免它们反过来遮蔽加载器库。
+/// 同一构件的候选先按 <c>rules</c> 筛出当前平台可用的条目再择优：被 rules 排除的高版本
+/// 不能顶掉可用版本（否则平台过滤会把整个构件丢光）。顶层列表中未被任何段覆盖的条目保持在末尾，
+/// 避免它们反过来遮蔽加载器库。
 ///
 /// 没有 <c>patches</c> 的版本（ECL 自己安装的实例、官方版本 JSON）原样返回，
 /// 由 <see cref="PlatformLibrarySelector"/> 继续按最高版本去重。
@@ -27,7 +29,18 @@ public static class VersionLibraryResolver
     /// <summary>原版 1.12.2 合并型 JSON 中基础段的 id。</summary>
     private const string BasePatchId = "game";
 
-    public static IReadOnlyList<VersionLibrary> Resolve(MinecraftVersion version)
+    public static IReadOnlyList<VersionLibrary> Resolve(MinecraftVersion version) =>
+        Resolve(version, LibraryRules.CurrentOsName, LibraryRules.CurrentArch);
+
+    /// <summary>
+    /// 平台参数用于判断候选条目是否被 <c>rules</c> 允许。同一构件存在多个条目时
+    /// 必须只在「当前平台可用」的候选里择优，否则被 rules 排除的高版本会顶掉可用的低版本，
+    /// 随后平台过滤又把这条唯一候选丢掉，整个构件从类路径消失（实测
+    /// <c>com.mojang:text2speech</c>：通用 <c>1.10.3</c> + 仅 <c>osx-arm64</c> 的 <c>1.11.3</c>，
+    /// Windows 上会让 <c>com.mojang.text2speech.Narrator</c> 缺失并在初始化末尾
+    /// <c>NoClassDefFoundError</c>）。
+    /// </summary>
+    public static IReadOnlyList<VersionLibrary> Resolve(MinecraftVersion version, string osName, string osArch)
     {
         ArgumentNullException.ThrowIfNull(version);
 
@@ -68,7 +81,7 @@ public static class VersionLibraryResolver
                     coveredNames.Add(library.Name.Trim());
                 }
 
-                entries.Add(new Entry(library, key, segmentIndex));
+                entries.Add(CreateEntry(library, key, segmentIndex, osName, osArch));
             }
         }
 
@@ -83,7 +96,7 @@ public static class VersionLibraryResolver
                 continue;
             }
 
-            entries.Add(new Entry(library, key, tailSegment));
+            entries.Add(CreateEntry(library, key, tailSegment, osName, osArch));
         }
 
         var winners = PickWinners(entries);
@@ -101,8 +114,12 @@ public static class VersionLibraryResolver
     }
 
     /// <summary>
-    /// 每个构件保留一个条目：段优先级高者获胜；同一段内版本高者获胜。
-    /// 无法解析坐标的条目（<c>Key</c> 为 null）不参与去重，原样保留。
+    /// 每个构件保留一个条目，择优顺序：
+    /// 1. 当前平台允许的条目优先（<c>rules</c> 判定）；
+    /// 2. 段优先级高者优先（加载器段覆盖原版段，加载器故意固定旧版本时也要生效）；
+    /// 3. 同一段内版本高者优先。
+    /// 全部候选都被 rules 排除时仍按 2/3 保留一条，交给后续平台过滤统一丢弃，
+    /// 避免去重结果依赖过滤顺序。无法解析坐标的条目不参与去重，原样保留。
     /// </summary>
     private static Dictionary<string, int> PickWinners(List<Entry> entries)
     {
@@ -122,17 +139,7 @@ public static class VersionLibraryResolver
                 continue;
             }
 
-            var incumbent = entries[incumbentIndex];
-            if (entry.Segment < incumbent.Segment)
-            {
-                winners[entry.Key] = index;
-                continue;
-            }
-
-            if (entry.Segment == incumbent.Segment &&
-                MavenVersionComparer.Compare(
-                    MavenCoordinates.GetVersion(entry.Library.Name),
-                    MavenCoordinates.GetVersion(incumbent.Library.Name)) > 0)
+            if (IsBetterCandidate(entry, entries[incumbentIndex]))
             {
                 winners[entry.Key] = index;
             }
@@ -141,10 +148,38 @@ public static class VersionLibraryResolver
         return winners;
     }
 
+    private static bool IsBetterCandidate(Entry candidate, Entry incumbent)
+    {
+        if (candidate.Allowed != incumbent.Allowed)
+        {
+            return candidate.Allowed;
+        }
+
+        if (candidate.Segment != incumbent.Segment)
+        {
+            return candidate.Segment < incumbent.Segment;
+        }
+
+        return MavenVersionComparer.Compare(
+            MavenCoordinates.GetVersion(candidate.Library.Name),
+            MavenCoordinates.GetVersion(incumbent.Library.Name)) > 0;
+    }
+
+    private static Entry CreateEntry(
+        VersionLibrary library,
+        string? key,
+        int segment,
+        string osName,
+        string osArch) => new(
+        library,
+        key,
+        segment,
+        LibraryRules.IsAllowed(library, osName, osArch));
+
     private static bool IsBasePatch(VersionPatch patch) =>
         string.Equals(patch.Id, BasePatchId, StringComparison.OrdinalIgnoreCase);
 
     private readonly record struct Segment(VersionPatch Patch, int Index);
 
-    private readonly record struct Entry(VersionLibrary Library, string? Key, int Segment);
+    private readonly record struct Entry(VersionLibrary Library, string? Key, int Segment, bool Allowed);
 }

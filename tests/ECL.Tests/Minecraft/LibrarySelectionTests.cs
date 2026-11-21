@@ -34,6 +34,21 @@ public sealed class LibrarySelectionTests
         Assert.EndsWith($":{expectedClassifier}", nativeNames[0], StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// PCL 等启动器会用「OS-架构」组合 token（<c>osx-arm64</c>、<c>windows-arm64</c>）写规则；
+    /// 以前这类 token 永远不匹配，规则被静默忽略。
+    /// </summary>
+    [Theory]
+    [InlineData("osx-arm64", "osx", "arm64", true)]
+    [InlineData("osx-arm64", "osx", "x86_64", false)]
+    [InlineData("macos-arm64", "osx", "arm64", true)]
+    [InlineData("windows-arm64", "windows", "arm64", true)]
+    [InlineData("windows-arm64", "windows", "x86_64", false)]
+    [InlineData("windows", "windows", "x86_64", true)]
+    [InlineData("osx", "osx", "x86_64", true)]
+    public void OsNameWithArchSuffixIsMatched(string name, string os, string arch, bool expected) =>
+        Assert.Equal(expected, VersionRuleEvaluator.OsNameMatches(name, os, arch));
+
     [Fact]
     public void FiltersLibrariesByRules()
     {

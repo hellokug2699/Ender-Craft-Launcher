@@ -44,7 +44,7 @@ public static class VersionRuleEvaluator
         if (rule.Os is not null)
         {
             if (!string.IsNullOrWhiteSpace(rule.Os.Name) &&
-                !OsKeyMatches(rule.Os.Name, osName))
+                !OsNameMatches(rule.Os.Name, osName, osArch))
             {
                 return false;
             }
@@ -91,6 +91,34 @@ public static class VersionRuleEvaluator
 
         return string.Equals(normalized, actual, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// <c>os.name</c> 还可能出现「OS-架构」组合写法（PCL 对 Apple Silicon 会写 <c>osx-arm64</c>）。
+    /// 这类 token 以前永远不匹配，导致规则被静默忽略：<c>allow osx-arm64</c> 不生效、
+    /// <c>disallow osx-arm64</c> 也不生效。这里拆成 OS 段与架构段分别判断。
+    /// </summary>
+    public static bool OsNameMatches(string name, string osName, string osArch)
+    {
+        var normalized = name.Trim().ToLowerInvariant();
+        var separator = normalized.LastIndexOf('-');
+        if (separator > 0)
+        {
+            var archPart = normalized[(separator + 1)..];
+            if (IsKnownArchToken(archPart))
+            {
+                return OsKeyMatches(normalized[..separator], osName) &&
+                       ArchMatches(archPart, osArch);
+            }
+        }
+
+        return OsKeyMatches(normalized, osName);
+    }
+
+    private static bool IsKnownArchToken(string token) =>
+        token is "x86_64" or "x86-64" or "x64" or "amd64" or "64"
+            or "x86" or "i386" or "i686" or "32"
+            or "arm64" or "aarch64" or "arm_64" or "aarch_64" or "armv8"
+            or "arm32" or "armv7" or "arm";
 
     public static bool ArchMatches(string candidate, string osArch) =>
         string.Equals(NormalizeArch(candidate), NormalizeArch(osArch), StringComparison.Ordinal);
