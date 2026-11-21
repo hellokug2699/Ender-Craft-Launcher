@@ -27,6 +27,12 @@ public sealed class LaunchContext
     /// <summary>用户已明确接受当前实例的已知安全风险并选择继续本次启动。</summary>
     public bool AcceptSecurityRisk { get; init; }
 
+    /// <summary>
+    /// 交互式风险确认回调（GUI 注入）。为 null 表示本次调用没有交互通道（CLI、自动化、
+    /// Dry Run），此时只认显式标志 <see cref="AcceptSecurityRisk"/>，不得静默放行。
+    /// </summary>
+    public SecurityRiskConsentHandler? ConfirmSecurityRisk { get; init; }
+
     public JavaRuntime? Java { get; set; }
 
     public JavaLaunchPlan? JavaPlan { get; set; }

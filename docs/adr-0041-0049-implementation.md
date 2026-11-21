@@ -107,6 +107,8 @@ dotnet run --project src/ECL.Cli -- github resolve https://github.com/hellokug26
 2. `install` 成功下载并校验 3,627 个文件、732,939,111 字节；`launch --dry-run` 生成 41 个参数并选择 Java 21。
 3. `security scan` 对一个测试 JAR 检出归档内脚本条目，结论 `Suspicious`。
 4. 首次真实启动在安全检查步骤暂停，未创建游戏进程；使用 `--accept-security-risk` 后记录风险接受并成功启动游戏进程。
+   （2026-11-21 补齐 GUI 路径：启动前风险披露弹窗提供「无视风险，继续启动 / 先自行处理 / 取消」，
+   接受后由门控记录并继续，取消或处理则结束本次启动并指向安全中心；CLI 仍用该标志，见 `docs/ui-shell.md` §2.24。）
 5. `StartGameStep` 随进程启动写入本地性能样本 JSONL；样本阶段为 `Starting`，未提供游戏侧 Tick telemetry 时明确标记 `不可用`，未伪造 TPS/MSPT。
 6. `engine snapshot create/list` 生成并列出完整快照；`network diag mojang` 返回 DNS/TCP/TLS/HTTP 分阶段结果；`github resolve` 接受目标仓库 Issue、拒绝其他仓库引用。
 

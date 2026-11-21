@@ -89,6 +89,8 @@ public partial class App : Application
             services.AddEclMinecraft();
 
             services.AddSingleton<IDialogService, DialogService>();
+            // ADR 0043 §6：启动前风险披露由应用层呈现，领域门控只消费用户决定。
+            services.AddSingleton<SecurityRiskConsent>();
             // 关于页的外部链接与只读更新检查：只读取并校验，不下载或替换程序文件。
             services.AddSingleton<IExternalLinkService, ExternalLinkService>();
             services.AddSingleton<IUpdateCheckService, UpdateCheckService>();

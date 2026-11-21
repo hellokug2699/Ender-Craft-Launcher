@@ -24,6 +24,9 @@ public interface ILaunchService
     /// <summary>
     /// <paramref name="progress"/> 按步骤开始/结束推送实时进度（home.md §3.2）；
     /// 事件只用于呈现，最终结果仍以 <see cref="LaunchReport"/> 为唯一权威。
+    /// <paramref name="confirmSecurityRisk"/> 是 GUI 的风险确认通道：启动前安全检查发现
+    /// 未接受的风险时，由它把风险披露给用户并取回“继续/取消”的决定；为 null 时只能依赖
+    /// <paramref name="acceptSecurityRisk"/> 显式放行（CLI），不得静默继续。
     /// </summary>
     Task<LaunchReport> LaunchAsync(
         string instanceId,
@@ -31,7 +34,8 @@ public interface ILaunchService
         bool acceptJavaRisk,
         bool acceptSecurityRisk = false,
         CancellationToken cancellationToken = default,
-        IProgress<LaunchStepProgress>? progress = null);
+        IProgress<LaunchStepProgress>? progress = null,
+        SecurityRiskConsentHandler? confirmSecurityRisk = null);
 }
 
 public sealed class LaunchService : ILaunchService
@@ -87,7 +91,8 @@ public sealed class LaunchService : ILaunchService
         bool acceptJavaRisk,
         bool acceptSecurityRisk = false,
         CancellationToken cancellationToken = default,
-        IProgress<LaunchStepProgress>? progress = null)
+        IProgress<LaunchStepProgress>? progress = null,
+        SecurityRiskConsentHandler? confirmSecurityRisk = null)
     {
         // 真实启动才写入“最近一次启动状态”：Dry Run 只预览命令，不是一次启动。
         var record = !dryRun && AppPaths.IsValidInstanceId(instanceId);
@@ -102,7 +107,8 @@ public sealed class LaunchService : ILaunchService
             acceptJavaRisk,
             acceptSecurityRisk,
             cancellationToken,
-            progress).ConfigureAwait(false);
+            progress,
+            confirmSecurityRisk).ConfigureAwait(false);
 
         if (record)
         {
@@ -118,7 +124,8 @@ public sealed class LaunchService : ILaunchService
         bool acceptJavaRisk,
         bool acceptSecurityRisk,
         CancellationToken cancellationToken,
-        IProgress<LaunchStepProgress>? progress)
+        IProgress<LaunchStepProgress>? progress,
+        SecurityRiskConsentHandler? confirmSecurityRisk)
     {
         var total = Stopwatch.StartNew();
 
@@ -203,6 +210,7 @@ public sealed class LaunchService : ILaunchService
             DryRun = dryRun,
             AcceptJavaRisk = acceptJavaRisk,
             AcceptSecurityRisk = acceptSecurityRisk,
+            ConfirmSecurityRisk = dryRun ? null : confirmSecurityRisk,
         };
 
         // F-09 S1：真实启动在进入第一条步骤前就建立会话，使 validate/version/java 等

@@ -8,7 +8,10 @@ namespace Ecl.Minecraft.Launch.Steps;
 
 /// <summary>
 /// 启动前安全检查门（ADR 0043 §6）。必须在创建 Minecraft 进程前完成：
-/// 有需确认的风险时暂停启动；用户明确接受后记录风险并继续，不把风险结论改成 Clean。
+/// 有需确认的风险时暂停启动，并把披露与选择交给交互层——
+/// GUI 通过 <see cref="LaunchContext.ConfirmSecurityRisk"/> 弹出风险确认，
+/// CLI 通过 <c>--accept-security-risk</c> 显式接受；用户明确接受后记录风险并继续，
+/// 不把风险结论改成 Clean，也不在用户未选择时静默放行。
 /// </summary>
 internal sealed class SecurityGateStep(
     IThreatProtectionService security,
@@ -61,18 +64,56 @@ internal sealed class SecurityGateStep(
             return new LaunchStepResult(Id, LaunchStepStatus.Warning, value.Message);
         }
 
-        if (!context.AcceptSecurityRisk)
+        // CLI／自动化已经显式接受：直接记录，不再弹出第二次确认。
+        if (context.AcceptSecurityRisk)
         {
-            var summary = string.Join(
-                "；",
-                value.Findings.Take(5).Select(finding =>
-                    $"{finding.RelativePath}（{finding.Level}）"));
+            return await AcceptAndContinueAsync(context, value, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (context.ConfirmSecurityRisk is not { } confirm)
+        {
+            // 没有交互通道（CLI、自动化）：必须告诉用户显式标志，而不是让启动无声消失。
             return new LaunchStepResult(
                 Id,
                 LaunchStepStatus.Failed,
-                $"{value.Message} {summary}。请处理风险，或在明确接受后使用 --accept-security-risk 继续。");
+                $"{value.Message} {Summarize(value.Findings)} {localizer.Get("launch.security.acceptHint")}");
         }
 
+        bool accepted;
+        try
+        {
+            accepted = await confirm(
+                    new SecurityRiskConsentRequest(
+                        context.Instance.Id,
+                        context.Instance.Name,
+                        value.Findings,
+                        value.Message),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // 风险确认失败不得被解释成“用户接受”：按未接受处理并说明原因。
+            logger.LogWarning(exception, "实例 {InstanceId} 的风险确认未能完成。", context.Instance.Id);
+            accepted = false;
+        }
+
+        if (!accepted)
+        {
+            return new LaunchStepResult(
+                Id,
+                LaunchStepStatus.Failed,
+                localizer.Get("launch.security.declined", value.Findings.Count));
+        }
+
+        return await AcceptAndContinueAsync(context, value, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<LaunchStepResult> AcceptAndContinueAsync(
+        LaunchContext context,
+        LaunchSecurityDecision value,
+        CancellationToken cancellationToken)
+    {
         var accepted = await security.AcceptRiskAsync(context.Instance.Id, value.Findings, cancellationToken)
             .ConfigureAwait(false);
         if (!accepted.IsSuccess)
@@ -80,7 +121,7 @@ internal sealed class SecurityGateStep(
             return new LaunchStepResult(
                 Id,
                 LaunchStepStatus.Failed,
-                $"无法记录风险接受决定：{accepted.Error?.Message}");
+                localizer.Get("launch.security.acceptFailed", accepted.Error?.Message ?? string.Empty));
         }
 
         logger.LogWarning(
@@ -90,6 +131,11 @@ internal sealed class SecurityGateStep(
         return new LaunchStepResult(
             Id,
             LaunchStepStatus.Warning,
-            $"已记录用户对 {value.Findings.Count} 项风险的接受决定，继续启动；风险等级不会被改为 Clean。");
+            localizer.Get("launch.security.accepted", value.Findings.Count));
     }
+
+    private static string Summarize(IReadOnlyList<ThreatFinding> findings) =>
+        string.Join(
+            "；",
+            findings.Take(5).Select(finding => $"{finding.RelativePath}（{finding.Level}）"));
 }

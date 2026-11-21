@@ -99,7 +99,8 @@ internal sealed class FakeLaunchService(params string[] steps) : ILaunchService
         bool acceptJavaRisk,
         bool acceptSecurityRisk = false,
         CancellationToken cancellationToken = default,
-        IProgress<LaunchStepProgress>? progress = null) =>
+        IProgress<LaunchStepProgress>? progress = null,
+        SecurityRiskConsentHandler? confirmSecurityRisk = null) =>
         throw new NotSupportedException("主页测试的启动动作由 IHomeLaunchHost 替身提供。");
 }
 
@@ -174,21 +175,24 @@ internal sealed class FakeInstanceSource : IHomeInstanceSource
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasInstanceLoadError)));
 }
 
+/// <summary>排列替身：与真实存储一致，一格一实例（不保存空位与重复项）。</summary>
 internal sealed class FakeHomeLayoutStore : IHomeLayoutStore
 {
-    private List<string?> _slots = [];
+    private List<string> _slots = [];
 
     public int SaveCount { get; private set; }
 
-    public IReadOnlyList<string?> Load() => [.. _slots];
+    public IReadOnlyList<string> Load() => [.. _slots];
 
-    public void Save(IReadOnlyList<string?> slots)
+    public void Save(IReadOnlyList<string> slots)
     {
         _slots = [.. slots];
         SaveCount++;
     }
 
-    public void Seed(params string?[] slots) => _slots = [.. slots];
+    /// <summary>测试用：直接写入期望的排列；传入 null 模拟旧版本留下的空位。</summary>
+    public void Seed(params string?[] slots) =>
+        _slots = [.. slots.Where(slot => slot is not null).Select(slot => slot!)];
 }
 
 internal sealed class TestAppLogBuffer : IDisposable

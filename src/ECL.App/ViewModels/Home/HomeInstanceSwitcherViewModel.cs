@@ -11,25 +11,26 @@ using Ecl.Core.Localization;
 namespace Ecl.App.ViewModels.Home;
 
 /// <summary>
-/// 主页中央实例切换栏（home.md §4）：折叠态显示主页默认的前四个实例，
-/// 展开态显示全部已识别实例形成的统一可整理布局，并提供编辑/删除模式。
+/// 主页中央实例切换栏（home.md §4）：折叠态显示排列中的前四个实例，
+/// 展开态显示全部已识别实例的可整理布局，并提供编辑/删除模式。
 ///
 /// 边界（§4.5）：本栏只负责快速选择与排列整理，**不**提供实例创建、复制或导入；
 /// 这些仍属于实例页与下载中心。排列只是主页布局偏好，由
 /// <see cref="IHomeLayoutStore"/> 保存，不写入实例记录。
 ///
-/// 空位语义（§4.4）：删除实例后该位置保持为空位，其它实例不会自动补位；
-/// 新识别到的实例追加到布局末尾，用户可以再拖入默认位置。
+/// 格子数量（2026-11-21 维护者决定）：一格一实例。不再固定补齐四个位置、也不再保留
+/// 删除留下的空位——删除实例后其余实例顺次补位，排列在每次变更后立即保存。
 /// </summary>
 public sealed partial class HomeInstanceSwitcherViewModel : ObservableObject, IDisposable
 {
-    /// <summary>主页默认实例位置数量（§4.1）。</summary>
+    /// <summary>折叠态显示的实例数量（§4.1）；实例不足时按实际数量显示。</summary>
     public const int DefaultSlotCount = 4;
 
     private readonly IHomeInstanceSource _source;
     private readonly IHomeLayoutStore _layoutStore;
     private readonly ILocalizer _localizer;
-    private List<string?> _slots = [];
+    /// <summary>排列：按显示顺序保存的实例 ID；不包含空位。</summary>
+    private List<string> _slots = [];
     private bool _loaded;
     private bool _disposed;
 
@@ -51,10 +52,10 @@ public sealed partial class HomeInstanceSwitcherViewModel : ObservableObject, ID
         _source.PropertyChanged += OnLauncherPropertyChanged;
     }
 
-    /// <summary>折叠态：主页默认位置中的前四个实例（空位不显示）。</summary>
+    /// <summary>折叠态：排列中的前四个实例（不足四个时按实际数量）。</summary>
     public ObservableCollection<HomeInstanceSlotViewModel> Collapsed { get; } = [];
 
-    /// <summary>展开态：全部位置（含空位）。</summary>
+    /// <summary>展开态：每个已识别实例一格，顺序与保存的排列一致。</summary>
     public ObservableCollection<HomeInstanceSlotViewModel> Layout { get; } = [];
 
     [ObservableProperty]
@@ -81,7 +82,7 @@ public sealed partial class HomeInstanceSwitcherViewModel : ObservableObject, ID
 
     public string DeleteModeText => _localizer.Get(IsDeleteMode ? "home.switcher.deleteDone" : "home.switcher.delete");
 
-    /// <summary>维护「前四个默认位置」的可见性提示。</summary>
+    /// <summary>编辑模式说明：顺序整理与“立即保存”的语义。</summary>
     public string EditHint => _localizer.Get("home.switcher.editHint");
 
     public string DeleteHint => _localizer.Get("home.switcher.deleteHint");
@@ -98,25 +99,15 @@ public sealed partial class HomeInstanceSwitcherViewModel : ObservableObject, ID
         Reconcile();
     }
 
-    /// <summary>由外部（删除流程）调用：把该实例的位置标记为空位后重建。</summary>
+    /// <summary>由外部（删除流程）调用：把该实例从排列中移除，其余实例顺次补位。</summary>
     public void NotifyInstanceRemoved(string instanceId)
     {
-        if (string.IsNullOrWhiteSpace(instanceId))
+        if (string.IsNullOrWhiteSpace(instanceId) || !_loaded)
         {
             return;
         }
 
-        var changed = false;
-        for (var index = 0; index < _slots.Count; index++)
-        {
-            if (string.Equals(_slots[index], instanceId, StringComparison.Ordinal))
-            {
-                _slots[index] = null;
-                changed = true;
-            }
-        }
-
-        if (changed)
+        if (_slots.Remove(instanceId))
         {
             Persist();
             Rebuild();
@@ -124,8 +115,8 @@ public sealed partial class HomeInstanceSwitcherViewModel : ObservableObject, ID
     }
 
     /// <summary>
-    /// 编辑模式的拖动结果：两个位置互换内容（§4.3）。拖到空位即移动过去，原位置变为空位；
-    /// 拖到已有实例的位置即互换。只改变排列，不改变实例本身。
+    /// 编辑模式的拖动结果：两个位置互换内容（§4.3）。一格一实例，因此不存在“拖到空位”，
+    /// 也不允许把位置扩展到实例数量之外。只改变排列，不改变实例本身。
     /// </summary>
     public bool MoveSlot(int sourceIndex, int targetIndex)
     {
@@ -134,18 +125,11 @@ public sealed partial class HomeInstanceSwitcherViewModel : ObservableObject, ID
             return false;
         }
 
-        var displayCount = Math.Max(DefaultSlotCount, _slots.Count);
         if (sourceIndex < 0 || targetIndex < 0
-            || sourceIndex >= displayCount || targetIndex >= displayCount
+            || sourceIndex >= _slots.Count || targetIndex >= _slots.Count
             || sourceIndex == targetIndex)
         {
             return false;
-        }
-
-        // 拖到“展示用的空位”时先把位置落实到排列记录，再互换内容。
-        while (_slots.Count <= Math.Max(sourceIndex, targetIndex))
-        {
-            _slots.Add(null);
         }
 
         (_slots[sourceIndex], _slots[targetIndex]) = (_slots[targetIndex], _slots[sourceIndex]);
@@ -253,20 +237,24 @@ public sealed partial class HomeInstanceSwitcherViewModel : ObservableObject, ID
 
         var instances = _source.Instances;
         var ids = instances.Select(item => item.Model.Id).ToHashSet(StringComparer.Ordinal);
-        // 读取失败时保留已有位置，避免一次读取失败就把用户的排列清空。
+        // 读取失败时保留已有排列，避免一次读取失败就把用户的排列清空。
         var pruneUnknown = !_source.HasInstanceLoadError && instances.Count > 0;
         var changed = false;
 
-        for (var index = 0; index < _slots.Count; index++)
+        // 防御性去重：排列本身不含重复项，但损坏的文件或旧记录可能带来重复。
+        if (_slots.Count != _slots.Distinct(StringComparer.Ordinal).Count())
         {
-            if (_slots[index] is { } id && !ids.Contains(id) && pruneUnknown)
-            {
-                _slots[index] = null;
-                changed = true;
-            }
+            _slots = [.. _slots.Distinct(StringComparer.Ordinal)];
+            changed = true;
         }
 
-        var present = _slots.Where(id => id is not null).ToHashSet(StringComparer.Ordinal);
+        if (pruneUnknown)
+        {
+            var removed = _slots.RemoveAll(id => !ids.Contains(id));
+            changed |= removed > 0;
+        }
+
+        var present = new HashSet<string>(_slots, StringComparer.Ordinal);
         foreach (var instance in instances)
         {
             if (present.Add(instance.Model.Id))
@@ -276,8 +264,6 @@ public sealed partial class HomeInstanceSwitcherViewModel : ObservableObject, ID
             }
         }
 
-        // 排列只保存真实位置（含删除留下的空位）；四个默认位置在展示时补齐，
-        // 不写入记录，避免把“展示用的空位”变成后续实例追加的新位置。
         if (changed)
         {
             Persist();
@@ -293,21 +279,25 @@ public sealed partial class HomeInstanceSwitcherViewModel : ObservableObject, ID
             item => item,
             StringComparer.Ordinal);
         var selectedId = _source.SelectedInstance?.Model.Id;
-        var displayCount = Math.Max(DefaultSlotCount, _slots.Count);
 
         Layout.Clear();
-        for (var index = 0; index < displayCount; index++)
+        for (var index = 0; index < _slots.Count; index++)
         {
-            var id = index < _slots.Count ? _slots[index] : null;
-            byId.TryGetValue(id ?? string.Empty, out var instance);
+            byId.TryGetValue(_slots[index], out var instance);
+            if (instance is null)
+            {
+                // 排列里不该出现未知实例；即便出现也不生成空格子（数量与实例数保持一致）。
+                continue;
+            }
+
             Layout.Add(new HomeInstanceSlotViewModel(index, instance, _localizer)
             {
-                IsSelected = instance is not null && instance.Model.Id == selectedId,
+                IsSelected = instance.Model.Id == selectedId,
             });
         }
 
         Collapsed.Clear();
-        foreach (var slot in Layout.Where(slot => !slot.IsEmpty).Take(DefaultSlotCount))
+        foreach (var slot in Layout.Take(DefaultSlotCount))
         {
             Collapsed.Add(slot);
         }

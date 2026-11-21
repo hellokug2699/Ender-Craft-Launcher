@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Ecl.App.Dialogs;
 using Ecl.App.Dialogs.ViewModels;
+using Ecl.App.Services;
 using Ecl.Core;
 using Ecl.Core.Localization;
 using Ecl.Minecraft.Instances;
@@ -876,47 +877,14 @@ public sealed partial class SecurityFindingItemViewModel : ObservableObject
 
     /// <summary>
     /// 规范化显示用的相对路径：统一为反斜杠、去掉当前目录前缀，并防御性拒绝盘符、
-    /// UNC 根与上跳段；异常输入只保留文件名，避免泄露完整路径。
+    /// UNC 根与上跳段；异常输入只保留文件名。与启动前风险确认共用同一规则。
     /// </summary>
-    private static string FormatRelativePath(string? relativePath)
-    {
-        if (string.IsNullOrWhiteSpace(relativePath))
-        {
-            return string.Empty;
-        }
+    private static string FormatRelativePath(string? relativePath) =>
+        SecurityFindingPresentation.FormatRelativePath(relativePath);
 
-        var normalized = relativePath.Replace('/', '\\').Trim();
-        while (normalized.StartsWith(".\\", StringComparison.Ordinal))
-        {
-            normalized = normalized[2..];
-        }
+    public string LevelKey => SecurityFindingPresentation.LevelKey(Finding.Level);
 
-        if (normalized.Length == 0)
-        {
-            return string.Empty;
-        }
-
-        if (normalized.Contains(':', StringComparison.Ordinal) ||
-            normalized.StartsWith("\\\\", StringComparison.Ordinal) ||
-            normalized.Split('\\').Any(segment => string.Equals(segment, "..", StringComparison.Ordinal)))
-        {
-            return Path.GetFileName(normalized);
-        }
-
-        return normalized;
-    }
-
-    public string LevelKey => Finding.Level switch
-    {
-        ThreatLevel.ConfirmedThreat => "confirmed",
-        ThreatLevel.HighRisk => "high",
-        ThreatLevel.Suspicious => "suspicious",
-        ThreatLevel.Notice => "notice",
-        ThreatLevel.Unknown => "unknown",
-        _ => "clean",
-    };
-
-    public string LevelText => _localizer.Get($"security.finding.level.{LevelKey}");
+    public string LevelText => SecurityFindingPresentation.LevelText(Finding.Level, _localizer);
 
     public string MarkerText => LevelKey switch
     {

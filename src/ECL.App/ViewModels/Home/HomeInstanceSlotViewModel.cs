@@ -6,8 +6,9 @@ using Ecl.Core.Localization;
 namespace Ecl.App.ViewModels.Home;
 
 /// <summary>
-/// 主页中央实例切换栏中的一个位置（home.md §4）。位置可以暂时没有实例：
-/// 删除实例后它的位置保持为空位，不自动补位（§4.4）。
+/// 主页中央实例切换栏中的一个位置（home.md §4）。一格一实例：布局格子数量等于实例数量，
+/// 不保留删除留下的空位（2026-11-21 维护者决定），因此 <see cref="IsEmpty"/> 只是
+/// XAML 模板的兼容分支，正常状态下始终为 false。
 /// </summary>
 public sealed partial class HomeInstanceSlotViewModel : ObservableObject
 {
@@ -19,7 +20,7 @@ public sealed partial class HomeInstanceSlotViewModel : ObservableObject
         EmptyText = localizer.Get("home.switcher.emptySlot");
     }
 
-    /// <summary>在排列中的真实位置（从 0 开始）。前四个位置是主页默认实例位置。</summary>
+    /// <summary>在排列中的真实位置（从 0 开始）。前四个位置同时是折叠态显示的位置。</summary>
     public int Index { get; }
 
     public InstanceItemViewModel? Instance { get; }

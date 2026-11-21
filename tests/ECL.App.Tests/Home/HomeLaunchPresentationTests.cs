@@ -144,18 +144,49 @@ public sealed class HomeLaunchPresentationTests
     }
 }
 
-/// <summary>排列只有合法实例 ID 与空位两种值；文件损坏时回退到实例列表顺序。</summary>
+/// <summary>
+/// 排列只保存真实实例 ID（一格一实例）；旧版本留下的空位/重复项在读取时被丢弃并回写，
+/// 文件损坏时回退到实例列表顺序。
+/// </summary>
 public sealed class HomeLayoutStoreTests
 {
     [Fact]
-    public void SaveAndLoadRoundTripKeepsEmptySlots()
+    public void SaveAndLoadRoundTripKeepsTheOrderWithoutEmptySlots()
     {
         using var paths = new TemporaryAppPaths();
         var store = new HomeLayoutStore(paths.Paths, NullLogger<HomeLayoutStore>.Instance);
 
-        store.Save(["a", null, "b", null]);
+        store.Save(["b", "a"]);
 
-        Assert.Equal(["a", null, "b", null], store.Load());
+        Assert.Equal(["b", "a"], store.Load());
+    }
+
+    [Fact]
+    public void LegacyEmptySlotsAreDroppedAndTheFileIsRewritten()
+    {
+        using var paths = new TemporaryAppPaths();
+        Directory.CreateDirectory(paths.Paths.ConfigDirectory);
+        var file = Path.Combine(paths.Paths.ConfigDirectory, "home-layout.json");
+        File.WriteAllText(file, """{"Slots":["a",null,null,"b",null]}""");
+        var store = new HomeLayoutStore(paths.Paths, NullLogger<HomeLayoutStore>.Instance);
+
+        Assert.Equal(["a", "b"], store.Load());
+        // 读取即回写：文件不再携带空位，避免下次保存把历史空洞写回来。
+        Assert.DoesNotContain("null", File.ReadAllText(file));
+        Assert.Equal(["a", "b"], store.Load());
+    }
+
+    [Fact]
+    public void DuplicateInstanceIdsAreDropped()
+    {
+        using var paths = new TemporaryAppPaths();
+        Directory.CreateDirectory(paths.Paths.ConfigDirectory);
+        File.WriteAllText(
+            Path.Combine(paths.Paths.ConfigDirectory, "home-layout.json"),
+            """{"Slots":["a","b","a"]}""");
+        var store = new HomeLayoutStore(paths.Paths, NullLogger<HomeLayoutStore>.Instance);
+
+        Assert.Equal(["a", "b"], store.Load());
     }
 
     [Fact]
@@ -179,14 +210,18 @@ public sealed class HomeLayoutStoreTests
     }
 
     [Fact]
-    public void UnsafeInstanceIdsAreNormalizedToEmptySlots()
+    public void UnsafeInstanceIdsAreDropped()
     {
         using var paths = new TemporaryAppPaths();
         var store = new HomeLayoutStore(paths.Paths, NullLogger<HomeLayoutStore>.Instance);
+        Directory.CreateDirectory(paths.Paths.ConfigDirectory);
+        File.WriteAllText(
+            Path.Combine(paths.Paths.ConfigDirectory, "home-layout.json"),
+            """{"Slots":["../escape","a",""]}""");
 
-        store.Save(["../escape", "a", string.Empty]);
-
-        Assert.Equal([null, "a", null], store.Load());
+        // 非法 ID 不会被当作空位写回，也不会进入排列。
+        Assert.Equal(["a"], store.Load());
+        Assert.Equal(["a"], store.Load());
     }
 
     private sealed class TemporaryAppPaths : IDisposable

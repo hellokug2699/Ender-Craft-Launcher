@@ -62,6 +62,7 @@ public sealed partial class InstancesViewModel : ObservableObject
     private readonly IDialogEngine _dialogsEngine;
     private readonly Ecl.Operations.IOperationService _operations;
     private readonly Ecl.App.Services.IExternalLinkService _links;
+    private readonly Ecl.App.Services.SecurityRiskConsent _securityConsent;
     private readonly Ecl.Minecraft.Engine.Lifecycle.IInstanceDeletionService _deletions;
     private readonly IResultDialogService? _resultDialogs;
     private readonly Microsoft.Extensions.Logging.ILogger<InstancesViewModel>? _logger;
@@ -230,6 +231,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         Ecl.Operations.IOperationService operations,
         Ecl.App.Services.IExternalLinkService links,
         Ecl.Minecraft.Engine.Lifecycle.IInstanceDeletionService deletions,
+        Ecl.App.Services.SecurityRiskConsent securityConsent,
         Ecl.Core.Storage.Discovery.IInstanceDiscoveryService? discovery = null,
         IResultDialogService? resultDialogs = null,
         Microsoft.Extensions.Logging.ILogger<InstancesViewModel>? logger = null)
@@ -260,6 +262,7 @@ public sealed partial class InstancesViewModel : ObservableObject
         _operations = operations;
         _links = links;
         _deletions = deletions;
+        _securityConsent = securityConsent;
         _discovery = discovery;
         _resultDialogs = resultDialogs;
         _logger = logger;
@@ -1710,7 +1713,16 @@ public sealed partial class InstancesViewModel : ObservableObject
         try
         {
             var report = await _launchService
-                .LaunchAsync(item.Model.Id, dryRun, acceptJavaRisk: false, progress: progress)
+                .LaunchAsync(
+                    item.Model.Id,
+                    dryRun,
+                    acceptJavaRisk: false,
+                    acceptSecurityRisk: false,
+                    cancellationToken: default,
+                    progress: progress,
+                    // 启动前安全检查发现未接受的风险时由界面披露并取回决定（ADR 0043 §6）；
+                    // Dry Run 不弹窗、也不代表用户同意任何风险。
+                    confirmSecurityRisk: dryRun ? null : _securityConsent.ConfirmAsync)
                 .ConfigureAwait(true);
             foreach (var step in report.Steps)
             {
