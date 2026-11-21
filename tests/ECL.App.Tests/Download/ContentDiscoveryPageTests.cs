@@ -66,6 +66,50 @@ public sealed class ContentDiscoveryPageTests
     }
 
     [Fact]
+    public async Task AprilFoolsVersionsAreExcludedAndTypeFilterSeparatesSnapshots()
+    {
+        using var harness = new Harness();
+        harness.Versions.Versions.Add(new MinecraftGameVersion(
+            "24w14a",
+            MinecraftVersionKind.Snapshot,
+            new DateTimeOffset(2024, 4, 3, 0, 0, 0, TimeSpan.Zero)));
+        harness.Versions.Versions.Add(new MinecraftGameVersion(
+            "24w14potato",
+            MinecraftVersionKind.AprilFools,
+            new DateTimeOffset(2024, 4, 1, 0, 0, 0, TimeSpan.Zero)));
+        harness.Versions.Versions.Add(new MinecraftGameVersion(
+            "25w14craftmine",
+            MinecraftVersionKind.AprilFools,
+            new DateTimeOffset(2025, 4, 1, 0, 0, 0, TimeSpan.Zero)));
+
+        var page = harness.Create(ContentKind.Mod);
+        await page.EnsureLoadedAsync();
+
+        // 内容页只提供正式版与快照版两类，愚人节版本不进入选择表。
+        Assert.Equal(
+            new[] { MinecraftVersionKind.Release, MinecraftVersionKind.Snapshot },
+            page.VersionTypes.Select(type => type.Kind).ToArray());
+        Assert.Equal(MinecraftVersionKind.Release, page.SelectedVersionType!.Kind);
+        Assert.DoesNotContain(page.GameVersions, choice => choice.Value == "24w14a");
+        Assert.DoesNotContain(page.GameVersions, choice => choice.Value == "24w14potato");
+        Assert.DoesNotContain(page.GameVersions, choice => choice.Value == "25w14craftmine");
+        Assert.Contains(page.GameVersions, choice => choice.Value == "1.21.1");
+
+        // 切换到快照版：只显示快照，不混入正式版或愚人节版。
+        page.SelectedVersionType = page.VersionTypes.Single(
+            type => type.Kind == MinecraftVersionKind.Snapshot);
+        Assert.Contains(page.GameVersions, choice => choice.Value == "24w14a");
+        Assert.DoesNotContain(page.GameVersions, choice => choice.Value == "1.21.1");
+        Assert.DoesNotContain(page.GameVersions, choice => choice.Value == "24w14potato");
+
+        // 切回正式版：恢复正式版列表并默认选中最新的正式版。
+        page.SelectedVersionType = page.VersionTypes.Single(
+            type => type.Kind == MinecraftVersionKind.Release);
+        Assert.Contains(page.GameVersions, choice => choice.Value == "1.21.1");
+        Assert.Equal("1.21.1", page.SelectedGameVersion!.Value);
+    }
+
+    [Fact]
     public async Task NonAsciiSearchInputIsMarkedInvalidAndNeverSubmitted()
     {
         using var harness = new Harness();

@@ -186,9 +186,11 @@
                     <Grid Margin="0,10,0,0"
                           Visibility="{Binding ShowsCustomFilters, Converter={StaticResource BoolToVisibility}}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="10" />
+                            <ColumnDefinition Width="1*" />
+                            <ColumnDefinition Width="10" />
+                            <ColumnDefinition Width="1.2*" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="{Binding GameVersionLabel}" Style="{StaticResource LabelText}" />
@@ -198,6 +200,13 @@
                                       AutomationProperties.Name="{Binding GameVersionLabel}" />
                         </StackPanel>
                         <StackPanel Grid.Column="2">
+                            <TextBlock Text="{Binding VersionTypeLabel}" Style="{StaticResource LabelText}" />
+                            <ComboBox ItemsSource="{Binding VersionTypes}"
+                                      SelectedItem="{Binding SelectedVersionType, Mode=TwoWay}"
+                                      ItemTemplate="{StaticResource TitleItemTemplate}"
+                                      AutomationProperties.Name="{Binding VersionTypeLabel}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="4">
                             <TextBlock Text="{Binding LoaderLabel}" Style="{StaticResource LabelText}" />
                             <ComboBox ItemsSource="{Binding LoaderChoices}"
                                       SelectedItem="{Binding SelectedLoader, Mode=TwoWay}"

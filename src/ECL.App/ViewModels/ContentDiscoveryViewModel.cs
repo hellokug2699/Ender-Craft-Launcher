@@ -51,6 +51,7 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
     private bool _hasSearched;
     private int _worldLoadGeneration;
     private ContentSearchContext? _context;
+    private IReadOnlyList<MinecraftGameVersion> _allVersions = [];
 
     public ContentDiscoveryViewModel(
         ContentKind kind,
@@ -91,6 +92,16 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
         LoaderChoices.Add(new LoaderFilterChoice("fabric", localizer.Get("downloads.discovery.loader.fabric")));
         LoaderChoices.Add(new LoaderFilterChoice("neoforge", localizer.Get("downloads.discovery.loader.neoforge")));
         _selectedLoader = LoaderChoices[0];
+
+        // 内容下载只需要正式版/快照版；愚人节版本（craftmine 等）不对应可安装的内容生态，
+        // 因此不进入本页的版本选择表（与实例下载页的类型区分保持同一语义）。
+        VersionTypes.Add(new GameVersionTypeChoice(
+            MinecraftVersionKind.Release,
+            localizer.Get("instances.versionType.release")));
+        VersionTypes.Add(new GameVersionTypeChoice(
+            MinecraftVersionKind.Snapshot,
+            localizer.Get("instances.versionType.snapshot")));
+        _selectedVersionType = VersionTypes[0];
     }
 
     public ContentKind Kind { get; }
@@ -122,6 +133,8 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
     public string TargetInstanceLabel => _localizer.Get("downloads.discovery.target.instance");
 
     public string GameVersionLabel => _localizer.Get("instances.version");
+
+    public string VersionTypeLabel => _localizer.Get("downloads.deploy.type");
 
     public string LoaderLabel => _localizer.Get("instances.loader.title");
 
@@ -167,6 +180,9 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
 
     public ObservableCollection<VersionChoiceViewModel> GameVersions { get; } = [];
 
+    /// <summary>内容页的 Minecraft 版本类型：只含正式版与快照版，愚人节版本被排除。</summary>
+    public ObservableCollection<GameVersionTypeChoice> VersionTypes { get; } = [];
+
     public ObservableCollection<ContentInstanceChoice> TargetInstances { get; } = [];
 
     /// <summary>数据包页的目标世界；只来自该实例的 <see cref="IDatapackService"/> 世界发现结果。</summary>
@@ -182,6 +198,9 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
 
     [ObservableProperty]
     private VersionChoiceViewModel? _selectedGameVersion;
+
+    [ObservableProperty]
+    private GameVersionTypeChoice? _selectedVersionType;
 
     [ObservableProperty]
     private ContentInstanceChoice? _selectedInstance;
@@ -385,25 +404,41 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
             return;
         }
 
-        GameVersions.Clear();
-        var releases = result.Value!
-            .Where(item => item.Kind == MinecraftVersionKind.Release)
-            .Select(item => item.Id)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var version in result.Value!
-                     .GroupBy(item => item.Id, StringComparer.OrdinalIgnoreCase)
-                     .Select(group => group.First())
-                     .OrderByDescending(item => item.ReleasedAt ?? DateTimeOffset.MinValue))
-        {
-            GameVersions.Add(new VersionChoiceViewModel(version.Id, version.Id));
-        }
+        // 内容下载排除愚人节版本：这些版本没有常规的模组/资源包生态，
+        // 不应出现在玩家的版本选择表中（实例下载页仍保留其独立分类）。
+        _allVersions = result.Value!
+            .Where(item => item.Kind is MinecraftVersionKind.Release or MinecraftVersionKind.Snapshot)
+            .GroupBy(item => item.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderByDescending(item => item.ReleasedAt ?? DateTimeOffset.MinValue)
+            .ToArray();
+
+        ApplyVersionTypeFilter(keepSelection: false);
+    }
+
+    /// <summary>
+    /// 按当前类型（正式版/快照版）重建版本选择表。默认选中最新的正式版；
+    /// 切换类型保留同类型中此前选中的版本（如果存在）。
+    /// </summary>
+    private void ApplyVersionTypeFilter(bool keepSelection)
+    {
+        var kind = SelectedVersionType?.Kind ?? MinecraftVersionKind.Release;
+        var previous = keepSelection ? SelectedGameVersion?.Value : null;
 
         _suppressFilterReset = true;
         try
         {
-            // 默认选择最新的正式版；快照/愚人节版仍在列表中，只是不抢占默认值。
-            SelectedGameVersion = GameVersions.FirstOrDefault(choice => choice.Value is { } id && releases.Contains(id))
-                                  ?? GameVersions.FirstOrDefault();
+            GameVersions.Clear();
+            foreach (var version in _allVersions.Where(version => version.Kind == kind))
+            {
+                GameVersions.Add(new VersionChoiceViewModel(version.Id, version.Id));
+            }
+
+            SelectedGameVersion = previous is null
+                ? GameVersions.FirstOrDefault()
+                : GameVersions.FirstOrDefault(choice =>
+                      string.Equals(choice.Value, previous, StringComparison.Ordinal))
+                  ?? GameVersions.FirstOrDefault();
         }
         finally
         {
@@ -1169,6 +1204,19 @@ public sealed partial class ContentDiscoveryViewModel : ObservableObject
             return;
         }
 
+        ClearResults();
+        StatusMessage = string.Empty;
+    }
+
+    partial void OnSelectedVersionTypeChanged(GameVersionTypeChoice? value)
+    {
+        if (_suppressFilterReset)
+        {
+            return;
+        }
+
+        // 类型切换会重建版本选择表；旧结果属于旧筛选，不能继续显示。
+        ApplyVersionTypeFilter(keepSelection: false);
         ClearResults();
         StatusMessage = string.Empty;
     }
