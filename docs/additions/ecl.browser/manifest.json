@@ -1,0 +1,49 @@
+{
+  "manifestSchemaVersion": "1.0.0",
+  "additionId": "ecl.browser",
+  "name": "ECL Browser",
+  "type": "Feature",
+  "category": "Browser & Web Protection",
+  "summary": "由 ECL 管理的通用网页浏览器，提供 Profile 隔离、宿主权限控制和本地优先内容保护；不以固定 Minecraft 站点白名单限制正常互联网访问。",
+  "registryStatus": "Proposed",
+  "currentVersion": null,
+  "coreApiCompatibility": {
+    "status": "pending-definition",
+    "minimum": null,
+    "maximum": null
+  },
+  "dependencies": {
+    "requiredAdditions": [],
+    "optionalAdditions": [],
+    "conflicts": []
+  },
+  "capabilitiesPermissions": {
+    "status": "pending-definition",
+    "declaredCapabilities": []
+  },
+  "environmentCompatibility": {
+    "status": "pending-validation",
+    "runtime": ["Chromium-based runtime; implementation not selected"],
+    "platforms": ["Windows; validation pending"]
+  },
+  "dataSchema": null,
+  "releaseAssets": [],
+  "licenseDataSources": {
+    "status": "pending-review",
+    "codeLicense": null,
+    "dataSources": []
+  },
+  "relatedDocuments": [
+    "../../adr/0073-ecl-browser-platform-and-protection-architecture.md",
+    "../../adr/0032-native-feature-interfaces-and-optional-additions.md",
+    "../../adr/0053-addition-capability-permission-and-user-consent.md",
+    "../../adr/0054-addition-registry-and-manifest-governance.md",
+    "../../adr/0043-minecraft-threat-protection-and-security-analysis.md"
+  ],
+  "lifecycleMetadata": {
+    "firstRegistered": "2026-11-26",
+    "lastUpdated": "2026-11-26",
+    "deprecation": null,
+    "replacement": null
+  }
+}
