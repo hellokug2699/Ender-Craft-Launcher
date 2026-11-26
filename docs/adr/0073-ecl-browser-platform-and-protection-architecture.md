@@ -4,7 +4,7 @@
 - Implementation: Not Started
 - Date: 2026-11-26
 - Scope: ECL Browser 产品定位、浏览器运行时边界、用户会话与配置隔离、网络内容过滤、恶意网站防护、下载安全、浏览器更新及宿主进程隔离
-- Related: [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033：本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md)、[ADR 0043：Minecraft 威胁防护与安全分析架构](0043-minecraft-threat-protection-and-security-analysis.md)、[ADR 0053：Additions 能力权限模型与用户授权流程](0053-addition-capability-permission-and-user-consent.md)、[ADR 0055：ECL 混合工作区与原生工具平台架构](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)
+- Related: [ADR 0032：原生功能入口与按需 Additions 扩展体系](0032-native-feature-interfaces-and-optional-additions.md)、[ADR 0033：本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md)、[ADR 0043：Minecraft 威胁防护与安全分析架构](0043-minecraft-threat-protection-and-security-analysis.md)、[ADR 0053：Additions 能力权限模型与用户授权流程](0053-addition-capability-permission-and-user-consent.md)、[ADR 0055：ECL 混合工作区与原生工具平台架构](0055-ecl-hybrid-workspace-and-native-tool-platform-architecture.md)、[ECL Browser Addition 登记](../additions/ecl.browser/README.md)
 - Supersedes: [ADR 0036: Embedded Browser for Minecraft Knowledge Access](0036-embedded-browser-for-minecraft-knowledge.md)
 
 ## 背景
@@ -34,6 +34,8 @@ ECL Browser 是 ECL 管理的通用网页浏览器能力，而不是只访问指
 浏览器由 ECL 安装、更新和管理。浏览器宿主进程与 ECL 主 UI 分离；是否支持脱离 ECL 独立启动属于后续产品决策，本 ADR 不预先承诺。
 
 浏览器不得以“安全”为由恢复 ADR 0036 的固定站点白名单。正常互联网访问是产品目标；安全控制应主要约束网页对本机资源、浏览器会话、下载、权限和宿主能力的访问。
+
+ECL Browser 已按 ADR 0054 登记为官方 Feature Addition `ecl.browser`，登记状态为 `Proposed`，详见 [Addition Registry](../additions/ecl.browser/README.md)。该登记不代表实现、运行时选型、权限清单或发布资产已经完成；Addition Registry 状态与本 ADR 的 Decision / Implementation 状态分别管理。Browser Protection 属于 Browser 的内部能力，不单独登记为 Feature Addition；未来只有在威胁情报数据具备独立分发和生命周期时，才重新评估 Data Addition 拆分。
 
 ### 2. 浏览器运行时必须保留 Chromium 安全边界
 
@@ -222,3 +224,4 @@ Minecraft Wiki、Modrinth、CurseForge、mcmod.cn、视频站、论坛、文档�
 ## 修订记录
 
 - 2026-11-26：首次提出通用 ECL Browser 与本地优先 Protection 架构，替代 ADR 0036 的固定站点白名单定位。决策保持 Proposed；CEF Sandbox Bootstrap、Browser Host、过滤引擎兼容性和拦截响应仍须通过 PoC 验证。\n- 2026-11-26：补充核对 CEF 156 请求处理 API，确认本地响应可设置状态码，且重定向回调可检查并改写下一跳 URL；仍须通过主文档导航及特殊网络路径实测。确认 Brave 的旧 `adblock-rust-ffi` 仓库已归档，不将其作为集成依赖，改为评估自维护最小 C ABI Adapter。\n- 2026-11-26：补充 WPF 窗口集成风险：HwndHost 存在 Airspace 限制，CEF OSR 需要自行处理渲染缓冲和输入且当前不支持 accelerated compositing；窗口托管方式列入独立 PoC，不提前定案。
+- 2026-11-26：依据 ADR 0054 将 ECL Browser 登记为 `ecl.browser` Feature Addition，状态为 Proposed；补充 Registry 关联。登记不代表实现、权限、兼容性或发布资产已完成。
