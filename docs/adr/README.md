@@ -182,7 +182,7 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0033 本地 Minecraft 全面诊断与知识引擎](0033-local-minecraft-diagnostic-and-knowledge-engine.md) | Accepted | In Progress | 本地诊断与知识库 |
 | [0034 ECL 自身完整性与可恢复安装架构](0034-ecl-self-integrity-and-recovery.md) | Superseded | N/A | 历史决策（由 0051 统一取代） |
 | [0035 Offline Minecraft Knowledge Library as an Optional Addition](0035-offline-minecraft-knowledge-library.md) | Superseded | N/A | 离线知识库方向（由 0036 取代主要交付方式） |
-| [0036 Embedded Browser for Minecraft Knowledge Access](0036-embedded-browser-for-minecraft-knowledge.md) | Accepted | In Progress | 受限知识浏览器与站点白名单 |
+| [0036 Embedded Browser for Minecraft Knowledge Access](0036-embedded-browser-for-minecraft-knowledge.md) | Superseded | N/A | 历史受限知识浏览器决策（由 0073 全面取代） |
 | [0037 Account Appearance and Local Wardrobe Architecture](0037-account-appearance-and-local-wardrobe.md) | Superseded | N/A | 历史决策（由 0070 取代） |
 | [0038 Authlib-Injector Texture Upload Protocol Support](0038-authlib-injector-texture-upload-protocol.md) | Superseded | N/A | 历史协议决策（由 0070 取代；技术记录保留） |
 | [0039 Application Runtime Lifecycle and Graceful Shutdown](0039-application-runtime-lifecycle-and-graceful-shutdown.md) | Accepted | Implemented | 应用运行时生命周期与优雅关闭 |
@@ -218,4 +218,5 @@ ADR 将**决策生命周期**与**实施生命周期**分开记录。批准一�
 | [0069 Server-Side CurseForge Credential Proxy and Adaptive Download Architecture](0069-client-side-curseforge-auth-and-adaptive-download-architecture.md) | Accepted | Blocked | ECL 云端服务端持有 CurseForge API Key 并代理 API 请求、客户端直连 CDN、统一下载协调、全局资源预算、自适应 Range、多源回退及既有 Artifact Lifecycle 保留 |
 | [0070 Account Appearance and Appearance Enhance Addition Architecture](0070-account-appearance-and-appearance-enhance-addition-architecture.md) | Accepted | Not Started | Core 基础外观读取与 2D 展示、Appearance Enhance Addition、衣柜及账户类型能力边界 |
 | [0071 Self-Contained Installer Executable and Embedded Deployment Media](0071-self-contained-installer-and-embedded-deployment-media.md) | Accepted | Implemented | Installer 单文件分发、嵌入完整介质、自包含 Bootstrapper 与无运行时安装 |
+| [0073 ECL Browser Platform and Protection Architecture](0073-ecl-browser-platform-and-protection-architecture.md) | Proposed | Not Started | 通用浏览器、Chromium 宿主隔离、Profile、内容过滤、威胁情报与下载安全 |
 | [0072 Separation of Human-Facing Releases and Channel Update Feeds](0072-separation-of-human-facing-releases-and-channel-update-feeds.md) | Accepted | In Progress | 人工 Release 仅两个 EXE、Cloudflare Pages 静态频道 Feed、三个机器专用 GitHub Package Releases、三频道隔离发布、首次迁移及不可变 Package URL 安全校验 |
