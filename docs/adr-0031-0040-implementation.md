@@ -8,7 +8,7 @@
 | [0032 Additions](adr/0032-native-feature-interfaces-and-optional-additions.md) | Accepted | In Progress | 目录签名、依赖规划、安装事务、按需加载 |
 | [0033 本地诊断](adr/0033-local-minecraft-diagnostic-and-knowledge-engine.md) | Accepted | In Progress | 本地解析、知识库与证据链 |
 | [0034 自完整性](adr/0034-ecl-self-integrity-and-recovery.md) | Accepted | In Progress | 校验、Repair Mode、本地恢复缓存 |
-| [0036 受限知识浏览器](adr/0036-embedded-browser-for-minecraft-knowledge.md) | Accepted | In Progress | 白名单/重定向/子资源策略与本地错误页 |
+| [0036 受限知识浏览器](adr/0036-embedded-browser-for-minecraft-knowledge.md) | Superseded | N/A | 历史决策；产品与安全架构由 [ADR 0073](adr/0073-ecl-browser-platform-and-protection-architecture.md) 取代 |
 | [0037 账户外观与衣柜](adr/0037-account-appearance-and-local-wardrobe.md) | Superseded | N/A | 历史实现记录；后续产品边界由 ADR 0070 提案重新定义 |
 | [0038 Authlib 材质上传](adr/0038-authlib-injector-texture-upload-protocol.md) | Superseded | N/A | 历史协议实现记录；不得据此开放第三方账户外观写入，参见 ADR 0070 Accepted |
 | [0039 运行时生命周期](adr/0039-application-runtime-lifecycle-and-graceful-shutdown.md) | Accepted | Implemented | 关闭协调器、WPF/CLI 接入与超时测试 |
@@ -109,24 +109,32 @@
 - `install-manifest.json` 仍只服务卸载，尚未独立签名；当前来源信任基于更新清单副本。
 - Bootstrapper 自身损坏/缺失的恢复链未覆盖（仍需要独立安装介质或重新安装）。
 
-## ADR 0036：受限知识浏览器
+## ADR 0036：受限知识浏览器（历史实现记录）
 
-已落地：
+> ADR 0036 已由 [ADR 0073：ECL Browser Platform and Protection Architecture](adr/0073-ecl-browser-platform-and-protection-architecture.md) 全面取代。以下内容只记录旧方案已有的代码与测试事实，不代表固定站点白名单仍是当前产品要求，也不代表新浏览器宿主已经实现。
+
+已落地并可评估复用：
 
 - `KnowledgeSitePolicy`：仅 HTTPS；hostname 先按 IDN、大小写、尾随根点规范化，再按 DNS 标签边界判断 `zh.minecraft.wiki` / `mcmod.cn` 域名树；拒绝 userinfo 欺骗、非 HTTPS、`file/data/javascript` 等协议；port 不改变归属判断。
-- 逐跳重定向：只处理 301/302/303/307/308，先解析 `Location`（相对地址相对当前 URL）再校验；外部目标、非 HTTPS、缺失/非法 Location 一律拒绝，并保留真实 3xx 状态码、原始请求地址与被拒目标。
-- 子资源与 iframe 使用同一白名单；顶层导航、子资源、新窗口共用策略。
+- 逐跳重定向策略：处理 301/302/303/307/308，解析相对 Location 并保留真实状态码、原始请求地址与被拒目标。
+- 子资源与 iframe 的旧白名单策略；顶层导航、子资源、新窗口共用策略。
 - `KnowledgeErrorPage`：本地生成 HTML，动态文本 HTML 编码并限长，无外部资源、无脚本、无自动跳转。
 - `KnowledgeAddressBarState`：只读、可复制完整 URL、不可编辑/粘贴/搜索。
 
-验证：
+验证证据：
 
-- `tests/ECL.Tests/Knowledge/KnowledgeSitePolicyTests.cs`（92 项，含参数化）：ADR 验收清单中的允许/拒绝域名样例、大小写/尾随点/IDN/userinfo、非 HTTPS、跨域名树站内跳转、逐跳重定向与状态码保留、子资源、错误页注入与只读地址栏。
+- `tests/ECL.Tests/Knowledge/KnowledgeSitePolicyTests.cs`（92 项，含参数化）：旧 ADR 验收清单中的域名、规范化、重定向、子资源、错误页注入与只读地址栏测试。
 
-已知缺口（阻塞项）：
+历史方案未完成的部分：
 
-- 未实现 WebView2 宿主。ADR 0036 §5 要求在跟随重定向前取得原始 3xx 并在网络响应层取消；仅靠导航事件无法保证这一点。宿主必须验证运行时能力后才能宣称完成浏览器集成，当前不启动/不初始化 WebView。
-- 浏览器用户数据目录、Cookie 生命周期、运行时缺失降级、下载/弹窗/权限默认拒绝仅停留在策略契约，尚无宿主实现与实机验收。
+- 未实现 WebView2 宿主。
+- 浏览器用户数据目录、Cookie 生命周期、运行时缺失降级、下载/弹窗/权限默认拒绝没有宿主实现与实机验收。
+
+迁移约束：
+
+- 既有 URL 解析、重定向决策、HTML 安全编码和测试样例可作为新架构的候选基础，但必须按 ADR 0073 的通用浏览器需求重新审查。
+- 固定域名白名单、只读地址栏、禁止任意 URL、禁止正常外部站点访问等旧产品约束不迁移。
+- 旧策略测试通过不等于 CEF/Chromium 宿主、请求拦截、合成响应或新 Protection 系统通过验收。
 
 ## ADR 0037 / 0038：账户外观、衣柜与材质上传（历史实现记录）
 
