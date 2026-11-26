@@ -47,7 +47,7 @@ ECL Browser 是 ECL 管理的通用网页浏览器能力，而不是只访问指
 
 Windows 上 Chromium Sandbox 是发布门槛，不是可选优化。对于 CEF M138 及之后版本，必须遵循对应的 Bootstrap 部署模型，包括客户端 DLL、CEF Bootstrap 可执行文件、Sandbox Info 传递及同版本二进制配套要求。不得以关闭 Sandbox、传入 no-sandbox 或降低 Renderer 隔离作为绕过封装问题的解决办法。
 
-如果候选运行时不能提供可验证的沙箱能力、及时安全更新和必要的请求控制能力，则不得作为正式浏览器运行时发布。
+CEF 窗口与 WPF 的集成必须作为独立技术问题验证。WPF 的 `HwndHost` 可以承载原生 HWND，但会受到 WPF Airspace 等限制；CEF Off-Screen Rendering（OSR）则要求宿主处理像素缓冲区、失效区域和输入事件，且官方文档指出当前不支持 accelerated compositing，可能影响渲染性能。不得仅因 OSR 更容易与 WPF 视觉树组合就默认采用；必须比较原生 HWND 托管、独立浏览器窗口和 OSR 的性能、DPI、输入法、焦点、视频播放及窗口生命周期。\n\n如果候选运行时不能提供可验证的沙箱能力、及时安全更新和必要的请求控制能力，则不得作为正式浏览器运行时发布。
 
 ### 3. 使用独立 Browser Host 和最小 IPC
 
@@ -207,7 +207,7 @@ Minecraft Wiki、Modrinth、CurseForge、mcmod.cn、视频站、论坛、文档�
 
 - 在受支持的 Windows 版本上运行候选 CEF Runtime，证明 Chromium Sandbox 已启用；验证 Renderer 崩溃或受控测试进程不能直接访问不应开放的宿主资源。
 - 验证 CEF M138+ Windows Bootstrap 部署模型、客户端 DLL 入口、Sandbox Info 生命周期、Browser/Renderer 子进程启动和关闭。
-- 验证 ECL WPF UI 与 Browser Host 之间的 IPC 只暴露最小操作，网页内容不能直接调用该 IPC。
+- 验证 ECL WPF UI 与 Browser Host 之间的 IPC 只暴露最小操作，网页内容不能直接调用该 IPC。\n- 对比 Native HWND/HwndHost、独立浏览器窗口和 OSR；验证跨进程 HWND 托管的可行性、WPF Airspace、DPI、IME、焦点、鼠标/键盘输入、视频播放和 GPU 合成表现。
 - 验证请求拦截能够覆盖顶层文档、iframe、脚本、样式、图片、字体、XHR/fetch、媒体和重定向；对 Service Worker、WebSocket、WebRTC、预连接和缓存命中等特殊路径形成明确测试结论。
 - 验证 301、302、303、307、308 重定向在下一跳请求发出前得到检查；阻止时保留原始状态和拒绝目标，并展示本地拦截页。
 - 验证本地拦截响应的状态码、MIME、编码、CSP、缓存策略和页面资源隔离；分别测试主文档和子资源阻止行为。
@@ -221,4 +221,4 @@ Minecraft Wiki、Modrinth、CurseForge、mcmod.cn、视频站、论坛、文档�
 
 ## 修订记录
 
-- 2026-11-26：首次提出通用 ECL Browser 与本地优先 Protection 架构，替代 ADR 0036 的固定站点白名单定位。决策保持 Proposed；CEF Sandbox Bootstrap、Browser Host、过滤引擎兼容性和拦截响应仍须通过 PoC 验证。\n- 2026-11-26：补充核对 CEF 156 请求处理 API，确认本地响应可设置状态码，且重定向回调可检查并改写下一跳 URL；仍须通过主文档导航及特殊网络路径实测。确认 Brave 的旧 `adblock-rust-ffi` 仓库已归档，不将其作为集成依赖，改为评估自维护最小 C ABI Adapter。
+- 2026-11-26：首次提出通用 ECL Browser 与本地优先 Protection 架构，替代 ADR 0036 的固定站点白名单定位。决策保持 Proposed；CEF Sandbox Bootstrap、Browser Host、过滤引擎兼容性和拦截响应仍须通过 PoC 验证。\n- 2026-11-26：补充核对 CEF 156 请求处理 API，确认本地响应可设置状态码，且重定向回调可检查并改写下一跳 URL；仍须通过主文档导航及特殊网络路径实测。确认 Brave 的旧 `adblock-rust-ffi` 仓库已归档，不将其作为集成依赖，改为评估自维护最小 C ABI Adapter。\n- 2026-11-26：补充 WPF 窗口集成风险：HwndHost 存在 Airspace 限制，CEF OSR 需要自行处理渲染缓冲和输入且当前不支持 accelerated compositing；窗口托管方式列入独立 PoC，不提前定案。
